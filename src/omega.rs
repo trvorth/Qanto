@@ -1,7 +1,7 @@
 // src/omega.rs
 
 //! --- ΛΣ-ΩMEGA™ (Lambda Sigma Omega) Protocol ---
-//! v1.1.0 - Hardened Identity & Reflex
+//! v1.4.0 - Critical State Override & Finalized Tests
 //! This is the fundamental, reflexive security layer of a Qanto node. It is not
 //! an optional component; it is the core identity and stability protocol.
 //!
@@ -28,18 +28,22 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
-use tracing::{debug, instrument, warn}; // Removed 'info' from here
+use tracing::{debug, instrument, warn};
 
 // --- Core ΩMEGA Constants ---
-const IDENTITY_STATE_SIZE: usize = 16; // Used for initial identity hash generation
+const IDENTITY_STATE_SIZE: usize = 32;
 const ACTION_HISTORY_CAPACITY: usize = 256;
 const STABILITY_THRESHOLD: f64 = 0.65;
 const ENTROPY_HALFLIFE_MICROS: u64 = 500_000;
 const REFLECTION_TIMEOUT: Duration = Duration::from_millis(50);
+// --- ENHANCED: Constants for a more sensitive stability metric ---
+const RECENT_ACTION_PENALTY_FACTOR: f64 = 0.1;
+const LOW_ENTROPY_PENALTY: f64 = 1.5;
+const LOW_ENTROPY_THRESHOLD: f64 = 0.5;
+const CRITICAL_ENTROPY_OVERRIDE: f64 = 0.2; // New constant for immediate rejection
 
 // Global Threat Level: Atomically accessible indicator of network-wide perceived threat.
-// This is influenced by SAGA's analysis and ΩMEGA's local stability checks.
-static GLOBAL_THREAT_LEVEL: AtomicU64 = AtomicU64::new(0); // 0: Nominal, 1: Guarded, 2: Elevated
+static GLOBAL_THREAT_LEVEL: AtomicU64 = AtomicU64::new(0);
 
 // The core state of the ΩMEGA protocol for a single node instance.
 pub static OMEGA_STATE: Lazy<Arc<Mutex<OmegaState>>> =
@@ -47,13 +51,9 @@ pub static OMEGA_STATE: Lazy<Arc<Mutex<OmegaState>>> =
 
 /// Represents the node's core "digital identity" and recent history.
 pub struct OmegaState {
-    // A rolling hash representing the node's evolving identity.
     identity_hash: H256,
-    // A history of recent actions (represented by their hashes) and the times they occurred.
     action_history: VecDeque<(H256, Instant)>,
-    // A measure of the statistical randomness of the identity_hash.
     current_entropy: f64,
-    // The last time the entropy was recalculated.
     last_entropy_update: Instant,
 }
 
@@ -90,24 +90,19 @@ pub mod identity {
 }
 
 /// Placeholder simulation module for standalone testing.
-/// In a real system, this would interact with a more complex simulation environment.
 pub mod simulation {
     use super::*;
     use tokio::time::sleep;
-    use tracing::info; // 'info' is used here, so it's imported locally // Import sleep for tokio::time::sleep
+    use tracing::info;
 
     #[instrument]
     pub async fn run_simulation() {
         info!("Running ΩMEGA internal self-stabilization simulation...");
-        // Simulate a series of internal, self-generated "heartbeat" actions
-        // that help maintain the node's identity entropy and stability.
         for i in 0..10 {
             let simulated_action_hash = H256::random();
-            // In a full simulation, this would involve a mock state update.
-            // For now, we just reflect on a random action to exercise the protocol.
             let _ = reflect_on_action(simulated_action_hash).await;
             debug!("Simulated action {} reflected.", i);
-            sleep(Duration::from_millis(10)).await; // Use tokio::time::sleep
+            sleep(Duration::from_millis(10)).await;
         }
         info!("ΩMEGA internal simulation complete.");
     }
@@ -117,7 +112,6 @@ impl OmegaState {
     /// Initializes a new ΩMEGA state with high initial entropy.
     fn new() -> Self {
         let mut initial_seed_bytes = [0u8; 32];
-        // Use rand to fill the seed with random bytes
         rand::thread_rng().fill(&mut initial_seed_bytes[..IDENTITY_STATE_SIZE]);
         let initial_hash = H256::from(initial_seed_bytes);
 
@@ -133,7 +127,18 @@ impl OmegaState {
     #[instrument(skip(self))]
     fn reflect(&mut self, action_hash: H256) -> bool {
         self.update_entropy();
-        let temporal_density = self.calculate_temporal_density();
+
+        // --- EVOLVED: Critical State Override ---
+        // If the current entropy is critically low, reject the action immediately.
+        if self.current_entropy < CRITICAL_ENTROPY_OVERRIDE {
+            warn!(
+                "ΛΣ-ΩMEGA Protocol REJECTION: Critical low entropy override. Current: {:.4} < Threshold: {}",
+                self.current_entropy, CRITICAL_ENTROPY_OVERRIDE
+            );
+            GLOBAL_THREAT_LEVEL.store(ThreatLevel::Elevated as u64, Ordering::Relaxed);
+            return false;
+        }
+
 
         // Simulate the evolution of the identity hash.
         let mut temp_hasher = blake3::Hasher::new();
@@ -145,15 +150,23 @@ impl OmegaState {
         // Calculate the entropy of the *next* potential state.
         let next_entropy = Self::calculate_shannon_entropy(next_identity.as_bytes());
 
-        // **CRITICAL STABILITY CHECK**:
-        // The stability metric combines current entropy, future entropy, and the rate of recent actions.
-        // A stable action should not drastically reduce entropy or occur during a rapid flood of other actions.
+        // --- ENHANCED STABILITY CHECK ---
+        let recent_actions = self.calculate_recent_action_count();
+        let temporal_penalty = recent_actions as f64 * RECENT_ACTION_PENALTY_FACTOR;
+
+        // Add a severe penalty for operating from a low-entropy state, as any action is risky.
+        let low_entropy_penalty = if self.current_entropy < LOW_ENTROPY_THRESHOLD {
+            LOW_ENTROPY_PENALTY
+        } else {
+            0.0
+        };
+
         let stability_metric =
-            (self.current_entropy * 0.4) + (next_entropy * 0.6) - (temporal_density * 1.5);
+            (self.current_entropy * 0.4) + (next_entropy * 0.6) - temporal_penalty - low_entropy_penalty;
 
         debug!(
-            "Ω-Reflect: Stability Metric = {:.4} (Current Entropy: {:.4}, Next Entropy: {:.4}, Temporal Density: {:.4})",
-            stability_metric, self.current_entropy, next_entropy, temporal_density
+            "Ω-Reflect: Metric = {:.4} (Current Entropy: {:.4}, Next Entropy: {:.4}, Temporal Penalty: {:.4}, Low Entropy Penalty: {:.4})",
+            stability_metric, self.current_entropy, next_entropy, temporal_penalty, low_entropy_penalty
         );
 
         if stability_metric < STABILITY_THRESHOLD {
@@ -162,10 +175,9 @@ impl OmegaState {
                 action_hash, stability_metric, STABILITY_THRESHOLD
             );
             // If instability is detected, elevate the global threat level.
-            // Use `fetch_add` and `min` to ensure the threat level doesn't exceed Elevated (2).
-            GLOBAL_THREAT_LEVEL.fetch_add(1, Ordering::Relaxed);
-            let current_level = GLOBAL_THREAT_LEVEL.load(Ordering::Relaxed);
-            if current_level > ThreatLevel::Elevated as u64 {
+            let old_level = GLOBAL_THREAT_LEVEL.fetch_add(1, Ordering::Relaxed);
+            let new_level = old_level + 1;
+            if new_level > ThreatLevel::Elevated as u64 {
                 GLOBAL_THREAT_LEVEL.store(ThreatLevel::Elevated as u64, Ordering::Relaxed);
             }
             return false;
@@ -177,12 +189,10 @@ impl OmegaState {
         self.record_action(action_hash);
 
         // If the system is stable, gradually lower the threat level.
-        // Use `fetch_sub` and `max` to ensure the threat level doesn't go below Nominal (0).
         if self.action_history.len() % 10 == 0 {
-            GLOBAL_THREAT_LEVEL.fetch_sub(1, Ordering::Relaxed);
-            let current_level = GLOBAL_THREAT_LEVEL.load(Ordering::Relaxed);
-            if current_level < ThreatLevel::Nominal as u64 {
-                GLOBAL_THREAT_LEVEL.store(ThreatLevel::Nominal as u64, Ordering::Relaxed);
+            let old_level = GLOBAL_THREAT_LEVEL.load(Ordering::Relaxed);
+            if old_level > 0 {
+                GLOBAL_THREAT_LEVEL.fetch_sub(1, Ordering::Relaxed);
             }
         }
 
@@ -205,16 +215,14 @@ impl OmegaState {
         self.action_history.push_back((action_hash, Instant::now()));
     }
 
-    /// Calculates the rate of actions in the last second.
-    fn calculate_temporal_density(&self) -> f64 {
+    /// Calculates the raw number of actions in the last second.
+    fn calculate_recent_action_count(&self) -> u64 {
         let now = Instant::now();
         let one_second_ago = now - Duration::from_secs(1);
-        let recent_actions = self
-            .action_history
+        self.action_history
             .iter()
             .filter(|(_, time)| *time > one_second_ago)
-            .count();
-        (recent_actions as f64 / ACTION_HISTORY_CAPACITY as f64).min(1.0)
+            .count() as u64
     }
 
     /// Calculates the Shannon entropy of a byte slice.
@@ -224,6 +232,9 @@ impl OmegaState {
             counts[byte as usize] += 1;
         }
         let len = data.len() as f64;
+        if len == 0.0 {
+            return 0.0;
+        }
         counts
             .iter()
             .filter(|&&c| c > 0)
@@ -238,7 +249,6 @@ impl OmegaState {
 /// Public function to reflect on a transaction or other critical action.
 pub async fn reflect_on_action(action_hash: H256) -> bool {
     let state = OMEGA_STATE.clone();
-    // Use a timeout to prevent deadlocks and ensure responsiveness.
     let result = match tokio::time::timeout(REFLECTION_TIMEOUT, state.lock()).await {
         Ok(mut locked_state) => locked_state.reflect(action_hash),
         Err(_) => {
@@ -246,7 +256,7 @@ pub async fn reflect_on_action(action_hash: H256) -> bool {
             false
         }
     };
-    result // Assign the result to a variable and return it to extend its lifetime
+    result
 }
 
 /// A specialized function to derive a stable action hash from a QantoBlock.
@@ -265,10 +275,13 @@ pub fn hash_for_block(block: &QantoBlock) -> H256 {
 mod tests {
     use super::*;
     use crate::omega::identity::{get_threat_level, set_threat_level};
+    use serial_test::serial; // Import the serial macro
 
     #[tokio::test]
+    #[serial] // Run this test serially
     async fn test_omega_initialization() {
-        let state = OMEGA_STATE.lock().await;
+        let mut state = OMEGA_STATE.lock().await;
+        *state = OmegaState::new(); // Reset state
         assert!(
             state.current_entropy > 4.0,
             "Initial entropy should be high"
@@ -277,12 +290,13 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial] // Run this test serially
     async fn test_stable_action_reflection() {
         // Reset state for a clean test
         {
             let mut state = OMEGA_STATE.lock().await;
             *state = OmegaState::new();
-            set_threat_level(ThreatLevel::Nominal); // Ensure nominal threat level for test
+            set_threat_level(ThreatLevel::Nominal);
         }
 
         let action = H256::random();
@@ -298,15 +312,15 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial] // Run this test serially
     async fn test_unstable_action_flood() {
         // Reset the state for a clean test
         {
             let mut state = OMEGA_STATE.lock().await;
             *state = OmegaState::new();
-            set_threat_level(ThreatLevel::Nominal); // Ensure nominal threat level for test
+            set_threat_level(ThreatLevel::Nominal);
         }
 
-        // Simulate a rapid flood of nearly identical actions, which should reduce entropy.
         let base_action = H256::random();
         let mut last_result = true;
         for i in 0..100 {
@@ -314,8 +328,6 @@ mod tests {
             action_bytes[0] = i as u8;
             let action = H256::from(action_bytes);
 
-            // Give a tiny bit of time for the history to register.
-            // Using tokio::time::sleep for async context.
             tokio::time::sleep(Duration::from_millis(5)).await;
             if !reflect_on_action(action).await {
                 last_result = false;
@@ -326,7 +338,6 @@ mod tests {
             !last_result,
             "A rapid flood of similar actions should eventually be deemed unstable"
         );
-        // Verify threat level escalation
         assert!(
             get_threat_level().await > ThreatLevel::Nominal,
             "Threat level should escalate after unstable actions"
@@ -334,6 +345,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial] // Run this test serially
     async fn test_threat_level_escalation_and_deescalation() {
         // Reset state
         {
@@ -350,13 +362,17 @@ mod tests {
 
         let is_stable = state.reflect(low_entropy_action);
         assert!(!is_stable, "Low entropy state should lead to rejection");
-        assert_eq!(get_threat_level().await, ThreatLevel::Guarded);
+        assert_eq!(get_threat_level().await, ThreatLevel::Elevated);
+
+        // **FIX**: Reset entropy to a stable value before simulating de-escalation
+        state.current_entropy = 5.0;
 
         // Simulate some stable actions to de-escalate
-        for _ in 0..10 {
-            state.reflect(H256::random());
+        for i in 0..20 { 
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            let result = state.reflect(H256::random());
+            assert!(result, "De-escalation action {} should be stable", i);
         }
-        // After stable actions, the threat level should return to Nominal
         assert_eq!(get_threat_level().await, ThreatLevel::Nominal);
     }
 }
