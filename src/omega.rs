@@ -139,7 +139,6 @@ impl OmegaState {
             return false;
         }
 
-
         // Simulate the evolution of the identity hash.
         let mut temp_hasher = blake3::Hasher::new();
         temp_hasher.update(self.identity_hash.as_bytes());
@@ -161,8 +160,9 @@ impl OmegaState {
             0.0
         };
 
-        let stability_metric =
-            (self.current_entropy * 0.4) + (next_entropy * 0.6) - temporal_penalty - low_entropy_penalty;
+        let stability_metric = (self.current_entropy * 0.4) + (next_entropy * 0.6)
+            - temporal_penalty
+            - low_entropy_penalty;
 
         debug!(
             "Ω-Reflect: Metric = {:.4} (Current Entropy: {:.4}, Next Entropy: {:.4}, Temporal Penalty: {:.4}, Low Entropy Penalty: {:.4})",
@@ -368,7 +368,7 @@ mod tests {
         state.current_entropy = 5.0;
 
         // Simulate some stable actions to de-escalate
-        for i in 0..20 { 
+        for i in 0..20 {
             tokio::time::sleep(Duration::from_millis(10)).await;
             let result = state.reflect(H256::random());
             assert!(result, "De-escalation action {} should be stable", i);
