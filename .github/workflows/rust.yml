@@ -26,7 +26,8 @@ jobs:
         run: cargo fmt -p qanto -- --check
 
       - name: Check for common issues (Clippy)
-         run: cargo clippy --workspace -- -D warnings
+        run: |
+          cargo clippy --workspace -- -D warnings
 
       - name: Build project binaries (excluding examples)
         run: |
