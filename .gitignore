@@ -49,6 +49,7 @@ Thumbs.db
 /qantodag_db/
 /qantodag_db_evolved/
 /node*/**/qantodag_db/
+/qantodag_db_test
 /peer_cache.json
 
 # --- Sensitive Information ---
