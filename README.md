@@ -20,7 +20,7 @@ Qanto is a highly modern blockchain platform that has been developed to guarante
 
 While primarily a Layer-0 protocol facilitating interoperability across its ecosystem of shards and chains, Qanto can host Layer-1-like chains within its framework, processing transactions and smart contracts independently. Additionally, its planned zk-SNARKs integration could enable Layer-2 scaling solutions, such as rollups, on its shards, enhancing throughput while leveraging Qanto’s interoperability. Currently in Phase 1 (Foundation), the repository includes core components like the DAG ledger, node orchestrator, P2P networking, and wallet functionality, alongside documentation for local setup and testnet participation. Licensed under the MIT License, Qanto welcomes community contributions to drive its vision of a future-proof decentralized ecosystem.
 
-For a comprehensive academic and technical overview, please refer to the official [**Qanto Whitepaper**](./Qanto-whitepaper.pdf).
+For a comprehensive academic and technical overview, please refer to the official [**Qanto Whitepaper**](./docs/whitepaper/Qanto-whitepaper.pdf).
 
 ## X-PHYRUS™ Protocol Stack 🪖
 
@@ -77,7 +77,7 @@ SAGA proactively recommends changes to network parameters based on system-wide a
 
 ## **Core Architectural Tenets**
 
-* **HyperDAG Ledger:** A Directed Acyclic Graph structure that allows for parallel block processing, high throughput, and near-instant finality.
+* **QantoDAG Ledger:** A Directed Acyclic Graph structure that allows for parallel block processing, high throughput, and near-instant finality.
 * **Hybrid Consensus (PoW + PoS + PoSe):** Qanto utilizes a unique, multi-layered consensus model:
     * **Proof-of-Work (PoW):** A lightweight PoW mechanism is used to secure the network against spam and provide a basic sybil resistance layer. Miners compete to solve a computational puzzle to propose a new block.
     * **Proof-of-Stake (PoS):** Validator nodes must stake tokens to participate in consensus. The right to validate blocks is selected based on a stake-weighted algorithm, securing the network economically. Malicious behavior can result in a validator's stake being "slashed".
@@ -100,7 +100,7 @@ The Qanto repository is a Cargo workspace containing several key components:
 * `src/main.rs`: Entry point and CLI command parsing.
 * `src/node.rs`: Main node orchestration, managing all services.
 * `src/config.rs`: Configuration loading and validation.
-* `src/hyperdag.rs`: The core DAG ledger implementation.
+* `src/qantodag.rs`: The core DAG ledger implementation.
 * `src/p2p.rs`: The libp2p-based peer-to-peer networking layer.
 * `src/miner.rs`: Proof-of-Work puzzle solving logic.
 * `src/transaction.rs`: Transaction creation and validation logic.
@@ -110,7 +110,7 @@ The Qanto repository is a Cargo workspace containing several key components:
 * `src/x_phyrus.rs`: The pre-boot security and diagnostics suite.
 * `src/zk.rs`: (Feature-gated) ZK-proof circuit definitions.
 * `src/infinite_strata_node.rs`: Proof-of-Sustained-Cloud-Presence (PoSCP) and cloud-adaptive mining logic.
-* **/src/bin**: Executable crates for the node (start\_node.rs) and wallet (hyperwallet.rs).  
+* **/src/bin**: Executable crates for the node (start\_node.rs) and wallet (Qantowallet.rs).  
 * **/docs**: Project documentation, including the whitepaper and launch plans.  
 * **config.toml.example**: An example configuration file for the node.
 
@@ -119,7 +119,7 @@ The Qanto repository is a Cargo workspace containing several key components:
 * **Formal Specification (Whitepaper)**: [docs//whitepaper/Qanto-whitepaper.md](./docs/whitepaper/Qanto-whitepaper.md)
 * **System Architecture Overview**: [Architecture.md](./Architecture.md)
 * **API Documentation**: A complete specification for the public RPC and REST Application Programming Interfaces is slated for publication prior to the mainnet launch.
-* **Command-Line Interface (CLI) Wallet**: The `hyperwallet` executable furnishes a command-line interface for all requisite wallet and cryptographic key management operations.
+* **Command-Line Interface (CLI) Wallet**: The `Qantowallet` executable furnishes a command-line interface for all requisite wallet and cryptographic key management operations.
 
 ## Procedural Guide for Local Instantiation
 
@@ -206,9 +206,9 @@ Building on Windows requires the MSVC C++ toolchain and manual installation of R
 ### **Operational Quick Start**
 
 1.  **Wallet Credential Generation**:
-    The `hyperwallet` utility is provided for the creation of a new keypair. Upon execution, the operator will be prompted to supply a secure passphrase for the encryption of the resultant wallet file, `wallet.key`.
+    The `Qantowallet` utility is provided for the creation of a new keypair. Upon execution, the operator will be prompted to supply a secure passphrase for the encryption of the resultant wallet file, `wallet.key`.
     ```bash
-    cargo run --release --bin hyperwallet -- generate --output wallet.key
+    cargo run --release --bin qantowallet -- generate --output wallet.key
     ```
         (You will be prompted for a secure password).
     
