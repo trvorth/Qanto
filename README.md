@@ -94,7 +94,6 @@ SAGA proactively recommends changes to network parameters based on system-wide a
 The Qanto repository is a Cargo workspace containing several key components:
 
 * **/src**: The main library crate containing the core logic.  
-* `src/main.rs`: Entry point and CLI command parsing.
 * `src/node.rs`: Main node orchestration, managing all services.
 * `src/config.rs`: Configuration loading and validation.
 * `src/qantodag.rs`: The core DAG ledger implementation.

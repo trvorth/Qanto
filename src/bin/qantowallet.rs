@@ -97,12 +97,14 @@ async fn generate_wallet(output: PathBuf) -> Result<()> {
 
     println!("\nWallet generated successfully!");
     println!("Address: {}", new_wallet.address());
-    println!("Mnemonic: {}", new_wallet.mnemonic().expose_secret());
+    // The following line has been removed to fix the security vulnerability.
+    // println!("Mnemonic: {}", new_wallet.mnemonic().expose_secret());
     println!("Saved to: {}", output.display());
-    println!("\nIMPORTANT: Store your mnemonic phrase in a secure location. It is the only way to recover your wallet.");
+    println!("\nIMPORTANT: Store your mnemonic phrase from the new wallet in a secure location. It is the only way to recover your wallet.");
 
     Ok(())
 }
+
 
 async fn show_address(wallet_path: PathBuf) -> Result<()> {
     println!(
