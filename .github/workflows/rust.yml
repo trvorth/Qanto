@@ -22,10 +22,8 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Check formatting (excluding examples)
-        run: >
-          cargo fmt --all -- --check
-          --ignore=node1,node2,node3
+      - name: Check formatting 
+        run: cargo fmt --all -- --check
           
       - name: Check for common issues (Clippy)
         run: cargo clippy --workspace -- -D warnings
