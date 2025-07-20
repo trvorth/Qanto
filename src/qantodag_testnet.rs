@@ -1,8 +1,8 @@
 use anyhow::Result;
 use ed25519_dalek::SigningKey;
-use hyperchain::config::Config;
-use hyperchain::node::Node;
-use hyperchain::wallet::Wallet;
+use qanto::config::Config;
+use qanto::node::Node;
+use qanto::wallet::Wallet;
 use log::info;
 use rand::rngs::OsRng;
 use std::env;
@@ -13,22 +13,22 @@ use std::sync::Arc;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let private_key_hex = env::var("HYPERDAG_PRIVATE_KEY").unwrap_or_else(|_| {
-        info!("HYPERDAG_PRIVATE_KEY not set, generating a new wallet for testnet.");
+    let private_key_hex = env::var("QANTODAG_PRIVATE_KEY").unwrap_or_else(|_| {
+        info!("QANTODAG_PRIVATE_KEY not set, generating a new wallet for testnet.");
         let mut os_rng = OsRng;
         let signing_key = SigningKey::generate(&mut os_rng);
         hex::encode(signing_key.to_bytes())
     });
-    let wallet = Wallet::from_private_key(&private_key_hex)?; // MODIFIED: Corrected struct name
-    info!("Testnet node wallet address: {}", wallet.address()); // MODIFIED: Corrected method name
+    let wallet = Wallet::from_private_key(&private_key_hex)?;
+    info!("Testnet node wallet address: {}", wallet.address());
 
     let config = Config {
         p2p_address: "/ip4/127.0.0.1/tcp/0".to_string(),
         local_full_p2p_address: None,
         api_address: "127.0.0.1:0".to_string(),
-        network_id: "hyperdag-testnet".to_string(),
+        network_id: "qantodag-testnet".to_string(),
         peers: vec![],
-        genesis_validator: wallet.address(), // MODIFIED: Corrected method name
+        genesis_validator: wallet.address(),
         target_block_time: 60,
         difficulty: 10,
         max_amount: 10_000_000_000,
@@ -37,10 +37,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mining_threads: 1,
         num_chains: 1,
         mining_chain_id: 0,
-        logging: hyperchain::config::LoggingConfig {
+        logging: qanto::config::LoggingConfig {
             level: "info".to_string(),
         },
-        p2p: hyperchain::config::P2pConfig::default(),
+        p2p: qanto::config::P2pConfig::default(),
     };
     config.validate()?;
 
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let temp_identity_path = format!("./temp_testnet_identity_{}.key", rand::random::<u32>());
     let temp_peer_cache_path = format!("./temp_testnet_peercache_{}.json", rand::random::<u32>());
 
-    info!("Starting HyperDAG testnet node instance (from hyperdag_testnet.rs)...");
+    info!("Starting QantoDAG testnet node instance (from qantodag_testnet.rs)...");
     let wallet_arc = Arc::new(wallet);
     let node = Node::new(
         config,
@@ -69,10 +69,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = fs::remove_file(&temp_peer_cache_path);
 
     if let Err(e) = node_start_result {
-        log::error!("HyperDAG testnet node (from hyperdag_testnet.rs) failed: {e}");
+        log::error!("QantoDAG testnet node (from qantodag_testnet.rs) failed: {e}");
         return Err(e.into());
     }
 
-    info!("HyperDAG testnet node (from hyperdag_testnet.rs) exited.");
+    info!("QantoDAG testnet node (from qantodag_testnet.rs) exited.");
     Ok(())
 }

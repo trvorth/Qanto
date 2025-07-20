@@ -1,10 +1,10 @@
-# **HyperChain Protocol: Comprehensive Security Audit and Formal Verification Plan**
+# **Qanto Protocol: Comprehensive Security Audit and Formal Verification Plan**
 
 **Version: 1.0** **Status: Pre-Engagement**
 
 ## **1\. Introduction and Philosophy**
 
-The security of the HyperChain protocol is the paramount design consideration. The integrity of user assets and the long-term viability of the network depend on a robust, multi-layered security posture. This document outlines a comprehensive plan for a third-party security audit and formal verification process.
+The security of the Qanto protocol is the paramount design consideration. The integrity of user assets and the long-term viability of the network depend on a robust, multi-layered security posture. This document outlines a comprehensive plan for a third-party security audit and formal verification process.
 
 Our philosophy is that security is not a single event, but a continuous process. This plan therefore details not only a pre-launch audit but also establishes a framework for ongoing security assurance. The audit will be conducted by a reputable, independent cybersecurity firm with demonstrated expertise in DLT protocols, advanced cryptography, economic modeling, and secure Rust development. The results of the final audit will be made public to ensure full transparency with our community and stakeholders.
 
@@ -67,5 +67,5 @@ The security audit will employ a combination of manual code review, static and d
 
 * **Phase 1: Firm Selection & Engagement (2-3 Weeks):** Identify and contract a suitable, top-tier security auditing firm.  
 * **Phase 2: Initial Audit & Private Report (4-6 Weeks):** The firm will conduct its review and provide an initial, confidential report detailing all findings, categorized by severity (Critical, High, Medium, Low, Informational) and providing actionable recommendations.  
-* **Phase 3: Mitigation & Remediation (3-4 Weeks):** The HyperChain development team will address all identified vulnerabilities, providing detailed explanations and pull requests for each fix. This process will be tracked publicly via a dedicated project board.  
+* **Phase 3: Mitigation & Remediation (3-4 Weeks):** The Qanto development team will address all identified vulnerabilities, providing detailed explanations and pull requests for each fix. This process will be tracked publicly via a dedicated project board.  
 * **Phase 4: Verification & Final Public Report (1-2 Weeks):** The auditing firm will review the fixes and publish a final, comprehensive report. This public report will detail the initial findings, the team's responses, and the final state of the codebase, ensuring full transparency with the community.

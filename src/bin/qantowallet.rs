@@ -1,8 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
-use hyperchain::{
-    // NOTE: TransactionMetadata struct is no longer directly used here.
-    hyperdag::UTXO,
+use qanto::{
+    qantodag::UTXO,
     transaction::{Input, Output, Transaction, TransactionConfig},
     wallet::{Wallet, WalletError},
 };
@@ -21,14 +20,14 @@ const DEV_FEE_RATE: f64 = 0.0304;
 #[command(
     author,
     version,
-    about = "A command-line wallet for the Hyperchain network.",
+    about = "A command-line wallet for the Qanto network.",
     long_about = None
 )]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    /// The URL of the Hyperchain node API.
+    /// The URL of the Qanto node API.
     #[arg(long, global = true, default_value = "http://127.0.0.1:8080")]
     node_url: String,
 }
@@ -233,7 +232,7 @@ async fn send_transaction(
     let mut outputs = vec![Output {
         address: to.clone(),
         amount,
-        homomorphic_encrypted: hyperchain::hyperdag::HomomorphicEncrypted::new(
+        homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(
             amount,
             he_pub_key_material,
         ),
@@ -243,7 +242,7 @@ async fn send_transaction(
         outputs.push(Output {
             address: DEV_ADDRESS.to_string(),
             amount: dev_fee,
-            homomorphic_encrypted: hyperchain::hyperdag::HomomorphicEncrypted::new(
+            homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(
                 dev_fee,
                 he_pub_key_material,
             ),
@@ -255,7 +254,7 @@ async fn send_transaction(
         outputs.push(Output {
             address: sender_address.clone(),
             amount: change,
-            homomorphic_encrypted: hyperchain::hyperdag::HomomorphicEncrypted::new(
+            homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(
                 change,
                 he_pub_key_material,
             ),
@@ -265,11 +264,10 @@ async fn send_transaction(
     // 4. Create and sign the transaction
     let signing_key = wallet.get_signing_key()?;
 
-    // FIX: Construct metadata as a HashMap to match the expected type in TransactionConfig.
     let mut metadata_map = HashMap::new();
     metadata_map.insert(
         "origin_component".to_string(),
-        "hyperwallet-cli".to_string(),
+        "qantowallet-cli".to_string(),
     );
     metadata_map.insert("intent".to_string(), "Standard P2P Transfer".to_string());
 
@@ -282,7 +280,6 @@ async fn send_transaction(
         outputs,
         signing_key_bytes: signing_key.as_bytes(),
         tx_timestamps: Arc::new(RwLock::new(HashMap::new())),
-        // Pass the correctly typed HashMap wrapped in Some().
         metadata: Some(metadata_map),
     };
 

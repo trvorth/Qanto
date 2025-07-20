@@ -1,4 +1,4 @@
-//! --- Hyperchain HyperDAG Ledger ---
+//! --- Qanto QantoDAG Ledger ---
 //! v1.6.6 - Argument Order Fix
 
 use crate::emission::Emission;
@@ -59,7 +59,7 @@ pub struct UTXO {
 }
 
 #[derive(Error, Debug)]
-pub enum HyperDAGError {
+pub enum QantoDAGError {
     #[error("Invalid block: {0}")]
     InvalidBlock(String),
     #[error("Invalid transaction: {0}")]
@@ -100,7 +100,7 @@ pub enum HyperDAGError {
     JoinError(#[from] task::JoinError),
     #[error("Saga error: {0}")]
     SagaError(#[from] anyhow::Error),
-    #[error("HyperDAG self-reference not initialized. This indicates a critical bug in the node startup sequence.")]
+    #[error("QantoDAG self-reference not initialized. This indicates a critical bug in the node startup sequence.")]
     SelfReferenceNotInitialized,
     #[error("RocksDB error: {0}")]
     RocksDB(#[from] rocksdb::Error),
@@ -119,7 +119,7 @@ pub struct SigningData<'a> {
     pub merkle_root: &'a str,
 }
 
-pub struct HyperBlockCreationData<'a> {
+pub struct QantoBlockCreationData<'a> {
     pub chain_id: u32,
     pub parents: Vec<String>,
     pub transactions: Vec<Transaction>,
@@ -150,10 +150,10 @@ pub struct LatticeSignature {
 
 impl LatticeSignature {
     #[instrument]
-    pub fn sign(signing_key_bytes: &[u8], message: &[u8]) -> Result<Self, HyperDAGError> {
+    pub fn sign(signing_key_bytes: &[u8], message: &[u8]) -> Result<Self, QantoDAGError> {
         let signing_key =
             SigningKey::from_bytes(signing_key_bytes.try_into().map_err(|_| {
-                HyperDAGError::InvalidBlock("Invalid signing key length".to_string())
+                QantoDAGError::InvalidBlock("Invalid signing key length".to_string())
             })?);
         let public_key = signing_key.verifying_key();
         let signature = signing_key.sign(message);
@@ -199,18 +199,18 @@ impl HomomorphicEncrypted {
     }
 
     #[instrument]
-    pub fn decrypt(&self, _private_key_material: &[u8]) -> Result<u64, HyperDAGError> {
+    pub fn decrypt(&self, _private_key_material: &[u8]) -> Result<u64, QantoDAGError> {
         if self.encrypted_amount == hex::encode(Keccak256::digest(0u64.to_be_bytes())) {
             Ok(0)
         } else {
-            Err(HyperDAGError::HomomorphicError(
+            Err(QantoDAGError::HomomorphicError(
                 "Placeholder decryption cannot recover original value.".to_string(),
             ))
         }
     }
 
     #[instrument]
-    pub fn add(&self, other: &Self) -> Result<Self, HyperDAGError> {
+    pub fn add(&self, other: &Self) -> Result<Self, QantoDAGError> {
         let mut hasher = Keccak256::new();
         hasher.update(self.encrypted_amount.as_bytes());
         hasher.update(other.encrypted_amount.as_bytes());
@@ -253,7 +253,7 @@ pub struct SmartContract {
 
 impl SmartContract {
     #[instrument]
-    pub fn execute(&mut self, input: &str) -> Result<String, HyperDAGError> {
+    pub fn execute(&mut self, input: &str) -> Result<String, QantoDAGError> {
         if self.code.contains("echo") {
             self.storage
                 .insert("last_input".to_string(), input.to_string());
@@ -267,7 +267,7 @@ impl SmartContract {
             *counter = (current_val + 1).to_string();
             Ok(format!("counter updated to: {counter}"))
         } else {
-            Err(HyperDAGError::SmartContractError(
+            Err(QantoDAGError::SmartContractError(
                 "Unsupported contract code or execution logic".to_string(),
             ))
         }
@@ -275,7 +275,7 @@ impl SmartContract {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct HyperBlock {
+pub struct QantoBlock {
     pub chain_id: u32,
     pub id: String,
     pub parents: Vec<String>,
@@ -298,15 +298,11 @@ pub struct HyperBlock {
     pub epoch: u64,
 }
 
-impl fmt::Display for HyperBlock {
+impl fmt::Display for QantoBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let border = "═".repeat(90);
         writeln!(f, "╔{border}╗")?;
-        writeln!(
-            f,
-            "║ ⛓️  New HyperBlock Mined on Chain #{} ⛓️",
-            self.chain_id
-        )?;
+        writeln!(f, "║ ⛓️  New Qanto Block Mined on Chain #{} ⛓️", self.chain_id)?;
         writeln!(f, "╟{border}╢")?;
         writeln!(f, "║ 🆔 Block ID:      {}", self.id)?;
         writeln!(f, "║ 📅 Timestamp:     {}", self.timestamp)?;
@@ -333,15 +329,15 @@ impl fmt::Display for HyperBlock {
         writeln!(f, "║ ⛏️  Miner:           {}", self.miner)?;
         writeln!(f, "║ ✨ Nonce:          {}", self.nonce)?;
         writeln!(f, "║ 💪 Effort:         {} hashes", self.effort)?;
-        writeln!(f, "║ 💰 Block Reward:    {} $HCN (from SAGA)", self.reward)?;
+        writeln!(f, "║ 💰 Block Reward:    {} $QNTO (from SAGA)", self.reward)?;
         writeln!(f, "╚{border}╝")?;
         Ok(())
     }
 }
 
-impl HyperBlock {
+impl QantoBlock {
     #[instrument(skip(data))]
-    pub fn new(data: HyperBlockCreationData) -> Result<Self, HyperDAGError> {
+    pub fn new(data: QantoBlockCreationData) -> Result<Self, QantoDAGError> {
         let nonce = 0;
         let merkle_root = Self::compute_merkle_root(&data.transactions)?;
 
@@ -391,7 +387,7 @@ impl HyperBlock {
         })
     }
 
-    pub fn serialize_for_signing(data: &SigningData) -> Result<Vec<u8>, HyperDAGError> {
+    pub fn serialize_for_signing(data: &SigningData) -> Result<Vec<u8>, QantoDAGError> {
         let mut hasher = Keccak256::new();
         hasher.update(data.chain_id.to_le_bytes());
         hasher.update(data.merkle_root.as_bytes());
@@ -409,7 +405,7 @@ impl HyperBlock {
     }
 
     #[instrument]
-    pub fn compute_merkle_root(transactions: &[Transaction]) -> Result<String, HyperDAGError> {
+    pub fn compute_merkle_root(transactions: &[Transaction]) -> Result<String, QantoDAGError> {
         if transactions.is_empty() {
             return Ok(hex::encode(Keccak256::digest([])));
         }
@@ -433,7 +429,7 @@ impl HyperBlock {
                 .collect();
         }
         Ok(hex::encode(leaves.first().ok_or_else(|| {
-            HyperDAGError::InvalidBlock("Merkle root computation failed".to_string())
+            QantoDAGError::InvalidBlock("Merkle root computation failed".to_string())
         })?))
     }
 
@@ -446,7 +442,7 @@ impl HyperBlock {
         hex::encode(hasher.finalize())
     }
 
-    pub fn verify_signature(&self) -> Result<bool, HyperDAGError> {
+    pub fn verify_signature(&self) -> Result<bool, QantoDAGError> {
         let signing_data = SigningData {
             parents: &self.parents,
             transactions: &self.transactions,
@@ -457,15 +453,15 @@ impl HyperBlock {
             chain_id: self.chain_id,
             merkle_root: &self.merkle_root,
         };
-        let data_to_verify = HyperBlock::serialize_for_signing(&signing_data)?;
+        let data_to_verify = QantoBlock::serialize_for_signing(&signing_data)?;
 
         Ok(self.lattice_signature.verify(&data_to_verify))
     }
 }
 
 #[derive(Debug)]
-pub struct HyperDAG {
-    pub blocks: Arc<RwLock<HashMap<String, HyperBlock>>>,
+pub struct QantoDAG {
+    pub blocks: Arc<RwLock<HashMap<String, QantoBlock>>>,
     pub tips: Arc<RwLock<HashMap<u32, HashSet<String>>>>,
     pub validators: Arc<RwLock<HashMap<String, u64>>>,
     pub target_block_time: u64,
@@ -479,14 +475,14 @@ pub struct HyperDAG {
     pub anomaly_history: Arc<RwLock<HashMap<String, u64>>>,
     pub cross_chain_swaps: Arc<RwLock<HashMap<String, CrossChainSwap>>>,
     pub smart_contracts: Arc<RwLock<HashMap<String, SmartContract>>>,
-    pub cache: Arc<RwLock<LruCache<String, HyperBlock>>>,
+    pub cache: Arc<RwLock<LruCache<String, QantoBlock>>>,
     pub db: Arc<DB>,
     pub saga: Arc<PalletSaga>,
-    pub self_arc: Weak<HyperDAG>,
+    pub self_arc: Weak<QantoDAG>,
     pub current_epoch: Arc<RwLock<u64>>,
 }
 
-impl HyperDAG {
+impl QantoDAG {
     #[instrument]
     pub fn new(
         initial_validator: &str,
@@ -496,14 +492,14 @@ impl HyperDAG {
         signing_key: &[u8],
         saga: Arc<PalletSaga>,
         db: DB,
-    ) -> Result<Arc<Self>, HyperDAGError> {
+    ) -> Result<Arc<Self>, QantoDAGError> {
         let mut blocks_map = HashMap::new();
         let mut tips_map = HashMap::new();
         let mut validators_map = HashMap::new();
         let genesis_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
         for chain_id_val in 0..num_chains {
-            let genesis_creation_data = HyperBlockCreationData {
+            let genesis_creation_data = QantoBlockCreationData {
                 chain_id: chain_id_val,
                 parents: vec![],
                 transactions: vec![],
@@ -514,7 +510,7 @@ impl HyperDAG {
                 timestamp: genesis_timestamp,
                 current_epoch: 0,
             };
-            let mut genesis_block = HyperBlock::new(genesis_creation_data)?;
+            let mut genesis_block = QantoBlock::new(genesis_creation_data)?;
             genesis_block.reward = 0;
             let genesis_id = genesis_block.id.clone();
 
@@ -559,7 +555,7 @@ impl HyperDAG {
         let arc_dag = Arc::new(dag);
         let weak_self = Arc::downgrade(&arc_dag);
 
-        let ptr = Arc::as_ptr(&arc_dag) as *mut HyperDAG;
+        let ptr = Arc::as_ptr(&arc_dag) as *mut QantoDAG;
 
         unsafe {
             (*ptr).self_arc = weak_self;
@@ -648,7 +644,7 @@ impl HyperDAG {
 
             match self.add_block(mined_block.clone(), &utxos).await {
                 Ok(true) => {
-                    info!("SOLO MINER: Successfully added new block to the HyperDAG.");
+                    info!("SOLO MINER: Successfully added new block to the QantoDAG.");
                     mempool
                         .read()
                         .await
@@ -676,16 +672,16 @@ impl HyperDAG {
     #[instrument(skip(self, block, utxos_arc))]
     pub async fn add_block(
         &self,
-        block: HyperBlock,
+        block: QantoBlock,
         utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
-    ) -> Result<bool, HyperDAGError> {
+    ) -> Result<bool, QantoDAGError> {
         if self.blocks.read().await.contains_key(&block.id) {
             warn!("Attempted to add block {} which already exists.", block.id);
             return Ok(false);
         }
 
         if !self.is_valid_block(&block, utxos_arc).await? {
-            return Err(HyperDAGError::InvalidBlock(format!(
+            return Err(QantoDAGError::InvalidBlock(format!(
                 "Block {} failed validation in add_block",
                 block.id
             )));
@@ -733,7 +729,7 @@ impl HyperDAG {
                         amount: output.amount,
                         tx_id: tx.id.clone(),
                         output_index: index as u32,
-                        explorer_link: format!("https://hyperblockexplorer.org/utxo/{utxo_id}"),
+                        explorer_link: format!("https://qantoblockexplorer.org/utxo/{utxo_id}"),
                     },
                 );
             }
@@ -764,7 +760,7 @@ impl HyperDAG {
         let mut emission = self.emission.write().await;
         emission
             .update_supply(block_for_db.reward)
-            .map_err(HyperDAGError::EmissionError)?;
+            .map_err(QantoDAGError::EmissionError)?;
 
         BLOCKS_PROCESSED.inc();
         TRANSACTIONS_PROCESSED.inc_by(block_for_db.transactions.len() as u64);
@@ -795,7 +791,7 @@ impl HyperDAG {
     pub async fn initiate_cross_chain_swap(
         &self,
         params: CrossChainSwapParams,
-    ) -> Result<String, HyperDAGError> {
+    ) -> Result<String, QantoDAGError> {
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         let swap_id = hex::encode(Keccak256::digest(
             format!(
@@ -828,13 +824,13 @@ impl HyperDAG {
         &self,
         swap_id: String,
         target_block_id: String,
-    ) -> Result<(), HyperDAGError> {
+    ) -> Result<(), QantoDAGError> {
         let mut swaps_guard = self.cross_chain_swaps.write().await;
         let swap = swaps_guard.get_mut(&swap_id).ok_or_else(|| {
-            HyperDAGError::CrossChainSwapError(format!("Swap ID {swap_id} not found"))
+            QantoDAGError::CrossChainSwapError(format!("Swap ID {swap_id} not found"))
         })?;
         if swap.state != SwapState::Initiated {
-            return Err(HyperDAGError::CrossChainSwapError(format!(
+            return Err(QantoDAGError::CrossChainSwapError(format!(
                 "Swap {} is not in Initiated state, current state: {:?}",
                 swap_id, swap.state
             )));
@@ -849,7 +845,7 @@ impl HyperDAG {
         &self,
         code: String,
         owner: String,
-    ) -> Result<String, HyperDAGError> {
+    ) -> Result<String, QantoDAGError> {
         let contract_id = hex::encode(Keccak256::digest(code.as_bytes()));
         let contract = SmartContract {
             contract_id: contract_id.clone(),
@@ -872,7 +868,7 @@ impl HyperDAG {
         mempool_arc: &Arc<RwLock<Mempool>>,
         utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
         chain_id_val: u32,
-    ) -> Result<HyperBlock, HyperDAGError> {
+    ) -> Result<QantoBlock, QantoDAGError> {
         {
             let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
             let mut timestamps_guard = self.block_creation_timestamps.write().await;
@@ -881,7 +877,7 @@ impl HyperDAG {
                 .filter(|&&t| now.saturating_sub(t) < 60)
                 .count() as u64;
             if recent_blocks >= MAX_BLOCKS_PER_MINUTE {
-                return Err(HyperDAGError::InvalidBlock(format!(
+                return Err(QantoDAGError::InvalidBlock(format!(
                     "Rate limit exceeded: {recent_blocks} blocks in last minute"
                 )));
             }
@@ -892,12 +888,12 @@ impl HyperDAG {
         {
             let validators_guard = self.validators.read().await;
             let stake = validators_guard.get(validator_address).ok_or_else(|| {
-                HyperDAGError::InvalidBlock(format!(
+                QantoDAGError::InvalidBlock(format!(
                     "Validator {validator_address} not found or no stake"
                 ))
             })?;
             if *stake < MIN_VALIDATOR_STAKE {
-                return Err(HyperDAGError::InvalidBlock(format!(
+                return Err(QantoDAGError::InvalidBlock(format!(
                     "Insufficient stake for validator {validator_address}: {stake} < {MIN_VALIDATOR_STAKE}"
                 )));
             }
@@ -926,7 +922,7 @@ impl HyperDAG {
 
         let epoch = *self.current_epoch.read().await;
 
-        let temp_block_for_reward_calc = HyperBlock::new(HyperBlockCreationData {
+        let temp_block_for_reward_calc = QantoBlock::new(QantoBlockCreationData {
             chain_id: chain_id_val,
             parents: parent_tips.clone(),
             transactions: vec![],
@@ -941,7 +937,7 @@ impl HyperDAG {
         let self_arc_strong = self
             .self_arc
             .upgrade()
-            .ok_or(HyperDAGError::SelfReferenceNotInitialized)?;
+            .ok_or(QantoDAGError::SelfReferenceNotInitialized)?;
         let reward = self
             .saga
             .calculate_dynamic_reward(&temp_block_for_reward_calc, &self_arc_strong)
@@ -994,7 +990,7 @@ impl HyperDAG {
         }
 
         let current_difficulty = *self.difficulty.read().await;
-        let mut block = HyperBlock::new(HyperBlockCreationData {
+        let mut block = QantoBlock::new(QantoBlockCreationData {
             chain_id: chain_id_val,
             parents: parent_tips,
             transactions: transactions_for_block,
@@ -1025,16 +1021,16 @@ impl HyperDAG {
     #[instrument(skip(self, block, utxos_arc))]
     pub async fn is_valid_block(
         &self,
-        block: &HyperBlock,
+        block: &QantoBlock,
         utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
-    ) -> Result<bool, HyperDAGError> {
+    ) -> Result<bool, QantoDAGError> {
         if block.id.is_empty() {
-            return Err(HyperDAGError::InvalidBlock(
+            return Err(QantoDAGError::InvalidBlock(
                 "Block ID cannot be empty".to_string(),
             ));
         }
         if block.transactions.is_empty() {
-            return Err(HyperDAGError::InvalidBlock(
+            return Err(QantoDAGError::InvalidBlock(
                 "Block must contain at least a coinbase transaction".to_string(),
             ));
         }
@@ -1042,32 +1038,32 @@ impl HyperDAG {
         let serialized_size = serde_json::to_vec(&block)?.len();
         if block.transactions.len() > MAX_TRANSACTIONS_PER_BLOCK || serialized_size > MAX_BLOCK_SIZE
         {
-            return Err(HyperDAGError::InvalidBlock(format!(
+            return Err(QantoDAGError::InvalidBlock(format!(
                 "Block exceeds size limits: {} txns, {} bytes",
                 block.transactions.len(),
                 serialized_size
             )));
         }
 
-        let expected_merkle_root = HyperBlock::compute_merkle_root(&block.transactions)?;
+        let expected_merkle_root = QantoBlock::compute_merkle_root(&block.transactions)?;
         if block.merkle_root != expected_merkle_root {
-            return Err(HyperDAGError::MerkleRootMismatch);
+            return Err(QantoDAGError::MerkleRootMismatch);
         }
         if !block.verify_signature()? {
-            return Err(HyperDAGError::LatticeSignatureVerification);
+            return Err(QantoDAGError::LatticeSignatureVerification);
         }
 
         let target_hash_bytes = Miner::calculate_target_from_difficulty(block.difficulty);
         let block_pow_hash = block.hash();
         if !Miner::hash_meets_target(&hex::decode(block_pow_hash).unwrap(), &target_hash_bytes) {
-            return Err(HyperDAGError::InvalidBlock(
+            return Err(QantoDAGError::InvalidBlock(
                 "Proof-of-Work not satisfied".to_string(),
             ));
         }
 
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         if block.timestamp > now + TEMPORAL_CONSENSUS_WINDOW {
-            return Err(HyperDAGError::InvalidBlock(format!(
+            return Err(QantoDAGError::InvalidBlock(format!(
                 "Timestamp {} is too far in the future",
                 block.timestamp
             )));
@@ -1077,16 +1073,16 @@ impl HyperDAG {
             let blocks_guard = self.blocks.read().await;
             for parent_id in &block.parents {
                 let parent_block = blocks_guard.get(parent_id).ok_or_else(|| {
-                    HyperDAGError::InvalidParent(format!("Parent block {parent_id} not found"))
+                    QantoDAGError::InvalidParent(format!("Parent block {parent_id} not found"))
                 })?;
                 if parent_block.chain_id != block.chain_id {
-                    return Err(HyperDAGError::InvalidParent(format!(
+                    return Err(QantoDAGError::InvalidParent(format!(
                         "Parent {} on chain {} but block {} on chain {}",
                         parent_id, parent_block.chain_id, block.id, block.chain_id
                     )));
                 }
                 if block.timestamp <= parent_block.timestamp {
-                    return Err(HyperDAGError::InvalidBlock(format!(
+                    return Err(QantoDAGError::InvalidBlock(format!(
                         "Block timestamp {} is not after parent timestamp {}",
                         block.timestamp, parent_block.timestamp
                     )));
@@ -1095,7 +1091,7 @@ impl HyperDAG {
 
             for (_ref_chain_id, ref_block_id) in &block.cross_chain_references {
                 if !blocks_guard.contains_key(ref_block_id) {
-                    return Err(HyperDAGError::CrossChainReferenceError(format!(
+                    return Err(QantoDAGError::CrossChainReferenceError(format!(
                         "Reference block {ref_block_id} not found"
                     )));
                 }
@@ -1104,7 +1100,7 @@ impl HyperDAG {
 
         let coinbase_tx = &block.transactions[0];
         if !coinbase_tx.is_coinbase() {
-            return Err(HyperDAGError::InvalidBlock(
+            return Err(QantoDAGError::InvalidBlock(
                 "First transaction must be a coinbase (no inputs)".to_string(),
             ));
         }
@@ -1113,18 +1109,18 @@ impl HyperDAG {
         let self_arc_strong = self
             .self_arc
             .upgrade()
-            .ok_or(HyperDAGError::SelfReferenceNotInitialized)?;
+            .ok_or(QantoDAGError::SelfReferenceNotInitialized)?;
         let expected_reward = self
             .saga
             .calculate_dynamic_reward(block, &self_arc_strong)
             .await?;
 
         if block.reward != expected_reward {
-            return Err(HyperDAGError::RewardMismatch(expected_reward, block.reward));
+            return Err(QantoDAGError::RewardMismatch(expected_reward, block.reward));
         }
 
         if total_coinbase_output != block.reward {
-            return Err(HyperDAGError::RewardMismatch(
+            return Err(QantoDAGError::RewardMismatch(
                 block.reward,
                 total_coinbase_output,
             ));
@@ -1150,9 +1146,9 @@ impl HyperDAG {
 
     async fn detect_anomaly_internal(
         &self,
-        blocks_guard: &HashMap<String, HyperBlock>,
-        block: &HyperBlock,
-    ) -> Result<f64, HyperDAGError> {
+        blocks_guard: &HashMap<String, QantoBlock>,
+        block: &QantoBlock,
+    ) -> Result<f64, QantoDAGError> {
         if blocks_guard.len() < ANOMALY_DETECTION_BASELINE_BLOCKS {
             return Ok(0.0);
         }
@@ -1185,7 +1181,7 @@ impl HyperDAG {
     }
 
     #[instrument]
-    pub async fn adjust_difficulty(&self) -> Result<(), HyperDAGError> {
+    pub async fn adjust_difficulty(&self) -> Result<(), QantoDAGError> {
         let blocks_guard = self.blocks.read().await;
         if blocks_guard.len() < 10 {
             return Ok(());
@@ -1223,7 +1219,7 @@ impl HyperDAG {
     }
 
     #[instrument]
-    pub async fn finalize_blocks(&self) -> Result<(), HyperDAGError> {
+    pub async fn finalize_blocks(&self) -> Result<(), QantoDAGError> {
         let blocks_guard = self.blocks.read().await;
         let mut finalized_guard = self.finalized_blocks.write().await;
         let tips_guard = self.tips.read().await;
@@ -1265,7 +1261,7 @@ impl HyperDAG {
     }
 
     #[instrument]
-    pub async fn dynamic_sharding(&self) -> Result<(), HyperDAGError> {
+    pub async fn dynamic_sharding(&self) -> Result<(), QantoDAGError> {
         let mut chain_loads_guard = self.chain_loads.write().await;
         let mut num_chains_guard = self.num_chains.write().await;
         if chain_loads_guard.is_empty() {
@@ -1311,7 +1307,7 @@ impl HyperDAG {
             chain_loads_guard.insert(new_chain_id, new_load_for_new);
 
             let new_genesis_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-            let mut genesis_block = HyperBlock::new(HyperBlockCreationData {
+            let mut genesis_block = QantoBlock::new(QantoBlockCreationData {
                 chain_id: new_chain_id,
                 parents: vec![],
                 transactions: vec![],
@@ -1344,14 +1340,14 @@ impl HyperDAG {
         rule_name: String,
         new_value: f64,
         creation_epoch: u64,
-    ) -> Result<String, HyperDAGError> {
+    ) -> Result<String, QantoDAGError> {
         {
             let validators_guard = self.validators.read().await;
             let stake = validators_guard.get(&proposer_address).ok_or_else(|| {
-                HyperDAGError::Governance("Proposer not found or has no stake".to_string())
+                QantoDAGError::Governance("Proposer not found or has no stake".to_string())
             })?;
             if *stake < MIN_VALIDATOR_STAKE * 10 {
-                return Err(HyperDAGError::Governance(
+                return Err(QantoDAGError::Governance(
                     "Insufficient stake to create a governance proposal.".to_string(),
                 ));
             }
@@ -1386,20 +1382,20 @@ impl HyperDAG {
         voter: String,
         proposal_id: String,
         vote_for: bool,
-    ) -> Result<(), HyperDAGError> {
+    ) -> Result<(), QantoDAGError> {
         let stake_val: u64;
         {
             let validators_guard = self.validators.read().await;
             stake_val = *validators_guard.get(&voter).ok_or_else(|| {
-                HyperDAGError::Governance("Voter not found or no stake".to_string())
+                QantoDAGError::Governance("Voter not found or no stake".to_string())
             })?;
         }
         let mut proposals_guard = self.saga.governance.proposals.write().await;
         let proposal_obj = proposals_guard
             .get_mut(&proposal_id)
-            .ok_or_else(|| HyperDAGError::Governance("Proposal not found".to_string()))?;
+            .ok_or_else(|| QantoDAGError::Governance("Proposal not found".to_string()))?;
         if proposal_obj.status != crate::saga::ProposalStatus::Voting {
-            return Err(HyperDAGError::Governance(
+            return Err(QantoDAGError::Governance(
                 "Proposal is not active".to_string(),
             ));
         }
@@ -1424,9 +1420,9 @@ impl HyperDAG {
     #[instrument]
     pub async fn aggregate_blocks(
         &self,
-        blocks_vec: Vec<HyperBlock>,
+        blocks_vec: Vec<QantoBlock>,
         utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
-    ) -> Result<Option<HyperBlock>, HyperDAGError> {
+    ) -> Result<Option<QantoBlock>, QantoDAGError> {
         if blocks_vec.is_empty() {
             return Ok(None);
         }
@@ -1471,7 +1467,7 @@ impl HyperDAG {
     pub async fn get_state_snapshot(
         &self,
         chain_id_val: u32,
-    ) -> (HashMap<String, HyperBlock>, HashMap<String, UTXO>) {
+    ) -> (HashMap<String, QantoBlock>, HashMap<String, UTXO>) {
         let blocks_guard = self.blocks.read().await;
         let mut chain_blocks_map = HashMap::new();
         let mut utxos_map_for_chain = HashMap::new();
@@ -1489,7 +1485,7 @@ impl HyperDAG {
                                 tx_id: tx_val.id.clone(),
                                 output_index: index_val as u32,
                                 explorer_link: format!(
-                                    "https://hyperblockexplorer.org/utxo/{utxo_id_val}"
+                                    "https://qantoblockexplorer.org/utxo/{utxo_id_val}"
                                 ),
                             },
                         );
@@ -1523,7 +1519,7 @@ impl HyperDAG {
     }
 }
 
-impl Clone for HyperDAG {
+impl Clone for QantoDAG {
     fn clone(&self) -> Self {
         Self {
             blocks: self.blocks.clone(),

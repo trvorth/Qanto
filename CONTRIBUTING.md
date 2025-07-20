@@ -1,11 +1,11 @@
-# **Contributing to HyperChain**
+# **Contributing to Qanto**
 
-First off, thank you for considering contributing to HyperChain. It's people like you that make open source great. We welcome all contributions, from fixing typos in the documentation to implementing major new features.  
+First off, thank you for considering contributing to Qanto. It's people like you that make open source great. We welcome all contributions, from fixing typos in the documentation to implementing major new features.  
 To ensure a smooth and effective collaboration process for everyone involved, please read through these guidelines before you start.
 
 ## **Code of Conduct**
 
-This project and everyone participating in it is governed by the [HyperChain Code of Conduct](http://docs.google.com/CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to the project maintainers.
+This project and everyone participating in it is governed by the [Qanto Code of Conduct](http://docs.google.com/CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to the project maintainers.
 
 ## **How Can I Contribute?**
 

@@ -1,4 +1,4 @@
-use crate::hyperdag::{HomomorphicEncrypted, HyperDAG, LatticeSignature, UTXO};
+use crate::qantodag::{HomomorphicEncrypted, QantoDAG, LatticeSignature, UTXO};
 use crate::omega;
 use hex;
 use serde::{Deserialize, Serialize};
@@ -357,7 +357,7 @@ impl Transaction {
     #[instrument(skip(self, _dag, utxos))]
     pub async fn verify(
         &self,
-        _dag: &HyperDAG,
+        _dag: &QantoDAG,
         utxos: &HashMap<String, UTXO>,
     ) -> Result<(), TransactionError> {
         let verifier_sig = LatticeSignature {
@@ -422,7 +422,7 @@ impl Transaction {
             amount: output.amount,
             tx_id: self.id.clone(),
             output_index: index,
-            explorer_link: format!("https://hyperblockexplorer.org/utxo/{utxo_id}"),
+            explorer_link: format!("https://qantoblockexplorer.org/utxo/{utxo_id}"),
         }
     }
 }
@@ -452,7 +452,7 @@ impl Drop for Transaction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hyperdag::HyperDAG;
+    use crate::qantodag::QantoDAG;
     use crate::saga::PalletSaga;
     use crate::wallet::Wallet;
     use serial_test::serial;
@@ -461,8 +461,8 @@ mod tests {
     #[serial]
     async fn test_transaction_creation_and_verification() -> Result<(), Box<dyn std::error::Error>>
     {
-        if std::path::Path::new("hyperdag_db").exists() {
-            std::fs::remove_dir_all("hyperdag_db")?;
+        if std::path::Path::new("qantodag_db").exists() {
+            std::fs::remove_dir_all("qantodag_db")?;
         }
 
         let wallet = Arc::new(Wallet::new()?);
@@ -555,14 +555,14 @@ mod tests {
             None,
         ));
         let dag_arc = Arc::new(
-            HyperDAG::new(
+            QantoDAG::new(
                 &sender_address,
                 60000,
                 100,
                 1,
                 signing_key_bytes_slice,
                 saga_pallet,
-                rocksdb::DB::open_default("hyperdag_db_test").unwrap(),
+                rocksdb::DB::open_default("qantodag_db_test").unwrap(),
             )
             .await?,
         );

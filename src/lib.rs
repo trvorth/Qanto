@@ -1,7 +1,7 @@
 pub mod config;
 pub mod consensus;
 pub mod emission;
-pub mod hyperdag;
+pub mod qantodag;
 pub mod keygen;
 pub mod mempool;
 pub mod miner;

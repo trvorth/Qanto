@@ -1,10 +1,10 @@
-# Hyperchain Architecture
+# Qanto Architecture
 
-This document provides a high-level overview of the Hyperchain node architecture, detailing its primary components and their interactions.
+This document provides a high-level overview of the Qanto node architecture, detailing its primary components and their interactions.
 
 ## 1. Core Components
 
-The Hyperchain software is built as a modular collection of Rust crates, each responsible for a distinct piece of functionality.
+The Qanto software is built as a modular collection of Rust crates, each responsible for a distinct piece of functionality.
 
 ### 1.1. Node (`node.rs`)
 The `Node` is the central orchestrator. It initializes and manages all other components, including the P2P networking layer, the HyperDAG ledger, the mempool, and the miner. It handles startup, shutdown, and the main event loop that drives the system.
@@ -16,7 +16,7 @@ Networking is built on the `libp2p` framework, providing a robust and flexible f
 - **Communication:** Implements a request-response protocol for direct communication and a gossipsub protocol for broadcasting blocks and transactions efficiently across the network.
 
 ### 1.3. HyperDAG Ledger (`hyperdag.rs`)
-Instead of a single-chain blockchain, Hyperchain uses a Directed Acyclic Graph (DAG) of blocks, which we call a **HyperDAG**.
+Instead of a single-chain blockchain, Qanto uses a Directed Acyclic Graph (DAG) of blocks, which we call a **HyperDAG**.
 - **Parallel Chains:** The DAG consists of multiple parallel "chains" (shards), allowing for concurrent block production and higher transaction throughput.
 - **Structure:** Each block can have multiple parents, linking not just to the previous block in its own chain but also to blocks in other chains. This cross-linking creates the DAG structure and ensures eventual consistency across the entire ledger.
 - **Storage:** Block data is persisted to disk using `RocksDB`, a high-performance key-value store.
@@ -36,7 +36,7 @@ The wallet is a command-line interface (CLI) tool for managing user accounts.
 - **Encryption:** Wallet files are encrypted at rest using AES-256-GCM, with the key derived from a user-provided passphrase via Argon2.
 
 ### 1.7. Executable Bins (`/src/bin/`)
-- **`start_node`**: The main entry point for running a Hyperchain node.
+- **`start_node`**: The main entry point for running a Qanto node.
 - **`hyperwallet`**: The CLI for wallet creation, imports, and other account management tasks.
 
 This modular architecture allows for individual components to be upgraded and improved independently as the project evolves.

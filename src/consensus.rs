@@ -1,13 +1,13 @@
-//! --- Hyperchain Hybrid Consensus Engine ---
+//! --- Qanto Hybrid Consensus Engine ---
 //! v2.0.0 - Hardened & Adaptive
 //!
-//! This module implements the core consensus rules for the Hyperchain network.
+//! This module implements the core consensus rules for the Qanto network.
 //! It uses a hybrid model that combines three critical, non-replaceable mechanisms,
 //! each serving a distinct and vital purpose.
 //!
 //! 1.  **Proof-of-Stake (PoS): The "Right to Participate"**. This is the foundational
 //!     layer for eligibility. To create blocks, a node must be a registered validator
-//!     with a minimum amount of HCN tokens staked. This ensures that block producers
+//!     with a minimum amount of QNTO tokens staked. This ensures that block producers
 //!     have a financial "stake" in the network's success and are disincentivized from
 //!     acting maliciously. This is a non-negotiable prerequisite for block production.
 //!
@@ -18,7 +18,7 @@
 //!     the chain against 51% attacks. PoW is a permanent and core part of the consensus
 //!     mechanism that cannot be bypassed.
 //!
-//! 3.  **Proof-of-Sentiency (PoSe): The "Intelligence Layer"**. This is Hyperchain's
+//! 3.  **Proof-of-Sentiency (PoSe): The "Intelligence Layer"**. This is Qanto's
 //!     novel innovation, powered by the SAGA pallet. PoSe does NOT replace PoW.
 //!     Instead, it *dynamically adjusts the PoW difficulty target* for each miner
 //!     based on their reputation (Saga Credit Score - SCS). Reputable, trusted miners
@@ -27,7 +27,7 @@
 //!     making attacks prohibitively expensive. PoSe makes PoW smarter, adaptive, and
 //!     more secure, ensuring the most trustworthy participants are the most efficient.
 
-use crate::hyperdag::{HyperBlock, HyperDAG, HyperDAGError, UTXO};
+use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError, UTXO};
 use crate::saga::{PalletSaga, SagaError};
 use crate::transaction::TransactionError;
 use std::collections::HashMap;
@@ -54,11 +54,11 @@ pub enum ConsensusError {
     SagaError(#[from] SagaError),
     #[error("Anyhow error: {0}")]
     Anyhow(#[from] anyhow::Error),
-    #[error("HyperDAG error: {0}")]
-    HyperDAG(#[from] HyperDAGError),
+    #[error("QantoDAG error: {0}")]
+    QantoDAG(#[from] QantoDAGError),
 }
 
-/// The main consensus engine for Hyperchain. It orchestrates the various validation
+/// The main consensus engine for Qanto. It orchestrates the various validation
 /// mechanisms to ensure network integrity.
 pub struct Consensus {
     saga: Arc<PalletSaga>,
@@ -75,8 +75,8 @@ impl Consensus {
     #[instrument(skip(self, block, dag_arc, utxos), fields(block_id = %block.id, miner = %block.miner))]
     pub async fn validate_block(
         &self,
-        block: &HyperBlock,
-        dag_arc: &Arc<HyperDAG>,
+        block: &QantoBlock,
+        dag_arc: &Arc<QantoDAG>,
         utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
     ) -> Result<(), ConsensusError> {
         // --- Rule 1: Structural & Cryptographic Integrity (Fastest Check) ---
@@ -109,8 +109,8 @@ impl Consensus {
     /// Performs all fundamental structural and cryptographic checks on a block.
     async fn validate_block_structure(
         &self,
-        block: &HyperBlock,
-        dag_arc: &Arc<HyperDAG>,
+        block: &QantoBlock,
+        dag_arc: &Arc<QantoDAG>,
     ) -> Result<(), ConsensusError> {
         if block.id.is_empty() || block.merkle_root.is_empty() || block.validator.is_empty() {
             return Err(ConsensusError::InvalidBlockStructure(
@@ -129,7 +129,7 @@ impl Consensus {
             ));
         }
 
-        let expected_merkle_root = HyperBlock::compute_merkle_root(&block.transactions)
+        let expected_merkle_root = QantoBlock::compute_merkle_root(&block.transactions)
             .map_err(|e| ConsensusError::InvalidBlockStructure(e.to_string()))?;
         if block.merkle_root != expected_merkle_root {
             return Err(ConsensusError::InvalidBlockStructure(
@@ -164,7 +164,7 @@ impl Consensus {
     async fn validate_proof_of_stake(
         &self,
         validator_address: &str,
-        dag: &HyperDAG,
+        dag: &QantoDAG,
     ) -> Result<(), ConsensusError> {
         let rules = self.saga.economy.epoch_rules.read().await;
         let min_stake = rules.get("min_validator_stake").map_or(1000.0, |r| r.value) as u64;
@@ -181,7 +181,7 @@ impl Consensus {
     }
 
     /// Validates the block's Proof-of-Work against the dynamically adjusted difficulty target from SAGA.
-    async fn validate_proof_of_work(&self, block: &HyperBlock) -> Result<(), ConsensusError> {
+    async fn validate_proof_of_work(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
         let effective_difficulty = self.get_effective_difficulty(&block.miner).await;
 
         if block.difficulty != effective_difficulty {

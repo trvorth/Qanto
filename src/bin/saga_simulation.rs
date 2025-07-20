@@ -1,16 +1,13 @@
-//! --- SAGA Simulation v4.0 ---
+//! --- SAGA Simulation v4.1 ---
 //! This simulation tests the advanced features of the SAGA v4.0 pallet, including:
 //! - Dynamic, tiered fee calculation.
 //! - Submission and AI-driven verification of Proof-of-Carbon-Offset credentials.
 //! - SAGA's autonomous epoch evolution process.
-//! - FIX: Corrected the field name from `additionality_proof` to `additionality_proof_hash`
-//!   to match the updated `CarbonOffsetCredential` struct.
-//! - REFACTOR: Updated the fee calculation to call the `calculate_dynamic_fee` method on the
-//!   `saga_pallet` instance, ensuring the simulation uses the live, governable fee logic.
+//! - FIX: Replaced all instances of `hyperchain` with `qanto` to align with project rename.
 
 use anyhow::Result;
-use hyperchain::{
-    hyperdag::HyperDAG,
+use qanto::{
+    qantodag::{QantoDAG, UTXO, HomomorphicEncrypted},
     mempool::Mempool,
     saga::{CarbonOffsetCredential, PalletSaga},
     transaction::{Input, Output, Transaction, TransactionConfig},
@@ -24,7 +21,7 @@ use uuid::Uuid;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
-    println!("--- Running Hyperchain Simulation v4 (Evolved SAGA) ---");
+    println!("--- Running Qanto Simulation v4 (Evolved SAGA) ---");
 
     // 1. Wallets and Addresses
     let validator_wallet = Wallet::new()?;
@@ -34,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Validator Address: {validator_address}");
     println!("Receiver Address:  {receiver_address}");
 
-    // 2. Core Components (SAGA and HyperDAG)
+    // 2. Core Components (SAGA and QantoDAG)
     let saga_pallet = Arc::new(PalletSaga::new(
         #[cfg(feature = "infinite-strata")]
         None,
@@ -48,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     opts.create_if_missing(true);
     let db = DB::open(&opts, db_path)?;
 
-    let dag_arc = Arc::new(HyperDAG::new(
+    let dag_arc = Arc::new(QantoDAG::new(
         &validator_address,
         60, // target block time (seconds)
         10, // initial difficulty
@@ -57,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         saga_pallet.clone(),
         db,
     )?);
-    println!("SAGA and HyperDAG initialized.");
+    println!("SAGA and QantoDAG initialized.");
 
     // 3. Mempool and UTXO Set
     let mempool_arc = Arc::new(RwLock::new(Mempool::new(3600, 10_000_000, 10_000)));
@@ -67,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut utxos_guard = utxos_arc.write().await;
         utxos_guard.insert(
             "genesis_tx_0".to_string(),
-            hyperchain::hyperdag::UTXO {
+            UTXO {
                 address: validator_address.clone(),
                 amount: 5_000_000,
                 tx_id: "genesis_tx".to_string(),
@@ -107,7 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Output {
                 address: receiver_address.clone(),
                 amount: amount_to_send,
-                homomorphic_encrypted: hyperchain::hyperdag::HomomorphicEncrypted::new(
+                homomorphic_encrypted: HomomorphicEncrypted::new(
                     amount_to_send,
                     he_pub_key_material,
                 ),
@@ -115,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Output {
                 address: validator_address.clone(),
                 amount: 5_000_000 - amount_to_send - fee,
-                homomorphic_encrypted: hyperchain::hyperdag::HomomorphicEncrypted::new(
+                homomorphic_encrypted: HomomorphicEncrypted::new(
                     5_000_000 - amount_to_send - fee,
                     he_pub_key_material,
                 ),
@@ -138,8 +135,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .await?;
     }
 
-    // 5. Use the HyperDAG to create a valid candidate block
-    println!("Requesting candidate block from HyperDAG...");
+    // 5. Use the QantoDAG to create a valid candidate block
+    println!("Requesting candidate block from QantoDAG...");
     let mut candidate_block = {
         dag_arc
             .create_candidate_block(
@@ -167,14 +164,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             project_id: "verra-p-981".to_string(),
             vintage_year: 2024,
             verification_signature: "signed_by_verra".to_string(),
-            // FIX: Changed field name to match struct definition
             additionality_proof_hash: "mock_hash_of_additionality_docs".to_string(),
             issuer_reputation_score: 0.95,
             geospatial_consistency_score: 0.98,
         });
 
     // 6. Evaluate the block with SAGA (this happens inside add_block)
-    println!("Adding block to HyperDAG for validation and SAGA evaluation...");
+    println!("Adding block to QantoDAG for validation and SAGA evaluation...");
     let block_id = candidate_block.id.clone();
     let added = dag_arc.add_block(candidate_block, &utxos_arc).await?;
 

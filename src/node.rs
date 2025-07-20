@@ -1,15 +1,15 @@
 // src/node.rs
 
-//! --- Hyperchain Node Orchestrator ---
-//! v1.5.2 - ISNM Integration Corrected & Cleaned
-//! This version removes the unused `is_stateless` parameter from the ISNM service
-//! initialization to align with the latest module changes and eliminate warnings.
+//! --- Qanto Node Orchestrator ---
+//! v1.5.3 - Async Call Correction
+//! This version corrects a missing `.await` in the `ask_saga` API handler,
+//! resolving a compilation error related to future types.
 
 use crate::config::{Config, ConfigError};
-use crate::hyperdag::{HyperBlock, HyperDAG, HyperDAGError, UTXO};
+use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError, UTXO};
 use crate::mempool::Mempool;
 use crate::miner::{Miner, MinerConfig, MiningError};
-use crate::omega::reflect_on_action;
+use crate::omega::{self, reflect_on_action};
 use crate::p2p::{P2PCommand, P2PConfig, P2PError, P2PServer};
 use crate::saga::{PalletSaga, SagaError};
 use crate::transaction::Transaction;
@@ -90,8 +90,8 @@ pub enum NodeError {
     P2PIdentity(String),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("HyperDAG error: {0}")]
-    HyperDAG(#[from] HyperDAGError),
+    #[error("QantoDAG error: {0}")]
+    QantoDAG(#[from] QantoDAGError),
     #[error("Sync error: {0}")]
     SyncError(String),
     #[error("Database error: {0}")]
@@ -141,12 +141,12 @@ pub struct Node {
     _config_path: String,
     config: Config,
     p2p_identity_keypair: identity::Keypair,
-    pub dag: Arc<HyperDAG>,
+    pub dag: Arc<QantoDAG>,
     pub miner: Arc<Miner>,
     wallet: Arc<Wallet>,
     pub mempool: Arc<RwLock<Mempool>>,
     pub utxos: Arc<RwLock<HashMap<String, UTXO>>>,
-    pub proposals: Arc<RwLock<Vec<HyperBlock>>>,
+    pub proposals: Arc<RwLock<Vec<QantoBlock>>>,
     peer_cache_path: String,
     pub saga_pallet: Arc<PalletSaga>,
     // The ISNM service, conditionally compiled with the 'infinite-strata' feature.
@@ -237,14 +237,14 @@ impl Node {
             }
         };
 
-        info!("Initializing HyperDAG (loading database)...");
+        info!("Initializing QantoDAG (loading database)...");
         let db = {
             let mut opts = Options::default();
             opts.create_if_missing(true);
-            DB::open(&opts, "hyperdag_db_evolved")?
+            DB::open(&opts, "qantodag_db_evolved")?
         };
 
-        let dag_arc = HyperDAG::new(
+        let dag_arc = QantoDAG::new(
             &initial_validator,
             config.target_block_time,
             config.difficulty,
@@ -254,7 +254,7 @@ impl Node {
             db,
         )?;
 
-        info!("HyperDAG initialized.");
+        info!("QantoDAG initialized.");
 
         let mempool = Arc::new(RwLock::new(Mempool::new(3600, 10_000_000, 10_000)));
         let utxos = Arc::new(RwLock::new(HashMap::with_capacity(MAX_UTXOS)));
@@ -275,7 +275,7 @@ impl Node {
                         tx_id: genesis_id_convention,
                         output_index: 0,
                         explorer_link: format!(
-                            "https://hyperblockexplorer.org/utxo/{utxo_id}"
+                            "https://qantoblockexplorer.org/utxo/{utxo_id}"
                         ),
                     },
                 );
@@ -615,13 +615,13 @@ impl Node {
 
     // --- Topological Sort Helper ---
     async fn topological_sort_blocks(
-        blocks: Vec<HyperBlock>,
-        dag: &HyperDAG,
-    ) -> Result<Vec<HyperBlock>, NodeError> {
+        blocks: Vec<QantoBlock>,
+        dag: &QantoDAG,
+    ) -> Result<Vec<QantoBlock>, NodeError> {
         if blocks.is_empty() {
             return Ok(vec![]);
         }
-        let block_map: HashMap<String, HyperBlock> =
+        let block_map: HashMap<String, QantoBlock> =
             blocks.into_iter().map(|b| (b.id.clone(), b)).collect();
         let mut in_degree: HashMap<String, usize> = HashMap::new();
         let mut children_map: HashMap<String, Vec<String>> = HashMap::new();
@@ -700,7 +700,7 @@ async fn rate_limit_layer(
 // The AppState for the API server.
 #[derive(Clone)]
 struct AppState {
-    dag: Arc<HyperDAG>,
+    dag: Arc<QantoDAG>,
     mempool: Arc<RwLock<Mempool>>,
     utxos: Arc<RwLock<HashMap<String, UTXO>>>,
     api_address: String,
@@ -734,7 +734,8 @@ async fn ask_saga(
 ) -> Result<Json<String>, ApiError> {
     let saga = &state.saga;
     let network_state = *saga.economy.network_state.read().await;
-    let threat_level = crate::omega::get_threat_level().await;
+    // Correctly await the async function to get the ThreatLevel value.
+    let threat_level = omega::identity::get_threat_level().await;
     let proactive_insight = saga
         .economy
         .proactive_insights
@@ -940,7 +941,7 @@ async fn submit_transaction(
 async fn get_block(
     State(state): State<AppState>,
     AxumPath(id_str): AxumPath<String>,
-) -> Result<Json<HyperBlock>, StatusCode> {
+) -> Result<Json<QantoBlock>, StatusCode> {
     if id_str.len() > 128 || id_str.is_empty() {
         warn!("Invalid block ID length: {id_str}");
         return Err(StatusCode::BAD_REQUEST);
@@ -991,7 +992,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_node_creation_and_config_save() {
-        let db_path = "hyperdag_db_test_node_creation";
+        let db_path = "qantodag_db_test_node_creation";
         if std::path::Path::new(db_path).exists() {
             std_fs::remove_dir_all(db_path).unwrap();
         }

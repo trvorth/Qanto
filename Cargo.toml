@@ -1,11 +1,11 @@
 [package]
-name = "hyperchain"
+name = "qanto"
 version = "0.2.1"
 edition = "2021"
 authors = ["Trevor <thieuquangphu@icloud.com>"]
 description = "A decentralized blockchain network with advanced P2P and cryptographic features"
 license = "MIT"
-repository = "https://github.com/trvorth/hyperchain"
+repository = "https://github.com/trvorth/qanto"
 
 [dependencies]
 # --- SAGA AI & Machine Learning ---
@@ -51,7 +51,7 @@ subtle = "2.5.0"
 protobuf = { version = "3.7.2", features = ["with-bytes"] }
 openssl = { version = "0.10.64", features = ["vendored"] }
 generic-array = "0.14.7"
-typenum = "1.17" 
+typenum = "1.17"
 blake2 = "0.10.6"
 password-hash = { version = "0.5.0", features = ["std"] }
 rcgen = "0.13.1"
@@ -110,12 +110,14 @@ bellman = { version = "0.14.0", optional = true }
 bls12_381 = { version = "0.8.0", optional = true }
 ff = { version = "0.13.0", optional = true }
 ocl = { version = "0.19.7", optional = true }
+num_cpus = "1.16.0"
+blake3 = "1.5.0"
 
 [build-dependencies]
 tonic-build = { version = "0.11.0", features = ["prost"] }
 
 [dev-dependencies]
-tempfile = "3.10.1" 
+tempfile = "3.10.1"
 serial_test = "2.0.0"
 criterion = "0.5.1"
 
@@ -127,16 +129,16 @@ ai = ["dep:tch"]
 infinite-strata = []
 
 [lib]
-name = "hyperchain"
+name = "qanto"
 path = "src/lib.rs"
 
 [[bin]]
-name = "hyperchain"
+name = "qanto"
 path = "src/main.rs"
 
 [[bin]]
-name = "hyperwallet"
-path = "src/bin/hyperwallet.rs"
+name = "qantowallet"
+path = "src/bin/qantowallet.rs"
 
 [[bin]]
 name = "import_wallet"
@@ -147,8 +149,8 @@ name = "start_node"
 path = "src/bin/start_node.rs"
 
 [[bin]]
-name = "hyperdag_testnet"
-path = "src/hyperdag_testnet.rs"
+name = "qantodag_testnet"
+path = "src/qantodag_testnet.rs"
 
 [[bin]]
 name = "keygen"
@@ -159,15 +161,15 @@ name = "monitor"
 path = "src/bin/monitor.rs"
 
 [[bin]]
-name = "hyperdag_node1"
+name = "qantonode1"
 path = "node1/main.rs"
 
 [[bin]]
-name = "hyperdag_node2"
+name = "qantonode2"
 path = "node2/main.rs"
 
 [[bin]]
-name = "hyperdag_node3"
+name = "qantonode3"
 path = "node3/main.rs"
 
 [[bin]]

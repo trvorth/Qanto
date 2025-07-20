@@ -1,4 +1,4 @@
-use crate::hyperdag::{HyperBlock, HyperDAG};
+use crate::qantodag::{QantoBlock, QantoDAG};
 use anyhow::Result;
 use hex;
 use rand::Rng;
@@ -18,7 +18,7 @@ pub enum MiningError {
     #[error("System time error: {0}")]
     TimeError(#[from] std::time::SystemTimeError),
     #[error("DAG error: {0}")]
-    DAG(#[from] crate::hyperdag::HyperDAGError),
+    DAG(#[from] crate::qantodag::QantoDAGError),
     #[error("Emission calculation error: {0}")]
     EmissionError(String),
     #[error("Invalid address: {0}")]
@@ -52,7 +52,7 @@ impl From<rayon::ThreadPoolBuildError> for MiningError {
 #[derive(Debug)]
 pub struct MinerConfig {
     pub address: String,
-    pub dag: Arc<HyperDAG>,
+    pub dag: Arc<QantoDAG>,
     pub difficulty_hex: String,
     pub target_block_time: u64,
     pub use_gpu: bool,
@@ -63,7 +63,7 @@ pub struct MinerConfig {
 #[derive(Clone, Debug)]
 pub struct Miner {
     _address: String,
-    _dag: Arc<HyperDAG>,
+    _dag: Arc<QantoDAG>,
     _difficulty: u64,
     target_block_time: u64,
     _use_gpu: bool,
@@ -203,7 +203,7 @@ impl Miner {
     /// This is the primary mining function called by the node's mining loop.
     /// It modifies the block in-place with the found nonce and effort.
     #[instrument(skip(self, block_template))]
-    pub fn solve_pow(&self, block_template: &mut HyperBlock) -> Result<(), MiningError> {
+    pub fn solve_pow(&self, block_template: &mut QantoBlock) -> Result<(), MiningError> {
         let start_time = SystemTime::now();
         let timeout_duration = Duration::from_secs(self.target_block_time);
         let target_hash_bytes = Miner::calculate_target_from_difficulty(block_template.difficulty);
@@ -236,7 +236,7 @@ impl Miner {
 
     fn mine_cpu(
         &self,
-        block_template: &HyperBlock,
+        block_template: &QantoBlock,
         target_hash_value: &[u8],
         start_time: SystemTime,
         timeout_duration: Duration,

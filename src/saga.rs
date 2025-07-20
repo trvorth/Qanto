@@ -15,7 +15,7 @@
 // [!!] BUILD NOTE: The 'ai' feature requires the `tch` crate and a `libtorch` installation.
 // To enable, build with `cargo build --features ai`.
 
-use crate::hyperdag::{HyperBlock, HyperDAG, MAX_TRANSACTIONS_PER_BLOCK};
+use crate::qantodag::{QantoBlock, QantoDAG, MAX_TRANSACTIONS_PER_BLOCK};
 #[cfg(feature = "infinite-strata")]
 use crate::infinite_strata_node::InfiniteStrataNode;
 use crate::omega;
@@ -374,8 +374,8 @@ impl CognitiveAnalyticsEngine {
     #[instrument(skip(self, block, dag, rules))]
     pub async fn score_node_behavior(
         &self,
-        block: &HyperBlock,
-        dag: &HyperDAG,
+        block: &QantoBlock,
+        dag: &QantoDAG,
         rules: &HashMap<String, EpochRule>,
         network_state: NetworkState,
     ) -> Result<TrustScoreBreakdown, SagaError> {
@@ -488,7 +488,7 @@ impl CognitiveAnalyticsEngine {
         })
     }
 
-    async fn analyze_environmental_contribution(&self, block: &HyperBlock, dag: &HyperDAG) -> f64 {
+    async fn analyze_environmental_contribution(&self, block: &QantoBlock, dag: &QantoDAG) -> f64 {
         let network_congestion =
             dag.get_average_tx_per_block().await / MAX_TRANSACTIONS_PER_BLOCK as f64;
 
@@ -512,7 +512,7 @@ impl CognitiveAnalyticsEngine {
         (1.0 / (1.0 + (-net_impact).exp())).clamp(0.0, 1.0)
     }
 
-    fn check_block_validity(&self, block: &HyperBlock) -> f64 {
+    fn check_block_validity(&self, block: &QantoBlock) -> f64 {
         let Some(coinbase) = block.transactions.first() else {
             return 0.0;
         };
@@ -525,14 +525,14 @@ impl CognitiveAnalyticsEngine {
         1.0
     }
 
-    async fn analyze_network_contribution(&self, block: &HyperBlock, dag: &HyperDAG) -> f64 {
+    async fn analyze_network_contribution(&self, block: &QantoBlock, dag: &QantoDAG) -> f64 {
         let avg_tx_per_block = dag.get_average_tx_per_block().await;
         let block_tx_count = block.transactions.len() as f64;
         let deviation = (block_tx_count - (avg_tx_per_block * 1.1)) / avg_tx_per_block.max(1.0);
         (-deviation.powi(2)).exp()
     }
 
-    async fn check_historical_performance(&self, miner_address: &str, dag: &HyperDAG) -> f64 {
+    async fn check_historical_performance(&self, miner_address: &str, dag: &QantoDAG) -> f64 {
         let blocks_reader = dag.blocks.read().await;
         let total_blocks = blocks_reader.len().max(1) as f64;
         let node_blocks = blocks_reader
@@ -542,7 +542,7 @@ impl CognitiveAnalyticsEngine {
         (node_blocks / total_blocks * 10.0).min(1.0)
     }
 
-    fn analyze_cognitive_hazards(&self, block: &HyperBlock) -> f64 {
+    fn analyze_cognitive_hazards(&self, block: &QantoBlock) -> f64 {
         let tx_count = block.transactions.len();
         if tx_count <= 1 {
             return 1.0;
@@ -559,8 +559,8 @@ impl CognitiveAnalyticsEngine {
 
     async fn analyze_temporal_consistency(
         &self,
-        block: &HyperBlock,
-        dag: &HyperDAG,
+        block: &QantoBlock,
+        dag: &QantoDAG,
         grace_period: u64,
     ) -> Result<f64, SagaError> {
         let now = SystemTime::now()
@@ -588,7 +588,7 @@ impl CognitiveAnalyticsEngine {
         Ok(1.0)
     }
 
-    fn analyze_cognitive_dissonance(&self, block: &HyperBlock) -> f64 {
+    fn analyze_cognitive_dissonance(&self, block: &QantoBlock) -> f64 {
         let high_fee_txs = block.transactions.iter().filter(|tx| tx.fee > 100).count();
         let zero_fee_txs = block
             .transactions
@@ -603,7 +603,7 @@ impl CognitiveAnalyticsEngine {
         }
     }
 
-    async fn analyze_metadata_integrity(&self, block: &HyperBlock) -> f64 {
+    async fn analyze_metadata_integrity(&self, block: &QantoBlock) -> f64 {
         let tx_count = block.transactions.len().max(1) as f64;
         let mut suspicious_tx_count = 0.0;
 
@@ -630,7 +630,7 @@ impl CognitiveAnalyticsEngine {
     }
 
     #[cfg(feature = "ai")]
-    pub async fn collect_training_data_from_block(&mut self, block: &HyperBlock, dag: &HyperDAG) {
+    pub async fn collect_training_data_from_block(&mut self, block: &QantoBlock, dag: &QantoDAG) {
         if self.training_data.len() >= TRAINING_DATA_CAPACITY {
             self.training_data.pop_front();
         }
@@ -851,7 +851,7 @@ impl PredictiveEconomicModel {
     }
     pub async fn predictive_market_premium(
         &self,
-        dag: &HyperDAG,
+        dag: &QantoDAG,
         metrics: &EnvironmentalMetrics,
     ) -> f64 {
         let avg_tx_per_block = dag.get_average_tx_per_block().await;
@@ -938,23 +938,23 @@ impl Default for SagaGuidanceSystem {
 impl SagaGuidanceSystem {
     pub fn new() -> Self {
         let mut knowledge_base = HashMap::new();
-        knowledge_base.insert("setup".to_string(), "To get started with Hyperchain, follow these steps:\n1. **Download:** Get the latest `hyperchain` binary for your OS from the official repository.\n2. **Configuration:** Run `./hyperchain --init` in your terminal. This will create a default `config.toml` and a `wallet.key` file in your current directory.\n3. **Review Config:** Open `config.toml` to review settings. To connect to the network, add trusted peer multiaddresses to the `peers` array. Example: `peers = [\"/ip4/192.168.1.10/tcp/8008/p2p/12D3Koo...\"].\n4. **First Run:** Start the node with `./hyperchain`. It will automatically connect to peers if specified. If no peers are listed, it will run in a local, single-node mode, which is great for testing.".to_string());
-        knowledge_base.insert("staking".to_string(), "Staking is the process of locking up HCN tokens to act as a validator. Validators are the backbone of the network, responsible for proposing new blocks, confirming transactions, and maintaining consensus.\n- **Become a Validator:** To become a validator, you must stake at least the minimum amount of HCN required by the current epoch rules (check the `/dag` endpoint for current parameters). Your node must be consistently online and performant to avoid penalties.\n- **Earn Rewards:** Proposing valid blocks earns rewards, which are dynamically calculated by SAGA. The reward amount is boosted by your Saga Credit Score (SCS), meaning more reputable validators earn more.\n- **Slashing Risk:** Malicious behavior (e.g., proposing invalid blocks, attempting a double-spend) or being consistently offline can cause your stake to be 'slashed', meaning a portion is forfeited as a penalty. This mechanism secures the network by disincentivizing bad actors.".to_string());
+        knowledge_base.insert("setup".to_string(), "To get started with Qanto, follow these steps:\n1. **Download:** Get the latest `qanto` binary for your OS from the official repository.\n2. **Configuration:** Run `./qanto --init` in your terminal. This will create a default `config.toml` and a `wallet.key` file in your current directory.\n3. **Review Config:** Open `config.toml` to review settings. To connect to the network, add trusted peer multiaddresses to the `peers` array. Example: `peers = [\"/ip4/192.168.1.10/tcp/8008/p2p/12D3Koo...\"].\n4. **First Run:** Start the node with `./qanto`. It will automatically connect to peers if specified. If no peers are listed, it will run in a local, single-node mode, which is great for testing.".to_string());
+        knowledge_base.insert("staking".to_string(), "Staking is the process of locking up QNTO tokens to act as a validator. Validators are the backbone of the network, responsible for proposing new blocks, confirming transactions, and maintaining consensus.\n- **Become a Validator:** To become a validator, you must stake at least the minimum amount of QNTO required by the current epoch rules (check the `/dag` endpoint for current parameters). Your node must be consistently online and performant to avoid penalties.\n- **Earn Rewards:** Proposing valid blocks earns rewards, which are dynamically calculated by SAGA. The reward amount is boosted by your Saga Credit Score (SCS), meaning more reputable validators earn more.\n- **Slashing Risk:** Malicious behavior (e.g., proposing invalid blocks, attempting a double-spend) or being consistently offline can cause your stake to be 'slashed', meaning a portion is forfeited as a penalty. This mechanism secures the network by disincentivizing bad actors.".to_string());
         knowledge_base.insert("send".to_string(), "To send tokens, you create and broadcast a transaction using your available funds, which are tracked as Unspent Transaction Outputs (UTXOs).\n1. **Check Balance/UTXOs:** Use the API endpoint `/utxos/{your_address}` to see a list of your UTXOs. The sum of these is your total balance.\n2. **Construct Transaction:** Create a transaction specifying which of your UTXOs will be used as inputs. Then, define the outputs: one for the recipient's address and the amount they should receive, and another 'change' output back to your own address with the remaining funds.\n3. **Sign & Submit:** Sign the complete transaction data with your private key (this is typically handled by your wallet software). Submit the signed transaction JSON to the `/transaction` API endpoint. The network will then pick it up for inclusion in a future block.".to_string());
-        knowledge_base.insert("saga".to_string(), "SAGA is Hyperchain's AI core. It is a dynamic, autonomous system that observes on-chain activity, learns from it, and adapts network parameters to maintain health, security, and economic stability. It functions as the network's decentralized brain.\n- **Manages:** It dynamically adjusts the economy (block rewards, fees), consensus rules (difficulty), and governance parameters based on real-time network conditions.\n- **Scores:** It continuously analyzes node behavior via its Cognitive Engine to calculate your Saga Credit Score (SCS), which directly affects your potential rewards and governance influence.\n- **Assists:** You are interacting with its Guidance module right now, which provides contextual help and proactive network insights.".to_string());
-        knowledge_base.insert("tokenomics".to_string(), "HCN is the native utility token of the Hyperchain network.\n- **Utility:** It is essential for all network operations. It's used for paying transaction fees, deploying and interacting with smart contracts, staking to become a validator, and participating in on-chain governance by proposing and voting on changes.\n- **Emission:** New HCN is minted as block rewards for validators. The amount is not fixed; it is dynamically calculated by SAGA based on several factors, including the validator's reputation (SCS), overall network health, the current threat level (as determined by the ΩMEGA protocol), and the total fees from the transactions included in the block. This creates a responsive and fair economic model.".to_string());
+        knowledge_base.insert("saga".to_string(), "SAGA is Qanto's AI core. It is a dynamic, autonomous system that observes on-chain activity, learns from it, and adapts network parameters to maintain health, security, and economic stability. It functions as the network's decentralized brain.\n- **Manages:** It dynamically adjusts the economy (block rewards, fees), consensus rules (difficulty), and governance parameters based on real-time network conditions.\n- **Scores:** It continuously analyzes node behavior via its Cognitive Engine to calculate your Saga Credit Score (SCS), which directly affects your potential rewards and governance influence.\n- **Assists:** You are interacting with its Guidance module right now, which provides contextual help and proactive network insights.".to_string());
+        knowledge_base.insert("tokenomics".to_string(), "QNTO is the native utility token of the Qanto network.\n- **Utility:** It is essential for all network operations. It's used for paying transaction fees, deploying and interacting with smart contracts, staking to become a validator, and participating in on-chain governance by proposing and voting on changes.\n- **Emission:** New QNTO is minted as block rewards for validators. The amount is not fixed; it is dynamically calculated by SAGA based on several factors, including the validator's reputation (SCS), overall network health, the current threat level (as determined by the ΩMEGA protocol), and the total fees from the transactions included in the block. This creates a responsive and fair economic model.".to_string());
         knowledge_base.insert("scs".to_string(), "Your Saga Credit Score (SCS) is your on-chain reputation, represented as a score from 0.0 to 1.0. It is a critical metric that reflects how beneficial your actions are to the network's health and security.\n- **Calculation:** It's a weighted average of your trust score (derived from SAGA's Cognitive Engine analyzing your proposed blocks for quality and honesty), your Karma (long-term positive contributions), your total stake, and your environmental contributions (from PoCO). The weights for each component are themselves adjustable through governance.\n- **Importance:** A higher SCS is highly desirable. It leads to significantly greater block rewards and increases your voting power in governance proposals. A low SCS reduces rewards and can eventually lead to being disqualified as a validator.".to_string());
-        knowledge_base.insert("slashing".to_string(), "Slashing is a severe penalty for validators who act maliciously or are consistently offline. When a validator is slashed, a portion of their staked HCN is forfeited permanently and removed from circulation. SAGA's Cognitive Engine analyzes block data to detect infractions, such as proposing invalid blocks or contradicting finalized history. The severity of the slash is determined based on the nature of the violation, ensuring the punishment fits the crime.".to_string());
-        knowledge_base.insert("karma".to_string(), "Karma is a measure of positive, long-term contribution to the Hyperchain ecosystem. You earn Karma by creating successful governance proposals, voting constructively on others' proposals, and participating in the network's evolution. Unlike your SCS, which can fluctuate based on recent performance, Karma is designed to be a slow-to-change metric of your long-term standing and commitment to the project's success. It decays very slowly over time.".to_string());
+        knowledge_base.insert("slashing".to_string(), "Slashing is a severe penalty for validators who act maliciously or are consistently offline. When a validator is slashed, a portion of their staked QNTO is forfeited permanently and removed from circulation. SAGA's Cognitive Engine analyzes block data to detect infractions, such as proposing invalid blocks or contradicting finalized history. The severity of the slash is determined based on the nature of the violation, ensuring the punishment fits the crime.".to_string());
+        knowledge_base.insert("karma".to_string(), "Karma is a measure of positive, long-term contribution to the Qanto ecosystem. You earn Karma by creating successful governance proposals, voting constructively on others' proposals, and participating in the network's evolution. Unlike your SCS, which can fluctuate based on recent performance, Karma is designed to be a slow-to-change metric of your long-term standing and commitment to the project's success. It decays very slowly over time.".to_string());
         knowledge_base.insert("mempool".to_string(), "The mempool (memory pool) is a waiting area for transactions that have been submitted to the network but have not yet been included in a block. When a miner creates a new block, they select transactions from the mempool to include. Generally, transactions with higher fees are prioritized, as these fees contribute to the miner's block reward. You can view the current state of the mempool via the `/mempool` API endpoint.".to_string());
         knowledge_base.insert("peers".to_string(), "Troubleshooting peer connectivity:\n1. **Check `config.toml`:** Ensure the `peers` array contains valid and reachable multiaddresses of other nodes on the network.\n2. **Firewall:** Make sure your system's firewall is not blocking the TCP port specified in your `p2p_address` (e.g., port 8008).\n3. **Network ID:** Verify that your `network_id` in `config.toml` matches the ID of the network you are trying to join. Nodes with different IDs will not connect.\n4. **Node Logs:** Check the node's startup logs for any P2P errors, such as 'dial failed' or 'identity key mismatch'.".to_string());
         knowledge_base.insert("stuck_tx".to_string(), "If your transaction seems stuck (not included in a block):\n1. **Check Mempool:** Use the `/mempool` API endpoint to see if your transaction is still there. If it is, it's waiting to be mined.\n2. **Fee Too Low:** The most common reason for a stuck transaction is a low fee. During periods of high network activity (congestion), miners will prioritize transactions with higher fees. You may need to wait or resubmit the transaction with a higher fee (this requires creating a new transaction that spends the same UTXOs).\n3. **Network Congestion:** Use the `/saga/ask` endpoint with the query 'insights' to see if SAGA has issued a warning about network congestion.".to_string());
-        knowledge_base.insert("security".to_string(), "Security is a layered process in Hyperchain, anchored by the SAGA and ΩMEGA protocols.\n- **Best Practices:** Always back up your `wallet.key` file in a secure, offline location. Never share your private key. Be cautious of phishing attempts and only download `hyperchain` binaries from the official repository.\n- **Wallet Security:** Your `wallet.key` is your identity. It is encrypted, but a strong password is your first line of defense. Consider using a hardware wallet for significant funds (integration is a future goal).\n- **Phishing:** Be wary of unsolicited messages or websites asking for your private key or wallet file. The Hyperchain team will never ask for this information.".to_string());
+        knowledge_base.insert("security".to_string(), "Security is a layered process in Qanto, anchored by the SAGA and ΩMEGA protocols.\n- **Best Practices:** Always back up your `wallet.key` file in a secure, offline location. Never share your private key. Be cautious of phishing attempts and only download `qanto` binaries from the official repository.\n- **Wallet Security:** Your `wallet.key` is your identity. It is encrypted, but a strong password is your first line of defense. Consider using a hardware wallet for significant funds (integration is a future goal).\n- **Phishing:** Be wary of unsolicited messages or websites asking for your private key or wallet file. The Qanto team will never ask for this information.".to_string());
         knowledge_base.insert("ai_training".to_string(), "SAGA's AI models (BehaviorNet and CongestionPredictorLSTM) are designed to learn from the network's history.\n- **Conceptual Process:** The models are trained on historical data collected each epoch. This involves: (1) Collecting feature vectors from every block evaluation. (2) Heuristically labeling this data (e.g., high-scoring blocks are 'good', orphaned blocks are 'bad'). (3) Periodically running a simulated backpropagation process to update the models' weights.\n- **Current State:** The `train_models_from_data` function simulates this process. In a live network, this is a computationally intensive task run periodically by validator nodes to keep the AI's understanding of the network current.".to_string());
-        knowledge_base.insert("sybil_attack".to_string(), "A Sybil attack is an attempt to subvert a network by creating many pseudonymous identities. In Hyperchain, SAGA's Security Monitor actively checks for this by analyzing stake distribution using the Gini coefficient. A low Gini coefficient indicates stake is very evenly (and suspiciously) distributed, increasing the 'sybil_risk' score and potentially triggering an 'UnderAttack' network state as a defensive measure.".to_string());
+        knowledge_base.insert("sybil_attack".to_string(), "A Sybil attack is an attempt to subvert a network by creating many pseudonymous identities. In Qanto, SAGA's Security Monitor actively checks for this by analyzing stake distribution using the Gini coefficient. A low Gini coefficient indicates stake is very evenly (and suspiciously) distributed, increasing the 'sybil_risk' score and potentially triggering an 'UnderAttack' network state as a defensive measure.".to_string());
         knowledge_base.insert("spam_attack".to_string(), "A transaction spam attack attempts to disrupt the network by flooding it with low-value transactions. SAGA's Security Monitor detects this by watching the ratio of zero-fee to regular transactions. A sustained high ratio increases the 'spam_risk' score, which can lead to SAGA autonomously proposing an increase in the base transaction fee to make the attack economically unviable.".to_string());
-        knowledge_base.insert("poco".to_string(), "Proof-of-Carbon-Offset (PoCO) is Hyperchain's innovative mechanism for integrating real-world environmental action into the blockchain consensus.\n- **How it Works:** Validators can include special `CarbonOffsetCredential` data in the blocks they mine. These credentials are verifiable claims of CO2 sequestration from trusted, off-chain issuers.\n- **Benefits:** SAGA's Cognitive Engine analyzes these credentials. Miners who include valid, high-quality credentials in their blocks receive a boost to their 'environmental_contribution' score. This, in turn, improves their overall Saga Credit Score (SCS), leading to higher block rewards.\n- **Goal:** PoCO creates a direct financial incentive for network participants to fund and support carbon reduction projects, turning the blockchain into a tool for positive environmental impact.".to_string());
-        knowledge_base.insert("carbon_credit".to_string(), "A carbon credit is a tradable certificate representing the removal of one tonne of CO2. In Hyperchain's PoCO system, a `CarbonOffsetCredential` is the on-chain representation of such a credit. To be accepted, it must come from a project on SAGA's trusted registry and pass verification, which now includes an AI confidence check. Including valid credentials in a block proves a miner has sponsored real-world climate action, and SAGA rewards them for this contribution with an improved SCS and higher potential earnings.".to_string());
+        knowledge_base.insert("poco".to_string(), "Proof-of-Carbon-Offset (PoCO) is Qanto's innovative mechanism for integrating real-world environmental action into the blockchain consensus.\n- **How it Works:** Validators can include special `CarbonOffsetCredential` data in the blocks they mine. These credentials are verifiable claims of CO2 sequestration from trusted, off-chain issuers.\n- **Benefits:** SAGA's Cognitive Engine analyzes these credentials. Miners who include valid, high-quality credentials in their blocks receive a boost to their 'environmental_contribution' score. This, in turn, improves their overall Saga Credit Score (SCS), leading to higher block rewards.\n- **Goal:** PoCO creates a direct financial incentive for network participants to fund and support carbon reduction projects, turning the blockchain into a tool for positive environmental impact.".to_string());
+        knowledge_base.insert("carbon_credit".to_string(), "A carbon credit is a tradable certificate representing the removal of one tonne of CO2. In Qanto's PoCO system, a `CarbonOffsetCredential` is the on-chain representation of such a credit. To be accepted, it must come from a project on SAGA's trusted registry and pass verification, which now includes an AI confidence check. Including valid credentials in a block proves a miner has sponsored real-world climate action, and SAGA rewards them for this contribution with an improved SCS and higher potential earnings.".to_string());
         knowledge_base.insert("centralization_risk".to_string(), "Centralization is a key risk where a few miners control a majority of block production. SAGA's Security Monitor calculates this risk using the Herfindahl-Hirschman Index (HHI) on block producer statistics from the last epoch. A high HHI score indicates high market concentration and increases the 'centralization_risk'. If the risk is too high, SAGA may enter an 'UnderAttack' state and could autonomously propose changes to encourage more miners to participate.".to_string());
 
         Self {
@@ -1103,7 +1103,7 @@ impl SagaGuidanceSystem {
                 ("scs", vec!["scs", "score", "reputation"]),
                 (
                     "tokenomics",
-                    vec!["token", "hcn", "economy", "reward", "fee", "tokenomics"],
+                    vec!["token", "qnto", "economy", "reward", "fee", "tokenomics"],
                 ),
                 ("staking", vec!["stake", "staking", "validator"]),
                 (
@@ -1155,7 +1155,7 @@ impl SagaGuidanceSystem {
                 ),
                 (
                     "tokenomics",
-                    vec!["token", "hcn", "economy", "reward", "fee", "tokenomics"],
+                    vec!["token", "qnto", "economy", "reward", "fee", "tokenomics"],
                 ),
                 ("scs", vec!["scs", "score", "reputation"]),
                 ("slashing", vec!["slash", "slashing", "penalty", "offline"]),
@@ -1233,7 +1233,7 @@ impl SecurityMonitor {
     }
 
     #[instrument(skip(self, dag))]
-    pub async fn check_for_sybil_attack(&self, dag: &HyperDAG) -> f64 {
+    pub async fn check_for_sybil_attack(&self, dag: &QantoDAG) -> f64 {
         let validators = dag.validators.read().await;
         if validators.len() < 10 {
             return 0.0;
@@ -1266,7 +1266,7 @@ impl SecurityMonitor {
     }
 
     #[instrument(skip(self, dag))]
-    pub async fn check_transactional_anomalies(&self, dag: &HyperDAG) -> f64 {
+    pub async fn check_transactional_anomalies(&self, dag: &QantoDAG) -> f64 {
         let blocks = dag.blocks.read().await;
         let now = match SystemTime::now().duration_since(UNIX_EPOCH) {
             Ok(d) => d.as_secs(),
@@ -1307,7 +1307,7 @@ impl SecurityMonitor {
     }
 
     #[instrument(skip(self, dag, epoch_lookback))]
-    pub async fn check_for_centralization_risk(&self, dag: &HyperDAG, epoch_lookback: u64) -> f64 {
+    pub async fn check_for_centralization_risk(&self, dag: &QantoDAG, epoch_lookback: u64) -> f64 {
         let blocks = dag.blocks.read().await;
         if blocks.len() < 50 {
             return 0.0;
@@ -1352,7 +1352,7 @@ impl SecurityMonitor {
     }
 
     #[instrument(skip(self, dag))]
-    pub async fn check_for_oracle_manipulation_risk(&self, dag: &HyperDAG) -> f64 {
+    pub async fn check_for_oracle_manipulation_risk(&self, dag: &QantoDAG) -> f64 {
         // This check looks for miners who disproportionately rely on a single
         // project for their Carbon Offset Credentials, which could indicate collusion
         // or manipulation of a specific, low-quality carbon project.
@@ -1402,7 +1402,7 @@ impl SecurityMonitor {
     }
 
     #[instrument(skip(self, dag))]
-    pub async fn check_for_time_drift_attack(&self, dag: &HyperDAG) -> f64 {
+    pub async fn check_for_time_drift_attack(&self, dag: &QantoDAG) -> f64 {
         // Looks for miners who consistently produce blocks with the minimum possible timestamp,
         // which can be an indicator of selfish mining or network manipulation attempts.
         let blocks = dag.blocks.read().await;
@@ -1447,7 +1447,7 @@ impl SecurityMonitor {
     }
 
     #[instrument(skip(self, dag))]
-    pub async fn check_for_wash_trading(&self, dag: &HyperDAG) -> f64 {
+    pub async fn check_for_wash_trading(&self, dag: &QantoDAG) -> f64 {
         let blocks = dag.blocks.read().await;
         if blocks.len() < 100 {
             return 0.0;
@@ -1777,7 +1777,7 @@ impl PalletSaga {
             "base_reward".to_string(),
             EpochRule {
                 value: 250.0,
-                description: "Base HCN reward per block before modifiers.".to_string(),
+                description: "Base QNTO reward per block before modifiers.".to_string(),
             },
         );
         rules.insert(
@@ -2099,8 +2099,8 @@ impl PalletSaga {
     #[instrument(skip(self, block, dag_arc))]
     pub async fn evaluate_block_with_saga(
         &self,
-        block: &HyperBlock,
-        dag_arc: &Arc<HyperDAG>,
+        block: &QantoBlock,
+        dag_arc: &Arc<QantoDAG>,
     ) -> Result<()> {
         info!(block_id = %block.id, miner = %block.miner, "SAGA: Starting evaluation of new block.");
 
@@ -2121,8 +2121,8 @@ impl PalletSaga {
 
     async fn evaluate_and_score_block(
         &self,
-        block: &HyperBlock,
-        dag_arc: &Arc<HyperDAG>,
+        block: &QantoBlock,
+        dag_arc: &Arc<QantoDAG>,
     ) -> Result<()> {
         let (rules, network_state) = {
             let eco = self.economy.epoch_rules.read().await;
@@ -2155,8 +2155,8 @@ impl PalletSaga {
 
     pub async fn calculate_dynamic_reward(
         &self,
-        block: &HyperBlock,
-        dag_arc: &Arc<HyperDAG>,
+        block: &QantoBlock,
+        dag_arc: &Arc<QantoDAG>,
     ) -> Result<u64> {
         let rules = self.economy.epoch_rules.read().await;
         let base_reward = rules.get("base_reward").map_or(250.0, |r| r.value);
@@ -2171,7 +2171,7 @@ impl PalletSaga {
             .get(&block.miner)
             .map_or(0.5, |s| s.score);
 
-        let threat_level = omega::get_threat_level().await;
+        let threat_level = omega::identity::get_threat_level().await;
         let omega_penalty = match threat_level {
             omega::identity::ThreatLevel::Nominal => 1.0,
             omega::identity::ThreatLevel::Guarded => 1.0 + threat_modifier,
@@ -2212,7 +2212,7 @@ impl PalletSaga {
     }
 
     #[instrument(skip(self, dag))]
-    pub async fn process_epoch_evolution(&self, current_epoch: u64, dag: &HyperDAG) {
+    pub async fn process_epoch_evolution(&self, current_epoch: u64, dag: &QantoDAG) {
         info!("SAGA is processing epoch evolution for epoch {current_epoch}");
         self.update_network_state(dag).await;
         self.run_predictive_models(current_epoch, dag).await;
@@ -2234,10 +2234,10 @@ impl PalletSaga {
         }
     }
 
-    async fn update_network_state(&self, dag: &HyperDAG) {
+    async fn update_network_state(&self, dag: &QantoDAG) {
         let avg_tx_per_block = dag.get_average_tx_per_block().await;
         let validator_count = dag.validators.read().await.len();
-        let threat_level = omega::get_threat_level().await;
+        let threat_level = omega::identity::get_threat_level().await;
 
         let sybil_risk = self.security_monitor.check_for_sybil_attack(dag).await;
         let spam_risk = self
@@ -2287,7 +2287,7 @@ impl PalletSaga {
     async fn run_predictive_models(
         &self,
         #[cfg_attr(not(feature = "ai"), allow(unused_variables))] current_epoch: u64,
-        dag: &HyperDAG,
+        dag: &QantoDAG,
     ) {
         let avg_tx_per_block = dag.get_average_tx_per_block().await;
         let congestion_metric = avg_tx_per_block / MAX_TRANSACTIONS_PER_BLOCK as f64;
@@ -2333,7 +2333,7 @@ impl PalletSaga {
         &self,
         miner_address: &str,
         trust_breakdown: &TrustScoreBreakdown,
-        dag_arc: &Arc<HyperDAG>,
+        dag_arc: &Arc<QantoDAG>,
     ) -> Result<()> {
         let rules = self.economy.epoch_rules.read().await;
 
@@ -2406,7 +2406,7 @@ impl PalletSaga {
         Ok(())
     }
 
-    async fn generate_proactive_insights(&self, current_epoch: u64, dag: &HyperDAG) {
+    async fn generate_proactive_insights(&self, current_epoch: u64, dag: &QantoDAG) {
         let mut insights = self.economy.proactive_insights.write().await;
         insights.retain(|i| current_epoch < i.epoch + 5);
         let network_state = *self.economy.network_state.read().await;
@@ -2573,7 +2573,7 @@ impl PalletSaga {
         council.last_updated_epoch = current_epoch;
     }
 
-    async fn issue_new_edict(&self, current_epoch: u64, dag: &HyperDAG) {
+    async fn issue_new_edict(&self, current_epoch: u64, dag: &QantoDAG) {
         let mut last_edict_epoch = self.economy.last_edict_epoch.write().await;
         if current_epoch < *last_edict_epoch + 10 {
             return;
@@ -2626,7 +2626,7 @@ impl PalletSaga {
         }
     }
 
-    async fn perform_autonomous_governance(&self, current_epoch: u64, dag: &HyperDAG) {
+    async fn perform_autonomous_governance(&self, current_epoch: u64, dag: &QantoDAG) {
         let mut council = self.governance.council.write().await;
 
         if current_epoch < council.autonomous_governance_cooldown_until_epoch {
@@ -2713,7 +2713,7 @@ impl PalletSaga {
         metrics.verified_credentials.clear();
     }
 
-    async fn propose_validator_stake_adjustment(&self, current_epoch: u64, dag: &HyperDAG) -> bool {
+    async fn propose_validator_stake_adjustment(&self, current_epoch: u64, dag: &QantoDAG) -> bool {
         let rules = self.economy.epoch_rules.read().await;
         let validator_count = dag.validators.read().await.len();
         let min_stake_rule = "min_validator_stake".to_string();

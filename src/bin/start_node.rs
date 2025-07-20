@@ -1,6 +1,6 @@
 use anyhow::Context;
 use clap::Parser;
-use hyperchain::{config::Config, node::Node, wallet::Wallet};
+use qanto::{config::Config, node::Node, wallet::Wallet};
 use log::{error, info, warn};
 use secrecy::Secret;
 use std::path::Path;
@@ -9,7 +9,7 @@ use tokio::signal;
 
 /// Command-line arguments for the node starter.
 #[derive(Parser, Debug)]
-#[clap(author, version, about = "A generic HyperDAG node starter.")]
+#[clap(author, version, about = "A generic QantoDAG node starter.")]
 struct Args {
     /// Path to the configuration file.
     #[clap(long, default_value = "config.toml")]
@@ -42,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
         env_logger::Env::default().default_filter_or(&config.logging.level),
     )
     .init();
-    info!("Starting HyperDAG node (from start_node.rs)...");
+    info!("Starting QantoDAG node (from start_node.rs)...");
 
     // Load the wallet.
     if !Path::new(&args.wallet_path).exists() {

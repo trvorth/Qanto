@@ -1,5 +1,5 @@
 //! 🪖 X-PHYRUS™ Protocol Stack (v0.7.0 - Quantum-Hardened & Self-Healing Edition)
-//! A groundbreaking, military-grade blockchain framework integrated directly into Hyperchain.
+//! A groundbreaking, military-grade blockchain framework integrated directly into Qanto.
 //! This module provides advanced security, deployment, and operational integrity features,
 //! with a strong focus on post-quantum resilience, cloud-adaptive capabilities, and auto-healing.
 
@@ -19,7 +19,7 @@ use tokio::task; // For conceptual background tasks
 // --- Primary Public Interface ---
 /// Initializes the X-PHYRUS™ Protocol Stack, performing a comprehensive suite of
 /// pre-boot diagnostics and activating advanced security and operational protocols.
-/// This function is the first line of defense and readiness for the Hyperchain node.
+/// This function is the first line of defense and readiness for the Qanto node.
 pub async fn initialize_pre_boot_sequence(config: &Config, wallet_path: &Path) -> Result<()> {
     info!("[X-PHYRUS]™ Protocol Stack Activated. Running pre-boot diagnostics...");
     init_zero_hang_bootloader(config, wallet_path)
@@ -155,7 +155,7 @@ async fn check_port_availability(config: &Config) -> Result<()> {
 /// to detect deeper corruption before full node operation.
 async fn check_chain_state_integrity() -> Result<()> {
     debug!("[X-PHYRUS::Zero-Hang™] Checking chain state integrity...");
-    const DB_PATH: &str = "hyperdag_db_evolved";
+    const DB_PATH: &str = "qantodag_db_evolved";
     if !Path::new(DB_PATH).exists() {
         warn!("[INFO] Chain state DB not found at '{DB_PATH}'. This is normal for a first run.");
         return Ok(());
@@ -392,7 +392,7 @@ async fn init_cloud_anchor() -> Result<()> {
 /// graph database (e.g., Dgraph, Neo4j) to store and query block propagation paths, latency,
 /// and anomaly events for forensic analysis and real-time visualization.
 async fn init_phase_trace() -> Result<()> {
-    if fs::metadata("./hyperdag_db_evolved/CURRENT").await.is_ok() {
+    if fs::metadata("./qantodag_db_evolved/CURRENT").await.is_ok() {
         info!("[X-PHYRUS::PhaseTrace™] DB backend verified. Traceable block propagation graph is ACTIVE.");
         // Advanced: (Conceptual)
         // 1. Establish connection to a distributed graph database (e.g., via a gRPC client).

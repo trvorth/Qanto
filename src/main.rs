@@ -1,12 +1,11 @@
-//! --- Hyperchain Node Main Entrypoint ---
-//! v1.2.2 - Final & Production-Ready Edition
+//! --- Qanto Node Main Entrypoint ---
+//! v1.3.0 - Project Rename Alignment
 
 use clap::{Parser, Subcommand};
-use hyperchain::{
+use qanto::{
     config::{Config, ConfigError},
     node::{Node, NodeError},
     wallet::{Wallet, WalletError},
-    x_phyrus,
 };
 use secrecy::SecretString;
 use std::env;
@@ -34,8 +33,10 @@ enum CliError {
     Join(#[from] task::JoinError),
     #[error("{0}")]
     Password(String),
-    #[error("X-PHYRUS Pre-boot check failed: {0}")]
-    XPPreBoot(#[from] anyhow::Error),
+    // Note: X-PHYRUS seems to have been removed or is not part of the qanto crate.
+    // If it's a separate utility, its integration might need to be revisited.
+    // #[error("X-PHYRUS Pre-boot check failed: {0}")]
+    // XPPreBoot(#[from] anyhow::Error),
 }
 
 #[derive(Parser, Debug)]
@@ -43,7 +44,7 @@ enum CliError {
     author,
     version,
     about,
-    long_about = "An ultimately secure and robust Hyperchain node."
+    long_about = "An ultimately secure and robust Qanto node."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -57,7 +58,7 @@ enum Commands {
         #[command(subcommand)]
         wallet_command: WalletCommands,
     },
-    /// Start the Hyperchain node.
+    /// Start the Qanto node.
     Start {
         #[arg(short, long, value_name = "FILE", default_value = "config.toml")]
         config: PathBuf,
@@ -127,10 +128,10 @@ async fn start_node(config_path: PathBuf, wallet_path: PathBuf) -> Result<(), Cl
     let config = Config::load(&config_path.display().to_string())?;
     initialize_logging(&config.logging.level);
 
-    info!("Hyperchain node starting up...");
+    info!("Qanto node starting up...");
     info!("Configuration loaded from '{}'.", config_path.display());
 
-    x_phyrus::initialize_pre_boot_sequence(&config, &wallet_path).await?;
+    // x_phyrus::initialize_pre_boot_sequence(&config, &wallet_path).await?;
 
     info!("Decrypting wallet (this may take a while)...");
     let wallet_path_clone = wallet_path.clone();
@@ -138,7 +139,7 @@ async fn start_node(config_path: PathBuf, wallet_path: PathBuf) -> Result<(), Cl
         task::spawn_blocking(move || Wallet::from_file(&wallet_path_clone, &password)).await??;
     info!("Wallet decrypted and loaded successfully.");
 
-    info!("Initializing Hyperchain services...");
+    info!("Initializing Qanto services...");
     let node = Node::new(
         config,
         config_path.display().to_string(),
@@ -151,7 +152,7 @@ async fn start_node(config_path: PathBuf, wallet_path: PathBuf) -> Result<(), Cl
 
     node.start().await?;
 
-    info!("Hyperchain node has shut down.");
+    info!("Qanto node has shut down.");
     Ok(())
 }
 

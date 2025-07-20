@@ -1,6 +1,6 @@
-# **HyperChain: A Formal Specification for a Heterogeneous, Post-Quantum Framework with Hybrid Consensus and Dynamic Sharding**
+# **Qanto: A Formal Specification for a Heterogeneous, Post-Quantum Framework with Hybrid Consensus and Dynamic Sharding**
 
-**Author:** trvorth | HyperChain Project
+**Author:** trvorth | Qanto Project
 
 **Date:** June 23, 2025
 
@@ -8,7 +8,7 @@
 
 ## **Abstract**
 
-The prevailing paradigm of distributed ledger technology (DLT), based on linear-chain blockchain architectures, confronts fundamental impediments to scalability and is subject to existential threats from the development of quantum computers. This research paper presents the formal specification of HyperChain, a novel DLT framework engineered to resolve this dual challenge.
+The prevailing paradigm of distributed ledger technology (DLT), based on linear-chain blockchain architectures, confronts fundamental impediments to scalability and is subject to existential threats from the development of quantum computers. This research paper presents the formal specification of Qanto, a novel DLT framework engineered to resolve this dual challenge.
 
 The primary contribution of this work is the rigorous architectural synthesis of several key components, substantiated by a reference implementation. We define a **heterogeneous multi-chain architecture** that supports two distinct, interoperable ledger models: (1) a set of high-throughput **Dynamic DAG Shards** based on a Directed Acyclic Graph (DAG) structure, which we term the **HyperDAG**, facilitating parallel transaction processing and featuring a novel mechanism for dynamic shard creation based on network load; and (2) a series of independent **Execution Chains**, designed for specific applications and secured by a unique weighted Proof-of-Work consensus.
 
@@ -24,13 +24,13 @@ The publication of Bitcoin \[1\] introduced a robust solution to the Byzantine G
 
 This performance limitation is compounded by a long-term security vulnerability. The cryptographic primitives securing these networks, principally the Elliptic Curve Digital Signature Algorithm (ECDSA), derive their security from the computational intractability of the discrete logarithm and integer factorization problems for classical computers. However, the prospective development of a fault-tolerant quantum computer, capable of executing Shor's algorithm \[2, 3\], would render these primitives insecure, jeopardizing the integrity of the entire digital asset landscape \[43\].
 
-### **1.2. The HyperChain Solution: A Holistic Synthesis**
+### **1.2. The Qanto Solution: A Holistic Synthesis**
 
 A substantial body of academic and applied research has sought to address these limitations in isolation. Protocols such as GHOSTDAG \[5\] and PHANTOM \[6\] have leveraged a Directed Acyclic Graph (DAG) structure to improve throughput by allowing parallel block creation. Finality gadgets, notably Ethereum's Casper FFG \[7\], have been designed to overlay deterministic finality upon probabilistic PoW chains. Scalability via sharding has been a central research theme \[9\], though it introduces significant complexity \[44\]. Concurrently, the NIST PQC standardization process has culminated in the selection of quantum-resistant cryptographic algorithms \[10\], with lattice-based schemes like CRYSTALS-Dilithium emerging as a prominent candidate \[11\].
 
-However, few protocols have attempted a holistic synthesis of these solutions from inception. HyperChain is a framework designed to unify these research threads. It specifies a **heterogeneous multi-chain architecture**, a concept that draws inspiration from interoperability frameworks like Polkadot \[25\] and Cosmos \[26\], which acknowledge that no single chain design is optimal for all use cases \[45\]. HyperChain provides a foundational Layer-0 protocol that supports specialized, interoperable chains within a single secure environment.
+However, few protocols have attempted a holistic synthesis of these solutions from inception. Qanto is a framework designed to unify these research threads. It specifies a **heterogeneous multi-chain architecture**, a concept that draws inspiration from interoperability frameworks like Polkadot \[25\] and Cosmos \[26\], which acknowledge that no single chain design is optimal for all use cases \[45\]. Qanto provides a foundational Layer-0 protocol that supports specialized, interoperable chains within a single secure environment.
 
-This whitepaper outlines the technical innovations that make HyperChain possible:
+This whitepaper outlines the technical innovations that make Qanto possible:
 
 * **A Heterogeneous Architectural Framework:** Combining high-throughput **HyperDAG** shards with specialized **Execution Chains**.
 * **A Hybrid Consensus Protocol with SAGA-AI:** Merging permissionless PoW for block proposals with deterministic PoS for finality, enhanced by the Sentient Autonomous Governance Algorithm (SAGA-AI) for optimized node mining.
@@ -38,17 +38,17 @@ This whitepaper outlines the technical innovations that make HyperChain possible
 * **An Incentive-Compatible Economic Model:** Designed for long-term network health and sustainable development.
 * **A Scalable Networking Layer with X-PHYRUS™:** Leveraging the X-PHYRUS™ Protocol Stack for robust and efficient peer-to-peer communication.
 
-![HyperDAG Structure](./docs/whitepaper/assets/diagrams/hyperchain_solution_overview.png)
+![HyperDAG Structure](./docs/whitepaper/assets/diagrams/Qanto_solution_overview.png)
 
-![HyperDAG Structure](./docs/whitepaper/assets/diagrams/hyperchain_advanced_comparison.png)
+![HyperDAG Structure](./docs/whitepaper/assets/diagrams/Qanto_advanced_comparison.png)
 
-This paper proceeds by presenting the formal architectural specification of the HyperChain framework (Section 2), its multi-layered hybrid consensus protocol with SAGA-AI (Section 3), its comprehensive cryptographic suite with ΛΣ-ΩMEGA™ (Section 4), its economic model (Section 5), its P2P network with X-PHYRUS™ and governance model (Section 6), a discussion of use cases, implementation, and roadmap (Section 7), and concludes with a summary and directions for future research (Section 8).
+This paper proceeds by presenting the formal architectural specification of the Qanto framework (Section 2), its multi-layered hybrid consensus protocol with SAGA-AI (Section 3), its comprehensive cryptographic suite with ΛΣ-ΩMEGA™ (Section 4), its economic model (Section 5), its P2P network with X-PHYRUS™ and governance model (Section 6), a discussion of use cases, implementation, and roadmap (Section 7), and concludes with a summary and directions for future research (Section 8).
 
-## **2. The HyperChain Architectural Framework**
+## **2. The Qanto Architectural Framework**
 
 ### **2.1. Design Philosophy: A Heterogeneous Approach**
 
-The core design philosophy of HyperChain is that a single, monolithic ledger architecture cannot efficiently serve the diverse needs of a decentralized ecosystem. By supporting a heterogeneous architecture, the framework allows for application-specific optimization, enabling developers to choose the ledger model best suited to their needs—be it high-frequency transactions or complex, stateful computation—without sacrificing shared security and interoperability. This approach is informed by research in modular blockchain design \[53\].
+The core design philosophy of Qanto is that a single, monolithic ledger architecture cannot efficiently serve the diverse needs of a decentralized ecosystem. By supporting a heterogeneous architecture, the framework allows for application-specific optimization, enabling developers to choose the ledger model best suited to their needs—be it high-frequency transactions or complex, stateful computation—without sacrificing shared security and interoperability. This approach is informed by research in modular blockchain design \[53\].
 
 ### **2.2. The Heterogeneous Ledger Model**
 
@@ -59,7 +59,7 @@ The framework supports two primary types of constituent chains, both managed wit
 
 ### **2.3. Specification: Dynamic DAG Shards (The HyperDAG)**
 
-The core innovation for high-throughput transactions in HyperChain is the **HyperDAG**. Unlike a linear blockchain, a HyperDAG is a directed acyclic graph where each new block (a HyperBlock) can reference and confirm multiple parent blocks. This creates a multi-dimensional, interwoven mesh of transactions, rather than a single file line.
+The core innovation for high-throughput transactions in Qanto is the **HyperDAG**. Unlike a linear blockchain, a HyperDAG is a directed acyclic graph where each new block (a HyperBlock) can reference and confirm multiple parent blocks. This creates a multi-dimensional, interwoven mesh of transactions, rather than a single file line.
 
 ![HyperDAG Structure](./docs/whitepaper/assets/diagrams/hyperdag.png)
 
@@ -87,11 +87,11 @@ Execution Chains are managed by a separate ShardManager that uses discrete load 
 
 ### **2.5. State Transition Model: Unspent Transaction Outputs (UTXO)**
 
-The entire HyperChain ecosystem utilizes the UTXO model for state transitions. The UTXO model, first introduced by Bitcoin \[1\], offers advantages in privacy and scalability over the account-based model by avoiding global state contention issues \[27\]. A transaction's validity requires that the sum of its input values is greater than or equal to the sum of its output values: ∑u∈Itx​​value(u)≥∑v∈Otx​​value(v).
+The entire Qanto ecosystem utilizes the UTXO model for state transitions. The UTXO model, first introduced by Bitcoin \[1\], offers advantages in privacy and scalability over the account-based model by avoiding global state contention issues \[27\]. A transaction's validity requires that the sum of its input values is greater than or equal to the sum of its output values: ∑u∈Itx​​value(u)≥∑v∈Otx​​value(v).
 
 ## **3. Hybrid Consensus and Finality Protocol**
 
-HyperChain employs a multi-layered hybrid consensus protocol, augmented by the **SAGA-AI governed Node Mining Add-on**, to secure its heterogeneous architecture, separating block proposal from finality.
+Qanto employs a multi-layered hybrid consensus protocol, augmented by the **SAGA-AI governed Node Mining Add-on**, to secure its heterogeneous architecture, separating block proposal from finality.
 
 ### **3.1. Formal Model and Security Assumptions**
 
@@ -136,7 +136,7 @@ The anomaly score `S(B)` for a block `B` is calculated as: `S(B) = |tx_count(B) 
 
 ## **4. Cryptographic Suite**
 
-HyperChain integrates a comprehensive suite of cryptographic primitives chosen for security, performance, and quantum resistance, enhanced by the **ΛΣ-ΩMEGA™** framework.
+Qanto integrates a comprehensive suite of cryptographic primitives chosen for security, performance, and quantum resistance, enhanced by the **ΛΣ-ΩMEGA™** framework.
 
 ### **4.1. Foundational Hashing Algorithms**
 
@@ -158,11 +158,11 @@ The **ΛΣ-ΩMEGA™** framework enhances the cryptographic suite by integrating
 
 ### **4.5. Privacy-Preserving Technologies**
 
-Privacy is not an afterthought in HyperChain; it is a core, optional feature.
+Privacy is not an afterthought in Qanto; it is a core, optional feature.
 
 #### **4.5.1. Zero-Knowledge Proofs (ZK-SNARKs)**
 
-We integrate **ZK-SNARKs** \[32\] to provide users with the ability to conduct transactions with complete privacy. A ZK-SNARK allows one party (the prover) to prove to another (the verifier) that a statement is true, without revealing any information beyond the validity of the statement itself. In HyperChain, this means a user can prove they own the funds they are sending and have not double-spent them, all without revealing their address, the recipient's address, or the transaction amount.
+We integrate **ZK-SNARKs** \[32\] to provide users with the ability to conduct transactions with complete privacy. A ZK-SNARK allows one party (the prover) to prove to another (the verifier) that a statement is true, without revealing any information beyond the validity of the statement itself. In Qanto, this means a user can prove they own the funds they are sending and have not double-spent them, all without revealing their address, the recipient's address, or the transaction amount.
 
 Users can choose between two types of transactions:
 
@@ -240,18 +240,18 @@ The peer-to-peer network is built using the **X-PHYRUS™ Protocol Stack**, an a
 
 ### **6.2. On-Chain Governance with SAGA-AI**
 
-HyperChain incorporates an on-chain governance framework, enhanced by the **SAGA-AI** governance module, to enable decentralized protocol evolution, avoiding the contentious hard forks seen in other projects \[23\]. The model, specified in hyperdag.rs, consists of a GovernanceProposal system. Proposals can be submitted by high-stake validators and are voted on by all stakeholders, with voting power proportional to their stake. SAGA-AI assists in proposal evaluation by simulating the impact of proposed changes on network performance, security, and economic stability, providing data-driven recommendations to voters. This mechanism, similar in principle to the utility-maximizing governance models of Tezos \[24\] and Polkadot \[25\], allows for the orderly, transparent, and decentralized modification of core protocol parameters over time.
+Qanto incorporates an on-chain governance framework, enhanced by the **SAGA-AI** governance module, to enable decentralized protocol evolution, avoiding the contentious hard forks seen in other projects \[23\]. The model, specified in hyperdag.rs, consists of a GovernanceProposal system. Proposals can be submitted by high-stake validators and are voted on by all stakeholders, with voting power proportional to their stake. SAGA-AI assists in proposal evaluation by simulating the impact of proposed changes on network performance, security, and economic stability, providing data-driven recommendations to voters. This mechanism, similar in principle to the utility-maximizing governance models of Tezos \[24\] and Polkadot \[25\], allows for the orderly, transparent, and decentralized modification of core protocol parameters over time.
 
 ## **7. Use Cases, Implementation, and Roadmap**
 
 ### **7.1. Use Cases**
 
-The unique architecture of HyperChain opens the door to a wide array of applications that are not feasible on traditional blockchains:
+The unique architecture of Qanto opens the door to a wide array of applications that are not feasible on traditional blockchains:
 
 * **Micropayments & Streaming:** High throughput and low fees make it ideal for content streaming, IoT machine-to-machine payments, and other micro-transaction models.
 * **Decentralized Finance (DeFi):** The speed and efficiency of the HyperDAG can support high-frequency trading, complex financial instruments, and more responsive DeFi protocols.
-* **Supply Chain & Logistics:** The ability to process a massive volume of parallel events makes HyperChain suitable for tracking goods and assets in real-time across global supply chains.
-* **Digital Identity:** Secure, private, and self-sovereign identity solutions can be built on HyperChain's ZK-SNARK layer.
+* **Supply Chain & Logistics:** The ability to process a massive volume of parallel events makes Qanto suitable for tracking goods and assets in real-time across global supply chains.
+* **Digital Identity:** Secure, private, and self-sovereign identity solutions can be built on Qanto's ZK-SNARK layer.
 
 ### **7.2. Reference Implementation**
 
@@ -259,7 +259,7 @@ The specification presented in this paper is substantiated by a reference implem
 
 ### **7.3. Performance and Bottlenecks**
 
-The primary performance goal of HyperChain is to achieve high transactional throughput via its sharded, parallel architecture. The main performance bottlenecks are anticipated to be state contention under high load (mitigated by fine-grained locking with tokio::sync::RwLock and DashMap), disk I/O for the rocksdb state database, and the computational overhead of cryptographic operations, particularly the post-quantum LatticeSignature and the novel reliable_hashing_algorithm. The SAGA-AI add-on and X-PHYRUS™ Protocol Stack further optimize performance by improving miner coordination and network efficiency.
+The primary performance goal of Qanto is to achieve high transactional throughput via its sharded, parallel architecture. The main performance bottlenecks are anticipated to be state contention under high load (mitigated by fine-grained locking with tokio::sync::RwLock and DashMap), disk I/O for the rocksdb state database, and the computational overhead of cryptographic operations, particularly the post-quantum LatticeSignature and the novel reliable_hashing_algorithm. The SAGA-AI add-on and X-PHYRUS™ Protocol Stack further optimize performance by improving miner coordination and network efficiency.
 
 ### **7.4. Development Roadmap**
 
@@ -292,7 +292,7 @@ Our development roadmap is structured to deliver value incrementally while ensur
 
 ## **8. Conclusion and Future Work**
 
-This paper has provided a formal specification for HyperChain, a DLT protocol architectured to holistically address the challenges of scalability, security, and long-term quantum resistance. We have detailed its core innovations: the heterogeneous architecture combining dynamic DAG shards and Execution Chains; the hybrid consensus protocol with SAGA-AI; the comprehensive cryptographic suite with ΛΣ-ΩMEGA™; and the scalable networking layer with X-PHYRUS™. This synthesis offers a robust and adaptable framework for next-generation decentralized applications.
+This paper has provided a formal specification for Qanto, a DLT protocol architectured to holistically address the challenges of scalability, security, and long-term quantum resistance. We have detailed its core innovations: the heterogeneous architecture combining dynamic DAG shards and Execution Chains; the hybrid consensus protocol with SAGA-AI; the comprehensive cryptographic suite with ΛΣ-ΩMEGA™; and the scalable networking layer with X-PHYRUS™. This synthesis offers a robust and adaptable framework for next-generation decentralized applications.
 
 Future work will proceed along several research vectors:
 

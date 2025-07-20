@@ -1,4 +1,4 @@
-use hyperchain::wallet::Wallet;
+use qanto::wallet::Wallet;
 use rpassword::prompt_password;
 use secrecy::SecretString;
 

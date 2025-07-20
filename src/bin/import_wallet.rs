@@ -1,4 +1,4 @@
-use hyperchain::wallet::Wallet;
+use qanto::wallet::Wallet;
 use secrecy::SecretString;
 use std::env;
 use std::error::Error;

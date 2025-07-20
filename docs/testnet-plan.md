@@ -1,10 +1,10 @@
-# **HyperChain Public Testnet Launch Plan**
+# **Qanto Public Testnet Launch Plan**
 
 **Codename: Ignition** **Version: 1.0** **Status: Pre-engagement**
 
 ## **1\. Executive Summary**
 
-This document outlines the strategic, phased launch plan for the HyperChain Public Testnet, codenamed "Ignition." The Ignition testnet is a critical pre-production environment designed to rigorously validate the protocol's architecture, security, performance, and economic incentives in a live, decentralized setting. The successful execution of this plan is a primary prerequisite for mainnet consideration, as it will provide the empirical data and community engagement necessary to ensure a stable and secure launch.
+This document outlines the strategic, phased launch plan for the Qanto Public Testnet, codenamed "Ignition." The Ignition testnet is a critical pre-production environment designed to rigorously validate the protocol's architecture, security, performance, and economic incentives in a live, decentralized setting. The successful execution of this plan is a primary prerequisite for mainnet consideration, as it will provide the empirical data and community engagement necessary to ensure a stable and secure launch.
 
 The launch is structured into three progressive phases:
 * **Phase 0 (Pre-engagement): Pre-flight Checklist
@@ -66,7 +66,7 @@ The Ignition testnet is designed to achieve the following key objectives:
 * **Goals:**  
   * Achieve maximum network decentralization by allowing permissionless node joining.  
   * Encourage organic, high-volume network usage to test long-term stability and performance of the dynamic sharding system.  
-  * Launch the HyperChain Developer Grant Program and onboard the first cohort of testnet dApps.  
+  * Launch the Qanto Developer Grant Program and onboard the first cohort of testnet dApps.  
   * Test the full on-chain governance lifecycle: proposal submission by stakeholders, public voting (referenda), and autonomous enactment of a successful protocol parameter change.  
   * Gather long-term data on network performance, economic activity, and validator dynamics.  
   * **Success Metric:** At least one successful on-chain governance proposal enacted and a stable network with 50+ independent validator nodes.

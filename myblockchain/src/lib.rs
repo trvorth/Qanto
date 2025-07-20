@@ -194,7 +194,7 @@ impl Blockchain {
     pub async fn new(difficulty: usize, target_block_time: i64) -> Self {
         let mut opts = Options::default();
         opts.create_if_missing(true);
-        let db = DB::open(&opts, "blockchain_db").unwrap_or_else(|e| {
+        let db = DB::open(&opts, "qanto_db").unwrap_or_else(|e| {
             error!("Failed to open database: {}", e);
             panic!("Database initialization failed");
         });

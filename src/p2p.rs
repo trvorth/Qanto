@@ -1,12 +1,12 @@
 //! --- P2P Networking Layer ---
 //! v1.2.2 - Synchronized Edition
-//! This module handles all peer-to-peer communications for the Hyperchain network.
+//! This module handles all peer-to-peer communications for the Qanto network.
 //! It uses libp2p's Gossipsub for message propagation, Kademlia for peer discovery,
 //! and mDNS for local network discovery. It is designed to be robust, secure, and
 //! resilient to network fluctuations.
 
 use crate::config::P2pConfig;
-use crate::hyperdag::{HyperBlock, HyperDAG, LatticeSignature, UTXO};
+use crate::qantodag::{QantoBlock, QantoDAG, LatticeSignature, UTXO};
 use crate::mempool::Mempool;
 use crate::node::PeerCache;
 use crate::saga::CarbonOffsetCredential;
@@ -46,7 +46,7 @@ use tracing::{error, info, instrument, warn};
 // Constants for network behavior and security.
 const MAX_MESSAGE_SIZE: usize = 2_000_000;
 const MIN_PEERS_FOR_MESH: usize = 1;
-const DEFAULT_HMAC_SECRET: &str = "hyperledger_secret_key_for_p2p";
+const DEFAULT_HMAC_SECRET: &str = "qanto_secret_key_for_p2p";
 
 lazy_static::lazy_static! {
     static ref MESSAGES_SENT: IntCounter = register_int_counter!("p2p_messages_sent_total", "Total messages sent").unwrap();
@@ -136,9 +136,9 @@ pub struct NetworkMessage {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum NetworkMessageData {
-    Block(HyperBlock),
+    Block(QantoBlock),
     Transaction(Transaction),
-    State(HashMap<String, HyperBlock>, HashMap<String, UTXO>),
+    State(HashMap<String, QantoBlock>, HashMap<String, UTXO>),
     StateRequest,
     CarbonOffsetCredential(CarbonOffsetCredential),
 }
@@ -180,13 +180,13 @@ impl NetworkMessage {
 // Internal commands for the P2P server.
 #[derive(Debug, Clone)]
 pub enum P2PCommand {
-    BroadcastBlock(HyperBlock),
+    BroadcastBlock(QantoBlock),
     BroadcastTransaction(Transaction),
     RequestState,
-    BroadcastState(HashMap<String, HyperBlock>, HashMap<String, UTXO>),
+    BroadcastState(HashMap<String, QantoBlock>, HashMap<String, UTXO>),
     BroadcastCarbonCredential(CarbonOffsetCredential),
     SyncResponse {
-        blocks: Vec<HyperBlock>,
+        blocks: Vec<QantoBlock>,
         utxos: HashMap<String, UTXO>,
     },
     RequestBlock {
@@ -195,7 +195,7 @@ pub enum P2PCommand {
     },
     SendBlockToOnePeer {
         peer_id: PeerId,
-        block: Box<HyperBlock>,
+        block: Box<QantoBlock>,
     },
 }
 
@@ -207,10 +207,10 @@ pub struct P2PConfig<'a> {
     pub topic_prefix: &'a str,
     pub listen_addresses: Vec<String>,
     pub initial_peers: Vec<String>,
-    pub dag: Arc<HyperDAG>,
+    pub dag: Arc<QantoDAG>,
     pub mempool: Arc<RwLock<Mempool>>,
     pub utxos: Arc<RwLock<HashMap<String, UTXO>>>,
-    pub proposals: Arc<RwLock<Vec<HyperBlock>>>,
+    pub proposals: Arc<RwLock<Vec<QantoBlock>>>,
     pub local_keypair: identity::Keypair,
     pub p2p_settings: P2pConfig,
     pub node_signing_key_material: &'a [u8],
@@ -347,10 +347,10 @@ impl P2PServer {
         gossipsub: &mut gossipsub::Behaviour,
     ) -> Result<Vec<IdentTopic>, P2PError> {
         let topics_str = [
-            format!("/hyperchain/{topic_prefix}/blocks"),
-            format!("/hyperchain/{topic_prefix}/transactions"),
-            format!("/hyperchain/{topic_prefix}/state_updates"),
-            format!("/hyperchain/{topic_prefix}/carbon_credentials"),
+            format!("/qanto/{topic_prefix}/blocks"),
+            format!("/qanto/{topic_prefix}/transactions"),
+            format!("/qanto/{topic_prefix}/state_updates"),
+            format!("/qanto/{topic_prefix}/carbon_credentials"),
         ];
         let mut topics = Vec::new();
         for topic_s in topics_str.iter() {

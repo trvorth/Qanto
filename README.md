@@ -1,29 +1,30 @@
-# HyperChain
+# Qanto: A Formal Specification for a Heterogeneous, Post-Quantum Framework with Hybrid Consensus and Dynamic Sharding
+
 
 **A Heterogeneous, Post-Quantum DLT Framework**
 
-![HyperChain Banner](https://placehold.co/1200x300/1a1a2e/e0e0e0?text=HyperChain)
+![Qanto Banner](https://placehold.co/1200x300/1a1a2e/e0e0e0?text=Qanto)
 
-**Repository for the official Rust implementation of the HyperChain Protocol.**  
+**Repository for the official Rust implementation of the Qanto Protocol.**  
 
 **Author**: trvorth | **License**: MIT | **Status**: Phase 1 \- Foundation (In Progress)
 
 ---
 
-## **About HyperChain**
+## **About Qanto**
 
-**Website**: https://hyperchain.live (pre-engagement)  
+**Website**: https://Qanto.live (coming soon)  
 
 **Topics**: blockchain, layer-0, dag, rust, post-quantum-cryptography, fintech, decentralized-finance  
-Hyperchain is a highly modern blockchain platform that has been developed to guarantee the utmost security, performance, and integrity in all operational aspects.    It incorporates a novel consensus mechanism, an AI-driven governance structure, and a complex architecture for peer-to-peer networking.    On the other hand, Rust's Layer-0 protocol aims to provide a safe, scalable, and interoperable platform for decentralised applications and monetary transactions.    Its multi-faceted architecture mixes traditional Proof-of-Work (PoW) and Proof-of-Stake (PoS) chains with Directed Acyclic Graphs (DAGs) for high-throughput parallel transaction processing and enhanced security.    Essential features of post-quantum cryptography include a hybrid consensus framework that combines Proof-of-Work for block proposals and Proof-of-Stake for deterministic finality, dynamic sharding to accommodate large transaction volumes, and lattice-based signatures (inspired by CRYSTALS-Dilithium) for everlasting security.    HyperChain's goal is to make on-chain governance easier and more efficient while simultaneously improving privacy-preserving capabilities via the use of sophisticated cryptographic methods like zk-SNARKs and homomorphic encryption.
+Qanto is a highly modern blockchain platform that has been developed to guarantee the utmost security, performance, and integrity in all operational aspects.    It incorporates a novel consensus mechanism, an AI-driven governance structure, and a complex architecture for peer-to-peer networking.    On the other hand, Rust's Layer-0 protocol aims to provide a safe, scalable, and interoperable platform for decentralised applications and monetary transactions.    Its multi-faceted architecture mixes traditional Proof-of-Work (PoW) and Proof-of-Stake (PoS) chains with Directed Acyclic Graphs (DAGs) for high-throughput parallel transaction processing and enhanced security.    Essential features of post-quantum cryptography include a hybrid consensus framework that combines Proof-of-Work for block proposals and Proof-of-Stake for deterministic finality, dynamic sharding to accommodate large transaction volumes, and lattice-based signatures (inspired by CRYSTALS-Dilithium) for everlasting security.    Qanto's goal is to make on-chain governance easier and more efficient while simultaneously improving privacy-preserving capabilities via the use of sophisticated cryptographic methods like zk-SNARKs and homomorphic encryption.
 
-While primarily a Layer-0 protocol facilitating interoperability across its ecosystem of shards and chains, HyperChain can host Layer-1-like chains within its framework, processing transactions and smart contracts independently. Additionally, its planned zk-SNARKs integration could enable Layer-2 scaling solutions, such as rollups, on its shards, enhancing throughput while leveraging HyperChain’s interoperability. Currently in Phase 1 (Foundation), the repository includes core components like the DAG ledger, node orchestrator, P2P networking, and wallet functionality, alongside documentation for local setup and testnet participation. Licensed under the MIT License, HyperChain welcomes community contributions to drive its vision of a future-proof decentralized ecosystem.
+While primarily a Layer-0 protocol facilitating interoperability across its ecosystem of shards and chains, Qanto can host Layer-1-like chains within its framework, processing transactions and smart contracts independently. Additionally, its planned zk-SNARKs integration could enable Layer-2 scaling solutions, such as rollups, on its shards, enhancing throughput while leveraging Qanto’s interoperability. Currently in Phase 1 (Foundation), the repository includes core components like the DAG ledger, node orchestrator, P2P networking, and wallet functionality, alongside documentation for local setup and testnet participation. Licensed under the MIT License, Qanto welcomes community contributions to drive its vision of a future-proof decentralized ecosystem.
 
-For a comprehensive academic and technical overview, please refer to the official [**HyperChain Whitepaper**](./hyperchain-whitepaper.pdf).
+For a comprehensive academic and technical overview, please refer to the official [**Qanto Whitepaper**](./Qanto-whitepaper.pdf).
 
 ## X-PHYRUS™ Protocol Stack 🪖
 
-The **X-PHYRUS™ Protocol Stack** is a military-grade, pre-boot initialization and system integrity framework integrated directly into the Hyperchain node. It ensures maximum security, stability, and operational readiness by running a suite of advanced diagnostics and activating specialized protocols before the main node services are launched. This proactive approach prevents common hangs, detects sophisticated threats, and configures the node for optimal performance in any environment. Key components will list below:
+The **X-PHYRUS™ Protocol Stack** is a military-grade, pre-boot initialization and system integrity framework integrated directly into the Qanto node. It ensures maximum security, stability, and operational readiness by running a suite of advanced diagnostics and activating specialized protocols before the main node services are launched. This proactive approach prevents common hangs, detects sophisticated threats, and configures the node for optimal performance in any environment. Key components will list below:
 
 * **Zero-Hang™ Bootloader**: Performs critical pre-flight checks on system entropy, file permissions, and chain state integrity to eliminate common startup hangs.
 * **DeepCore Sentinel™**: Conducts an initial system security scan to detect known Advanced Persistent Threat (APT) toolchains and other high-risk system vulnerabilities.
@@ -36,7 +37,7 @@ The **X-PHYRUS™ Protocol Stack** is a military-grade, pre-boot initialization 
 
 ## ΛΣ-ΩMEGA™ Protocol 🔒
 
-A key innovation in Hyperchain is ΛΣ-ΩMEGA™ (Lambda Sigma Omega), Conscious Security Layer, a reflexive security module integrated directly into the node's core logic. It functions as a "digital immune system" by:
+A key innovation in Qanto is ΛΣ-ΩMEGA™ (Lambda Sigma Omega), Conscious Security Layer, a reflexive security module integrated directly into the node's core logic. It functions as a "digital immune system" by:
 
 1.  **Maintaining a Digital Identity**: Each node has a unique, evolving identity based on a constant stream of system entropy.
 2.  **Reflecting on Actions**: Before processing critical actions like transactions, the node reflects on the action by evolving its identity.
@@ -54,16 +55,18 @@ This mechanism allows the node to reject potentially harmful actions at a fundam
 
 ## SAGA (Sentient Autonomous Governance Algorithm) 🧠
 
-At the core of HyperChain’s intelligence lies **SAGA**, an AI-powered governance engine that orchestrates on-chain reputation, adaptive tokenomics, and self-regulating policy. As the network’s cognitive layer, SAGA ensures sustainability, resilience, and long-term systemic integrity.
+At the core of Qanto’s intelligence lies **SAGA**, an AI-powered governance engine that orchestrates on-chain reputation, adaptive tokenomics, and self-regulating policy. As the network’s cognitive layer, SAGA ensures sustainability, resilience, and long-term systemic integrity.
 
 * **Cognitive Analytics Engine**:  
+The SAGA AI concept can be positioned as the world's first decentralized, on-chain implementation of the principles outlined in the academic paper, "SAGA: A Security Architecture for Governing AI Agentic Systems". The academic framework proposes a system for user oversight of autonomous AI agents, mediated by a central "Provider" that manages identity, access control policies, and secure communication. 
+
 SAGA continuously evaluates validator behavior by analyzing blocks through a multidimensional heuristic framework—validity, network contribution, time consistency, and metadata fidelity. It currently operates on a decision tree model, serving as a placeholder for future deep learning models. This predictive engine identifies anomalies such as fee spamming, replay attempts, and network manipulation with temporal sensitivity.
 
 * **Saga Credit Score (SCS)**:  
 Each participant is assigned a dynamic **Saga Credit Score**—a composite of AI-derived trust scores, long-term karma (contribution weight), and staked assets. A higher SCS leads to greater governance weight and reduced block mining difficulty, thus incentivizing trustworthy behavior and improving network energy efficiency through **Proof-of-Sentiency (PoSe)**.
 
 * **Eco-Sentiency via PoCO**:  
-SAGA integrates **Proof-of-Carbon-Offset (PoCO)** to embed environmental accountability into consensus. Validator behavior and smart contracts are analyzed for carbon efficiency, influencing staking incentives and difficulty calibration. This allows HyperChain to scale sustainably with active carbon-consciousness embedded in its consensus engine.
+SAGA integrates **Proof-of-Carbon-Offset (PoCO)** to embed environmental accountability into consensus. Validator behavior and smart contracts are analyzed for carbon efficiency, influencing staking incentives and difficulty calibration. This allows Qanto to scale sustainably with active carbon-consciousness embedded in its consensus engine.
 
 * **Saga Guidance System**:  
 Developers and users interact with SAGA through the **Saga Assistant API**, which employs a Natural Language Understanding (NLU) pipeline to extract user intent and relevant parameters. This assistant delivers real-time, context-aware responses related to staking, economic parameters, validator roles, and governance status.
@@ -75,7 +78,7 @@ SAGA proactively recommends changes to network parameters based on system-wide a
 ## **Core Architectural Tenets**
 
 * **HyperDAG Ledger:** A Directed Acyclic Graph structure that allows for parallel block processing, high throughput, and near-instant finality.
-* **Hybrid Consensus (PoW + PoS + PoSe):** Hyperchain utilizes a unique, multi-layered consensus model:
+* **Hybrid Consensus (PoW + PoS + PoSe):** Qanto utilizes a unique, multi-layered consensus model:
     * **Proof-of-Work (PoW):** A lightweight PoW mechanism is used to secure the network against spam and provide a basic sybil resistance layer. Miners compete to solve a computational puzzle to propose a new block.
     * **Proof-of-Stake (PoS):** Validator nodes must stake tokens to participate in consensus. The right to validate blocks is selected based on a stake-weighted algorithm, securing the network economically. Malicious behavior can result in a validator's stake being "slashed".
     * **Proof-of-Stake-Evolution (PoSe):** This is the top-level consensus layer, managed by the **SAGA** AI pallet. SAGA continuously analyzes the behavior and contributions of all validators, calculating a dynamic "Saga Credit Score" (SCS). This score directly influences a validator's block rewards and governance power. PoSe ensures that the most honest, reliable, and beneficial nodes are rewarded the most, promoting long-term network health and evolution beyond simple stake-based metrics.
@@ -91,7 +94,7 @@ SAGA proactively recommends changes to network parameters based on system-wide a
 
 ## **Project Structure**
 
-The hyperchain repository is a Cargo workspace containing several key components:
+The Qanto repository is a Cargo workspace containing several key components:
 
 * **/src**: The main library crate containing the core logic.  
 * `src/main.rs`: Entry point and CLI command parsing.
@@ -113,7 +116,7 @@ The hyperchain repository is a Cargo workspace containing several key components
 
 ## **Developer & Research Materia**
 
-* **Formal Specification (Whitepaper)**: [docs//whitepaper/hyperchain-whitepaper.md](./docs/whitepaper/hyperchain-whitepaper.md)
+* **Formal Specification (Whitepaper)**: [docs//whitepaper/Qanto-whitepaper.md](./docs/whitepaper/Qanto-whitepaper.md)
 * **System Architecture Overview**: [Architecture.md](./Architecture.md)
 * **API Documentation**: A complete specification for the public RPC and REST Application Programming Interfaces is slated for publication prior to the mainnet launch.
 * **Command-Line Interface (CLI) Wallet**: The `hyperwallet` executable furnishes a command-line interface for all requisite wallet and cryptographic key management operations.
@@ -128,7 +131,7 @@ These instructions will get you a copy of the project up and running on your loc
 
 ### **Prerequisites**
 
-To build and run a HyperChain node, you will need to have the following installed on your system:
+To build and run a Qanto node, you will need to have the following installed on your system:
 
 * **Rust Toolchain**: The latest stable release of the Rust programming language and its associated Cargo build system must be installed via `rustup`.
     ```bash
@@ -155,8 +158,8 @@ To build and run a HyperChain node, you will need to have the following installe
  
 2. **Clone and Compile**:  
     ```bash
-    git clone [https://github.com/trvorth/hyperchain.git](https://github.com/trvorth/hyperchain.git)
-    cd hyperchain
+    git clone [https://github.com/trvorth/Qanto.git](https://github.com/trvorth/Qanto.git)
+    cd Qanto
     cargo build --release
     ```
     Upon successful compilation, the resultant binaries will be situated in the `target/release/` directory.
@@ -194,8 +197,8 @@ Building on Windows requires the MSVC C++ toolchain and manual installation of R
 5.  **Repository Cloning and Compilation**:
     * A new terminal instance must be opened.
     ```bash
-    git clone [https://github.com/trvorth/hyperchain.git](https://github.com/trvorth/hyperchain.git)
-    cd hyperchain
+    git clone [https://github.com/trvorth/Qanto.git](https://github.com/trvorth/Qanto.git)
+    cd Qanto
     cargo build --release
     ```
     The compiled binaries will be located at `target/release/`.
@@ -219,10 +222,10 @@ Building on Windows requires the MSVC C++ toolchain and manual installation of R
     The newly created `config.toml` file must be edited to substitute the placeholder value of the `initial_validators` field with the public address generated in the preceding step.
 
 3.  **Node Instantiation**:
-    The HyperChain node may be initiated by executing the `start_node` binary. The system will automatically load the configuration and wallet files.
+    The Qanto node may be initiated by executing the `start_node` binary. The system will automatically load the configuration and wallet files.
     ```bash
     # You will be prompted for the wallet password
-    cargo run --release --features infinite-strata --bin hyperchain -- start --config config.toml --wallet wallet.key
+    cargo run --release --features infinite-strata --bin Qanto -- start --config config.toml --wallet wallet.key
     ```
     The operator will be prompted to supply the wallet passphrase, after which the node will initialize its services and commence network operations.
 4.  **Demonstrating the ΛΣ-ΩMEGA Module**

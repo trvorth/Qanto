@@ -1,4 +1,4 @@
-use crate::hyperdag::{HyperDAG, UTXO};
+use crate::qantodag::{QantoDAG, UTXO};
 use crate::transaction::{Transaction, TransactionError};
 use log::{info, warn};
 use prometheus::{register_gauge, register_int_counter, Gauge, IntCounter};
@@ -55,7 +55,7 @@ impl Mempool {
         &self,
         tx: Transaction,
         utxos: &HashMap<String, UTXO>,
-        dag: &HyperDAG,
+        dag: &QantoDAG,
     ) -> Result<(), MempoolError> {
         // Run verification before getting a write lock
         if let Err(e) = tx.verify(dag, utxos).await {
@@ -178,7 +178,7 @@ impl Mempool {
     #[instrument(skip(self, _dag, _utxos))]
     pub async fn select_transactions(
         &self,
-        _dag: &HyperDAG,
+        _dag: &QantoDAG,
         _utxos: &HashMap<String, UTXO>,
         max_count: usize,
     ) -> Vec<Transaction> {

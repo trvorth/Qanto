@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
-    use hyperchain::config::Config;
-    use hyperchain::hyperdag::{HyperBlock, HyperDAG};
-    use hyperchain::mempool::Mempool;
-    use hyperchain::p2p::P2PServer;
-    use hyperchain::transaction::{Transaction, UTXO};
-    use hyperchain::wallet::HyperWallet;
+    use qanto::config::Config;
+    use qanto::qantodag::{QantoBlock, QantoDAG};
+    use qanto::mempool::Mempool;
+    use qanto::p2p::P2PServer;
+    use qanto::transaction::{Transaction, UTXO};
+    use qanto::wallet::Wallet;
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -13,7 +13,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_p2p_block_propagation() {
-        let wallet = HyperWallet::new();
+        let wallet = Wallet::new();
         let config1 = Config {
             p2p_address: "/ip4/127.0.0.1/tcp/8083".to_string(),
             api_address: "0.0.0.0:9004".to_string(),
@@ -47,8 +47,8 @@ mod tests {
             p2p: Default::default(),
         };
 
-        let dag1 = Arc::new(Mutex::new(HyperDAG::new(&config1.genesis_validator, 30, 1, 2)));
-        let dag2 = Arc::new(Mutex::new(HyperDAG::new(&config2.genesis_validator, 30, 1, 2)));
+        let dag1 = Arc::new(Mutex::new(QantoDAG::new(&config1.genesis_validator, 30, 1, 2)));
+        let dag2 = Arc::new(Mutex::new(QantoDAG::new(&config2.genesis_validator, 30, 1, 2)));
         let mempool1 = Arc::new(Mutex::new(Mempool::new(3600)));
         let mempool2 = Arc::new(Mutex::new(Mempool::new(3600)));
         let utxos1 = Arc::new(Mutex::new(HashMap::new()));
@@ -60,7 +60,7 @@ mod tests {
         let (tx2, rx2) = tokio::sync::mpsc::channel(100);
 
         let mut p2p1 = P2PServer::new(
-            "hyperdag",
+            "qantodag",
             vec![config1.p2p_address.clone()],
             config1.peers.clone(),
             dag1.clone(),
@@ -71,7 +71,7 @@ mod tests {
         .await
         .unwrap();
         let mut p2p2 = P2PServer::new(
-            "hyperdag",
+            "qantodag",
             vec![config2.p2p_address.clone()],
             config2.peers.clone(),
             dag2.clone(),
@@ -87,7 +87,7 @@ mod tests {
 
         sleep(Duration::from_secs(2)).await; // Wait for peers to connect
 
-        let block = HyperBlock {
+        let block = QantoBlock {
             chain_id: 0,
             id: "test_block".to_string(),
             parents: vec!["genesis_0".to_string()],
@@ -100,7 +100,7 @@ mod tests {
             cross_chain_references: vec![(1, "genesis_1".to_string())],
         };
 
-        tx1.send(hyperdag::p2p::P2PCommand::BroadcastBlock(block.clone()))
+        tx1.send(qanto::p2p::P2PCommand::BroadcastBlock(block.clone()))
             .await
             .unwrap();
 
@@ -121,7 +121,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_p2p_state_sync() {
-        let wallet = HyperWallet::new();
+        let wallet = Wallet::new();
         let config1 = Config {
             p2p_address: "/ip4/127.0.0.1/tcp/8085".to_string(),
             api_address: "0.0.0.0:9006".to_string(),
@@ -155,8 +155,8 @@ mod tests {
             p2p: Default::default(),
         };
 
-        let dag1 = Arc::new(Mutex::new(HyperDAG::new(&config1.genesis_validator, 30, 1, 2)));
-        let dag2 = Arc::new(Mutex::new(HyperDAG::new(&config2.genesis_validator, 30, 1, 2)));
+        let dag1 = Arc::new(Mutex::new(QantoDAG::new(&config1.genesis_validator, 30, 1, 2)));
+        let dag2 = Arc::new(Mutex::new(QantoDAG::new(&config2.genesis_validator, 30, 1, 2)));
         let mempool1 = Arc::new(Mutex::new(Mempool::new(3600)));
         let mempool2 = Arc::new(Mutex::new(Mempool::new(3600)));
         let utxos1 = Arc::new(Mutex::new(HashMap::new()));
@@ -179,7 +179,7 @@ mod tests {
         let (tx2, rx2) = tokio::sync::mpsc::channel(100);
 
         let mut p2p1 = P2PServer::new(
-            "hyperdag",
+            "qantodag",
             vec![config1.p2p_address.clone()],
             config1.peers.clone(),
             dag1.clone(),
@@ -190,7 +190,7 @@ mod tests {
         .await
         .unwrap();
         let mut p2p2 = P2PServer::new(
-            "hyperdag",
+            "qantodag",
             vec![config2.p2p_address.clone()],
             config2.peers.clone(),
             dag2.clone(),
@@ -207,7 +207,7 @@ mod tests {
         sleep(Duration::from_secs(2)).await; // Wait for peers to connect
 
         // Trigger state sync
-        tx2.send(hyperdag::p2p::P2PCommand::RequestState)
+        tx2.send(qanto::p2p::P2PCommand::RequestState)
             .await
             .unwrap();
 
@@ -227,7 +227,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_wallet_status_command() {
-        let wallet = HyperWallet::new();
+        let wallet = Wallet::new();
         let config = Config {
             p2p_address: "/ip4/127.0.0.1/tcp/8087".to_string(),
             api_address: "0.0.0.0:9008".to_string(),
@@ -245,7 +245,7 @@ mod tests {
             p2p: Default::default(),
         };
 
-        let node = hyperdag::node::Node::new(config).await.unwrap();
+        let node = qanto::node::Node::new(config).await.unwrap();
 
         let tx = Transaction::new(
             wallet.get_address(),
