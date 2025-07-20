@@ -311,8 +311,7 @@ async fn receive_transactions(node_url: &str, wallet_path: PathBuf) -> Result<()
     let client = Client::new();
     let mut known_tx_ids = HashSet::new();
     println!(
-        "\n📡 Listening for incoming transactions to {} (Press Ctrl+C to stop)...",
-        my_address
+        "\n📡 Listening for incoming transactions to {my_address} (Press Ctrl+C to stop)..."
     );
 
     loop {
@@ -364,7 +363,7 @@ async fn receive_transactions(node_url: &str, wallet_path: PathBuf) -> Result<()
 
 fn prompt_for_password(confirm: bool, prompt_text: &str) -> Result<SecretString, WalletError> {
     if !prompt_text.is_empty() {
-        println!("{}", prompt_text);
+        println!("{prompt_text}");
     }
     print!("Enter password: ");
     io::stdout().flush().map_err(WalletError::Io)?;
