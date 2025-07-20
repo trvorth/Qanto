@@ -23,7 +23,7 @@ jobs:
           toolchain: stable
 
       - name: Check formatting
-        run: cargo fmt --lib --bins -- --check
+        run: cargo fmt -p qanto -- --check
 
       - name: Check for common issues (Clippy)
         run: cargo clippy --workspace -- -D warnings
