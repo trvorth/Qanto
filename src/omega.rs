@@ -265,7 +265,6 @@ pub fn hash_for_block(block: &QantoBlock) -> H256 {
 mod tests {
     use super::*;
     use crate::omega::identity::{get_threat_level, set_threat_level};
-    use std::thread;
 
     #[tokio::test]
     async fn test_omega_initialization() {

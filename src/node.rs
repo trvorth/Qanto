@@ -1015,6 +1015,7 @@ mod tests {
             zk_enabled: false,
             mining_threads: 1,
             num_chains: 1,
+            mining_chain_id: 0,
             logging: LoggingConfig {
                 level: "debug".to_string(),
             },

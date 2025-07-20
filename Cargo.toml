@@ -134,7 +134,7 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "qanto"
-path = "src/main.rs"
+path = "src/bin/qanto.rs"
 
 [[bin]]
 name = "qantowallet"

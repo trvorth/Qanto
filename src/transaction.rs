@@ -554,18 +554,15 @@ mod tests {
             #[cfg(feature = "infinite-strata")]
             None,
         ));
-        let dag_arc = Arc::new(
-            QantoDAG::new(
-                &sender_address,
-                60000,
-                100,
-                1,
-                signing_key_bytes_slice,
-                saga_pallet,
-                rocksdb::DB::open_default("qantodag_db_test").unwrap(),
-            )
-            .await?,
-        );
+        let dag_arc = Arc::new(QantoDAG::new(
+            &sender_address,
+            60000,
+            100,
+            1,
+            signing_key_bytes_slice,
+            saga_pallet,
+            rocksdb::DB::open_default("qantodag_db_test").unwrap(),
+        )?);
 
         let utxos_arc_for_test = Arc::new(RwLock::new(initial_utxos_map));
         let utxos_read_guard = utxos_arc_for_test.read().await;
