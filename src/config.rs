@@ -172,14 +172,12 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
-        self.api_address
-            .parse::<SocketAddr>()
-            .map_err(|_| {
-                ConfigError::Validation(format!(
-                    "Invalid API address format: '{}'",
-                    self.api_address
-                ))
-            })?;
+        self.api_address.parse::<SocketAddr>().map_err(|_| {
+            ConfigError::Validation(format!(
+                "Invalid API address format: '{}'",
+                self.api_address
+            ))
+        })?;
 
         if !(MIN_TARGET_BLOCK_TIME..=MAX_TARGET_BLOCK_TIME).contains(&self.target_block_time) {
             return Err(ConfigError::Validation(format!(
