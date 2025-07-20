@@ -42,4 +42,4 @@ jobs:
           cargo build --bin qantowallet --verbose
 
       - name: Run tests (excluding examples)
-        run: cargo test --no-examples --verbose
+        run: cargo test --bins --lib --verbose

@@ -1,5 +1,5 @@
 //! --- Qanto Node Configuration ---
-//! v1.4.0 - High-Throughput Evolution
+//! v1.5.0 - Testnet Ready
 //! This module defines the configuration structure for a Qanto node.
 //! It uses serde for deserialization from a TOML file and includes
 //! robust validation logic to ensure that all configured parameters
@@ -16,7 +16,7 @@ use tracing::instrument;
 // --- Constants for Validation ---
 // EVOLVED: Time is now in MILLISECONDS to support high BPS.
 const MIN_TARGET_BLOCK_TIME: u64 = 25; // Minimum 25ms block time (~40 BPS)
-const MAX_TARGET_BLOCK_TIME: u64 = 10000; // Maximum 10 seconds (in ms)
+const MAX_TARGET_BLOCK_TIME: u64 = 60000; // Maximum 10 seconds (in ms)
 const MAX_PEERS: usize = 200;
 const MIN_DIFFICULTY: u64 = 1;
 const MAX_DIFFICULTY: u64 = 1_000_000_000;
@@ -88,27 +88,34 @@ pub struct P2pConfig {
 impl Default for P2pConfig {
     fn default() -> Self {
         Self {
-            heartbeat_interval: 500,
+            heartbeat_interval: 5000, // 5 seconds
             mesh_n_low: 4,
-            mesh_n: 6,
-            mesh_n_high: 12,
-            mesh_outbound_min: 2,
+            mesh_n: 8,
+            mesh_n_high: 16,
+            mesh_outbound_min: 4,
         }
     }
 }
 
+// --- Testnet Defaults ---
+// These values are used when a user starts a node without a config file,
+// ensuring they connect to the test network by default.
 impl Default for Config {
     fn default() -> Self {
         Self {
-            p2p_address: "/ip4/127.0.0.1/tcp/8008".to_string(),
+            p2p_address: "/ip4/0.0.0.0/tcp/8008".to_string(),
             api_address: "127.0.0.1:8080".to_string(),
+            // Default bootstrap nodes for the testnet can be added here.
             peers: vec![],
             local_full_p2p_address: None,
-            network_id: "qanto-mainnet".to_string(),
+            // Switched to the testnet identifier.
+            network_id: "qanto-testnet".to_string(),
             genesis_validator: "0000000000000000000000000000000000000000000000000000000000000000"
                 .to_string(),
-            target_block_time: 60000, // Default to 60 seconds (in ms)
-            difficulty: 100,
+            // A faster block time for testing purposes (15 seconds).
+            target_block_time: 15000,
+            // A lower difficulty for easier block mining on the testnet.
+            difficulty: 20,
             max_amount: 10_000_000_000,
             use_gpu: false,
             zk_enabled: false,
