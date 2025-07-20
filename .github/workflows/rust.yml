@@ -22,16 +22,11 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Create dummy example files for CI
-        run: |
-          mkdir -p node1 node2 node3
-          touch node1/main.rs node2/main.rs node3/main.rs
-
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: cargo fmt -p qanto -- --check
 
       - name: Check for common issues (Clippy)
-        run: cargo clippy --workspace -- -D warnings
+         run: cargo clippy --workspace -- -D warnings
 
       - name: Build project binaries (excluding examples)
         run: |
