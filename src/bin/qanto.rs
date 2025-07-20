@@ -95,9 +95,7 @@ async fn main() -> Result<()> {
 
             let db_path = "qantodag_db_evolved";
             if clean {
-                println!(
-                    "'--clean' flag detected. Removing old database directory: {db_path}"
-                );
+                println!("'--clean' flag detected. Removing old database directory: {db_path}");
                 if Path::new(db_path).exists() {
                     if let Err(e) = fs::remove_dir_all(db_path) {
                         eprintln!("Failed to remove database directory '{db_path}': {e}");

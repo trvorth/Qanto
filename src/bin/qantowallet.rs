@@ -310,9 +310,7 @@ async fn receive_transactions(node_url: &str, wallet_path: PathBuf) -> Result<()
     let my_address = wallet.address();
     let client = Client::new();
     let mut known_tx_ids = HashSet::new();
-    println!(
-        "\n📡 Listening for incoming transactions to {my_address} (Press Ctrl+C to stop)..."
-    );
+    println!("\n📡 Listening for incoming transactions to {my_address} (Press Ctrl+C to stop)...");
 
     loop {
         let dag_info_url = format!("{node_url}/dag");
