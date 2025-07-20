@@ -22,8 +22,15 @@ jobs:
         with:
           toolchain: stable
 
+      - name: Create formatted dummy example files for CI
+        run: |
+          mkdir -p node1 node2 node3
+          echo "fn main() {}" > node1/main.rs
+          echo "fn main() {}" > node2/main.rs
+          echo "fn main() {}" > node3/main.rs
+
       - name: Check formatting
-        run: cargo fmt -p qanto -- --check
+        run: cargo fmt --all -- --check
 
       - name: Check for common issues (Clippy)
         run: |
