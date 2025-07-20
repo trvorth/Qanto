@@ -1,5 +1,5 @@
 # ===============================================================
-# HyperChain :: Git Ignore File
+# Qanto :: Git Ignore File
 # ===============================================================
 
 # --- Binaries & Compiled Artifacts ---
@@ -46,9 +46,9 @@ Thumbs.db
 
 # --- Logs & Databases ---
 *.log
-/hyperdag_db/
-/hyperdag_db_evolved/
-/node*/**/hyperdag_db/
+/qantodag_db/
+/qantodag_db_evolved/
+/node*/**/qantodag_db/
 /peer_cache.json
 
 # --- Sensitive Information ---
@@ -75,7 +75,7 @@ node*/*.txt
 
 # --- Generated Project Files ---
 /header.tex
-/hyperchain-whitepaper.tex
+/Qanto-whitepaper.tex
 /mermaid-filter.err
 /scripts
 /docs/whitepaper/assets
