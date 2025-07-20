@@ -29,17 +29,14 @@ jobs:
           echo "fn main() {}" > node2/main.rs
           echo "fn main() {}" > node3/main.rs
 
-      - name: Check formatting
-        run: cargo fmt -p qanto - --check
+      - name: Check formatting for qanto package
+        run: cargo fmt -p qanto -- --check
 
       - name: Check for common issues (Clippy)
-        run: |
-          cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace -- -D warnings
 
-      - name: Build project binaries (excluding examples)
-        run: |
-          cargo build --bin qanto --verbose
-          cargo build --bin qantowallet --verbose
+      - name: Build project binaries
+        run: cargo build --workspace --verbose
 
-      - name: Run tests (excluding examples)
-        run: cargo test --bins --lib --verbose
+      - name: Run tests
+        run: cargo test --workspace --verbose
