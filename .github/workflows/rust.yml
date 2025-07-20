@@ -22,8 +22,11 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Check formatting 
-        run: cargo fmt --all -- --check
+      - name: Check formatting (using Nightly)
+        run: |
+          rustup toolchain install nightly
+          rustup component add rustfmt --toolchain nightly
+          cargo +nightly fmt --all -- --check
           
       - name: Check for common issues (Clippy)
         run: cargo clippy --workspace -- -D warnings
