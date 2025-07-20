@@ -8,18 +8,18 @@ license = "MIT"
 repository = "https://github.com/trvorth/qanto"
 
 [dependencies]
+# --- Homomorphic Encryption ---
+
 # --- SAGA AI & Machine Learning ---
 tch = { version = "0.14.0", optional = true }
 linfa = { version = "0.7.0", optional = true }
 linfa-trees = { version = "0.7.0", optional = true }
 ndarray = { version = "0.15.6", optional = true }
 
-# --- Homomorphic Encryption ---
-
-# Core blockchain and networking
+# --- Core Blockchain & Networking ---
 libp2p = { version = "0.55.0", features = ["full"] }
 futures = "0.3.30"
-tokio = { version = "1.38.0", features = ["full", "test-util", "rt-multi-thread", "time"] }
+tokio = { version = "1.38.0", features = ["full", "rt-multi-thread", "time"] }
 axum = { version = "0.7.5", features = ["macros", "ws"] }
 axum-server = "0.7.2"
 reqwest = { version = "0.12.5", features = ["json"] }
@@ -29,7 +29,8 @@ hyper = { version = "1.3.1", features = ["full"] }
 prost = "0.12.6"
 tonic = { version = "0.11.0", features = ["transport", "codegen", "prost"] }
 
-# Cryptography and security
+
+# --- Cryptography & Security ---
 sp-core = "36.1.0"
 tiny-keccak = { version = "2.0.2", features = ["sha3"] }
 getrandom = { version = "0.2", features = ["js"] }
@@ -62,7 +63,7 @@ elliptic-curve = { version = "0.13.8", features = ["serde"] }
 p256 = { version = "0.13.2", features = ["ecdsa", "serde"] }
 ecdsa = { version = "0.16.1", features = ["signing", "verifying"] }
 
-# Data handling and serialization
+# --- Data Handling & Serialization ---
 serde = { version = "1.0.203", features = ["derive"] }
 serde_json = "1.0.117"
 serde_bytes = "0.11.14"
@@ -76,7 +77,7 @@ dashmap = "5.5.3"
 regex = "1.10.5"
 nalgebra = "0.32.6"
 url = "2.5.2"
-uuid = { version = "1.8.0", features = ["v4", "serde"] }
+uuid = { version = "1.8.0", features = ["v4", "serde"] } # For NEURAL-VAULT GATT
 chrono = { version = "0.4.38", features = ["serde"] }
 sysinfo = "0.30.13"
 rayon = "1.10.0"
@@ -84,7 +85,7 @@ zstd = "0.13.1"
 bytes = "1.6.0"
 merkle-cbt = "0.3.2"
 
-# Error handling and CLI
+# --- Error Handling & CLI ---
 thiserror = "1.0.61"
 clap = { version = "4.5.4", features = ["derive"] }
 log = "0.4.21"
@@ -93,19 +94,19 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 indicatif = "0.18.0"
 
-# Rate limiting and backoff
+# --- Rate Limiting & Backoff ---
 governor = "0.6.3"
 nonzero_ext = "0.3.0"
 
-# Environment and secrets
+# --- Environment & Secrets ---
 dotenvy = "0.15.7"
 rpassword = "7.3.1"
 
-# Async traits
+# --- Async Traits ---
 async-trait = "0.1.80"
 tokio-util = { version = "0.7.11", features = ["compat"] }
 
-# Optional dependencies for ZK proofs and GPU
+# --- Optional Dependencies for ZK proofs & GPU ---
 bellman = { version = "0.14.0", optional = true }
 bls12_381 = { version = "0.8.0", optional = true }
 ff = { version = "0.13.0", optional = true }
@@ -121,6 +122,7 @@ tempfile = "3.10.1"
 serial_test = "2.0.0"
 criterion = "0.5.1"
 
+
 [features]
 default = []
 gpu = ["ocl"]
@@ -128,10 +130,12 @@ zk = ["bellman", "bls12_381", "ff"]
 ai = ["dep:tch"]
 infinite-strata = []
 
+# --- Main Library Definition ---
 [lib]
 name = "qanto"
 path = "src/lib.rs"
 
+# --- Main Executable Binaries ---
 [[bin]]
 name = "qanto"
 path = "src/bin/qanto.rs"
@@ -140,25 +144,18 @@ path = "src/bin/qanto.rs"
 name = "qantowallet"
 path = "src/bin/qantowallet.rs"
 
+# --- Utility & Test Binaries ---
 [[bin]]
 name = "import_wallet"
 path = "src/bin/import_wallet.rs"
 
 [[bin]]
-name = "start_node"
-path = "src/bin/start_node.rs"
-
-[[bin]]
-name = "qantodag_testnet"
-path = "src/qantodag_testnet.rs"
-
-[[bin]]
-name = "keygen"
-path = "src/keygen.rs"
-
-[[bin]]
 name = "monitor"
 path = "src/bin/monitor.rs"
+
+[[bin]]
+name = "omega_test"
+path = "src/bin/omega_test.rs"
 
 [[bin]]
 name = "qantonode1"
@@ -172,11 +169,10 @@ path = "node2/main.rs"
 name = "qantonode3"
 path = "node3/main.rs"
 
-[[bin]]
-name = "omega_test"
-path = "src/bin/omega_test.rs"
-
+# --- Build Profiles ---
 [profile.release]
-lto = true
-codegen-units = 1
-strip = true
+lto = true           # Enable Link-Time Optimization for whole-program optimization
+codegen-units = 1    # Maximize optimization potential at the cost of compile time
+strip = true         # Remove debugging symbols to reduce binary size
+panic = "abort"      # Abort on panic for smaller and faster binaries
+opt-level = 3        # The highest level of optimization

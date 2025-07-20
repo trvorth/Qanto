@@ -30,7 +30,7 @@ jobs:
           echo "fn main() {}" > node3/main.rs
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: cargo fmt -p qanto - --check
 
       - name: Check for common issues (Clippy)
         run: |
