@@ -73,9 +73,7 @@ fn prompt_for_password(confirm: bool) -> Result<SecretString, CliError> {
 async fn main() -> Result<()> {
     // Correctly initialize logging.
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .init();
+    tracing_subscriber::fmt().with_env_filter(filter).init();
 
     let cli = Cli::parse();
 
@@ -103,10 +101,7 @@ async fn main() -> Result<()> {
                 );
                 if Path::new(db_path).exists() {
                     if let Err(e) = fs::remove_dir_all(db_path) {
-                        eprintln!(
-                            "Failed to remove database directory '{}': {}",
-                            db_path, e
-                        );
+                        eprintln!("Failed to remove database directory '{}': {}", db_path, e);
                         std::process::exit(1);
                     }
                     println!("Database directory removed successfully.");
