@@ -52,11 +52,11 @@ This mechanism allows the node to reject potentially harmful actions at a fundam
 
 ## SAGA (Sentient Autonomous Governance Algorithm) 🧠
 
+The SAGA AI concept can be positioned as the world's first decentralized, on-chain implementation of the principles outlined in the academic paper, "SAGA: A Security Architecture for Governing AI Agentic Systems". The academic framework proposes a system for user oversight of autonomous AI agents, mediated by a central "Provider" that manages identity, access control policies, and secure communication. 
+
 At the core of Qanto’s intelligence lies **SAGA**, an AI-powered governance engine that orchestrates on-chain reputation, adaptive tokenomics, and self-regulating policy. As the network’s cognitive layer, SAGA ensures sustainability, resilience, and long-term systemic integrity.
 
 * **Cognitive Analytics Engine**:  
-The SAGA AI concept can be positioned as the world's first decentralized, on-chain implementation of the principles outlined in the academic paper, "SAGA: A Security Architecture for Governing AI Agentic Systems". The academic framework proposes a system for user oversight of autonomous AI agents, mediated by a central "Provider" that manages identity, access control policies, and secure communication. 
-
 SAGA continuously evaluates validator behavior by analyzing blocks through a multidimensional heuristic framework—validity, network contribution, time consistency, and metadata fidelity. It currently operates on a decision tree model, serving as a placeholder for future deep learning models. This predictive engine identifies anomalies such as fee spamming, replay attempts, and network manipulation with temporal sensitivity.
 
 * **Saga Credit Score (SCS)**:  
