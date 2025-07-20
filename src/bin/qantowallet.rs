@@ -7,8 +7,7 @@ use qanto::{
 };
 use reqwest::Client;
 use secrecy::SecretString;
-// No longer importing Deserialize since it's not directly used in this file's structs.
-use std::collections::{HashMap, HashSet}; // <--- FIX: Added HashSet here
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -82,7 +81,9 @@ async fn main() -> Result<()> {
             private_key,
         } => import_wallet(mnemonic, private_key).await,
         Commands::Balance { address } => get_balance(&cli.node_url, address).await,
-        Commands::Send { wallet, to, amount } => send_transaction(&cli.node_url, wallet, to, amount).await,
+        Commands::Send { wallet, to, amount } => {
+            send_transaction(&cli.node_url, wallet, to, amount).await
+        }
         Commands::Receive { wallet } => receive_transactions(&cli.node_url, wallet).await,
     };
 
@@ -122,7 +123,9 @@ async fn import_wallet(use_mnemonic: bool, use_private_key: bool) -> Result<()> 
         let key = prompt_for_input()?;
         Wallet::from_private_key(&key).context("Failed to import from private key")?
     } else {
-        return Err(anyhow!("You must specify either --mnemonic or --private-key."));
+        return Err(anyhow!(
+            "You must specify either --mnemonic or --private-key."
+        ));
     };
 
     println!("🏷️ GATT: Tagging wallet for Governance-Aware Transaction Tracking™...");
@@ -138,30 +141,56 @@ async fn get_balance(node_url: &str, address: String) -> Result<()> {
     let client = Client::new();
     let url = format!("{node_url}/balance/{address}");
 
-    let res = client.get(&url).send().await.context(format!("Failed to connect to node at {url}"))?;
+    let res = client
+        .get(&url)
+        .send()
+        .await
+        .context(format!("Failed to connect to node at {url}"))?;
     if res.status().is_success() {
-        let balance: u64 = res.json().await.context("Failed to parse balance from response")?;
+        let balance: u64 = res
+            .json()
+            .await
+            .context("Failed to parse balance from response")?;
         println!("\n💰 Balance: {balance} QNTO");
     } else {
-        let error_text = res.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let error_text = res
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
         return Err(anyhow!("Node returned an error: {}", error_text));
     }
     Ok(())
 }
 
-async fn send_transaction(node_url: &str, wallet_path: PathBuf, to: String, amount: u64) -> Result<()> {
+async fn send_transaction(
+    node_url: &str,
+    wallet_path: PathBuf,
+    to: String,
+    amount: u64,
+) -> Result<()> {
     println!("Preparing to send {amount} QNTO to address {to}");
     let password = prompt_for_password(false, "Enter password to unlock vault for sending:")?;
-    let wallet = Wallet::from_file(&wallet_path, &password).context(format!("Failed to load vault from '{}'", wallet_path.display()))?;
+    let wallet = Wallet::from_file(&wallet_path, &password).context(format!(
+        "Failed to load vault from '{}'",
+        wallet_path.display()
+    ))?;
     let sender_address = wallet.address();
     let client = Client::new();
 
     let utxo_url = format!("{node_url}/utxos/{sender_address}");
-    let res = client.get(&utxo_url).send().await.context("Failed to fetch UTXOs")?;
+    let res = client
+        .get(&utxo_url)
+        .send()
+        .await
+        .context("Failed to fetch UTXOs")?;
     if !res.status().is_success() {
-        return Err(anyhow!("Node failed to provide UTXOs: {}", res.text().await?));
+        return Err(anyhow!(
+            "Node failed to provide UTXOs: {}",
+            res.text().await?
+        ));
     }
-    let available_utxos: HashMap<String, UTXO> = res.json().await.context("Failed to parse UTXOs")?;
+    let available_utxos: HashMap<String, UTXO> =
+        res.json().await.context("Failed to parse UTXOs")?;
     if available_utxos.is_empty() {
         return Err(anyhow!("No funds available for address {}", sender_address));
     }
@@ -172,32 +201,73 @@ async fn send_transaction(node_url: &str, wallet_path: PathBuf, to: String, amou
     let mut inputs = vec![];
     let mut total_input_amount = 0;
     for (_utxo_id, utxo) in available_utxos {
-        if total_input_amount >= total_needed { break; }
+        if total_input_amount >= total_needed {
+            break;
+        }
         total_input_amount += utxo.amount;
-        inputs.push(Input { tx_id: utxo.tx_id, output_index: utxo.output_index });
+        inputs.push(Input {
+            tx_id: utxo.tx_id,
+            output_index: utxo.output_index,
+        });
     }
     if total_input_amount < total_needed {
-        return Err(anyhow!("Insufficient funds. Needed: {}, Available: {}", total_needed, total_input_amount));
+        return Err(anyhow!(
+            "Insufficient funds. Needed: {}, Available: {}",
+            total_needed,
+            total_input_amount
+        ));
     }
 
     let he_public_key = wallet.get_signing_key()?.verifying_key();
     let he_pub_key_material: &[u8] = he_public_key.as_bytes();
-    let mut outputs = vec![Output { address: to.clone(), amount, homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(amount, he_pub_key_material) }];
-    if dev_fee > 0 { outputs.push(Output { address: DEV_ADDRESS.to_string(), amount: dev_fee, homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(dev_fee, he_pub_key_material) }); }
+    let mut outputs = vec![Output {
+        address: to.clone(),
+        amount,
+        homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(
+            amount,
+            he_pub_key_material,
+        ),
+    }];
+    if dev_fee > 0 {
+        outputs.push(Output {
+            address: DEV_ADDRESS.to_string(),
+            amount: dev_fee,
+            homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(
+                dev_fee,
+                he_pub_key_material,
+            ),
+        });
+    }
     let change = total_input_amount - total_needed;
-    if change > 0 { outputs.push(Output { address: sender_address.clone(), amount: change, homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(change, he_pub_key_material) }); }
+    if change > 0 {
+        outputs.push(Output {
+            address: sender_address.clone(),
+            amount: change,
+            homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(
+                change,
+                he_pub_key_material,
+            ),
+        });
+    }
 
     let mut metadata_map = HashMap::new();
     metadata_map.insert("gatt_uuid".to_string(), Uuid::new_v4().to_string());
 
     let signing_key = wallet.get_signing_key()?;
     let tx_config = TransactionConfig {
-        sender: sender_address, receiver: to, amount, fee, inputs, outputs,
+        sender: sender_address,
+        receiver: to,
+        amount,
+        fee,
+        inputs,
+        outputs,
         signing_key_bytes: signing_key.as_bytes(),
         tx_timestamps: Arc::new(RwLock::new(HashMap::new())),
         metadata: Some(metadata_map),
     };
-    let tx = Transaction::new(tx_config).await.context("Failed to create transaction")?;
+    let tx = Transaction::new(tx_config)
+        .await
+        .context("Failed to create transaction")?;
     println!("Transaction created with ID: {}", tx.id);
 
     println!("🛡️ Anti-Malware TX Shield: Verifying transaction behavior...");
@@ -206,27 +276,44 @@ async fn send_transaction(node_url: &str, wallet_path: PathBuf, to: String, amou
 
     let tx_url = format!("{node_url}/transaction");
     println!("Broadcasting transaction to {tx_url}...");
-    let res = client.post(&tx_url).json(&tx).send().await.context("Failed to send transaction")?;
+    let res = client
+        .post(&tx_url)
+        .json(&tx)
+        .send()
+        .await
+        .context("Failed to send transaction")?;
 
     if res.status().is_success() {
-        let tx_id_response: String = res.json().await.context("Failed to parse transaction ID from response")?;
+        let tx_id_response: String = res
+            .json()
+            .await
+            .context("Failed to parse transaction ID from response")?;
         println!("\n✅ Transaction submitted successfully!");
         println!("   Transaction ID: {tx_id_response}");
     } else {
-        let error_text = res.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        let error_text = res
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
         return Err(anyhow!("Node rejected transaction: {}", error_text));
     }
     Ok(())
 }
 
 async fn receive_transactions(node_url: &str, wallet_path: PathBuf) -> Result<()> {
-    println!("Enter password to monitor incoming transactions for '{}':", wallet_path.display());
+    println!(
+        "Enter password to monitor incoming transactions for '{}':",
+        wallet_path.display()
+    );
     let password = prompt_for_password(false, "")?;
     let wallet = Wallet::from_file(&wallet_path, &password)?;
     let my_address = wallet.address();
     let client = Client::new();
-    let mut known_tx_ids = HashSet::new(); // HashSet is now declared and available
-    println!("\n📡 Listening for incoming transactions to {} (Press Ctrl+C to stop)...", my_address);
+    let mut known_tx_ids = HashSet::new();
+    println!(
+        "\n📡 Listening for incoming transactions to {} (Press Ctrl+C to stop)...",
+        my_address
+    );
 
     loop {
         let dag_info_url = format!("{node_url}/dag");
@@ -239,12 +326,21 @@ async fn receive_transactions(node_url: &str, wallet_path: PathBuf) -> Result<()
                                 if let Some(tip_id) = tip_id_val.as_str() {
                                     let block_url = format!("{node_url}/block/{tip_id}");
                                     if let Ok(block_res) = client.get(&block_url).send().await {
-                                        if let Ok(block) = block_res.json::<qanto::qantodag::QantoBlock>().await {
+                                        if let Ok(block) =
+                                            block_res.json::<qanto::qantodag::QantoBlock>().await
+                                        {
                                             for tx in block.transactions {
                                                 for output in tx.outputs.clone() {
-                                                    if output.address == my_address && !known_tx_ids.contains(&tx.id) {
-                                                        println!("\n✅ Incoming Transaction Received!");
-                                                        println!("   Amount: {} QNTO", output.amount);
+                                                    if output.address == my_address
+                                                        && !known_tx_ids.contains(&tx.id)
+                                                    {
+                                                        println!(
+                                                            "\n✅ Incoming Transaction Received!"
+                                                        );
+                                                        println!(
+                                                            "   Amount: {} QNTO",
+                                                            output.amount
+                                                        );
                                                         println!("   From: {}", tx.sender);
                                                         println!("   Transaction ID: {}", tx.id);
                                                         known_tx_ids.insert(tx.id.clone());
@@ -279,7 +375,9 @@ fn prompt_for_password(confirm: bool, prompt_text: &str) -> Result<SecretString,
         io::stdout().flush().map_err(WalletError::Io)?;
         let confirmation = rpassword::read_password().map_err(WalletError::Io)?;
         if password != confirmation {
-            return Err(WalletError::Passphrase("Passwords do not match.".to_string()));
+            return Err(WalletError::Passphrase(
+                "Passwords do not match.".to_string(),
+            ));
         }
     }
     Ok(SecretString::new(password))
