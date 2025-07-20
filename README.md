@@ -1,11 +1,8 @@
 # Qanto: A Formal Specification for a Heterogeneous, Post-Quantum Framework with Hybrid Consensus and Dynamic Sharding
 
-
-**A Heterogeneous, Post-Quantum DLT Framework**
-
 ![Qanto Banner](https://placehold.co/1200x300/1a1a2e/e0e0e0?text=Qanto)
 
-**Repository for the official Rust implementation of the Qanto Protocol.**  
+**Repository for the official Rust implementation of the Qanto Protocol, A Heterogeneous, Post-Quantum DLT Framework.**  
 
 **Author**: trvorth | **License**: MIT | **Status**: Phase 1 \- Foundation (In Progress)
 
@@ -225,7 +222,7 @@ Building on Windows requires the MSVC C++ toolchain and manual installation of R
     The Qanto node may be initiated by executing the `start_node` binary. The system will automatically load the configuration and wallet files.
     ```bash
     # You will be prompted for the wallet password
-    cargo run --release --features infinite-strata --bin Qanto -- start --config config.toml --wallet wallet.key
+    cargo run --release --features infinite-strata --bin qanto -- start --config config.toml --wallet wallet.key
     ```
     The operator will be prompted to supply the wallet passphrase, after which the node will initialize its services and commence network operations.
 4.  **Demonstrating the ΛΣ-ΩMEGA Module**
