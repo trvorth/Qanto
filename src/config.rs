@@ -181,36 +181,31 @@ impl Config {
 
         if !(MIN_TARGET_BLOCK_TIME..=MAX_TARGET_BLOCK_TIME).contains(&self.target_block_time) {
             return Err(ConfigError::Validation(format!(
-                "target_block_time (in ms) must be between {} and {}",
-                MIN_TARGET_BLOCK_TIME, MAX_TARGET_BLOCK_TIME
+                "target_block_time (in ms) must be between {MIN_TARGET_BLOCK_TIME} and {MAX_TARGET_BLOCK_TIME}"
             )));
         }
 
         if self.peers.len() > MAX_PEERS {
             return Err(ConfigError::Validation(format!(
-                "Number of peers cannot exceed {}",
-                MAX_PEERS
+                "Number of peers cannot exceed {MAX_PEERS}"
             )));
         }
 
         if !(MIN_DIFFICULTY..=MAX_DIFFICULTY).contains(&self.difficulty) {
             return Err(ConfigError::Validation(format!(
-                "Difficulty must be between {} and {}",
-                MIN_DIFFICULTY, MAX_DIFFICULTY
+                "Difficulty must be between {MIN_DIFFICULTY} and {MAX_DIFFICULTY}"
             )));
         }
 
         if self.mining_threads == 0 || self.mining_threads > MAX_MINING_THREADS {
             return Err(ConfigError::Validation(format!(
-                "mining_threads must be between 1 and {}",
-                MAX_MINING_THREADS
+                "mining_threads must be between 1 and {MAX_MINING_THREADS}"
             )));
         }
 
         if !(MIN_CHAINS..=MAX_CHAINS).contains(&self.num_chains) {
             return Err(ConfigError::Validation(format!(
-                "num_chains must be between {} and {}",
-                MIN_CHAINS, MAX_CHAINS
+                "num_chains must be between {MIN_CHAINS} and {MAX_CHAINS}"
             )));
         }
 
