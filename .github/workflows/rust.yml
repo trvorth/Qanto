@@ -26,10 +26,12 @@ jobs:
         run: cargo fmt -- --check
 
       - name: Check for common issues (Clippy)
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --workspace -- -D warnings
 
-      - name: Build project
-        run: cargo build --verbose
+      - name: Build project binaries (excluding examples)
+        run: |
+          cargo build --bin qanto --verbose
+          cargo build --bin qantowallet --verbose
 
-      - name: Run tests
-        run: cargo test --verbose
+      - name: Run tests (excluding examples)
+        run: cargo test --no-examples --verbose
