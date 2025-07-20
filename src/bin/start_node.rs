@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::Parser;
-use qanto::{config::Config, node::Node, wallet::Wallet};
 use log::{error, info, warn};
+use qanto::{config::Config, node::Node, wallet::Wallet};
 use secrecy::Secret;
 use std::path::Path;
 use std::sync::Arc;

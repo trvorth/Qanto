@@ -15,10 +15,10 @@
 // [!!] BUILD NOTE: The 'ai' feature requires the `tch` crate and a `libtorch` installation.
 // To enable, build with `cargo build --features ai`.
 
-use crate::qantodag::{QantoBlock, QantoDAG, MAX_TRANSACTIONS_PER_BLOCK};
 #[cfg(feature = "infinite-strata")]
 use crate::infinite_strata_node::InfiniteStrataNode;
 use crate::omega;
+use crate::qantodag::{QantoBlock, QantoDAG, MAX_TRANSACTIONS_PER_BLOCK};
 use crate::transaction::Transaction;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};

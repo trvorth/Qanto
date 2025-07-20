@@ -6,9 +6,9 @@
 //! resilient to network fluctuations.
 
 use crate::config::P2pConfig;
-use crate::qantodag::{QantoBlock, QantoDAG, LatticeSignature, UTXO};
 use crate::mempool::Mempool;
 use crate::node::PeerCache;
+use crate::qantodag::{LatticeSignature, QantoBlock, QantoDAG, UTXO};
 use crate::saga::CarbonOffsetCredential;
 use crate::transaction::Transaction;
 use futures::stream::StreamExt;

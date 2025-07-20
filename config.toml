@@ -4,21 +4,24 @@ api_address = "127.0.0.1:8081"
 network_id = "qanto-local-testnet"
 peers = []
 genesis_validator = "2119707c4caf16139cfb5c09c4dcc9bf9cfe6808b571c108d739f49cc14793b9"
-target_block_time = 60000
+# Target time for a new block in MILLISECONDS. 31ms = ~32 blocks per second.
+target_block_time = 31
 difficulty = 2
 max_amount = 10000000000
 use_gpu = false
 zk_enabled = false
 mining_threads = 4
-num_chains = 1
+# Increased initial chains to maximize parallelism for high TPS.
+num_chains = 32
 mining_chain_id = 0
 
 [logging]
 level = "info"
 
 [p2p]
-heartbeat_interval = 10000
-mesh_n = 4
-mesh_n_low = 2
-mesh_n_high = 8
-mesh_outbound_min = 2
+# Heartbeat interval in MILLISECONDS for faster network reaction times.
+heartbeat_interval = 500
+mesh_n = 8
+mesh_n_low = 6
+mesh_n_high = 16
+mesh_outbound_min = 4

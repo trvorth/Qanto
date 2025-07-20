@@ -6,11 +6,11 @@
 //! resolving a compilation error related to future types.
 
 use crate::config::{Config, ConfigError};
-use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError, UTXO};
 use crate::mempool::Mempool;
 use crate::miner::{Miner, MinerConfig, MiningError};
 use crate::omega::{self, reflect_on_action};
 use crate::p2p::{P2PCommand, P2PConfig, P2PError, P2PServer};
+use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError, UTXO};
 use crate::saga::{PalletSaga, SagaError};
 use crate::transaction::Transaction;
 use crate::wallet::Wallet;
@@ -274,9 +274,7 @@ impl Node {
                         amount: 100,
                         tx_id: genesis_id_convention,
                         output_index: 0,
-                        explorer_link: format!(
-                            "https://qantoblockexplorer.org/utxo/{utxo_id}"
-                        ),
+                        explorer_link: format!("https://qantoblockexplorer.org/utxo/{utxo_id}"),
                     },
                 );
             }

@@ -1,9 +1,9 @@
 //! --- Qanto QantoDAG Ledger ---
-//! v1.6.6 - Argument Order Fix
+//! v1.7.0 - High-Throughput Evolution
 
 use crate::emission::Emission;
 use crate::mempool::Mempool;
-use crate::miner::Miner; // Moved this import to match formatting suggestions
+use crate::miner::Miner;
 use crate::saga::{CarbonOffsetCredential, GovernanceProposal, PalletSaga, ProposalType};
 use crate::transaction::Transaction;
 use crate::wallet::Wallet;
@@ -35,7 +35,7 @@ pub const DEV_FEE_RATE: f64 = 0.0304;
 
 // --- INTERNAL CONSTANTS ---
 const FINALIZATION_DEPTH: u64 = 8;
-const SHARD_THRESHOLD: u32 = 3;
+const SHARD_THRESHOLD: u32 = 2; // EVOLVED: Lowered for more aggressive sharding
 const TEMPORAL_CONSENSUS_WINDOW: u64 = 600;
 const MAX_BLOCKS_PER_MINUTE: u64 = 15;
 const MIN_VALIDATOR_STAKE: u64 = 50;
@@ -302,7 +302,11 @@ impl fmt::Display for QantoBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let border = "═".repeat(90);
         writeln!(f, "╔{border}╗")?;
-        writeln!(f, "║ ⛓️  New Qanto Block Mined on Chain #{} ⛓️", self.chain_id)?;
+        writeln!(
+            f,
+            "║ ⛓️  New Qanto Block Mined on Chain #{} ⛓️",
+            self.chain_id
+        )?;
         writeln!(f, "╟{border}╢")?;
         writeln!(f, "║ 🆔 Block ID:      {}", self.id)?;
         writeln!(f, "║ 📅 Timestamp:     {}", self.timestamp)?;
@@ -640,7 +644,7 @@ impl QantoDAG {
                 "SOLO MINER: Successfully mined block with ID: {}",
                 mined_block.id
             );
-            println!("{mined_block}"); // Removed extra space based on format diff
+            println!("{mined_block}");
 
             match self.add_block(mined_block.clone(), &utxos).await {
                 Ok(true) => {
@@ -700,7 +704,6 @@ impl QantoDAG {
             return Ok(false);
         }
 
-        // FIX: Swapped the arguments to match the function definition.
         let anomaly_score = self
             .detect_anomaly_internal(&blocks_write_guard, &block)
             .await?;

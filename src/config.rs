@@ -1,5 +1,5 @@
 //! --- Qanto Node Configuration ---
-//! v1.3.0 - Hardened & Validated
+//! v1.4.0 - High-Throughput Evolution
 //! This module defines the configuration structure for a Qanto node.
 //! It uses serde for deserialization from a TOML file and includes
 //! robust validation logic to ensure that all configured parameters
@@ -14,8 +14,9 @@ use thiserror::Error;
 use tracing::instrument;
 
 // --- Constants for Validation ---
-const MIN_TARGET_BLOCK_TIME: u64 = 10;
-const MAX_TARGET_BLOCK_TIME: u64 = 300;
+// EVOLVED: Time is now in MILLISECONDS to support high BPS.
+const MIN_TARGET_BLOCK_TIME: u64 = 25; // Minimum 25ms block time (~40 BPS)
+const MAX_TARGET_BLOCK_TIME: u64 = 10000; // Maximum 10 seconds (in ms)
 const MAX_PEERS: usize = 200;
 const MIN_DIFFICULTY: u64 = 1;
 const MAX_DIFFICULTY: u64 = 1_000_000_000;
@@ -106,7 +107,7 @@ impl Default for Config {
             network_id: "qanto-mainnet".to_string(),
             genesis_validator: "0000000000000000000000000000000000000000000000000000000000000000"
                 .to_string(),
-            target_block_time: 60,
+            target_block_time: 60000, // Default to 60 seconds (in ms)
             difficulty: 100,
             max_amount: 10_000_000_000,
             use_gpu: false,
@@ -182,7 +183,7 @@ impl Config {
 
         if !(MIN_TARGET_BLOCK_TIME..=MAX_TARGET_BLOCK_TIME).contains(&self.target_block_time) {
             return Err(ConfigError::Validation(format!(
-                "target_block_time must be between {} and {}",
+                "target_block_time (in ms) must be between {} and {}",
                 MIN_TARGET_BLOCK_TIME, MAX_TARGET_BLOCK_TIME
             )));
         }

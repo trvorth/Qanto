@@ -21,6 +21,7 @@
 
 use crate::qantodag::QantoBlock;
 use once_cell::sync::Lazy;
+use rand::Rng;
 use sp_core::H256;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -28,7 +29,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 use tracing::{debug, instrument, warn}; // Removed 'info' from here
-use rand::Rng;
 
 // --- Core ΩMEGA Constants ---
 const IDENTITY_STATE_SIZE: usize = 16; // Used for initial identity hash generation
@@ -93,8 +93,8 @@ pub mod identity {
 /// In a real system, this would interact with a more complex simulation environment.
 pub mod simulation {
     use super::*;
-    use tracing::info; // 'info' is used here, so it's imported locally
-    use tokio::time::sleep; // Import sleep for tokio::time::sleep
+    use tokio::time::sleep;
+    use tracing::info; // 'info' is used here, so it's imported locally // Import sleep for tokio::time::sleep
 
     #[instrument]
     pub async fn run_simulation() {
@@ -112,7 +112,6 @@ pub mod simulation {
         info!("ΩMEGA internal simulation complete.");
     }
 }
-
 
 impl OmegaState {
     /// Initializes a new ΩMEGA state with high initial entropy.
@@ -149,9 +148,8 @@ impl OmegaState {
         // **CRITICAL STABILITY CHECK**:
         // The stability metric combines current entropy, future entropy, and the rate of recent actions.
         // A stable action should not drastically reduce entropy or occur during a rapid flood of other actions.
-        let stability_metric = (self.current_entropy * 0.4)
-            + (next_entropy * 0.6)
-            - (temporal_density * 1.5);
+        let stability_metric =
+            (self.current_entropy * 0.4) + (next_entropy * 0.6) - (temporal_density * 1.5);
 
         debug!(
             "Ω-Reflect: Stability Metric = {:.4} (Current Entropy: {:.4}, Next Entropy: {:.4}, Temporal Density: {:.4})",
@@ -266,13 +264,16 @@ pub fn hash_for_block(block: &QantoBlock) -> H256 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::thread;
     use crate::omega::identity::{get_threat_level, set_threat_level};
+    use std::thread;
 
     #[tokio::test]
     async fn test_omega_initialization() {
         let state = OMEGA_STATE.lock().await;
-        assert!(state.current_entropy > 4.0, "Initial entropy should be high");
+        assert!(
+            state.current_entropy > 4.0,
+            "Initial entropy should be high"
+        );
         assert_eq!(state.action_history.len(), 0);
     }
 
@@ -287,7 +288,10 @@ mod tests {
 
         let action = H256::random();
         let result = reflect_on_action(action).await;
-        assert!(result, "A single, random action should be considered stable");
+        assert!(
+            result,
+            "A single, random action should be considered stable"
+        );
 
         let state = OMEGA_STATE.lock().await;
         assert_eq!(state.action_history.len(), 1);
@@ -324,7 +328,10 @@ mod tests {
             "A rapid flood of similar actions should eventually be deemed unstable"
         );
         // Verify threat level escalation
-        assert!(get_threat_level().await > ThreatLevel::Nominal, "Threat level should escalate after unstable actions");
+        assert!(
+            get_threat_level().await > ThreatLevel::Nominal,
+            "Threat level should escalate after unstable actions"
+        );
     }
 
     #[tokio::test]

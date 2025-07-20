@@ -1,13 +1,13 @@
 pub mod config;
 pub mod consensus;
 pub mod emission;
-pub mod qantodag;
 pub mod keygen;
 pub mod mempool;
 pub mod miner;
 pub mod node;
 pub mod omega;
 pub mod p2p;
+pub mod qantodag;
 pub mod saga;
 pub mod transaction;
 pub mod wallet;

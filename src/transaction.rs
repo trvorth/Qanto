@@ -1,5 +1,5 @@
-use crate::qantodag::{HomomorphicEncrypted, QantoDAG, LatticeSignature, UTXO};
 use crate::omega;
+use crate::qantodag::{HomomorphicEncrypted, LatticeSignature, QantoDAG, UTXO};
 use hex;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak512};

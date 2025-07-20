@@ -7,8 +7,8 @@
 
 use anyhow::Result;
 use qanto::{
-    qantodag::{QantoDAG, UTXO, HomomorphicEncrypted},
     mempool::Mempool,
+    qantodag::{HomomorphicEncrypted, QantoDAG, UTXO},
     saga::{CarbonOffsetCredential, PalletSaga},
     transaction::{Input, Output, Transaction, TransactionConfig},
     wallet::Wallet,

@@ -1,9 +1,9 @@
 use anyhow::Result;
 use ed25519_dalek::SigningKey;
+use log::info;
 use qanto::config::Config;
 use qanto::node::Node;
 use qanto::wallet::Wallet;
-use log::info;
 use rand::rngs::OsRng;
 use std::env;
 use std::fs;
