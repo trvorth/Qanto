@@ -15,6 +15,7 @@
 *.ll
 *.bc
 
+# --- Qanto-specific files ---
 /target/
 /bin/
 /pkg/
@@ -22,6 +23,8 @@
 /key.pem
 /sync_wallet.sh
 node*/cert.pem
+/filter_sensitive_commits.py
+/integrate_isnm.sh
 
 # --- IDE & Editor Files ---
 .idea/
@@ -88,7 +91,6 @@ node*/*.txt
 /node1
 /node2
 /node3
-/integrate_isnm.sh
 /hydra_manifest.toml
 /traceforce_watchlist.csv
 
