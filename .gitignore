@@ -89,6 +89,8 @@ node*/*.txt
 /node2
 /node3
 /integrate_isnm.sh
+/hydra_manifest.toml
+/traceforce_watchlist.csv
 
 # --- Language & Framework Specific ---
 # Python
