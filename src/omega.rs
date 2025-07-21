@@ -108,6 +108,12 @@ pub mod simulation {
     }
 }
 
+impl Default for OmegaState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OmegaState {
     /// Initializes a new ΩMEGA state with high initial entropy.
     pub fn new() -> Self {
