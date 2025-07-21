@@ -452,6 +452,7 @@ impl Drop for Transaction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::omega::{self, identity::set_threat_level, identity::ThreatLevel, OmegaState};
     use crate::qantodag::QantoDAG;
     use crate::saga::PalletSaga;
     use crate::wallet::Wallet;
@@ -461,8 +462,17 @@ mod tests {
     #[serial]
     async fn test_transaction_creation_and_verification() -> Result<(), Box<dyn std::error::Error>>
     {
-        if std::path::Path::new("qantodag_db").exists() {
-            std::fs::remove_dir_all("qantodag_db")?;
+        // **FIX**: Reset the OMEGA_STATE to ensure a clean slate for this test.
+        {
+            let mut state = omega::OMEGA_STATE.lock().await;
+            *state = OmegaState::new();
+            set_threat_level(ThreatLevel::Nominal);
+        }
+
+        // **FIX**: Ensure the correct database directory is cleaned up before the test runs.
+        let db_path = "qantodag_db_test";
+        if std::path::Path::new(db_path).exists() {
+            std::fs::remove_dir_all(db_path)?;
         }
 
         let wallet = Arc::new(Wallet::new()?);
@@ -474,7 +484,7 @@ mod tests {
 
         let amount_to_receiver = 50;
         let fee = 5;
-        let dev_fee_on_transfer = (amount_to_receiver as f64 * 0.0304).round() as u64; // Using a hardcoded value for test consistency
+        let dev_fee_on_transfer = (amount_to_receiver as f64 * 0.0304).round() as u64;
 
         let mut initial_utxos_map = HashMap::new();
         let input_utxo_amount = amount_to_receiver + fee + dev_fee_on_transfer + 10;
@@ -561,7 +571,7 @@ mod tests {
             1,
             signing_key_bytes_slice,
             saga_pallet,
-            rocksdb::DB::open_default("qantodag_db_test").unwrap(),
+            rocksdb::DB::open_default(db_path).unwrap(),
         )?);
 
         let utxos_arc_for_test = Arc::new(RwLock::new(initial_utxos_map));

@@ -626,7 +626,7 @@ impl CognitiveAnalyticsEngine {
                 }
             }
         }
-        (1.0 - (suspicious_tx_count / tx_count)).max(0.0)
+        (1.0 - (suspicious_tx_count / tx_count)).max(0.0f64)
     }
 
     #[cfg(feature = "ai")]
