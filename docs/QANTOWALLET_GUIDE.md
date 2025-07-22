@@ -117,16 +117,16 @@ Confirm password:
 
 ## 4. Using a Custom Wallet Path
 
-By default, the wallet file is named `wallet.key`. You can specify a different name or location for any of the commands using the `--wallet-path` flag.
+By default, the wallet file is named `wallet.key`. You can specify a different name or location for any of the commands using the `--wallet` flag.
 
-**Example: Generate a wallet named `my_qanto_backup.wallet`**
+**Example: Generate a wallet named `my_qanto_backup.wallet`** 
 ```bash
-cargo run --bin qantowallet -- generate --wallet-path my_qanto_backup.wallet
+cargo run --bin qantowallet -- generate --wallet my_qanto_backup.wallet
 ```
 
 **Example: Get info from a custom wallet file**
 ```bash
-cargo run --bin qantowallet -- info --wallet-path my_qanto_backup.wallet
+cargo run --bin qantowallet -- show-keys --wallet my_qanto_backup.wallet
 ```
 
 **Example: Import a wallet to a custom file**
