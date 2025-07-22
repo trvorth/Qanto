@@ -520,7 +520,7 @@ mod tests {
         }];
         if dev_fee_on_transfer > 0 {
             outputs_for_tx.push(Output {
-                address: "2119707c4caf16139cfb5c09c4dcc9bf9cfe6808b571c108d739f49cc14793b9"
+                address: "74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41"
                     .to_string(), // DEV_ADDRESS
                 amount: dev_fee_on_transfer,
                 homomorphic_encrypted: HomomorphicEncrypted::new(

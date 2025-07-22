@@ -6,7 +6,7 @@ use qanto::{
     wallet::{Wallet, WalletError},
 };
 use reqwest::Client;
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -15,7 +15,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 // --- NEURAL-VAULT™ Constants ---
-const DEV_ADDRESS: &str = "2119707c4caf16139cfb5c09c4dcc9bf9cfe6808b571c108d739f49cc14793b9";
+const DEV_ADDRESS: &str = "74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41";
 const DEV_FEE_RATE: f64 = 0.0304;
 
 // --- CLI Structure for NEURAL-VAULT™ ---
@@ -40,6 +40,11 @@ enum Commands {
     Gen {
         #[arg(short, long, value_name = "OUTPUT_FILE", default_value = "wallet.key")]
         output: PathBuf,
+    },
+    /// [show-keys] Reveals the private key and mnemonic of a wallet.
+    ShowKeys {
+        #[arg(short, long, value_name = "WALLET_FILE", default_value = "wallet.key")]
+        wallet: PathBuf,
     },
     /// [import] Imports a wallet from a mnemonic or private key.
     Import {
@@ -76,6 +81,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let result = match cli.command {
         Commands::Gen { output } => generate_wallet(output).await,
+        Commands::ShowKeys { wallet } => show_keys(wallet).await,
         Commands::Import {
             mnemonic,
             private_key,
@@ -108,7 +114,40 @@ async fn generate_wallet(output: PathBuf) -> Result<()> {
     println!("\n✅ NEURAL-VAULT™ Generated Successfully!");
     println!("   Address (Ed25519): {}", new_wallet.address());
     println!("   Saved to: {}", output.display());
-    println!("\n⚠️ CRITICAL: Securely back up your mnemonic phrase. It is the only way to recover your vault.");
+    println!("\n⚠️ CRITICAL: The mnemonic phrase is the ONLY way to recover your vault.");
+    println!("   Use the 'show-keys' command to view and securely back it up now.");
+    Ok(())
+}
+
+async fn show_keys(wallet_path: PathBuf) -> Result<()> {
+    if !wallet_path.exists() {
+        return Err(anyhow::anyhow!(
+            "Wallet file not found at: {:?}",
+            wallet_path
+        ));
+    }
+
+    println!("Enter password to decrypt wallet:");
+    let password = prompt_for_password(false, "")?;
+
+    println!("🔓 Decrypting NEURAL-VAULT™...");
+    let loaded_wallet = Wallet::from_file(&wallet_path, &password).map_err(|e| {
+        anyhow::anyhow!("Failed to decrypt vault. Check your password. Error: {}", e)
+    })?;
+
+    let private_key_hex = hex::encode(loaded_wallet.get_signing_key()?.to_bytes());
+    let mnemonic_phrase = loaded_wallet.mnemonic().expose_secret();
+
+    println!("\n--- ⚠️  SECURITY WARNING ⚠️ ---");
+    println!("NEVER share your private key or mnemonic phrase with anyone.");
+    println!("Exposing this information WILL result in the permanent loss of your funds.");
+    println!("----------------------------------------------------------");
+    println!("Wallet File:     {wallet_path:?}");
+    println!("Public Address:  {}", loaded_wallet.address());
+    println!("Private Key:     {private_key_hex}");
+    println!("Mnemonic Phrase: {mnemonic_phrase}");
+    println!("----------------------------------------------------------\n");
+
     Ok(())
 }
 

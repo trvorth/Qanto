@@ -30,7 +30,7 @@ use uuid::Uuid;
 // --- PUBLIC CONSTANTS ---
 pub const MAX_BLOCK_SIZE: usize = 20_000_000;
 pub const MAX_TRANSACTIONS_PER_BLOCK: usize = 25_000;
-pub const DEV_ADDRESS: &str = "2119707c4caf16139cfb5c09c4dcc9bf9cfe6808b571c108d739f49cc14793b9";
+pub const DEV_ADDRESS: &str = "74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41";
 pub const DEV_FEE_RATE: f64 = 0.0304;
 
 // --- INTERNAL CONSTANTS ---

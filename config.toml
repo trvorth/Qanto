@@ -1,25 +1,71 @@
+# Qanto Node Configuration
+#
+# This file configures the Qanto node's behavior, from network settings to
+# consensus parameters. It's designed for high-throughput and flexible deployments.
+
+# --- Network Configuration ---
+# The p2p_address is a multiaddress that specifies the node's listening address
+# for peer-to-peer communication. It can be any valid libp2p multiaddress,
+# supporting various protocols like TCP, QUIC, etc.
 p2p_address = "/ip4/0.0.0.0/tcp/8001"
+
+# The local_full_p2p_address is the node's full multiaddress, including its PeerId.
+# This value is automatically generated and saved on first startup.
+# Example: "/ip4/0.0.0.0/tcp/8001/p2p/12D3KooWJXhhf8xDm8XH1CSBjLbemw7H384NQZwuexiRvqqFgZhC"
 local_full_p2p_address = "/ip4/0.0.0.0/tcp/8001/p2p/12D3KooWJXhhf8xDm8XH1CSBjLbemw7H384NQZwuexiRvqqFgZhC"
+
+# The api_address specifies the listening address for the node's HTTP API.
+# It can be any valid socket address.
 api_address = "127.0.0.1:8081"
+
+# The network_id is a unique identifier for the Qanto network.
+# Nodes with different network_ids will not connect to each other.
 network_id = "qanto-local-testnet"
+
+# The peers list contains the multiaddresses of other nodes to connect to on startup.
 peers = []
-genesis_validator = "2119707c4caf16139cfb5c09c4dcc9bf9cfe6808b571c108d739f49cc14793b9"
-# Target time for a new block in MILLISECONDS. 31ms = ~32 blocks per second.
+
+# --- Consensus & DAG Configuration ---
+# The genesis_validator is the public key of the first validator in the network.
+genesis_validator = "74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41"
+
+# The target_block_time is the desired time between blocks in milliseconds.
+# A lower value will result in higher throughput, but may increase the number of forks.
+# 31ms = ~32 blocks per second.
 target_block_time = 31
+
+# The difficulty is the initial difficulty of the Proof-of-Work algorithm.
 difficulty = 2
+
+# The max_amount is the maximum amount of tokens that can be created.
 max_amount = 10000000000
+
+# --- Performance & Hardware ---
+# Set to true to enable GPU mining.
 use_gpu = false
+
+# Set to true to enable ZK-proof generation and verification.
 zk_enabled = false
+
+# The number of threads to use for mining.
 mining_threads = 4
-# Increased initial chains to maximize parallelism for high TPS.
+
+# --- Sharding & Scaling ---
+# The initial number of chains (shards) in the QantoDAG.
+# More chains can increase parallelism and throughput.
 num_chains = 32
+
+# The chain ID that this node will mine on.
 mining_chain_id = 0
 
+# --- Logging & P2P Internals ---
 [logging]
+# The logging level for the node.
+# Can be "trace", "debug", "info", "warn", or "error".
 level = "info"
 
 [p2p]
-# Heartbeat interval in MILLISECONDS for faster network reaction times.
+# The heartbeat interval in milliseconds for the gossipsub protocol.
 heartbeat_interval = 500
 mesh_n = 8
 mesh_n_low = 6
