@@ -131,7 +131,7 @@ cargo run --bin qantowallet -- show-keys --wallet my_qanto_backup.wallet
 
 **Example: Import a wallet to a custom file**
 ```bash
-cargo run --bin qantowallet -- import --mnemonic "your phrase..." --wallet-path my_imported.wallet
+cargo run --bin qantowallet -- import --mnemonic "your phrase..." --wallet my_imported_wallet.key
 ```
 
 This guide covers all the essential functions of the `qantowallet` CLI. With these commands, you have complete control over your Qanto wallets in a secure and straightforward way.
