@@ -19,7 +19,7 @@ Please provide a brief description of the changes in this pull request.
 
 ## Checklist
 
-- [ ] Code follows HyperChain's style guidelines.
+- [ ] Code follows Qanto's style guidelines.
 - [ ] Changes have been tested locally.
 - [ ] Documentation has been updated (if applicable).
 - [ ] Security implications have been considered (e.g., IDS integration, cryptography).

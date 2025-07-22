@@ -1,5 +1,5 @@
 name: Feature Request
-description: Suggest a new feature for HyperChain.
+description: Suggest a new feature for Qanto.
 title: "[FEATURE] <title>"
 labels: ["enhancement", "triage"]
 body:
@@ -28,7 +28,7 @@ body:
     attributes:
       label: Rationale
       description: Why is this feature important? Include use cases if possible.
-      placeholder: Explain the benefit to HyperChain or its users.
+      placeholder: Explain the benefit to Qanto or its users.
     validations:
       required: true
   - type: textarea
@@ -36,4 +36,3 @@ body:
     attributes:
       label: Additional Context
       description: Add any other context or screenshots about the feature request.
-

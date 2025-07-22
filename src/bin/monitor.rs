@@ -49,7 +49,7 @@ async fn main() {
         // Clear the console screen for a clean display on each update.
         print!("\x1B[2J\x1B[1;1H");
 
-        println!("--- HyperChain Global Testnet Monitor (API) ---");
+        println!("--- QantoChain Global Testnet Monitor (API) ---");
         println!(
             "{:<22} | {:<20} | {:<15}",
             "Node", "Peer ID", "Total Blocks"

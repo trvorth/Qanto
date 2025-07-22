@@ -15,7 +15,7 @@ How to report a vulnerability, where to go, how often can expect to get an updat
 ### Reporting Process
 Qanto welcomes responsible disclosure of security vulnerabilities to strengthen the protocol. To report a vulnerability, please follow these steps:
 
-1. **Contact the Security Team**: Until a dedicated security email is established, submit reports via a GitHub issue marked as "confidential" in the [Qanto repository](https://github.com/trvorth/Qanto/issues/new?assignees=&labels=confidential&template=security_issue.md). Include a clear description of the issue, the affected component (e.g., `hyperdag.rs`, `consensus.rs`), steps to reproduce, potential impact, and any proposed mitigation.
+1. **Contact the Security Team**: Until a dedicated security email is established, submit reports via a GitHub issue marked as "confidential" in the [Qanto repository](https://github.com/trvorth/qanto/issues/new?assignees=&labels=confidential&template=security_issue.md). Include a clear description of the issue, the affected component (e.g., `qantodag.rs`, `consensus.rs`), steps to reproduce, potential impact, and any proposed mitigation.
 2. **Provide Details**: Ensure your report includes sufficient technical detail to allow our team to assess the issue.
 3. **Confidentiality**: Do not disclose the vulnerability publicly until it has been addressed. We will treat all reports with strict confidentiality.
 

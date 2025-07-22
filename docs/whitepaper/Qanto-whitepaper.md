@@ -10,7 +10,7 @@
 
 The prevailing paradigm of distributed ledger technology (DLT), based on linear-chain blockchain architectures, confronts fundamental impediments to scalability and is subject to existential threats from the development of quantum computers. This research paper presents the formal specification of Qanto, a novel DLT framework engineered to resolve this dual challenge.
 
-The primary contribution of this work is the rigorous architectural synthesis of several key components, substantiated by a reference implementation. We define a **heterogeneous multi-chain architecture** that supports two distinct, interoperable ledger models: (1) a set of high-throughput **Dynamic DAG Shards** based on a Directed Acyclic Graph (DAG) structure, which we term the **HyperDAG**, facilitating parallel transaction processing and featuring a novel mechanism for dynamic shard creation based on network load; and (2) a series of independent **Execution Chains**, designed for specific applications and secured by a unique weighted Proof-of-Work consensus.
+The primary contribution of this work is the rigorous architectural synthesis of several key components, substantiated by a reference implementation. We define a **heterogeneous multi-chain architecture** that supports two distinct, interoperable ledger models: (1) a set of high-throughput **Dynamic DAG Shards** based on a Directed Acyclic Graph (DAG) structure, which we term the **QantoDAG**, facilitating parallel transaction processing and featuring a novel mechanism for dynamic shard creation based on network load; and (2) a series of independent **Execution Chains**, designed for specific applications and secured by a unique weighted Proof-of-Work consensus.
 
 Consensus across the framework is achieved via a multi-layered hybrid protocol, enhanced by the **SAGA-AI governed Node Mining Add-on**, a Sentient Autonomous Governance Algorithm that optimizes miner behavior and network efficiency. Block proposal remains permissionless through Proof-of-Work (PoW), while deterministic finality is provided by a Proof-of-Stake (PoS) based validator overlay that finalizes checkpoints for all constituent chains. Security is further enhanced by an on-chain **Intrusion Detection System (IDS)** with economic slashing penalties, the **ΛΣ-ΩMEGA™** post-quantum cryptographic framework, and the native integration of a **post-quantum lattice-based signature scheme**, modeled after the NIST standard CRYSTALS-Dilithium, for all validator attestations. We also integrate **Zero-Knowledge Succinct Non-Interactive Arguments of Knowledge (ZK-SNARKs)** for a robust optional privacy layer. The **X-PHYRUS™ Protocol Stack** provides a secure and scalable networking layer, optimizing peer-to-peer communication for high-throughput environments.
 
@@ -32,15 +32,15 @@ However, few protocols have attempted a holistic synthesis of these solutions fr
 
 This whitepaper outlines the technical innovations that make Qanto possible:
 
-* **A Heterogeneous Architectural Framework:** Combining high-throughput **HyperDAG** shards with specialized **Execution Chains**.
+* **A Heterogeneous Architectural Framework:** Combining high-throughput **QantoDAG** shards with specialized **Execution Chains**.
 * **A Hybrid Consensus Protocol with SAGA-AI:** Merging permissionless PoW for block proposals with deterministic PoS for finality, enhanced by the Sentient Autonomous Governance Algorithm (SAGA-AI) for optimized node mining.
 * **A Comprehensive Cryptographic Suite with ΛΣ-ΩMEGA™:** Integrating post-quantum signatures, ZK-SNARKs, and the ΛΣ-ΩMEGA™ framework for enhanced security.
 * **An Incentive-Compatible Economic Model:** Designed for long-term network health and sustainable development.
 * **A Scalable Networking Layer with X-PHYRUS™:** Leveraging the X-PHYRUS™ Protocol Stack for robust and efficient peer-to-peer communication.
 
-![HyperDAG Structure](./docs/whitepaper/assets/diagrams/Qanto_solution_overview.png)
+![QantoDAG Structure](./docs/whitepaper/assets/diagrams/Qanto_solution_overview.png)
 
-![HyperDAG Structure](./docs/whitepaper/assets/diagrams/Qanto_advanced_comparison.png)
+![QantoDAG Structure](./docs/whitepaper/assets/diagrams/Qanto_advanced_comparison.png)
 
 This paper proceeds by presenting the formal architectural specification of the Qanto framework (Section 2), its multi-layered hybrid consensus protocol with SAGA-AI (Section 3), its comprehensive cryptographic suite with ΛΣ-ΩMEGA™ (Section 4), its economic model (Section 5), its P2P network with X-PHYRUS™ and governance model (Section 6), a discussion of use cases, implementation, and roadmap (Section 7), and concludes with a summary and directions for future research (Section 8).
 
@@ -54,16 +54,16 @@ The core design philosophy of Qanto is that a single, monolithic ledger architec
 
 The framework supports two primary types of constituent chains, both managed within the unified protocol core:
 
-* **Dynamic DAG Shards (HyperDAGs):** Structured as Directed Acyclic Graphs to maximize transactional throughput via parallel block processing. They are optimized for high-frequency, simple value transfers. We refer to our specific DAG implementation as the **HyperDAG**.
+* **Dynamic DAG Shards (QantoDAGs):** Structured as Directed Acyclic Graphs to maximize transactional throughput via parallel block processing. They are optimized for high-frequency, simple value transfers. We refer to our specific DAG implementation as the **QantoDAG**.
 * **Execution Chains:** These are independent, linearly-ordered chains designed to support more complex operations or specific applications, potentially including Turing-complete smart contracts, and are secured by their own unique consensus mechanism.
 
-### **2.3. Specification: Dynamic DAG Shards (The HyperDAG)**
+### **2.3. Specification: Dynamic DAG Shards (The QantoDAG)**
 
-The core innovation for high-throughput transactions in Qanto is the **HyperDAG**. Unlike a linear blockchain, a HyperDAG is a directed acyclic graph where each new block (a HyperBlock) can reference and confirm multiple parent blocks. This creates a multi-dimensional, interwoven mesh of transactions, rather than a single file line.
+The core innovation for high-throughput transactions in Qanto is the **QantoDAG**. Unlike a linear blockchain, a QantoDAG is a directed acyclic graph where each new block (a QantoBlock) can reference and confirm multiple parent blocks. This creates a multi-dimensional, interwoven mesh of transactions, rather than a single file line.
 
-![HyperDAG Structure](./docs/whitepaper/assets/diagrams/hyperdag.png)
+![QantoDAG Structure](./docs/whitepaper/assets/diagrams/Qantodag.png)
 
-#### **2.3.1. Key Advantages of the HyperDAG Structure**
+#### **2.3.1. Key Advantages of the QantoDAG Structure**
 
 1. **Massive Scalability:** By allowing blocks to be added in parallel, the network's throughput is not limited by a global block creation rate. The more participants, the more transactions can be processed simultaneously.
 
@@ -71,11 +71,11 @@ The core innovation for high-throughput transactions in Qanto is the **HyperDAG*
 
 3. **Energy Efficiency:** The structure avoids the intense "winner-takes-all" competition for a single block. This distributes the work more evenly and reduces the overall energy expenditure per transaction compared to traditional PoW blockchains.
 
-4. **No Orphaned Blocks:** In a blockchain, when two miners solve a block at the same time, one block is "orphaned" and its work is wasted. In a HyperDAG, both blocks can be incorporated into the ledger, ensuring no work is lost.
+4. **No Orphaned Blocks:** In a blockchain, when two miners solve a block at the same time, one block is "orphaned" and its work is wasted. In a QantoDAG, both blocks can be incorporated into the ledger, ensuring no work is lost.
 
 #### **2.3.2. Dynamic Sharding Mechanism**
 
-The DAG shard subsystem is defined as a set of N independent DAGs, G0,G1,...,GN-1, where each HyperBlock is assigned a chain_id. This facilitates native sharding. A primary innovation is the dynamic_sharding function, an on-chain mechanism for autonomous load balancing. The protocol monitors the transactional load Li for each shard. If the load on a shard exceeds a predefined multiple α of the network-wide average load, a new shard is created. This trigger can be formalized as:
+The DAG shard subsystem is defined as a set of N independent DAGs, G0,G1,...,GN-1, where each QantoBlock is assigned a chain_id. This facilitates native sharding. A primary innovation is the dynamic_sharding function, an on-chain mechanism for autonomous load balancing. The protocol monitors the transactional load Li for each shard. If the load on a shard exceeds a predefined multiple α of the network-wide average load, a new shard is created. This trigger can be formalized as:
 
 If ∃i∈\[0,N-1\] such that Li​\>α⋅N∑j=0N-1​Lj​​, then initiate\_shard\_creation().
 
@@ -83,7 +83,7 @@ Here, α corresponds to the SHARD_THRESHOLD constant. This contrasts with static
 
 ### **2.4. Specification: Execution Chains**
 
-Execution Chains are managed by a separate ShardManager that uses discrete load thresholds (SHARD_SPLIT_THRESHOLD, SHARD_MERGE_THRESHOLD) to adjust the number of active chains. This rule-based scaling model is suited for applications with predictable, bursty performance profiles, such as those requiring Turing-complete smart contract execution. The block structure on these chains, Block, is distinct from HyperBlock and is tailored for its specific consensus mechanism.
+Execution Chains are managed by a separate ShardManager that uses discrete load thresholds (SHARD_SPLIT_THRESHOLD, SHARD_MERGE_THRESHOLD) to adjust the number of active chains. This rule-based scaling model is suited for applications with predictable, bursty performance profiles, such as those requiring Turing-complete smart contract execution. The block structure on these chains, Block, is distinct from QantoBlock and is tailored for its specific consensus mechanism.
 
 ### **2.5. State Transition Model: Unspent Transaction Outputs (UTXO)**
 
@@ -99,7 +99,7 @@ We assume a partially synchronous network model, where messages are delivered wi
 
 ### **3.2. Consensus on DAG Shards: PoW with Delegated Finality (PoW-DF), aka PoW²**
 
-On the DAG shards, any node may act as a **Miner** to propose a HyperBlock by solving a PoW puzzle. This provides a permissionless and Sybil-resistant mechanism for extending the ledger \[1\]. A distinct set of **Validators** is responsible for creating checkpoint blocks that reference a consistent cut of the DAG, thereby finalizing all preceding transactions. This is philosophically similar to the "finality gadget" concept \[7\]. This two-layered mechanism is also referred to as **Proof-of-Work Squared (PoW²)**. Finality is achieved for any block B at a depth of at least kf (FINALIZATION_DEPTH) behind a valid checkpoint block C. The finality condition is:
+On the DAG shards, any node may act as a **Miner** to propose a QantoBlock by solving a PoW puzzle. This provides a permissionless and Sybil-resistant mechanism for extending the ledger \[1\]. A distinct set of **Validators** is responsible for creating checkpoint blocks that reference a consistent cut of the DAG, thereby finalizing all preceding transactions. This is philosophically similar to the "finality gadget" concept \[7\]. This two-layered mechanism is also referred to as **Proof-of-Work Squared (PoW²)**. Finality is achieved for any block B at a depth of at least kf (FINALIZATION_DEPTH) behind a valid checkpoint block C. The finality condition is:
 
 \text{is_finalized}(B) \iff \exists C : (\text{is_checkpoint}(C) \land B \in \text{history}(C) \land (\text{depth}(C) - \text{depth}(B) \geq k_f))
 
@@ -187,7 +187,7 @@ This ensures a predictable, deflationary monetary policy adapted for a multi-cha
 
 ## Token Emission Model
 
-The HyperCoin emission follows a disinflationary curve:
+The QantoCoin emission follows a disinflationary curve:
 
 ```math
 E(t) = 250 ∙ e^(-0.357t)  ∙ 1/(1+〖0.018t〗^1.5 ) 
@@ -240,7 +240,7 @@ The peer-to-peer network is built using the **X-PHYRUS™ Protocol Stack**, an a
 
 ### **6.2. On-Chain Governance with SAGA-AI**
 
-Qanto incorporates an on-chain governance framework, enhanced by the **SAGA-AI** governance module, to enable decentralized protocol evolution, avoiding the contentious hard forks seen in other projects \[23\]. The model, specified in hyperdag.rs, consists of a GovernanceProposal system. Proposals can be submitted by high-stake validators and are voted on by all stakeholders, with voting power proportional to their stake. SAGA-AI assists in proposal evaluation by simulating the impact of proposed changes on network performance, security, and economic stability, providing data-driven recommendations to voters. This mechanism, similar in principle to the utility-maximizing governance models of Tezos \[24\] and Polkadot \[25\], allows for the orderly, transparent, and decentralized modification of core protocol parameters over time.
+Qanto incorporates an on-chain governance framework, enhanced by the **SAGA-AI** governance module, to enable decentralized protocol evolution, avoiding the contentious hard forks seen in other projects \[23\]. The model, specified in Qantodag.rs, consists of a GovernanceProposal system. Proposals can be submitted by high-stake validators and are voted on by all stakeholders, with voting power proportional to their stake. SAGA-AI assists in proposal evaluation by simulating the impact of proposed changes on network performance, security, and economic stability, providing data-driven recommendations to voters. This mechanism, similar in principle to the utility-maximizing governance models of Tezos \[24\] and Polkadot \[25\], allows for the orderly, transparent, and decentralized modification of core protocol parameters over time.
 
 ## **7. Use Cases, Implementation, and Roadmap**
 
@@ -249,7 +249,7 @@ Qanto incorporates an on-chain governance framework, enhanced by the **SAGA-AI**
 The unique architecture of Qanto opens the door to a wide array of applications that are not feasible on traditional blockchains:
 
 * **Micropayments & Streaming:** High throughput and low fees make it ideal for content streaming, IoT machine-to-machine payments, and other micro-transaction models.
-* **Decentralized Finance (DeFi):** The speed and efficiency of the HyperDAG can support high-frequency trading, complex financial instruments, and more responsive DeFi protocols.
+* **Decentralized Finance (DeFi):** The speed and efficiency of the QantoDAG can support high-frequency trading, complex financial instruments, and more responsive DeFi protocols.
 * **Supply Chain & Logistics:** The ability to process a massive volume of parallel events makes Qanto suitable for tracking goods and assets in real-time across global supply chains.
 * **Digital Identity:** Secure, private, and self-sovereign identity solutions can be built on Qanto's ZK-SNARK layer.
 
@@ -274,7 +274,7 @@ Our development roadmap is structured to deliver value incrementally while ensur
 * **Q4 2025:**
 
   * [ ] Launch of the public, multi-node Testnet with ΛΣ-ΩMEGA™ cryptographic framework.
-  * [ ] Development of the HyperWallet and network explorer.
+  * [ ] Development of the QantoWallet and network explorer.
   * [ ] Initiation of the first third-party security audit.
 
 * **Q1 2026:**
