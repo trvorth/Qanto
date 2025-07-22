@@ -7,7 +7,7 @@ This document provides a high-level overview of the Qanto node architecture, det
 The Qanto software is built as a modular collection of Rust crates, each responsible for a distinct piece of functionality.
 
 ### 1.1. Node (`node.rs`)
-The `Node` is the central orchestrator. It initializes and manages all other components, including the P2P networking layer, the HyperDAG ledger, the mempool, and the miner. It handles startup, shutdown, and the main event loop that drives the system.
+The `Node` is the central orchestrator. It initializes and manages all other components, including the P2P networking layer, the QantoDAG ledger, the mempool, and the miner. It handles startup, shutdown, and the main event loop that drives the system.
 
 ### 1.2. P2P Networking (`p2p.rs`)
 Networking is built on the `libp2p` framework, providing a robust and flexible foundation for peer-to-peer communication.
@@ -15,8 +15,8 @@ Networking is built on the `libp2p` framework, providing a robust and flexible f
 - **Discovery:** Employs mDNS for local peer discovery and a Kademlia DHT for discovering and connecting to peers on the wider internet.
 - **Communication:** Implements a request-response protocol for direct communication and a gossipsub protocol for broadcasting blocks and transactions efficiently across the network.
 
-### 1.3. HyperDAG Ledger (`hyperdag.rs`)
-Instead of a single-chain blockchain, Qanto uses a Directed Acyclic Graph (DAG) of blocks, which we call a **HyperDAG**.
+### 1.3. QantoDAG Ledger (`qantodag.rs`)
+Instead of a single-chain blockchain, Qanto uses a Directed Acyclic Graph (DAG) of blocks, which we call a **QantoDAG**.
 - **Parallel Chains:** The DAG consists of multiple parallel "chains" (shards), allowing for concurrent block production and higher transaction throughput.
 - **Structure:** Each block can have multiple parents, linking not just to the previous block in its own chain but also to blocks in other chains. This cross-linking creates the DAG structure and ensures eventual consistency across the entire ledger.
 - **Storage:** Block data is persisted to disk using `RocksDB`, a high-performance key-value store.
@@ -37,6 +37,6 @@ The wallet is a command-line interface (CLI) tool for managing user accounts.
 
 ### 1.7. Executable Bins (`/src/bin/`)
 - **`start_node`**: The main entry point for running a Qanto node.
-- **`hyperwallet`**: The CLI for wallet creation, imports, and other account management tasks.
+- **`Qantowallet`**: The CLI for wallet creation, imports, and other account management tasks.
 
 This modular architecture allows for individual components to be upgraded and improved independently as the project evolves.
