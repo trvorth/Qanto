@@ -233,7 +233,7 @@ cargo run --bin omega_test
 ```
 ## **Testnet Participation**
 
-For details on joining the public testnet, including hardware requirements, incentive programs, and bootnode addresses, please refer to the [**Testnet Launch Plan**](./docs/testnet-plan.md).
+For details on joining the public testnet, including hardware requirements, incentive programs, and bootnode addresses, please refer to the [**Testnet Launch Plan**](./docs/testnet-plan.md), and [**Qantowallet Guidance**](./docs/QANTOWALLET_GUIDE.md).
 
 ## **Security**
 
