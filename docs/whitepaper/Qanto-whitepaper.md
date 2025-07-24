@@ -179,7 +179,7 @@ The protocol's security is underpinned by a carefully engineered economic model 
 
 ### **5.1. Monetary Policy and Emission**
 
-The protocol defines a fixed TOTAL_SUPPLY of 10¹⁶ base units (representing 10 billion coins) and an INITIAL_REWARD (Rᵢₙᵢₜᵢₐₗ) of 250 units per checkpoint. The reward undergoes a gradual reduction every HALVING_PERIOD (Pₕₐₗᵥᵢₙ₉), where it is multiplied by a HALVING_FACTOR (fₕₐₗᵥᵢₙ₉) of 0.97. The reward for any given block at time t on one of N chains is defined as:
+The protocol defines a fixed TOTAL_SUPPLY of 10¹⁷ base units (representing 100 billion coins) and an INITIAL_REWARD (Rᵢₙᵢₜᵢₐₗ) of 50 units per checkpoint. The reward undergoes a gradual reduction every HALVING_PERIOD (Pₕₐₗᵥᵢₙ₉), where it is multiplied by a HALVING_FACTOR (fₕₐₗᵥᵢₙ₉) of 0.97. The reward for any given block at time t on one of N chains is defined as:
 
 R(t) = (Rᵢₙᵢₜᵢₐₗ / N) * fₕₐₗᵥᵢₙ₉ ^ floor((t - t₉ₑₙₑₛᵢₛ) / Pₕₐₗᵥᵢₙ₉)
 
@@ -190,29 +190,29 @@ This ensures a predictable, deflationary monetary policy adapted for a multi-cha
 The QantoCoin emission follows a disinflationary curve:
 
 ```math
-E(t) = 250 ∙ e^(-0.357t)  ∙ 1/(1+〖0.018t〗^1.5 ) 
+E(t) = 50 ∙ e^(-0.357t)  ∙ 1/(1+〖0.018t〗^1.5 ) 
 ```
 
 
 Where:
-    E(0) = 250 (initial emission)
+    E(0) = 50 (initial emission)
     λ= 0.357 (base decay rate)
     β= 0.018 (acceleration factor)
 
 
-![HCN Emission Schedule](docs/whitepaper/assets/hcn_emission_curve.png)
+![QNTO Emission Schedule](docs/whitepaper/assets/qnto_emission_curve.png)
 
 ### Emission Schedule
 | Year | New Coins | Reduction |
 |------|-----------|-----------|
-| 0    | 250       | -         |
-| 2    | 122.5     | 51%       |
-| 4    | 60        | 51%       |
-| 8    | 14.5      | 76%       |
-| 16   | 0.85      | 94%       |
+| 0    | 50       | -         |
+| 2    | 24.5     | 51%       |
+| 4    | 12        | 51%       |
+| 8    | 2.9      | 76%       |
+| 16   | 0.17      | 94%       |
 
 ### Key Properties:
-1. **Initial Distribution**: High emission (250 coins/checkpoint) at launch
+1. **Initial Distribution**: High emission (50 coins/checkpoint) at launch
 2. **Progressive Halving**: Accelerating emission reductions
 3. **Asymptotic Scarcity**: Approaches near-zero emission by Year 16
 
