@@ -31,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         genesis_validator: wallet.address(),
         target_block_time: 60,
         difficulty: 10,
-        max_amount: 10_000_000_000,
+        max_amount: 100_000_000_000,
         use_gpu: false,
         zk_enabled: false,
         mining_threads: 1,

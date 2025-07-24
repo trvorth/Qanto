@@ -5,8 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::instrument;
 
 // Made constants public
-pub const INITIAL_REWARD: u64 = 250; // Initial block reward
-pub const TOTAL_SUPPLY: u64 = 10_000_000_000_000_000; // Total supply cap set to 10 Billion
+pub const INITIAL_REWARD: u64 = 50; // Initial block reward
+pub const TOTAL_SUPPLY: u64 = 100_000_000_000; // Total supply cap set to 100 Billion
 pub const HALVING_PERIOD: u64 = 7_884_000; // 3 months in seconds
 pub const HALVING_FACTOR: f64 = 0.97; // 3% reduction per halving
 pub const SCALE: u64 = 1_000_000; // Fixed-point scale for precision

@@ -116,7 +116,7 @@ impl Default for Config {
             target_block_time: 15000,
             // A lower difficulty for easier block mining on the testnet.
             difficulty: 20,
-            max_amount: 10_000_000_000,
+            max_amount: 100_000_000_000,
             use_gpu: false,
             zk_enabled: false,
             mining_threads: num_cpus::get().max(1),

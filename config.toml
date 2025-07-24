@@ -38,7 +38,7 @@ target_block_time = 31
 difficulty = 2
 
 # The max_amount is the maximum amount of tokens that can be created.
-max_amount = 10000000000
+max_amount = 100000000000
 
 # --- Performance & Hardware ---
 # Set to true to enable GPU mining.

@@ -419,7 +419,7 @@ impl InfiniteStrataNode {
 
         let state_guard = self.state.read().await;
         let mut res = state_guard.resources.write().await;
-        res.cpu = cpu_usage;
+        res.cpu = cpu_usage / 100.0;
         res.memory = mem_usage;
         res.bandwidth_mbps = bandwidth;
     }
