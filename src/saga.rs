@@ -1776,7 +1776,7 @@ impl PalletSaga {
         rules.insert(
             "base_reward".to_string(),
             EpochRule {
-                value: 250.0,
+                value: 50.0,
                 description: "Base QNTO reward per block before modifiers.".to_string(),
             },
         );
@@ -2159,7 +2159,7 @@ impl PalletSaga {
         dag_arc: &Arc<QantoDAG>,
     ) -> Result<u64> {
         let rules = self.economy.epoch_rules.read().await;
-        let base_reward = rules.get("base_reward").map_or(250.0, |r| r.value);
+        let base_reward = rules.get("base_reward").map_or(50.0, |r| r.value);
         let threat_modifier = rules
             .get("omega_threat_reward_modifier")
             .map_or(-0.25, |r| r.value);
