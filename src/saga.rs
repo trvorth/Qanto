@@ -418,9 +418,7 @@ impl CognitiveAnalyticsEngine {
         #[cfg(feature = "ai")]
         {
             if let Err(e) = engine.load_models_from_disk() {
-                warn!(
-                    "Could not load SAGA AI models from disk (this is normal on first run): {e}"
-                );
+                warn!("Could not load SAGA AI models from disk (this is normal on first run): {e}");
             }
         }
         engine
@@ -869,9 +867,7 @@ impl CognitiveAnalyticsEngine {
                 }
                 let avg_loss = total_loss / batch_count as f64;
                 if i % 2 == 0 {
-                    debug!(
-                        "BehaviorNet Training Epoch: {i}, Avg Loss: {avg_loss:?}"
-                    );
+                    debug!("BehaviorNet Training Epoch: {i}, Avg Loss: {avg_loss:?}");
                 }
 
                 // --- SAGA's Self-Optimizing Learning Loop ---
@@ -1173,9 +1169,7 @@ impl SagaGuidanceSystem {
                 .knowledge_base
                 .get(&analyzed_query.primary_topic)
                 .cloned()
-                .ok_or_else(|| {
-                    SagaError::InvalidHelpTopic(analyzed_query.primary_topic.clone())
-                })?,
+                .ok_or_else(|| SagaError::InvalidHelpTopic(analyzed_query.primary_topic.clone()))?,
             QueryIntent::Compare => {
                 let mut comparison_text = format!(
                     "**Comparative Analysis of: {}**\n\n",
@@ -1184,8 +1178,11 @@ impl SagaGuidanceSystem {
                 for topic in &analyzed_query.entities {
                     let not_found_str = "Topic not found in internal knowledge base.".to_string();
                     let topic_content = self.knowledge_base.get(topic).unwrap_or(&not_found_str);
-                    comparison_text +=
-                        &format!("--- **{}** ---\n{}\n\n", topic.to_uppercase(), topic_content);
+                    comparison_text += &format!(
+                        "--- **{}** ---\n{}\n\n",
+                        topic.to_uppercase(),
+                        topic_content
+                    );
                 }
                 comparison_text
             }
@@ -1409,9 +1406,7 @@ impl SecurityMonitor {
 
         // Gini of 0 is perfect equality. Risk increases as Gini approaches 0.
         let sybil_risk = (1.0 - gini).powi(2).max(0.0);
-        debug!(
-            "Sybil attack analysis complete. Gini: {gini:.4}, Risk Score: {sybil_risk:.4}",
-        );
+        debug!("Sybil attack analysis complete. Gini: {gini:.4}, Risk Score: {sybil_risk:.4}",);
 
         sybil_risk
     }
@@ -1494,9 +1489,7 @@ impl SecurityMonitor {
         // HHI between 1500 and 2500 is moderately concentrated, > 2500 is highly concentrated.
         let risk = ((hhi - 1500.0).max(0.0) / (4000.0 - 1500.0)).clamp(0.0, 1.0);
 
-        debug!(
-            "Centralization risk analysis complete. HHI: {hhi:.2}, Risk Score: {risk:.4}",
-        );
+        debug!("Centralization risk analysis complete. HHI: {hhi:.2}, Risk Score: {risk:.4}",);
         risk
     }
 
@@ -1742,7 +1735,11 @@ impl SecurityMonitor {
                     // If both are low-score and a strong bond exists, it's suspicious.
                     if parent_scs < 0.7 {
                         suspicious_groups += 1;
-                        debug!(miner, parent_miner = p_miner, "Potential collusion detected.");
+                        debug!(
+                            miner,
+                            parent_miner = p_miner,
+                            "Potential collusion detected."
+                        );
                     }
                 }
             }
