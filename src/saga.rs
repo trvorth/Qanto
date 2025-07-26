@@ -495,12 +495,16 @@ impl CognitiveAnalyticsEngine {
                         .to_kind(Kind::Float)
                         .view([1, 8]);
 
-                    match model.forward(&features_tensor).softmax(1, Kind::Float).try_into() {
+                    match model
+                        .forward(&features_tensor)
+                        .softmax(1, Kind::Float)
+                        .try_into()
+                    {
                         Ok(prediction_vec) => {
-                             let prediction_vec: Vec<f32> = prediction_vec;
-                             let score = (prediction_vec[2] - prediction_vec[0] + 1.0) / 2.0;
-                             score.clamp(0.0, 1.0) as f64
-                        },
+                            let prediction_vec: Vec<f32> = prediction_vec;
+                            let score = (prediction_vec[2] - prediction_vec[0] + 1.0) / 2.0;
+                            score.clamp(0.0, 1.0) as f64
+                        }
                         Err(e) => {
                             warn!(error = %e, "BehaviorNet model inference failed. Using neutral score.");
                             0.5
@@ -527,29 +531,46 @@ impl CognitiveAnalyticsEngine {
             // The "Act" part of Sense-Think-Act: SAGA dynamically re-weights trust factors
             // based on the current threat assessment.
             if let NetworkState::UnderAttack(attack_type) = network_state {
-                 match attack_type {
+                match attack_type {
                     AttackType::TimeDrift => {
-                         if factor_name == "temporal_consistency" { weight *= 3.0; }
+                        if factor_name == "temporal_consistency" {
+                            weight *= 3.0;
+                        }
                     }
                     AttackType::Spam => {
-                        if factor_name == "cognitive_hazard" || factor_name == "network_contribution" { weight *= 2.5; }
+                        if factor_name == "cognitive_hazard"
+                            || factor_name == "network_contribution"
+                        {
+                            weight *= 2.5;
+                        }
                     }
-                     AttackType::Sybil | AttackType::Centralization => {
-                        if factor_name == "historical_performance" { weight *= 3.0; }
+                    AttackType::Sybil | AttackType::Centralization => {
+                        if factor_name == "historical_performance" {
+                            weight *= 3.0;
+                        }
                     }
                     AttackType::Collusion => {
-                        if factor_name == "historical_performance" || factor_name == "predicted_behavior" { weight *= 3.0; }
+                        if factor_name == "historical_performance"
+                            || factor_name == "predicted_behavior"
+                        {
+                            weight *= 3.0;
+                        }
                     }
                     AttackType::OracleManipulation => {
-                        if factor_name == "environmental_contribution" { weight *= 2.0; }
+                        if factor_name == "environmental_contribution" {
+                            weight *= 2.0;
+                        }
                     }
                     AttackType::Economic => {
-                        if factor_name == "cognitive_hazard" { weight *= 3.0; }
+                        if factor_name == "cognitive_hazard" {
+                            weight *= 3.0;
+                        }
                     }
-                    _ => { // General attack state
-                         if factor_name == "temporal_consistency"
-                        || factor_name == "cognitive_hazard"
-                        || factor_name == "metadata_integrity"
+                    _ => {
+                        // General attack state
+                        if factor_name == "temporal_consistency"
+                            || factor_name == "cognitive_hazard"
+                            || factor_name == "metadata_integrity"
                         {
                             weight *= 2.0;
                         }
@@ -851,8 +872,7 @@ impl CognitiveAnalyticsEngine {
                 if i % 2 == 0 {
                     debug!(
                         "BehaviorNet Training Epoch: {}, Avg Loss: {:?}",
-                        i,
-                        avg_loss
+                        i, avg_loss
                     );
                 }
 
@@ -868,7 +888,10 @@ impl CognitiveAnalyticsEngine {
                 if epochs_without_improvement == 2 {
                     learning_rate *= 0.5; // Halve the learning rate
                     opt = nn::Adam::default().build(&model.vs, learning_rate).unwrap();
-                    info!(new_lr = learning_rate, "SAGA AI: Loss plateaued. Adjusting learning rate for BehaviorNet.");
+                    info!(
+                        new_lr = learning_rate,
+                        "SAGA AI: Loss plateaued. Adjusting learning rate for BehaviorNet."
+                    );
                 }
 
                 // 2. Early Stopping
@@ -1106,7 +1129,7 @@ impl SagaGuidanceSystem {
                 let mut vs = nn::VarStore::new(Device::Cpu);
                 // In a real system, this model would also be loaded from disk.
                 Some(QueryClassifierNet::new(&mut vs))
-            }
+            },
         }
     }
 
@@ -1152,9 +1175,7 @@ impl SagaGuidanceSystem {
                 .knowledge_base
                 .get(&analyzed_query.primary_topic)
                 .cloned()
-                .ok_or_else(|| {
-                    SagaError::InvalidHelpTopic(analyzed_query.primary_topic.clone())
-                })?,
+                .ok_or_else(|| SagaError::InvalidHelpTopic(analyzed_query.primary_topic.clone()))?,
             QueryIntent::Compare => {
                 let mut comparison_text = format!(
                     "**Comparative Analysis of: {}**\n\n",
@@ -1163,7 +1184,11 @@ impl SagaGuidanceSystem {
                 for topic in &analyzed_query.entities {
                     let not_found_str = "Topic not found in internal knowledge base.".to_string();
                     let topic_content = self.knowledge_base.get(topic).unwrap_or(&not_found_str);
-                    comparison_text += &format!("--- **{}** ---\n{}\n\n", topic.to_uppercase(), topic_content);
+                    comparison_text += &format!(
+                        "--- **{}** ---\n{}\n\n",
+                        topic.to_uppercase(),
+                        topic_content
+                    );
                 }
                 comparison_text
             }
@@ -1173,13 +1198,14 @@ impl SagaGuidanceSystem {
             }
             QueryIntent::DeepReasoning => {
                 let mut cache = self.reasoning_cache.write().await;
-                let report = cache
-                    .entry(analyzed_query.primary_topic.clone())
-                    .or_insert(ReasoningReport {
-                        topic: analyzed_query.primary_topic.clone(),
-                        iterations: vec![],
-                        synthesis: "Initial report. Ask again to deepen research.".to_string(),
-                    });
+                let report =
+                    cache
+                        .entry(analyzed_query.primary_topic.clone())
+                        .or_insert(ReasoningReport {
+                            topic: analyzed_query.primary_topic.clone(),
+                            iterations: vec![],
+                            synthesis: "Initial report. Ask again to deepen research.".to_string(),
+                        });
 
                 // Alternate between different sources for deeper research
                 let source_to_query = match report.iterations.len() % 3 {
@@ -1248,11 +1274,11 @@ impl SagaGuidanceSystem {
         // --- Stage 1: Attempt classification with AI model (future-facing) ---
         #[cfg(feature = "ai")]
         if let Some(_classifier) = &self.query_classifier {
-             // let query_tensor = ... create tensor from tokenized query ...;
-             // if let Some(analyzed_query) = classifier.classify(&query_tensor) {
-             //     info!("SAGA Assistant: Query intent classified by AI model.");
-             //     return Ok(analyzed_query);
-             // }
+            // let query_tensor = ... create tensor from tokenized query ...;
+            // if let Some(analyzed_query) = classifier.classify(&query_tensor) {
+            //     info!("SAGA Assistant: Query intent classified by AI model.");
+            //     return Ok(analyzed_query);
+            // }
         }
 
         // --- Stage 2: Fallback to keyword-based analysis ---
@@ -1262,24 +1288,48 @@ impl SagaGuidanceSystem {
         let topic_keywords: HashMap<&str, Vec<&str>> = HashMap::from([
             ("setup", vec!["setup", "start", "install", "config", "init"]),
             ("staking", vec!["stake", "staking", "validator"]),
-            ("send", vec!["send", "utxo", "construct", "submit", "transaction"]),
-            ("saga", vec!["saga", "ai", "governance", "proposal", "brain"]),
-            ("tokenomics", vec!["token", "qnto", "economy", "reward", "fee", "tokenomics"]),
+            (
+                "send",
+                vec!["send", "utxo", "construct", "submit", "transaction"],
+            ),
+            (
+                "saga",
+                vec!["saga", "ai", "governance", "proposal", "brain"],
+            ),
+            (
+                "tokenomics",
+                vec!["token", "qnto", "economy", "reward", "fee", "tokenomics"],
+            ),
             ("scs", vec!["scs", "score", "reputation"]),
             ("slashing", vec!["slash", "slashing", "penalty", "offline"]),
             ("karma", vec!["karma", "contribution"]),
             ("mempool", vec!["mempool", "memory pool"]),
-            ("peers", vec!["peer", "peers", "connect", "dial", "firewall"]),
-            ("stuck_tx", vec!["stuck", "pending", "unconfirmed", "fix", "problem"]),
-            ("security", vec!["security", "safe", "wallet", "key", "phishing", "attack"]),
+            (
+                "peers",
+                vec!["peer", "peers", "connect", "dial", "firewall"],
+            ),
+            (
+                "stuck_tx",
+                vec!["stuck", "pending", "unconfirmed", "fix", "problem"],
+            ),
+            (
+                "security",
+                vec!["security", "safe", "wallet", "key", "phishing", "attack"],
+            ),
             ("ai_training", vec!["train", "training", "model", "learn"]),
             ("sybil_attack", vec!["sybil"]),
             ("spam_attack", vec!["spam"]),
             ("poco", vec!["poco", "offset", "environment"]),
             ("carbon_credit", vec!["carbon", "co2", "credit", "green"]),
-            ("centralization_risk", vec!["centralization", "hhi", "concentration"]),
+            (
+                "centralization_risk",
+                vec!["centralization", "hhi", "concentration"],
+            ),
             ("edicts", vec!["edict", "edicts", "autonomous action"]),
-            ("economic_attack", vec!["economic attack", "fee manipulation"])
+            (
+                "economic_attack",
+                vec!["economic attack", "fee manipulation"],
+            ),
         ]);
 
         let mut identified_topics = vec![];
@@ -1299,20 +1349,20 @@ impl SagaGuidanceSystem {
         } else if q.contains("news about") || q.contains("latest on") {
             QueryIntent::ExternalSearch(ExternalDataSource::News)
         } else if q.contains("academic paper on") || q.contains("research on") {
-             QueryIntent::ExternalSearch(ExternalDataSource::Academic)
+            QueryIntent::ExternalSearch(ExternalDataSource::Academic)
         } else if identified_topics.is_empty() {
-             QueryIntent::ExternalSearch(ExternalDataSource::GeneralWeb)
+            QueryIntent::ExternalSearch(ExternalDataSource::GeneralWeb)
         } else {
             QueryIntent::GetInfo
         };
 
         let primary_topic = identified_topics.first().cloned().unwrap_or_else(|| {
-             // Fallback for external queries: use the text after the keyword
-             if let Some(pos) = q.find("what is") {
-                 q[pos + "what is".len()..].trim().to_string()
-             } else {
-                 q.clone()
-             }
+            // Fallback for external queries: use the text after the keyword
+            if let Some(pos) = q.find("what is") {
+                q[pos + "what is".len()..].trim().to_string()
+            } else {
+                q.clone()
+            }
         });
 
         let entities = if intent == QueryIntent::Compare {
@@ -1593,7 +1643,8 @@ impl SecurityMonitor {
 
                 if let Some(input) = tx.inputs.first() {
                     if let Some(source_tx) = tx_map.get(&input.tx_id) {
-                        if let Some(source_output) = source_tx.outputs.get(input.output_index as usize)
+                        if let Some(source_output) =
+                            source_tx.outputs.get(input.output_index as usize)
                         {
                             let input_addr = &source_output.address;
 
@@ -1643,11 +1694,17 @@ impl SecurityMonitor {
     }
 
     #[instrument(skip(self, dag, reputation))]
-    pub async fn check_for_collusion_attack(&self, dag: &QantoDAG, reputation: &ReputationState) -> f64 {
+    pub async fn check_for_collusion_attack(
+        &self,
+        dag: &QantoDAG,
+        reputation: &ReputationState,
+    ) -> f64 {
         // Detects when a group of miners with mediocre scores exclusively build on each other's blocks,
         // potentially to amplify their rewards or censor others.
         let blocks = dag.blocks.read().await;
-        if blocks.len() < 200 { return 0.0; }
+        if blocks.len() < 200 {
+            return 0.0;
+        }
 
         let scores = reputation.credit_scores.read().await;
         let mut miner_parent_map = HashMap::<String, Vec<String>>::new();
@@ -1658,10 +1715,15 @@ impl SecurityMonitor {
         let recent_blocks: Vec<_> = all_blocks.iter().rev().take(200).collect();
 
         for block in &recent_blocks {
-            let parent_miners: Vec<String> = block.parents.iter()
+            let parent_miners: Vec<String> = block
+                .parents
+                .iter()
                 .filter_map(|p_id| blocks.get(p_id).map(|p| p.miner.clone()))
                 .collect();
-            miner_parent_map.entry((*block).miner.clone()).or_default().extend(parent_miners);
+            miner_parent_map
+                .entry((*block).miner.clone())
+                .or_default()
+                .extend(parent_miners);
         }
 
         let mut collusion_risk = 0.0;
@@ -1670,8 +1732,12 @@ impl SecurityMonitor {
         for (miner, parents) in &miner_parent_map {
             let miner_scs = scores.get(miner).map_or(0.5, |s| s.score);
             // We are interested in mid-to-low score miners forming a cartel.
-            if miner_scs > 0.7 { continue; }
-            if parents.is_empty() { continue; }
+            if miner_scs > 0.7 {
+                continue;
+            }
+            if parents.is_empty() {
+                continue;
+            }
 
             let mut parent_counts = HashMap::new();
             for p_miner in parents {
@@ -1687,13 +1753,18 @@ impl SecurityMonitor {
                     // If both are low-score and a strong bond exists, it's suspicious.
                     if parent_scs < 0.7 {
                         suspicious_groups += 1;
-                        debug!(miner, parent_miner = p_miner, "Potential collusion detected.");
+                        debug!(
+                            miner,
+                            parent_miner = p_miner,
+                            "Potential collusion detected."
+                        );
                     }
                 }
             }
         }
         if miner_parent_map.len() > 10 {
-            collusion_risk = (suspicious_groups as f64 / miner_parent_map.len() as f64).clamp(0.0, 1.0);
+            collusion_risk =
+                (suspicious_groups as f64 / miner_parent_map.len() as f64).clamp(0.0, 1.0);
         }
 
         collusion_risk
@@ -1705,16 +1776,24 @@ impl SecurityMonitor {
         // a period of low network congestion, which might indicate an attempt
         // to manipulate the `market_premium` calculation for block rewards.
         let blocks = dag.blocks.read().await;
-        if blocks.len() < 50 { return 0.0; }
+        if blocks.len() < 50 {
+            return 0.0;
+        }
 
         let mut recent_blocks: Vec<_> = blocks.values().collect();
         recent_blocks.sort_by_key(|b| b.timestamp);
         let latest_blocks: Vec<_> = recent_blocks.iter().rev().take(50).collect();
 
-        if latest_blocks.is_empty() { return 0.0; }
+        if latest_blocks.is_empty() {
+            return 0.0;
+        }
 
         let total_txs: usize = latest_blocks.iter().map(|b| b.transactions.len()).sum();
-        let total_fees: u64 = latest_blocks.iter().flat_map(|b| &b.transactions).map(|tx| tx.fee).sum();
+        let total_fees: u64 = latest_blocks
+            .iter()
+            .flat_map(|b| &b.transactions)
+            .map(|tx| tx.fee)
+            .sum();
         let avg_tx_per_block = total_txs as f64 / latest_blocks.len() as f64;
         let avg_fee_per_tx = total_fees as f64 / total_txs.max(1) as f64;
 
@@ -1722,14 +1801,17 @@ impl SecurityMonitor {
 
         // Condition: Average fee is very high (>50), but network is not congested (<30% capacity)
         if avg_fee_per_tx > 50.0 && congestion_level < 0.3 {
-            warn!(avg_fee = avg_fee_per_tx, congestion = congestion_level, "High fees detected with low congestion, potential economic manipulation.");
+            warn!(
+                avg_fee = avg_fee_per_tx,
+                congestion = congestion_level,
+                "High fees detected with low congestion, potential economic manipulation."
+            );
             return 0.75; // High risk
         }
 
         0.0
     }
 }
-
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum ProposalStatus {
@@ -2077,8 +2159,10 @@ impl PalletSaga {
             "ai_cred_verify_threshold".to_string(),
             EpochRule {
                 value: 0.75,
-                description: "The AI confidence score required to verify a Carbon Offset Credential.".to_string(),
-            }
+                description:
+                    "The AI confidence score required to verify a Carbon Offset Credential."
+                        .to_string(),
+            },
         );
 
         let mut env_metrics = EnvironmentalMetrics::default();
@@ -2134,8 +2218,12 @@ impl PalletSaga {
         let edict_multiplier = if let Some(edict) = &*self.economy.active_edict.read().await {
             if let EdictAction::Economic { fee_multiplier, .. } = edict.action {
                 fee_multiplier
-            } else { 1.0 }
-        } else { 1.0 };
+            } else {
+                1.0
+            }
+        } else {
+            1.0
+        };
 
         (min_fee as f64 * edict_multiplier) as u64
     }
@@ -2164,37 +2252,46 @@ impl PalletSaga {
         let mut metrics_write = self.economy.environmental_metrics.write().await;
         let rules = self.economy.epoch_rules.read().await;
 
-        let fail_and_count = |mut metrics: tokio::sync::RwLockWriteGuard<'_, EnvironmentalMetrics>, err: SagaError| -> Result<(), SagaError> {
-            metrics.failed_credential_verifications += 1;
-            Err(err)
-        };
+        let fail_and_count =
+            |mut metrics: tokio::sync::RwLockWriteGuard<'_, EnvironmentalMetrics>,
+             err: SagaError|
+             -> Result<(), SagaError> {
+                metrics.failed_credential_verifications += 1;
+                Err(err)
+            };
 
         if cred.tonnes_co2_sequestered <= 0.0 {
-            return fail_and_count(metrics_write, SagaError::InvalidCredential(
-                "CO2 amount must be positive.".to_string(),
-            ));
+            return fail_and_count(
+                metrics_write,
+                SagaError::InvalidCredential("CO2 amount must be positive.".to_string()),
+            );
         }
         if cred.beneficiary_node.is_empty() {
-            return fail_and_count(metrics_write, SagaError::InvalidCredential(
-                "Beneficiary node cannot be empty.".to_string(),
-            ));
+            return fail_and_count(
+                metrics_write,
+                SagaError::InvalidCredential("Beneficiary node cannot be empty.".to_string()),
+            );
         }
 
         let expected_signature = format!("signed_by_{}", cred.issuer_id);
         if cred.verification_signature != expected_signature {
-            return fail_and_count(metrics_write, SagaError::InvalidCredential(
-                "Invalid issuer signature.".to_string(),
-            ));
+            return fail_and_count(
+                metrics_write,
+                SagaError::InvalidCredential("Invalid issuer signature.".to_string()),
+            );
         }
 
         if !metrics_write
             .trusted_project_registry
             .contains_key(&cred.project_id)
         {
-            return fail_and_count(metrics_write, SagaError::InvalidCredential(format!(
-                "Project ID '{}' is not in the trusted registry.",
-                cred.project_id
-            )));
+            return fail_and_count(
+                metrics_write,
+                SagaError::InvalidCredential(format!(
+                    "Project ID '{}' is not in the trusted registry.",
+                    cred.project_id
+                )),
+            );
         }
 
         let current_year: u32 = 2025; // In a real system, this should be from a trusted time source.
@@ -2226,7 +2323,9 @@ impl PalletSaga {
 
                 let confidence_tensor = model.verify(&features_tensor);
                 let confidence_score = f64::try_from(confidence_tensor).unwrap_or(0.0);
-                let confidence_threshold = rules.get("ai_cred_verify_threshold").map_or(0.75, |r| r.value);
+                let confidence_threshold = rules
+                    .get("ai_cred_verify_threshold")
+                    .map_or(0.75, |r| r.value);
 
                 info!(cred_id=%cred.id, project_id=%cred.project_id, "AI Verification Confidence: {:.4}", confidence_score);
 
@@ -2240,10 +2339,13 @@ impl PalletSaga {
         }
 
         if metrics_write.verified_credentials.contains_key(&cred.id) {
-             return fail_and_count(metrics_write, SagaError::InvalidCredential(format!(
-                "Credential ID '{}' has already been submitted this epoch.",
-                cred.id
-            )));
+            return fail_and_count(
+                metrics_write,
+                SagaError::InvalidCredential(format!(
+                    "Credential ID '{}' has already been submitted this epoch.",
+                    cred.id
+                )),
+            );
         }
 
         info!(
@@ -2407,14 +2509,25 @@ impl PalletSaga {
 
         // Check all security vectors
         let sybil_risk = self.security_monitor.check_for_sybil_attack(dag).await;
-        let spam_risk = self.security_monitor.check_transactional_anomalies(dag).await;
-        let centralization_risk = self.security_monitor.check_for_centralization_risk(dag, 1).await;
-        let oracle_risk = self.security_monitor.check_for_oracle_manipulation_risk(dag).await;
+        let spam_risk = self
+            .security_monitor
+            .check_transactional_anomalies(dag)
+            .await;
+        let centralization_risk = self
+            .security_monitor
+            .check_for_centralization_risk(dag, 1)
+            .await;
+        let oracle_risk = self
+            .security_monitor
+            .check_for_oracle_manipulation_risk(dag)
+            .await;
         let time_drift_risk = self.security_monitor.check_for_time_drift_attack(dag).await;
         let wash_trading_risk = self.security_monitor.check_for_wash_trading(dag).await;
-        let collusion_risk = self.security_monitor.check_for_collusion_attack(dag, &self.reputation).await;
+        let collusion_risk = self
+            .security_monitor
+            .check_for_collusion_attack(dag, &self.reputation)
+            .await;
         let economic_risk = self.security_monitor.check_for_economic_attack(dag).await;
-
 
         // Determine the most critical threat
         let mut threats = vec![
@@ -2456,11 +2569,7 @@ impl PalletSaga {
         *state_writer = new_state;
     }
 
-    async fn run_predictive_models(
-        &self,
-        current_epoch: u64,
-        dag: &QantoDAG,
-    ) {
+    async fn run_predictive_models(&self, current_epoch: u64, dag: &QantoDAG) {
         let avg_tx_per_block = dag.get_average_tx_per_block().await;
         let congestion_metric = avg_tx_per_block / MAX_TRANSACTIONS_PER_BLOCK as f64;
 
@@ -2584,7 +2693,10 @@ impl PalletSaga {
         let network_state = *self.economy.network_state.read().await;
 
         if network_state == NetworkState::Congested
-            && !insights.iter().any(|i| i.title.contains("Network Congestion")) {
+            && !insights
+                .iter()
+                .any(|i| i.title.contains("Network Congestion"))
+        {
             insights.push(SagaInsight {
                 id: Uuid::new_v4().to_string(),
                 epoch: current_epoch,
@@ -2594,20 +2706,23 @@ impl PalletSaga {
             });
         }
         if let NetworkState::UnderAttack(attack_type) = network_state {
-             if !insights.iter().any(|i| i.title.contains("Security Alert")) {
-                 insights.push(SagaInsight {
+            if !insights.iter().any(|i| i.title.contains("Security Alert")) {
+                insights.push(SagaInsight {
                     id: Uuid::new_v4().to_string(),
                     epoch: current_epoch,
                     title: "Security Alert".to_string(),
                     detail: format!("SAGA has detected a potential {:?} and has entered a defensive state. Network parameters have been adjusted.", attack_type),
                     severity: InsightSeverity::Critical,
                 });
-             }
+            }
         }
         let proposal_count = self.governance.proposals.read().await.len();
         if current_epoch > 20
             && proposal_count < 5
-            && !insights.iter().any(|i| i.title.contains("Low Governance Activity")) {
+            && !insights
+                .iter()
+                .any(|i| i.title.contains("Low Governance Activity"))
+        {
             insights.push(SagaInsight {
                 id: Uuid::new_v4().to_string(),
                 epoch: current_epoch,
@@ -2828,15 +2943,32 @@ impl PalletSaga {
 
         // Combine all proposal checks and apply cognitive load afterwards.
         let mut actions_taken = 0.0;
-        if self.propose_validator_scaling(current_epoch, dag).await { actions_taken += 0.15; }
-        if self.propose_governance_parameter_tuning(current_epoch).await { actions_taken += 0.2; }
-        if self.propose_economic_parameter_tuning(current_epoch).await { actions_taken += 0.15; }
-        if self.propose_scs_weight_tuning(current_epoch).await { actions_taken += 0.25; }
-        if self.propose_security_parameter_tuning(current_epoch).await { actions_taken += 0.2; }
+        if self.propose_validator_scaling(current_epoch, dag).await {
+            actions_taken += 0.15;
+        }
+        if self
+            .propose_governance_parameter_tuning(current_epoch)
+            .await
+        {
+            actions_taken += 0.2;
+        }
+        if self.propose_economic_parameter_tuning(current_epoch).await {
+            actions_taken += 0.15;
+        }
+        if self.propose_scs_weight_tuning(current_epoch).await {
+            actions_taken += 0.25;
+        }
+        if self.propose_security_parameter_tuning(current_epoch).await {
+            actions_taken += 0.2;
+        }
 
         if actions_taken > 0.0 {
-            council.members.iter_mut().for_each(|m| m.cognitive_load += actions_taken);
-            council.autonomous_governance_cooldown_until_epoch = current_epoch + 3; // Cooldown after any action
+            council
+                .members
+                .iter_mut()
+                .for_each(|m| m.cognitive_load += actions_taken);
+            council.autonomous_governance_cooldown_until_epoch = current_epoch + 3;
+            // Cooldown after any action
         }
     }
 
@@ -2882,7 +3014,8 @@ impl PalletSaga {
         let current_min_stake = rules.get(&min_stake_rule).map_or(1000.0, |r| r.value);
 
         let congestion_history = self.economy.congestion_history.read().await;
-        let avg_congestion = congestion_history.iter().sum::<f64>() / congestion_history.len().max(1) as f64;
+        let avg_congestion =
+            congestion_history.iter().sum::<f64>() / congestion_history.len().max(1) as f64;
 
         let has_active_proposal = |proposals: &HashMap<String, GovernanceProposal>| {
             proposals.values().any(|p: &GovernanceProposal| {
@@ -2892,9 +3025,10 @@ impl PalletSaga {
         };
 
         // Condition to attract more validators
-        if (validator_count < 10 && *self.economy.network_state.read().await == NetworkState::Degraded) ||
-           (avg_congestion > 0.7 && validator_count < 20) {
-
+        if (validator_count < 10
+            && *self.economy.network_state.read().await == NetworkState::Degraded)
+            || (avg_congestion > 0.7 && validator_count < 20)
+        {
             let mut proposals = self.governance.proposals.write().await;
             if !has_active_proposal(&proposals) {
                 let new_stake_req = (current_min_stake * 0.9).round();
@@ -2902,10 +3036,19 @@ impl PalletSaga {
                     id: format!("saga-proposal-{}", Uuid::new_v4()),
                     proposer: "SAGA_AUTONOMOUS_AGENT".to_string(),
                     proposal_type: ProposalType::UpdateRule(min_stake_rule, new_stake_req),
-                    votes_for: 1.0, votes_against: 0.0, status: ProposalStatus::Voting, voters: vec![], creation_epoch: _current_epoch,
+                    votes_for: 1.0,
+                    votes_against: 0.0,
+                    status: ProposalStatus::Voting,
+                    voters: vec![],
+                    creation_epoch: _current_epoch,
                 };
                 info!(proposal_id = %proposal.id, "SAGA is proposing to lower minimum stake to {} to attract validators.", new_stake_req);
-                self.award_karma("SAGA_AUTONOMOUS_AGENT", KarmaSource::SagaAutonomousAction, 100).await;
+                self.award_karma(
+                    "SAGA_AUTONOMOUS_AGENT",
+                    KarmaSource::SagaAutonomousAction,
+                    100,
+                )
+                .await;
                 proposals.insert(proposal.id.clone(), proposal);
                 return true;
             }
@@ -2914,16 +3057,27 @@ impl PalletSaga {
     }
 
     async fn propose_governance_parameter_tuning(&self, current_epoch: u64) -> bool {
-        if current_epoch % 20 != 0 { return false; }
+        if current_epoch % 20 != 0 {
+            return false;
+        }
 
         let proposals = self.governance.proposals.read().await;
-        let recent_proposals: Vec<_> = proposals.values()
-            .filter(|p| p.creation_epoch > current_epoch.saturating_sub(20) && p.proposer != "SAGA_AUTONOMOUS_AGENT")
+        let recent_proposals: Vec<_> = proposals
+            .values()
+            .filter(|p| {
+                p.creation_epoch > current_epoch.saturating_sub(20)
+                    && p.proposer != "SAGA_AUTONOMOUS_AGENT"
+            })
             .collect();
 
-        if recent_proposals.len() < 2 { return false; }
+        if recent_proposals.len() < 2 {
+            return false;
+        }
 
-        let rejected_count = recent_proposals.iter().filter(|p| p.status == ProposalStatus::Rejected).count();
+        let rejected_count = recent_proposals
+            .iter()
+            .filter(|p| p.status == ProposalStatus::Rejected)
+            .count();
         let rejection_rate = rejected_count as f64 / recent_proposals.len() as f64;
 
         let vote_threshold_rule = "proposal_vote_threshold".to_string();
@@ -2977,14 +3131,22 @@ impl PalletSaga {
     }
 
     async fn propose_scs_weight_tuning(&self, current_epoch: u64) -> bool {
-        if current_epoch % 25 != 0 { return false; }
+        if current_epoch % 25 != 0 {
+            return false;
+        }
 
         let scores = self.reputation.credit_scores.read().await;
-        if scores.len() < 10 { return false; }
+        if scores.len() < 10 {
+            return false;
+        }
 
         let mut high_env_low_scs_count = 0;
         for scs in scores.values() {
-            let env_score = scs.factors.get("environmental_contribution").cloned().unwrap_or(0.0);
+            let env_score = scs
+                .factors
+                .get("environmental_contribution")
+                .cloned()
+                .unwrap_or(0.0);
             if env_score > 0.8 && scs.score < 0.6 {
                 high_env_low_scs_count += 1;
             }
@@ -2995,7 +3157,9 @@ impl PalletSaga {
             let rules = self.economy.epoch_rules.read().await;
             let current_weight = rules.get(&weight_rule).map_or(0.05, |r| r.value);
 
-            if current_weight >= 0.2 { return false; }
+            if current_weight >= 0.2 {
+                return false;
+            }
 
             let mut proposals_writer = self.governance.proposals.write().await;
             if !proposals_writer.values().any(|p| p.status == ProposalStatus::Voting && matches!(&p.proposal_type, ProposalType::UpdateRule(name, _) if name == &weight_rule)) {
@@ -3019,15 +3183,19 @@ impl PalletSaga {
     async fn propose_security_parameter_tuning(&self, current_epoch: u64) -> bool {
         let metrics = self.economy.environmental_metrics.read().await;
         let rules = self.economy.epoch_rules.read().await;
-        let total_submissions = metrics.verified_credentials.len() as u64 + metrics.failed_credential_verifications;
+        let total_submissions =
+            metrics.verified_credentials.len() as u64 + metrics.failed_credential_verifications;
 
         // Condition: if more than 15% of credential submissions in an epoch fail, the AI might be too strict.
-        if total_submissions > 10 && (metrics.failed_credential_verifications as f64 / total_submissions as f64) > 0.15 {
-
+        if total_submissions > 10
+            && (metrics.failed_credential_verifications as f64 / total_submissions as f64) > 0.15
+        {
             let threshold_rule = "ai_cred_verify_threshold".to_string();
             let current_threshold = rules.get(&threshold_rule).map_or(0.75, |r| r.value);
             // Don't lower the threshold too much
-            if current_threshold <= 0.6 { return false; }
+            if current_threshold <= 0.6 {
+                return false;
+            }
 
             let mut proposals_writer = self.governance.proposals.write().await;
             if !proposals_writer.values().any(|p| p.status == ProposalStatus::Voting && matches!(&p.proposal_type, ProposalType::UpdateRule(name, _) if name == &threshold_rule)) {
