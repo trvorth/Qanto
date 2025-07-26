@@ -419,8 +419,7 @@ impl CognitiveAnalyticsEngine {
         {
             if let Err(e) = engine.load_models_from_disk() {
                 warn!(
-                    "Could not load SAGA AI models from disk (this is normal on first run): {}",
-                    e
+                    "Could not load SAGA AI models from disk (this is normal on first run): {e}"
                 );
             }
         }
@@ -576,10 +575,10 @@ impl CognitiveAnalyticsEngine {
                         }
                     }
                 }
-            } else if network_state == NetworkState::Congested {
-                if factor_name == "network_contribution" {
-                    weight *= 1.5;
-                }
+            } else if network_state == NetworkState::Congested
+                && factor_name == "network_contribution"
+            {
+                weight *= 1.5;
             }
 
             final_score += factor_score * weight;
@@ -871,8 +870,7 @@ impl CognitiveAnalyticsEngine {
                 let avg_loss = total_loss / batch_count as f64;
                 if i % 2 == 0 {
                     debug!(
-                        "BehaviorNet Training Epoch: {}, Avg Loss: {:?}",
-                        i, avg_loss
+                        "BehaviorNet Training Epoch: {i}, Avg Loss: {avg_loss:?}"
                     );
                 }
 
@@ -917,7 +915,7 @@ impl CognitiveAnalyticsEngine {
                 .vs
                 .save(&path)
                 .map_err(|e| SagaError::ModelFileError(e.to_string()))?;
-            info!("SAGA: BehaviorNet model saved to {:?}", path);
+            info!("SAGA: BehaviorNet model saved to {path:?}");
         }
         if let Some(model) = &self.congestion_model {
             let path = PathBuf::from(MODEL_SAVE_PATH).join(CONGESTION_MODEL_FILENAME);
@@ -925,7 +923,7 @@ impl CognitiveAnalyticsEngine {
                 .vs
                 .save(&path)
                 .map_err(|e| SagaError::ModelFileError(e.to_string()))?;
-            info!("SAGA: CongestionPredictorLSTM model saved to {:?}", path);
+            info!("SAGA: CongestionPredictorLSTM model saved to {path:?}");
         }
         if let Some(model) = &self.credential_verifier_model {
             let path = PathBuf::from(MODEL_SAVE_PATH).join(CREDENTIAL_MODEL_FILENAME);
@@ -933,7 +931,7 @@ impl CognitiveAnalyticsEngine {
                 .vs
                 .save(&path)
                 .map_err(|e| SagaError::ModelFileError(e.to_string()))?;
-            info!("SAGA: CredentialVerifierNet model saved to {:?}", path);
+            info!("SAGA: CredentialVerifierNet model saved to {path:?}");
         }
         Ok(())
     }
@@ -947,7 +945,7 @@ impl CognitiveAnalyticsEngine {
                     .vs
                     .load(&path)
                     .map_err(|e| SagaError::ModelFileError(e.to_string()))?;
-                info!("SAGA: Loaded BehaviorNet model from {:?}", path);
+                info!("SAGA: Loaded BehaviorNet model from {path:?}");
             }
         }
         if let Some(model) = &self.congestion_model {
@@ -957,7 +955,7 @@ impl CognitiveAnalyticsEngine {
                     .vs
                     .load(&path)
                     .map_err(|e| SagaError::ModelFileError(e.to_string()))?;
-                info!("SAGA: Loaded CongestionPredictorLSTM model from {:?}", path);
+                info!("SAGA: Loaded CongestionPredictorLSTM model from {path:?}");
             }
         }
         if let Some(model) = &self.credential_verifier_model {
@@ -967,7 +965,7 @@ impl CognitiveAnalyticsEngine {
                     .vs
                     .load(&path)
                     .map_err(|e| SagaError::ModelFileError(e.to_string()))?;
-                info!("SAGA: Loaded CredentialVerifierNet model from {:?}", path);
+                info!("SAGA: Loaded CredentialVerifierNet model from {path:?}");
             }
         }
         Ok(())
@@ -1142,22 +1140,22 @@ impl SagaGuidanceSystem {
         query: &str,
         source: &ExternalDataSource,
     ) -> Result<String, SagaError> {
-        info!(target: "saga_assistant", "Executing external query for '{}' from source: {:?}", query, source);
+        info!(target: "saga_assistant", "Executing external query for '{query}' from source: {source:?}");
 
         // This is a simulation. A real implementation would use a decentralized oracle network.
         // The AI's runtime would invoke the necessary tools to query the requested source.
         let simulated_result = match source {
             ExternalDataSource::GeneralWeb => {
-                format!("Simulated general web search for '{}': Found articles on Wikipedia, tech blogs, and forums.", query)
+                format!("Simulated general web search for '{query}': Found articles on Wikipedia, tech blogs, and forums.")
             }
             ExternalDataSource::Academic => {
-                format!("Simulated academic search for '{}': Found papers on arXiv, and entries in Google Scholar. High-reputation sources suggest the core concepts are sound.", query)
+                format!("Simulated academic search for '{query}': Found papers on arXiv, and entries in Google Scholar. High-reputation sources suggest the core concepts are sound.")
             }
             ExternalDataSource::News => {
-                format!("Simulated news search for '{}': Found recent articles from Reuters and Associated Press regarding market sentiment and related technology updates.", query)
+                format!("Simulated news search for '{query}': Found recent articles from Reuters and Associated Press regarding market sentiment and related technology updates.")
             }
         };
-        Ok(format!("SAGA's oracle network has searched {:?} for '{}'. In a live environment, this space would be populated with a synthesized summary of real-time search results. {}", source, query, simulated_result))
+        Ok(format!("SAGA's oracle network has searched {source:?} for '{query}'. In a live environment, this space would be populated with a synthesized summary of real-time search results. {simulated_result}"))
     }
 
     pub async fn get_guidance_response(
@@ -1167,7 +1165,7 @@ impl SagaGuidanceSystem {
         threat_level: omega::identity::ThreatLevel,
         proactive_insight: Option<&SagaInsight>,
     ) -> Result<String, SagaError> {
-        debug!(target: "saga_assistant", "Received query: '{}'. Analyzing intent.", query);
+        debug!(target: "saga_assistant", "Received query: '{query}'. Analyzing intent.");
         let analyzed_query = self.analyze_query_intent(query)?;
 
         let mut content = match analyzed_query.intent.clone() {
@@ -1175,7 +1173,9 @@ impl SagaGuidanceSystem {
                 .knowledge_base
                 .get(&analyzed_query.primary_topic)
                 .cloned()
-                .ok_or_else(|| SagaError::InvalidHelpTopic(analyzed_query.primary_topic.clone()))?,
+                .ok_or_else(|| {
+                    SagaError::InvalidHelpTopic(analyzed_query.primary_topic.clone())
+                })?,
             QueryIntent::Compare => {
                 let mut comparison_text = format!(
                     "**Comparative Analysis of: {}**\n\n",
@@ -1184,11 +1184,8 @@ impl SagaGuidanceSystem {
                 for topic in &analyzed_query.entities {
                     let not_found_str = "Topic not found in internal knowledge base.".to_string();
                     let topic_content = self.knowledge_base.get(topic).unwrap_or(&not_found_str);
-                    comparison_text += &format!(
-                        "--- **{}** ---\n{}\n\n",
-                        topic.to_uppercase(),
-                        topic_content
-                    );
+                    comparison_text +=
+                        &format!("--- **{}** ---\n{}\n\n", topic.to_uppercase(), topic_content);
                 }
                 comparison_text
             }
@@ -1261,12 +1258,8 @@ impl SagaGuidanceSystem {
         };
 
         Ok(format!(
-            "--- SAGA Assistant [State: {:?} | Ω-Threat: {:?}] ---\n\n**Topic: {}**\n\n{}{}",
-            network_state,
-            threat_level,
+            "--- SAGA Assistant [State: {network_state:?} | Ω-Threat: {threat_level:?}] ---\n\n**Topic: {}**\n\n{content}{insight_text}",
             analyzed_query.primary_topic.to_uppercase(),
-            content,
-            insight_text
         ))
     }
 
@@ -1417,8 +1410,7 @@ impl SecurityMonitor {
         // Gini of 0 is perfect equality. Risk increases as Gini approaches 0.
         let sybil_risk = (1.0 - gini).powi(2).max(0.0);
         debug!(
-            "Sybil attack analysis complete. Gini: {:.4}, Risk Score: {:.4}",
-            gini, sybil_risk
+            "Sybil attack analysis complete. Gini: {gini:.4}, Risk Score: {sybil_risk:.4}",
         );
 
         sybil_risk
@@ -1459,8 +1451,7 @@ impl SecurityMonitor {
         let risk = zero_fee_ratio.powi(2);
 
         debug!(
-            "Transactional anomaly check complete. Zero-fee ratio: {:.4}, Risk score: {:.4}",
-            zero_fee_ratio, risk
+            "Transactional anomaly check complete. Zero-fee ratio: {zero_fee_ratio:.4}, Risk score: {risk:.4}",
         );
         risk
     }
@@ -1504,8 +1495,7 @@ impl SecurityMonitor {
         let risk = ((hhi - 1500.0).max(0.0) / (4000.0 - 1500.0)).clamp(0.0, 1.0);
 
         debug!(
-            "Centralization risk analysis complete. HHI: {:.2}, Risk Score: {:.4}",
-            hhi, risk
+            "Centralization risk analysis complete. HHI: {hhi:.2}, Risk Score: {risk:.4}",
         );
         risk
     }
@@ -1687,8 +1677,7 @@ impl SecurityMonitor {
         }
         let risk = (suspicious_cycles as f64 / total_txs as f64).clamp(0.0, 1.0);
         debug!(
-            "Wash trading analysis complete. Suspicious cycles: {}, Risk Score: {:.4}",
-            suspicious_cycles, risk
+            "Wash trading analysis complete. Suspicious cycles: {suspicious_cycles}, Risk Score: {risk:.4}",
         );
         risk
     }
@@ -1721,7 +1710,7 @@ impl SecurityMonitor {
                 .filter_map(|p_id| blocks.get(p_id).map(|p| p.miner.clone()))
                 .collect();
             miner_parent_map
-                .entry((*block).miner.clone())
+                .entry(block.miner.clone())
                 .or_default()
                 .extend(parent_miners);
         }
@@ -1753,11 +1742,7 @@ impl SecurityMonitor {
                     // If both are low-score and a strong bond exists, it's suspicious.
                     if parent_scs < 0.7 {
                         suspicious_groups += 1;
-                        debug!(
-                            miner,
-                            parent_miner = p_miner,
-                            "Potential collusion detected."
-                        );
+                        debug!(miner, parent_miner = p_miner, "Potential collusion detected.");
                     }
                 }
             }
@@ -2250,7 +2235,7 @@ impl PalletSaga {
         cred: CarbonOffsetCredential,
     ) -> Result<(), SagaError> {
         let mut metrics_write = self.economy.environmental_metrics.write().await;
-        let rules = self.economy.epoch_rules.read().await;
+        let _rules = self.economy.epoch_rules.read().await;
 
         let fail_and_count =
             |mut metrics: tokio::sync::RwLockWriteGuard<'_, EnvironmentalMetrics>,
@@ -2327,7 +2312,7 @@ impl PalletSaga {
                     .get("ai_cred_verify_threshold")
                     .map_or(0.75, |r| r.value);
 
-                info!(cred_id=%cred.id, project_id=%cred.project_id, "AI Verification Confidence: {:.4}", confidence_score);
+                info!(cred_id=%cred.id, project_id=%cred.project_id, "AI Verification Confidence: {confidence_score:.4}");
 
                 if confidence_score < confidence_threshold {
                     return fail_and_count(metrics_write, SagaError::InvalidCredential(format!(
@@ -2493,7 +2478,7 @@ impl PalletSaga {
         if current_epoch > *last_retrain + RETRAIN_INTERVAL_EPOCHS {
             #[cfg(feature = "ai")]
             if let Err(e) = self.cognitive_engine.write().await.train_models_from_data() {
-                error!("SAGA AI model retraining failed: {}", e);
+                error!("SAGA AI model retraining failed: {e}");
             }
             *last_retrain = current_epoch;
         }
@@ -2530,7 +2515,7 @@ impl PalletSaga {
         let economic_risk = self.security_monitor.check_for_economic_attack(dag).await;
 
         // Determine the most critical threat
-        let mut threats = vec![
+        let mut threats = [
             (sybil_risk, AttackType::Sybil, 0.8),
             (spam_risk, AttackType::Spam, 0.75),
             (centralization_risk, AttackType::Centralization, 0.8),
@@ -2569,7 +2554,7 @@ impl PalletSaga {
         *state_writer = new_state;
     }
 
-    async fn run_predictive_models(&self, current_epoch: u64, dag: &QantoDAG) {
+    async fn run_predictive_models(&self, _current_epoch: u64, dag: &QantoDAG) {
         let avg_tx_per_block = dag.get_average_tx_per_block().await;
         let congestion_metric = avg_tx_per_block / MAX_TRANSACTIONS_PER_BLOCK as f64;
 
@@ -2595,9 +2580,9 @@ impl PalletSaga {
                             {
                                 insights.push(SagaInsight {
                                     id: Uuid::new_v4().to_string(),
-                                    epoch: current_epoch,
+                                    epoch: _current_epoch,
                                     title: "High Congestion Predicted".to_string(),
-                                    detail: format!("SAGA's LSTM model predicts a high network load in the near future (predicted level: {:.2}). Expect higher fees or slower transaction times.", prediction),
+                                    detail: format!("SAGA's LSTM model predicts a high network load in the near future (predicted level: {prediction:.2}). Expect higher fees or slower transaction times."),
                                     severity: InsightSeverity::Warning,
                                 });
                             }
@@ -2711,7 +2696,7 @@ impl PalletSaga {
                     id: Uuid::new_v4().to_string(),
                     epoch: current_epoch,
                     title: "Security Alert".to_string(),
-                    detail: format!("SAGA has detected a potential {:?} and has entered a defensive state. Network parameters have been adjusted.", attack_type),
+                    detail: format!("SAGA has detected a potential {attack_type:?} and has entered a defensive state. Network parameters have been adjusted."),
                     severity: InsightSeverity::Critical,
                 });
             }
@@ -2874,7 +2859,8 @@ impl PalletSaga {
             let new_edict = match network_state {
                 NetworkState::Congested => {
                     let history = self.economy.congestion_history.read().await;
-                    let avg_congestion = history.iter().sum::<f64>() / history.len().max(1) as f64;
+                    let avg_congestion =
+                        history.iter().sum::<f64>() / history.len().max(1) as f64;
                     if avg_congestion > 0.8 {
                         Some(SagaEdict {
                             id: Uuid::new_v4().to_string(),
@@ -2883,7 +2869,9 @@ impl PalletSaga {
                             description: "Sustained Network Congestion: Temporarily increasing block rewards to incentivize faster processing.".to_string(),
                             action: EdictAction::Economic { reward_multiplier: 1.2, fee_multiplier: 1.1 },
                         })
-                    } else { None }
+                    } else {
+                        None
+                    }
                 }
                 NetworkState::Degraded => {
                     let validator_count = dag.validators.read().await.len();
@@ -2895,15 +2883,18 @@ impl PalletSaga {
                         action: EdictAction::Economic { reward_multiplier: 1.5, fee_multiplier: 1.0 },
                     })
                 }
-                NetworkState::UnderAttack(AttackType::Spam) => {
-                     Some(SagaEdict {
-                        id: Uuid::new_v4().to_string(),
-                        issued_epoch: current_epoch,
-                        expiry_epoch: current_epoch + 10,
-                        description: "Spam Attack Detected: Temporarily increasing minimum transaction fees and re-weighting trust scores.".to_string(),
-                        action: EdictAction::Economic { reward_multiplier: 1.0, fee_multiplier: 5.0 },
-                    })
-                }
+                NetworkState::UnderAttack(AttackType::Spam) => Some(SagaEdict {
+                    id: Uuid::new_v4().to_string(),
+                    issued_epoch: current_epoch,
+                    expiry_epoch: current_epoch + 10,
+                    description:
+                        "Spam Attack Detected: Temporarily increasing minimum transaction fees and re-weighting trust scores."
+                            .to_string(),
+                    action: EdictAction::Economic {
+                        reward_multiplier: 1.0,
+                        fee_multiplier: 5.0,
+                    },
+                }),
                 _ => None,
             };
 
@@ -3042,7 +3033,7 @@ impl PalletSaga {
                     voters: vec![],
                     creation_epoch: _current_epoch,
                 };
-                info!(proposal_id = %proposal.id, "SAGA is proposing to lower minimum stake to {} to attract validators.", new_stake_req);
+                info!(proposal_id = %proposal.id, "SAGA is proposing to lower minimum stake to {new_stake_req} to attract validators.");
                 self.award_karma(
                     "SAGA_AUTONOMOUS_AGENT",
                     KarmaSource::SagaAutonomousAction,
@@ -3094,7 +3085,7 @@ impl PalletSaga {
                     proposal_type: ProposalType::UpdateRule(vote_threshold_rule.clone(), new_threshold),
                     votes_for: 1.0, votes_against: 0.0, status: ProposalStatus::Voting, voters: vec![], creation_epoch: current_epoch,
                 };
-                info!(proposal_id = %proposal.id, "SAGA detected a high proposal rejection rate and is proposing to lower the vote threshold to {}.", new_threshold);
+                info!(proposal_id = %proposal.id, "SAGA detected a high proposal rejection rate and is proposing to lower the vote threshold to {new_threshold}.");
                 self.award_karma("SAGA_AUTONOMOUS_AGENT", KarmaSource::SagaAutonomousAction, 100).await;
                 proposals_writer.insert(proposal.id.clone(), proposal);
                 return true;
@@ -3120,7 +3111,7 @@ impl PalletSaga {
                         proposal_type: ProposalType::UpdateRule(fee_rule.clone(), new_fee),
                         votes_for: 1.0, votes_against: 0.0, status: ProposalStatus::Voting, voters: vec![], creation_epoch: current_epoch,
                     };
-                    info!(proposal_id = %proposal.id, "SAGA detected a spam attack and is proposing to increase the minimum base transaction fee to {}.", new_fee);
+                    info!(proposal_id = %proposal.id, "SAGA detected a spam attack and is proposing to increase the minimum base transaction fee to {new_fee}.");
                     self.award_karma("SAGA_AUTONOMOUS_AGENT", KarmaSource::SagaAutonomousAction, 100).await;
                     proposals_writer.insert(proposal.id.clone(), proposal);
                     return true;
@@ -3170,7 +3161,7 @@ impl PalletSaga {
                     proposal_type: ProposalType::UpdateRule(weight_rule.clone(), new_weight),
                     votes_for: 1.0, votes_against: 0.0, status: ProposalStatus::Voting, voters: vec![], creation_epoch: current_epoch,
                 };
-                info!(proposal_id = %proposal.id, "SAGA detected that environmental contributions may be undervalued and is proposing to increase the SCS environmental weight to {}.", new_weight);
+                info!(proposal_id = %proposal.id, "SAGA detected that environmental contributions may be undervalued and is proposing to increase the SCS environmental weight to {new_weight}.");
                 self.award_karma("SAGA_AUTONOMOUS_AGENT", KarmaSource::SagaAutonomousAction, 150).await;
                 proposals_writer.insert(proposal.id.clone(), proposal);
                 return true;
@@ -3206,7 +3197,7 @@ impl PalletSaga {
                     proposal_type: ProposalType::UpdateRule(threshold_rule, new_threshold),
                     votes_for: 1.0, votes_against: 0.0, status: ProposalStatus::Voting, voters: vec![], creation_epoch: current_epoch,
                 };
-                info!(proposal_id = %proposal.id, "SAGA detected a high credential failure rate and is proposing to lower the AI verification threshold to {}.", new_threshold);
+                info!(proposal_id = %proposal.id, "SAGA detected a high credential failure rate and is proposing to lower the AI verification threshold to {new_threshold}.");
                 self.award_karma("SAGA_AUTONOMOUS_AGENT", KarmaSource::SagaAutonomousAction, 120).await;
                 proposals_writer.insert(proposal.id.clone(), proposal);
                 return true;

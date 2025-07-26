@@ -16,7 +16,10 @@ struct MockQantoNode {
 impl Default for MockQantoNode {
     fn default() -> Self {
         Self {
-            saga: PalletSaga::new(),
+            saga: PalletSaga::new(
+                #[cfg(feature = "infinite-strata")]
+                None,
+            ),
             network_state: NetworkState::Nominal,
             omega_threat: omega::identity::ThreatLevel::Nominal,
         }
@@ -72,11 +75,11 @@ async fn main() {
                 // Clean up the response for better terminal readability
                 let clean_response = response
                     .replace("**", "") // Remove markdown bold
-                    .replace("*", ""); // Remove markdown italics
-                println!("{}", clean_response);
+                    .replace('*', ""); // Remove markdown italics
+                println!("{clean_response}");
             }
             Err(e) => {
-                println!("SAGA Error: {}", e);
+                println!("SAGA Error: {e}");
             }
         }
     }
