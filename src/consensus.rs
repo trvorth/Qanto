@@ -1,31 +1,27 @@
 //! --- Qanto Hybrid Consensus Engine ---
-//! v2.0.0 - Hardened & Adaptive
+//! v2.1.0 - User-Specified Finality Model
 //!
 //! This module implements the core consensus rules for the Qanto network.
-//! It uses a hybrid model that combines three critical, non-replaceable mechanisms,
-//! each serving a distinct and vital purpose.
+//! It uses a hybrid model where finality is determined by a combination of PoW and PoS,
+//! with PoW as the primary mechanism.
 //!
-//! 1.  **Proof-of-Stake (PoS): The "Right to Participate"**. This is the foundational
-//!     layer for eligibility. To create blocks, a node must be a registered validator
-//!     with a minimum amount of QNTO tokens staked. This ensures that block producers
-//!     have a financial "stake" in the network's success and are disincentivized from
-//!     acting maliciously. This is a non-negotiable prerequisite for block production.
+//! ### Finality Model (As per Specification)
 //!
-//! 2.  **Proof-of-Work (PoW): The "Cost of Truth"**. This is the fundamental security
-//!     and finality layer. Every valid block, regardless of who creates it, MUST contain
-//!     a valid Proof-of-Work solution (a nonce that results in a block hash below a
-//!     certain target). This makes rewriting history computationally expensive and secures
-//!     the chain against 51% attacks. PoW is a permanent and core part of the consensus
-//!     mechanism that cannot be bypassed.
+//! 1.  **Proof-of-Work (PoW): The "Primary Finality"**. This is the fundamental security
+//!     and default finality layer. Every valid block MUST contain a valid Proof-of-Work
+//!     solution. The cumulative work on a chain of blocks is the primary determinant of its finality,
+//!     making history computationally expensive to rewrite.
 //!
-//! 3.  **Proof-of-Sentiency (PoSe): The "Intelligence Layer"**. This is Qanto's
-//!     novel innovation, powered by the SAGA pallet. PoSe does NOT replace PoW.
-//!     Instead, it *dynamically adjusts the PoW difficulty target* for each miner
-//!     based on their reputation (Saga Credit Score - SCS). Reputable, trusted miners
-//!     face a lower difficulty, making the network highly efficient and reducing its
-//!     energy footprint. Malicious or untrusted miners face a much higher difficulty,
-//!     making attacks prohibitively expensive. PoSe makes PoW smarter, adaptive, and
-//!     more secure, ensuring the most trustworthy participants are the most efficient.
+//! 2.  **Proof-of-Stake (PoS): The "Finality Helper"**. This mechanism helps accelerate the
+//!     appearance of finality and signals validator confidence. It is **NOT** a strict requirement
+//!     for a block to be valid. A block with valid PoW but low stake is still considered
+//!     valid, though it may be flagged as having lower PoS-backed confidence. Validators
+//!     are **NO LONGER REQUIRED** to have a minimum stake to produce blocks.
+//!
+//! 3.  **Proof-of-Sentiency (PoSe): The "Intelligence Layer"**. Powered by the SAGA
+//!     pallet, PoSe makes the primary PoW mechanism "smarter" by dynamically adjusting
+//!     the PoW difficulty for each miner based on their reputation (Saga Credit Score - SCS).
+//!     This makes the network more efficient and secure without replacing PoW.
 
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError, UTXO};
 use crate::saga::{PalletSaga, SagaError};
@@ -70,8 +66,8 @@ impl Consensus {
         Self { saga }
     }
 
-    /// The primary validation function. It checks a block against all consensus rules
-    /// in a specific, non-negotiable order: structure, stake, transactions, and finally the computational work.
+    /// The primary validation function. It checks a block against all consensus rules,
+    /// prioritizing Proof-of-Work as the primary finality mechanism.
     #[instrument(skip(self, block, dag_arc, utxos), fields(block_id = %block.id, miner = %block.miner))]
     pub async fn validate_block(
         &self,
@@ -80,16 +76,14 @@ impl Consensus {
         utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
     ) -> Result<(), ConsensusError> {
         // --- Rule 1: Structural & Cryptographic Integrity (Fastest Check) ---
-        // This performs basic sanity checks on the block's format and signatures.
         self.validate_block_structure(block, dag_arc).await?;
 
-        // --- Rule 2: Proof-of-Stake (PoS) - The "Right to Participate" ---
-        // This verifies that the block's creator is a registered validator with enough stake.
-        self.validate_proof_of_stake(&block.validator, dag_arc)
-            .await?;
+        // --- Rule 2: Proof-of-Work (PoW) with PoSe - The "Primary Finality" ---
+        // This is the most critical check. A block is fundamentally invalid without correct PoW.
+        self.validate_proof_of_work(block).await?;
 
         // --- Rule 3: Transaction Validity ---
-        // This ensures every transaction in the block is valid and spends existing UTXOs.
+        // Ensures every transaction in the block is valid.
         let utxos_guard = utxos.read().await;
         for tx in block.transactions.iter().skip(1) {
             // Skip coinbase
@@ -97,10 +91,18 @@ impl Consensus {
         }
         drop(utxos_guard);
 
-        // --- Rule 4: Proof-of-Work (PoW) with Proof-of-Sentiency (PoSe) Adjustment ---
-        // The final and most computationally intensive check. It verifies that the block's
-        // hash meets the difficulty target, which has been dynamically adjusted by SAGA.
-        self.validate_proof_of_work(block).await?;
+        // --- Rule 4: Proof-of-Stake (PoS) - The "Finality Helper" ---
+        // This check is now supplementary. A failure here logs a warning but does NOT
+        // invalidate the block, as finality is primarily derived from PoW.
+        if let Err(e) = self
+            .validate_proof_of_stake(&block.validator, dag_arc)
+            .await
+        {
+            warn!(
+                "PoS Warning for block {}: {}. Block is still valid due to PoW.",
+                block.id, e
+            );
+        }
 
         debug!("All consensus checks passed for block {}", block.id);
         Ok(())
@@ -143,11 +145,6 @@ impl Consensus {
                 "First transaction must be coinbase".to_string(),
             ));
         }
-        if coinbase.outputs.is_empty() {
-            return Err(ConsensusError::InvalidBlockStructure(
-                "Coinbase must have at least one output".to_string(),
-            ));
-        }
 
         let expected_reward = self.saga.calculate_dynamic_reward(block, dag_arc).await?;
         if block.reward != expected_reward {
@@ -160,21 +157,30 @@ impl Consensus {
         Ok(())
     }
 
-    /// Validates that the block producer has sufficient stake to participate in consensus.
+    /// Validates the validator's stake. Per the new specification, this now functions
+    /// as a "helper" check and no longer rejects blocks from validators with low stake.
+    /// It will return an error that can be logged as a warning.
     async fn validate_proof_of_stake(
         &self,
         validator_address: &str,
         dag: &QantoDAG,
     ) -> Result<(), ConsensusError> {
+        // --- NEW LOGIC: NO MINIMUM STAKE REQUIRED ---
+        // The check for a minimum stake (e.g., 1,000 QNTO) has been removed.
+        // A validator NO LONGER NEEDS to have the required minimum stake.
+        // PoW is now the primary determinant of finality. This function can still be
+        // used to check for stake and issue warnings, but it will not cause validation to fail.
         let rules = self.saga.economy.epoch_rules.read().await;
-        let min_stake = rules.get("min_validator_stake").map_or(1000.0, |r| r.value) as u64;
+        let min_stake_for_full_confidence =
+            rules.get("min_validator_stake").map_or(1000.0, |r| r.value) as u64;
 
         let validators = dag.validators.read().await;
         let validator_stake = validators.get(validator_address).copied().unwrap_or(0);
 
-        if validator_stake < min_stake {
+        if validator_stake < min_stake_for_full_confidence {
+            // This error will be caught and logged as a warning in `validate_block`.
             return Err(ConsensusError::ProofOfStakeFailed(format!(
-                "Insufficient stake for validator {validator_address}. Required: {min_stake}, Found: {validator_stake}"
+                "Low PoS confidence. Stake of {validator_stake} is below the nominal threshold of {min_stake_for_full_confidence}"
             )));
         }
         Ok(())
@@ -218,10 +224,8 @@ impl Consensus {
     /// This is the core of PoSe, where SAGA's intelligence modifies the base PoW.
     pub async fn get_effective_difficulty(&self, miner_address: &str) -> u64 {
         let rules = self.saga.economy.epoch_rules.read().await;
-        // Clippy fix: unnecessary_map_or
         let base_difficulty = rules.get("base_difficulty").map_or(10.0, |r| r.value) as u64;
 
-        // Fetch the miner's Saga Credit Score (SCS). Default to 0.5 (neutral) if not found.
         let scs = self
             .saga
             .reputation
@@ -231,13 +235,9 @@ impl Consensus {
             .get(miner_address)
             .map_or(0.5, |s| s.score);
 
-        // An SCS of 1.0 (perfect) gives a significant advantage.
-        // An SCS of 0.0 (malicious) gives a significant disadvantage.
-        // An SCS of 0.5 (neutral) results in the base difficulty.
         let difficulty_modifier = 1.0 - (scs - 0.5);
         let effective_difficulty = (base_difficulty as f64 * difficulty_modifier).round() as u64;
 
-        // Clamp the difficulty to prevent extreme values, ensuring the network remains stable.
         effective_difficulty.clamp(
             base_difficulty.saturating_div(2),
             base_difficulty.saturating_mul(2),
