@@ -302,39 +302,32 @@ async fn process_command(input: &str) {
         "/help" => {
             println!("{}", "Available commands:".cyan());
             println!(
-                "  {}     - {}",
-                "/ask [topic]".white(),
-                "Ask about Qanto concepts (e.g., /ask about scs)"
+                "  {}     - Ask about Qanto concepts (e.g., /ask about scs)",
+                "/ask [topic]".white()
             );
             println!(
-                "  {} - {}",
-                "/run simulation".white(),
-                "Run a full autonomous agent simulation."
+                "  {} - Run a full autonomous agent simulation.",
+                "/run simulation".white()
             );
             println!(
-                "  {}   - {}",
-                "/analyze [risk]".white(),
-                "Run security analysis (e.g., /analyze centralization)"
+                "  {}   - Run security analysis (e.g., /analyze centralization)",
+                "/analyze [risk]".white()
             );
             println!(
-                "  {}   - {}",
-                "/simulate cycle".white(),
-                "Run a mock Sense-Think-Act governance loop"
+                "  {}   - Run a mock Sense-Think-Act governance loop",
+                "/simulate cycle".white()
             );
             println!(
-                "  {}          - {}",
-                "/status".white(),
-                "View detailed network status (mocked)"
+                "  {}          - View detailed network status (mocked)",
+                "/status".white()
             );
             println!(
-                "  {}           - {}",
-                "/clear".white(),
-                "Clear the terminal screen"
+                "  {}           - Clear the terminal screen",
+                "/clear".white()
             );
             println!(
-                "  {}             - {}",
-                "exit".white(),
-                "Quit the assistant"
+                "  {}             - Quit the assistant",
+                "exit".white()
             );
         }
         "/run" => {
