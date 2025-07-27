@@ -325,10 +325,7 @@ async fn process_command(input: &str) {
                 "  {}           - Clear the terminal screen",
                 "/clear".white()
             );
-            println!(
-                "  {}             - Quit the assistant",
-                "exit".white()
-            );
+            println!("  {}             - Quit the assistant", "exit".white());
         }
         "/run" => {
             if let Some(&"simulation") = args.first() {
