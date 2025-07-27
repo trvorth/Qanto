@@ -1,410 +1,451 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-  <meta http-equiv="Content-Style-Type" content="text/css">
-  <title></title>
-  <meta name="Generator" content="Cocoa HTML Writer">
-  <meta name="CocoaVersion" content="2677.6">
-  <style type="text/css">
-    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #4689cc; -webkit-text-stroke: #4689cc}
-    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #8cd3fe; -webkit-text-stroke: #8cd3fe}
-    p.p3 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #c27e65; -webkit-text-stroke: #c27e65}
-    p.p4 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #cacaca; -webkit-text-stroke: #cacaca}
-    p.p5 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #a7c598; -webkit-text-stroke: #a7c598}
-    p.p6 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #6d7378; -webkit-text-stroke: #6d7378}
-    p.p7 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #cacaca; -webkit-text-stroke: #cacaca; min-height: 16.0px}
-    p.p8 {margin: 0.0px 0.0px 0.0px 0.0px; font: 14.0px Menlo; color: #71c083; -webkit-text-stroke: #71c083}
-    span.s1 {font-kerning: none; background-color: #171818}
-    span.s2 {font-kerning: none; color: #8cd3fe; background-color: #171818; -webkit-text-stroke: 0px #8cd3fe}
-    span.s3 {font-kerning: none; color: #6d6d6d; background-color: #171818; -webkit-text-stroke: 0px #6d6d6d}
-    span.s4 {font-kerning: none; color: #cacaca; background-color: #171818; -webkit-text-stroke: 0px #cacaca}
-    span.s5 {font-kerning: none; color: #c27e65; background-color: #171818; -webkit-text-stroke: 0px #c27e65}
-    span.s6 {font-kerning: none; color: #4689cc; background-color: #171818; -webkit-text-stroke: 0px #4689cc}
-    span.s7 {font-kerning: none; color: #d4d4d4; background-color: #171818; -webkit-text-stroke: 0px #d4d4d4}
-    span.s8 {font-kerning: none; color: #71c083; background-color: #171818; -webkit-text-stroke: 0px #71c083}
-    span.s9 {font-kerning: none; color: #a7c598; background-color: #171818; -webkit-text-stroke: 0px #a7c598}
-    span.s10 {font-kerning: none; color: #b76ff7; background-color: #171818; -webkit-text-stroke: 0px #b76ff7}
-    span.s11 {font-kerning: none}
-    span.s12 {font-kerning: none; color: #f67c30; background-color: #171818; -webkit-text-stroke: 0px #f67c30}
-    span.s13 {font-kerning: none; color: #36c0a0; background-color: #171818; -webkit-text-stroke: 0px #36c0a0}
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAGA - Sentient Console v8.0 (Gemini Integrated)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&family=VT323&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Fira Code', monospace;
+            background-color: #0d0c1d;
+            color: #c0c5ce;
+            overflow: hidden;
+        }
+        #background-grid {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image:
+                linear-gradient(to right, rgba(49, 46, 129, 0.2) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(49, 46, 129, 0.2) 1px, transparent 1px);
+            background-size: 40px 40px;
+            z-index: -1;
+            animation: pan 60s linear infinite;
+        }
+        @keyframes pan {
+            0% { background-position: 0 0; }
+            100% { background-position: 400px 400px; }
+        }
+        .terminal {
+            background-color: rgba(23, 21, 48, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid #4a3a9a;
+            box-shadow: 0 0 35px rgba(74, 58, 154, 0.7), inset 0 0 15px rgba(23, 21, 48, 0.6);
+        }
+        .pixel-text {
+            font-family: 'VT323', monospace;
+            font-size: 5rem;
+            line-height: 1;
+            letter-spacing: -4px;
+        }
+        .gradient-text {
+            background: linear-gradient(90deg, #a5b4fc, #f472b6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-shadow: 0 0 15px rgba(236, 72, 153, 0.4);
+        }
+        .prompt-box {
+            border: 1px solid #312e81;
+            background-color: rgba(13, 12, 29, 0.5);
+            border-radius: 0.5rem;
+        }
+        .prompt-input {
+            background: transparent;
+            border: none;
+            outline: none;
+            width: 100%;
+            color: #f472b6;
+        }
+        .prompt-cursor {
+            display: inline-block;
+            width: 9px;
+            height: 1.25rem;
+            background-color: #f472b6;
+            margin-left: 1px;
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink {
+            from, to { background-color: transparent; }
+            50% { background-color: #f472b6; }
+        }
+        .terminal-output {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            scroll-behavior: smooth;
+        }
+        .text-cyan-400 { color: #22d3ee; text-shadow: 0 0 5px rgba(34, 211, 238, 0.3); }
+        .text-magenta-400 { color: #f472b6; text-shadow: 0 0 5px rgba(244, 114, 182, 0.3); }
+        .text-indigo-400 { color: #818cf8; text-shadow: 0 0 5px rgba(129, 140, 248, 0.3); }
+        .text-lime-400 { color: #a3e635; text-shadow: 0 0 5px rgba(163, 230, 53, 0.3); }
+        .text-amber-400 { color: #facc15; text-shadow: 0 0 5px rgba(250, 204, 21, 0.3); }
+        .text-gray-500 { color: #6b7280; }
+    </style>
 </head>
-<body>
-<p class="p1"><span class="s1">&lt;!DOCTYPE</span><span class="s2"> html</span><span class="s1">&gt;</span></p>
-<p class="p1"><span class="s3">&lt;</span><span class="s1">html</span><span class="s4"> </span><span class="s2">lang</span><span class="s3">=</span><span class="s5">"en"</span><span class="s3">&gt;</span></p>
-<p class="p1"><span class="s3">&lt;</span><span class="s1">head</span><span class="s3">&gt;</span></p>
-<p class="p2"><span class="s4"><span class="Apple-converted-space">    </span></span><span class="s3">&lt;</span><span class="s6">meta</span><span class="s4"> </span><span class="s1">charset</span><span class="s3">=</span><span class="s5">"UTF-8"</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">    </span></span><span class="s3">&lt;</span><span class="s6">meta</span><span class="s4"> </span><span class="s2">name</span><span class="s3">=</span><span class="s1">"viewport"</span><span class="s4"> </span><span class="s2">content</span><span class="s3">=</span><span class="s1">"width=device-width, initial-scale=1.0"</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">    </span></span><span class="s3">&lt;</span><span class="s6">title</span><span class="s3">&gt;</span><span class="s1">SAGA - Sentient Console v7.0</span><span class="s3">&lt;/</span><span class="s6">title</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">    </span></span><span class="s3">&lt;</span><span class="s6">script</span><span class="s4"> </span><span class="s2">src</span><span class="s3">=</span><span class="s1">"https://cdn.tailwindcss.com"</span><span class="s3">&gt;&lt;/</span><span class="s6">script</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">    </span></span><span class="s3">&lt;</span><span class="s6">link</span><span class="s4"> </span><span class="s2">rel</span><span class="s3">=</span><span class="s1">"preconnect"</span><span class="s4"> </span><span class="s2">href</span><span class="s3">=</span><span class="s1">"https://fonts.googleapis.com"</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">    </span></span><span class="s3">&lt;</span><span class="s6">link</span><span class="s4"> </span><span class="s2">rel</span><span class="s3">=</span><span class="s1">"preconnect"</span><span class="s4"> </span><span class="s2">href</span><span class="s3">=</span><span class="s1">"https://fonts.gstatic.com"</span><span class="s4"> </span><span class="s2">crossorigin</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">    </span></span><span class="s3">&lt;</span><span class="s6">link</span><span class="s4"> </span><span class="s2">href</span><span class="s3">=</span><span class="s1">"https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&amp;family=VT323&amp;display=swap"</span><span class="s4"> </span><span class="s2">rel</span><span class="s3">=</span><span class="s1">"stylesheet"</span><span class="s3">&gt;</span></p>
-<p class="p1"><span class="s4"><span class="Apple-converted-space">    </span></span><span class="s3">&lt;</span><span class="s1">style</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s6">body</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">font-family:</span><span class="s1"> </span><span class="s8">'Fira Code'</span><span class="s7">,</span><span class="s1"> </span><span class="s5">monospace</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">background-color:</span><span class="s1"> #0d0c1d</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">color:</span><span class="s1"> #c0c5ce</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">overflow:</span><span class="s1"> </span><span class="s5">hidden</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p1"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s1">#background-grid</span><span class="s4"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">position:</span><span class="s1"> </span><span class="s5">fixed</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">top:</span><span class="s1"> </span><span class="s9">0</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">left:</span><span class="s1"> </span><span class="s9">0</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">width:</span><span class="s1"> </span><span class="s9">100%</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">height:</span><span class="s1"> </span><span class="s9">100%</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>background-image:</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>linear-gradient(to right, rgba(49, 46, 129, 0.2) 1px, transparent 1px),</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>linear-gradient(to bottom, rgba(49, 46, 129, 0.2) 1px, transparent 1px);</span></p>
-<p class="p2"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s1">background-size:</span><span class="s4"> </span><span class="s9">40px</span><span class="s4"> </span><span class="s9">40px</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">z-index:</span><span class="s1"> </span><span class="s9">-1</span><span class="s7">;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s2">animation:</span><span class="s4"> </span><span class="s1">pan</span><span class="s4"> </span><span class="s9">60s</span><span class="s4"> </span><span class="s1">linear</span><span class="s4"> </span><span class="s1">infinite</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">@keyframes</span><span class="s1"> </span><span class="s5">pan</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p2"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s9">0%</span><span class="s4"> </span><span class="s7">{</span><span class="s4"> </span><span class="s1">background-position:</span><span class="s4"> </span><span class="s9">0</span><span class="s4"> </span><span class="s9">0</span><span class="s7">;</span><span class="s4"> </span><span class="s7">}</span></p>
-<p class="p2"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s9">100%</span><span class="s4"> </span><span class="s7">{</span><span class="s4"> </span><span class="s1">background-position:</span><span class="s4"> </span><span class="s9">400px</span><span class="s4"> </span><span class="s9">400px</span><span class="s7">;</span><span class="s4"> </span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s6">.terminal</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p2"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s1">background-color:</span><span class="s4"> </span><span class="s5">rgba(</span><span class="s9">23</span><span class="s7">,</span><span class="s4"> </span><span class="s9">21</span><span class="s7">,</span><span class="s4"> </span><span class="s9">48</span><span class="s7">,</span><span class="s4"> </span><span class="s9">0.85</span><span class="s5">)</span><span class="s7">;</span></p>
-<p class="p2"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s1">backdrop-filter:</span><span class="s4"> </span><span class="s5">blur(</span><span class="s9">10px</span><span class="s5">)</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">border:</span><span class="s1"> </span><span class="s9">1px</span><span class="s1"> </span><span class="s5">solid</span><span class="s1"> #4a3a9a</span><span class="s7">;</span></p>
-<p class="p5"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s2">box-shadow:</span><span class="s4"> </span><span class="s1">0</span><span class="s4"> </span><span class="s1">0</span><span class="s4"> </span><span class="s1">35px</span><span class="s4"> </span><span class="s5">rgba(</span><span class="s1">74</span><span class="s7">,</span><span class="s4"> </span><span class="s1">58</span><span class="s7">,</span><span class="s4"> </span><span class="s1">154</span><span class="s7">,</span><span class="s4"> </span><span class="s1">0.7</span><span class="s5">)</span><span class="s7">,</span><span class="s4"> </span><span class="s5">inset</span><span class="s4"> </span><span class="s1">0</span><span class="s4"> </span><span class="s1">0</span><span class="s4"> </span><span class="s1">15px</span><span class="s4"> </span><span class="s5">rgba(</span><span class="s1">23</span><span class="s7">,</span><span class="s4"> </span><span class="s1">21</span><span class="s7">,</span><span class="s4"> </span><span class="s1">48</span><span class="s7">,</span><span class="s4"> </span><span class="s1">0.6</span><span class="s5">)</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p1"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s1">.pixel-text</span><span class="s4"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">font-family:</span><span class="s1"> </span><span class="s8">'VT323'</span><span class="s7">,</span><span class="s1"> </span><span class="s5">monospace</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">font-size:</span><span class="s1"> </span><span class="s9">5rem</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">line-height:</span><span class="s1"> </span><span class="s9">1</span><span class="s7">;</span></p>
-<p class="p2"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s1">letter-spacing:</span><span class="s4"> </span><span class="s9">-4px</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p1"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s1">.gradient-text</span><span class="s4"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">background:</span><span class="s1"> </span><span class="s5">linear-gradient(</span><span class="s9">90deg</span><span class="s7">,</span><span class="s1"> #a5b4fc</span><span class="s7">,</span><span class="s1"> #f472b6</span><span class="s5">)</span><span class="s7">;</span></p>
-<p class="p2"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s1">-webkit-background-clip:</span><span class="s4"> </span><span class="s5">text</span><span class="s7">;</span></p>
-<p class="p2"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s1">background-clip:</span><span class="s4"> </span><span class="s5">text</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">color:</span><span class="s1"> </span><span class="s5">transparent</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">text-shadow:</span><span class="s1"> </span><span class="s9">0</span><span class="s1"> </span><span class="s9">0</span><span class="s1"> </span><span class="s9">15px</span><span class="s1"> </span><span class="s5">rgba(</span><span class="s9">236</span><span class="s7">,</span><span class="s1"> </span><span class="s9">72</span><span class="s7">,</span><span class="s1"> </span><span class="s9">153</span><span class="s7">,</span><span class="s1"> </span><span class="s9">0.4</span><span class="s5">)</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p1"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s1">.prompt-box</span><span class="s4"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">border:</span><span class="s1"> </span><span class="s9">1px</span><span class="s1"> </span><span class="s5">solid</span><span class="s1"> #312e81</span><span class="s7">;</span></p>
-<p class="p2"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s1">background-color:</span><span class="s4"> </span><span class="s5">rgba(</span><span class="s9">13</span><span class="s7">,</span><span class="s4"> </span><span class="s9">12</span><span class="s7">,</span><span class="s4"> </span><span class="s9">29</span><span class="s7">,</span><span class="s4"> </span><span class="s9">0.5</span><span class="s5">)</span><span class="s7">;</span></p>
-<p class="p2"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s1">border-radius:</span><span class="s4"> </span><span class="s9">0.5rem</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p1"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s1">.prompt-input</span><span class="s4"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">background:</span><span class="s1"> </span><span class="s5">transparent</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">border:</span><span class="s1"> </span><span class="s5">none</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">outline:</span><span class="s1"> </span><span class="s5">none</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">width:</span><span class="s1"> </span><span class="s9">100%</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">color:</span><span class="s1"> #f472b6</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p1"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s1">.prompt-cursor</span><span class="s4"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">display:</span><span class="s1"> </span><span class="s5">inline-block</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">width:</span><span class="s1"> </span><span class="s9">9px</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">height:</span><span class="s1"> </span><span class="s9">1.25rem</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">background-color:</span><span class="s1"> #f472b6</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">margin-left:</span><span class="s1"> </span><span class="s9">1px</span><span class="s7">;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s2">animation:</span><span class="s4"> </span><span class="s1">blink</span><span class="s4"> </span><span class="s9">1s</span><span class="s4"> </span><span class="s1">step-end</span><span class="s4"> </span><span class="s1">infinite</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">@keyframes</span><span class="s1"> </span><span class="s5">blink</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s5">from</span><span class="s7">,</span><span class="s1"> </span><span class="s5">to</span><span class="s1"> </span><span class="s7">{</span><span class="s1"> </span><span class="s2">background-color:</span><span class="s1"> </span><span class="s5">transparent</span><span class="s7">;</span><span class="s1"> </span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s9">50%</span><span class="s1"> </span><span class="s7">{</span><span class="s1"> </span><span class="s2">background-color:</span><span class="s1"> #f472b6</span><span class="s7">;</span><span class="s1"> </span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p1"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s1">.terminal-output</span><span class="s4"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">white-space:</span><span class="s1"> </span><span class="s5">pre-wrap</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s2">word-wrap:</span><span class="s1"> </span><span class="s5">break-word</span><span class="s7">;</span></p>
-<p class="p2"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s1">scroll-behavior:</span><span class="s4"> </span><span class="s5">smooth</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s6">.text-cyan-400</span><span class="s1"> </span><span class="s7">{</span><span class="s1"> </span><span class="s2">color:</span><span class="s1"> #22d3ee</span><span class="s7">;</span><span class="s1"> </span><span class="s2">text-shadow:</span><span class="s1"> </span><span class="s9">0</span><span class="s1"> </span><span class="s9">0</span><span class="s1"> </span><span class="s9">5px</span><span class="s1"> </span><span class="s5">rgba(</span><span class="s9">34</span><span class="s7">,</span><span class="s1"> </span><span class="s9">211</span><span class="s7">,</span><span class="s1"> </span><span class="s9">238</span><span class="s7">,</span><span class="s1"> </span><span class="s9">0.3</span><span class="s5">)</span><span class="s7">;</span><span class="s1"> </span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s6">.text-magenta-400</span><span class="s1"> </span><span class="s7">{</span><span class="s1"> </span><span class="s2">color:</span><span class="s1"> #f472b6</span><span class="s7">;</span><span class="s1"> </span><span class="s2">text-shadow:</span><span class="s1"> </span><span class="s9">0</span><span class="s1"> </span><span class="s9">0</span><span class="s1"> </span><span class="s9">5px</span><span class="s1"> </span><span class="s5">rgba(</span><span class="s9">244</span><span class="s7">,</span><span class="s1"> </span><span class="s9">114</span><span class="s7">,</span><span class="s1"> </span><span class="s9">182</span><span class="s7">,</span><span class="s1"> </span><span class="s9">0.3</span><span class="s5">)</span><span class="s7">;</span><span class="s1"> </span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s6">.text-indigo-400</span><span class="s1"> </span><span class="s7">{</span><span class="s1"> </span><span class="s2">color:</span><span class="s1"> #818cf8</span><span class="s7">;</span><span class="s1"> </span><span class="s2">text-shadow:</span><span class="s1"> </span><span class="s9">0</span><span class="s1"> </span><span class="s9">0</span><span class="s1"> </span><span class="s9">5px</span><span class="s1"> </span><span class="s5">rgba(</span><span class="s9">129</span><span class="s7">,</span><span class="s1"> </span><span class="s9">140</span><span class="s7">,</span><span class="s1"> </span><span class="s9">248</span><span class="s7">,</span><span class="s1"> </span><span class="s9">0.3</span><span class="s5">)</span><span class="s7">;</span><span class="s1"> </span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s6">.text-lime-400</span><span class="s1"> </span><span class="s7">{</span><span class="s1"> </span><span class="s2">color:</span><span class="s1"> #a3e635</span><span class="s7">;</span><span class="s1"> </span><span class="s2">text-shadow:</span><span class="s1"> </span><span class="s9">0</span><span class="s1"> </span><span class="s9">0</span><span class="s1"> </span><span class="s9">5px</span><span class="s1"> </span><span class="s5">rgba(</span><span class="s9">163</span><span class="s7">,</span><span class="s1"> </span><span class="s9">230</span><span class="s7">,</span><span class="s1"> </span><span class="s9">53</span><span class="s7">,</span><span class="s1"> </span><span class="s9">0.3</span><span class="s5">)</span><span class="s7">;</span><span class="s1"> </span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s6">.text-amber-400</span><span class="s1"> </span><span class="s7">{</span><span class="s1"> </span><span class="s2">color:</span><span class="s1"> #facc15</span><span class="s7">;</span><span class="s1"> </span><span class="s2">text-shadow:</span><span class="s1"> </span><span class="s9">0</span><span class="s1"> </span><span class="s9">0</span><span class="s1"> </span><span class="s9">5px</span><span class="s1"> </span><span class="s5">rgba(</span><span class="s9">250</span><span class="s7">,</span><span class="s1"> </span><span class="s9">204</span><span class="s7">,</span><span class="s1"> </span><span class="s9">21</span><span class="s7">,</span><span class="s1"> </span><span class="s9">0.3</span><span class="s5">)</span><span class="s7">;</span><span class="s1"> </span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s6">.text-gray-500</span><span class="s1"> </span><span class="s7">{</span><span class="s1"> </span><span class="s2">color:</span><span class="s1"> #6b7280</span><span class="s7">;</span><span class="s1"> </span><span class="s7">}</span></p>
-<p class="p1"><span class="s4"><span class="Apple-converted-space">    </span></span><span class="s3">&lt;/</span><span class="s1">style</span><span class="s3">&gt;</span></p>
-<p class="p1"><span class="s3">&lt;/</span><span class="s1">head</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s3">&lt;</span><span class="s6">body</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"p-4 md:p-8 flex items-center justify-center min-h-screen"</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">    </span></span><span class="s3">&lt;</span><span class="s6">div</span><span class="s4"> </span><span class="s2">id</span><span class="s3">=</span><span class="s1">"background-grid"</span><span class="s3">&gt;&lt;/</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">    </span></span><span class="s3">&lt;</span><span class="s6">div</span><span class="s4"> </span><span class="s2">id</span><span class="s3">=</span><span class="s1">"terminal"</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"terminal w-full max-w-5xl mx-auto p-4 rounded-xl shadow-2xl flex flex-col h-[90vh]"</span><span class="s3">&gt;</span></p>
-<p class="p6"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s1">&lt;!-- SAGA Logo --&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s3">&lt;</span><span class="s6">div</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"mb-4 flex-shrink-0"</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s3">&lt;</span><span class="s6">pre</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"pixel-text font-bold"</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s3">&lt;</span><span class="s6">span</span><span class="s4"> </span><span class="s2">style</span><span class="s3">=</span><span class="s1">"color: #6366f1;"</span><span class="s3">&gt;</span><span class="s4">&amp;gt;</span><span class="s3">&lt;/</span><span class="s6">span</span><span class="s3">&gt;&lt;</span><span class="s6">span</span><span class="s4"> </span><span class="s2">style</span><span class="s3">=</span><span class="s1">"color: #818cf8;"</span><span class="s3">&gt;</span><span class="s4"> </span><span class="s3">&lt;/</span><span class="s6">span</span><span class="s3">&gt;&lt;</span><span class="s6">span</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"gradient-text"</span><span class="s3">&gt;</span><span class="s4">S</span><span class="s3">&lt;/</span><span class="s6">span</span><span class="s3">&gt;&lt;</span><span class="s6">span</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"gradient-text"</span><span class="s3">&gt;</span><span class="s4">A</span><span class="s3">&lt;/</span><span class="s6">span</span><span class="s3">&gt;&lt;</span><span class="s6">span</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"gradient-text"</span><span class="s3">&gt;</span><span class="s4">G</span><span class="s3">&lt;/</span><span class="s6">span</span><span class="s3">&gt;&lt;</span><span class="s6">span</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"gradient-text"</span><span class="s3">&gt;</span><span class="s4">A</span><span class="s3">&lt;/</span><span class="s6">span</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s3">&lt;/</span><span class="s6">pre</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s3">&lt;/</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p6"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s1">&lt;!-- Dynamic Output --&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s3">&lt;</span><span class="s6">div</span><span class="s4"> </span><span class="s2">id</span><span class="s3">=</span><span class="s1">"output"</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"terminal-output text-base md:text-lg flex-grow overflow-y-auto pr-2"</span><span class="s3">&gt;&lt;/</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p6"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s1">&lt;!-- Input Box --&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s3">&lt;</span><span class="s6">div</span><span class="s4"> </span><span class="s2">id</span><span class="s3">=</span><span class="s1">"prompt-box"</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"prompt-box mt-4 p-2 flex-shrink-0"</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s3">&lt;</span><span class="s6">div</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"text-indigo-400 text-sm mb-1"</span><span class="s3">&gt;</span><span class="s4">PROMPT</span><span class="s3">&lt;/</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s3">&lt;</span><span class="s6">div</span><span class="s4"> </span><span class="s2">id</span><span class="s3">=</span><span class="s1">"input-line"</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"flex items-center"</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s3">&lt;</span><span class="s6">span</span><span class="s1"> </span><span class="s2">class</span><span class="s3">=</span><span class="s5">"text-cyan-400 mr-2"</span><span class="s3">&gt;</span><span class="s1">&amp;gt;</span><span class="s3">&lt;/</span><span class="s6">span</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s3">&lt;</span><span class="s6">div</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"relative flex-grow"</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">                    </span></span><span class="s3">&lt;</span><span class="s6">input</span><span class="s4"> </span><span class="s2">type</span><span class="s3">=</span><span class="s1">"text"</span><span class="s4"> </span><span class="s2">id</span><span class="s3">=</span><span class="s1">"prompt-input"</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"prompt-input text-lg"</span><span class="s4"> </span><span class="s2">autofocus</span><span class="s4"> </span><span class="s2">autocomplete</span><span class="s3">=</span><span class="s1">"off"</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">                    </span></span><span class="s3">&lt;</span><span class="s6">span</span><span class="s4"> </span><span class="s2">id</span><span class="s3">=</span><span class="s1">"autocomplete-suggestion"</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"absolute left-0 top-0 text-gray-600 text-lg pointer-events-none"</span><span class="s3">&gt;&lt;/</span><span class="s6">span</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s3">&lt;/</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s3">&lt;</span><span class="s6">div</span><span class="s1"> </span><span class="s2">class</span><span class="s3">=</span><span class="s5">"prompt-cursor"</span><span class="s3">&gt;&lt;/</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s3">&lt;/</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s3">&lt;/</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p6"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s1">&lt;!-- Status Bar --&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s3">&lt;</span><span class="s6">div</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"mt-2 pt-2 border-t border-gray-700 flex justify-between items-center text-xs md:text-sm text-gray-400 flex-shrink-0"</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s3">&lt;</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s3">&lt;</span><span class="s6">span</span><span class="s3">&gt;</span><span class="s1">~/qanto/cli (main)</span><span class="s3">&lt;/</span><span class="s6">span</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s3">&lt;/</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s3">&lt;</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p3"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s3">&lt;</span><span class="s6">span</span><span class="s4"> </span><span class="s2">id</span><span class="s3">=</span><span class="s1">"network-status"</span><span class="s4"> </span><span class="s2">class</span><span class="s3">=</span><span class="s1">"font-bold"</span><span class="s3">&gt;</span><span class="s4">NOMINAL</span><span class="s3">&lt;/</span><span class="s6">span</span><span class="s3">&gt;</span><span class="s4"> (epoch </span><span class="s3">&lt;</span><span class="s6">span</span><span class="s4"> </span><span class="s2">id</span><span class="s3">=</span><span class="s1">"epoch-counter"</span><span class="s3">&gt;</span><span class="s4">142</span><span class="s3">&lt;/</span><span class="s6">span</span><span class="s3">&gt;</span><span class="s4">)</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s3">&lt;/</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s3">&lt;</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s3">&lt;</span><span class="s6">span</span><span class="s1"> </span><span class="s2">id</span><span class="s3">=</span><span class="s5">"model-version"</span><span class="s1"> </span><span class="s2">class</span><span class="s3">=</span><span class="s5">"text-indigo-400"</span><span class="s3">&gt;</span><span class="s1">saga-oracle-v7.1</span><span class="s3">&lt;/</span><span class="s6">span</span><span class="s3">&gt;</span><span class="s1"> (</span><span class="s3">&lt;</span><span class="s6">span</span><span class="s1"> </span><span class="s2">id</span><span class="s3">=</span><span class="s5">"context-left"</span><span class="s3">&gt;</span><span class="s1">98%</span><span class="s3">&lt;/</span><span class="s6">span</span><span class="s3">&gt;</span><span class="s1"> context)</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s3">&lt;/</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s3">&lt;/</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">    </span></span><span class="s3">&lt;/</span><span class="s6">div</span><span class="s3">&gt;</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p1"><span class="s4"><span class="Apple-converted-space">    </span></span><span class="s3">&lt;</span><span class="s1">script</span><span class="s3">&gt;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">const</span><span class="s1"> output </span><span class="s7">=</span><span class="s1"> document</span><span class="s7">.</span><span class="s1">getElementById</span><span class="s7">(</span><span class="s8">'output'</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">const</span><span class="s1"> input </span><span class="s7">=</span><span class="s1"> document</span><span class="s7">.</span><span class="s1">getElementById</span><span class="s7">(</span><span class="s8">'prompt-input'</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">const</span><span class="s1"> inputLine </span><span class="s7">=</span><span class="s1"> document</span><span class="s7">.</span><span class="s1">getElementById</span><span class="s7">(</span><span class="s8">'input-line'</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">const</span><span class="s1"> epochCounter </span><span class="s7">=</span><span class="s1"> document</span><span class="s7">.</span><span class="s1">getElementById</span><span class="s7">(</span><span class="s8">'epoch-counter'</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">const</span><span class="s1"> networkStatusEl </span><span class="s7">=</span><span class="s1"> document</span><span class="s7">.</span><span class="s1">getElementById</span><span class="s7">(</span><span class="s8">'network-status'</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">const</span><span class="s1"> autocompleteSuggestionEl </span><span class="s7">=</span><span class="s1"> document</span><span class="s7">.</span><span class="s1">getElementById</span><span class="s7">(</span><span class="s8">'autocomplete-suggestion'</span><span class="s7">);</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">const</span><span class="s1"> commandHistory </span><span class="s7">=</span><span class="s1"> </span><span class="s7">[];</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">let</span><span class="s1"> historyIndex </span><span class="s7">=</span><span class="s1"> </span><span class="s7">-</span><span class="s12">1</span><span class="s7">;</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">const</span><span class="s1"> knowledgeBase </span><span class="s7">=</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">             </span></span><span class="s1">"help"</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"Available commands:\n<span class="Apple-converted-space">  </span>/ask [topic] <span class="Apple-converted-space">  </span>- Get info (e.g., /ask about SCS)\n<span class="Apple-converted-space">  </span>/analyze [risk]<span class="Apple-converted-space">  </span>- Run security analysis (e.g., /analyze centralization)\n<span class="Apple-converted-space">  </span>/simulate cycle<span class="Apple-converted-space">  </span>- Run a mock Sense-Think-Act loop\n<span class="Apple-converted-space">  </span>/clear <span class="Apple-converted-space">          </span>- Clear the terminal screen\n<span class="Apple-converted-space">  </span>/status<span class="Apple-converted-space">          </span>- View detailed network status"</span><span class="s7">,</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">             </span></span><span class="s8">"status"</span><span class="s7">:</span><span class="s1"> </span><span class="s7">()</span><span class="s1"> </span><span class="s7">=&gt;</span><span class="s1"> </span><span class="s8">`</span></p>
-<p class="p8"><span class="s1">+--------------------------------+</span></p>
-<p class="p8"><span class="s1">| Qanto Network Status <span class="Apple-converted-space">          </span>|</span></p>
-<p class="p8"><span class="s1">+--------------------------------+</span></p>
-<p class="p8"><span class="s1">| Epoch: </span><span class="s7">${</span><span class="s4">epochCounter</span><span class="s7">.</span><span class="s4">textContent</span><span class="s7">}</span><span class="s1"> <span class="Apple-converted-space">                    </span>|</span></p>
-<p class="p8"><span class="s1">| Network State: </span><span class="s7">${</span><span class="s4">networkStatusEl</span><span class="s7">.</span><span class="s4">textContent</span><span class="s7">}</span><span class="s1"> <span class="Apple-converted-space">          </span>|</span></p>
-<p class="p8"><span class="s1">| Omega Threat Level: GUARDED<span class="Apple-converted-space">      </span>|</span></p>
-<p class="p8"><span class="s1">| Avg. Block Time: 3.2s<span class="Apple-converted-space">          </span>|</span></p>
-<p class="p8"><span class="s1">| Validators: 87 <span class="Apple-converted-space">                </span>|</span></p>
-<p class="p8"><span class="s1">| SCS Mean: 0.78 <span class="Apple-converted-space">                </span>|</span></p>
-<p class="p8"><span class="s1">+--------------------------------+</span></p>
-<p class="p8"><span class="s1">`</span><span class="s7">,</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s1">"poco"</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"\n&lt;span class='text-indigo-400'&gt;Proof-of-Carbon-Offset (PoCO)&lt;/span&gt; is Qanto's innovative mechanism for integrating real-world environmental action into the blockchain consensus. Validators include verifiable `CarbonOffsetCredential` data in their blocks. SAGA's Cognitive Engine analyzes these credentials, and miners who include valid, high-quality credentials receive a boost to their 'environmental_contribution' score. This improves their overall Saga Credit Score (SCS), leading to higher block rewards."</span><span class="s7">,</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s1">"scs"</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"\nYour &lt;span class='text-indigo-400'&gt;Saga Credit Score (SCS)&lt;/span&gt; is your on-chain reputation (0.0 to 1.0). It's a weighted average of your trust score (from block analysis), Karma (long-term contributions), total stake, and environmental contributions (from PoCO). A higher SCS leads to greater block rewards and governance influence."</span><span class="s7">,</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s1">"sense-think-act"</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"\nThe &lt;span class='text-indigo-400'&gt;Sense-Think-Act&lt;/span&gt; loop is the core of SAGA's autonomous operation:\n<span class="Apple-converted-space">  </span>&lt;span class='text-amber-400'&gt;[Sense]&lt;/span&gt;: SAGA continuously ingests on-chain data, security metrics, and economic indicators.\n<span class="Apple-converted-space">  </span>&lt;span class='text-amber-400'&gt;[Think]&lt;/span&gt;: It analyzes long-term trends, predicts future states (like congestion), and formulates strategic responses.\n<span class="Apple-converted-space">  </span>&lt;span class='text-amber-400'&gt;[Act]&lt;/span&gt;: Based on its conclusions, it autonomously issues edicts or proposes governance changes to optimize the network."</span><span class="s7">,</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s1">"default"</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"Topic not found in knowledge base. Try '/help' for a list of topics."</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">};</span></p>
-<p class="p7"><span class="s1"><span class="Apple-converted-space">        </span></span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">const</span><span class="s1"> analysisTasks </span><span class="s7">=</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s1">"centralization"</span><span class="s7">:</span><span class="s4"> </span><span class="s7">[</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"+ Initializing security analysis protocol..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-indigo-400"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"-- Accessing DAG state for validator distribution..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-gray-500"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"-- Fetching block production data for last 10 epochs..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-gray-500"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"! SecurityMonitor: Calculating Herfindahl-Hirschman Index (HHI)..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-amber-400"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"HHI calculated: 1850. Moderate concentration detected."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-white"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"+ Formulating insight based on HHI score..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-indigo-400"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"✓ Analysis complete. Centralization risk is moderate but within nominal parameters."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-lime-400"</span><span class="s4"> </span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s7">],</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s8">"spam"</span><span class="s7">:</span><span class="s1"> </span><span class="s7">[</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"+ Initializing security analysis protocol..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-indigo-400"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"-- Analyzing transaction metadata integrity for the last 200 blocks..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-gray-500"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"-- Calculating zero-fee transaction ratio..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-gray-500"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"! SecurityMonitor: Zero-fee ratio at 12%. Shannon entropy of metadata is nominal."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-amber-400"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"✓ Analysis complete. No indicators of a coordinated spam attack detected."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-lime-400"</span><span class="s4"> </span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s7">],</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s8">"simulation"</span><span class="s7">:</span><span class="s1"> </span><span class="s7">[</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"+ Starting Sense-Think-Act loop for epoch governance..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-indigo-400"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"[Sense] Analyzing long-term network trends..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-white"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"-- Trend detected: Sustained network congestion (avg &gt; 0.85 for 3 epochs)."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-gray-500"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"-- Trend detected: High proposal rejection rate (78%)."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-gray-500"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"[Think] Formulating strategic proposals..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-white"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"! Proposal Drafted: Increase 'base_tx_fee_min' by 15% to mitigate spam."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-amber-400"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"! Proposal Drafted: Lower 'proposal_vote_threshold' by 10% to encourage governance participation."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-amber-400"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"[Act] Submitting proposals to governance queue..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-white"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"✓ Autonomous governance cycle complete. 2 new proposals submitted."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-lime-400"</span><span class="s4"> </span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s7">]</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">};</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">function</span><span class="s1"> addLine</span><span class="s7">(</span><span class="s1">html</span><span class="s7">,</span><span class="s1"> color</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s10">const</span><span class="s1"> line </span><span class="s7">=</span><span class="s1"> document</span><span class="s7">.</span><span class="s1">createElement</span><span class="s7">(</span><span class="s8">'div'</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>line</span><span class="s7">.</span><span class="s1">className </span><span class="s7">=</span><span class="s1"> color</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>line</span><span class="s7">.</span><span class="s1">innerHTML </span><span class="s7">=</span><span class="s1"> html</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>output</span><span class="s7">.</span><span class="s1">appendChild</span><span class="s7">(</span><span class="s1">line</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>output</span><span class="s7">.</span><span class="s1">scrollTop </span><span class="s7">=</span><span class="s1"> output</span><span class="s7">.</span><span class="s1">scrollHeight</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">function</span><span class="s1"> addLinesSequentially</span><span class="s7">(</span><span class="s1">lines</span><span class="s7">,</span><span class="s1"> container</span><span class="s7">,</span><span class="s1"> finalCallback</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s10">let</span><span class="s1"> index </span><span class="s7">=</span><span class="s1"> </span><span class="s12">0</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s10">function</span><span class="s1"> next</span><span class="s7">()</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">index </span><span class="s7">&lt;</span><span class="s1"> lines</span><span class="s7">.</span><span class="s1">length</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">const</span><span class="s1"> lineData </span><span class="s7">=</span><span class="s1"> lines</span><span class="s7">[</span><span class="s1">index</span><span class="s7">];</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">const</span><span class="s1"> lineEl </span><span class="s7">=</span><span class="s1"> document</span><span class="s7">.</span><span class="s1">createElement</span><span class="s7">(</span><span class="s8">'div'</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>lineEl</span><span class="s7">.</span><span class="s1">className </span><span class="s7">=</span><span class="s1"> lineData</span><span class="s7">.</span><span class="s1">color</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>lineEl</span><span class="s7">.</span><span class="s1">innerHTML </span><span class="s7">=</span><span class="s1"> lineData</span><span class="s7">.</span><span class="s1">text</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>container</span><span class="s7">.</span><span class="s1">appendChild</span><span class="s7">(</span><span class="s1">lineEl</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>container</span><span class="s7">.</span><span class="s1">scrollTop </span><span class="s7">=</span><span class="s1"> container</span><span class="s7">.</span><span class="s1">scrollHeight</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>index</span><span class="s7">++;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>setTimeout</span><span class="s7">(</span><span class="s1">next</span><span class="s7">,</span><span class="s1"> </span><span class="s12">100</span><span class="s1"> </span><span class="s7">+</span><span class="s1"> </span><span class="s13">Math</span><span class="s7">.</span><span class="s1">random</span><span class="s7">()</span><span class="s1"> </span><span class="s7">*</span><span class="s1"> </span><span class="s12">150</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s7">}</span><span class="s1"> </span><span class="s10">else</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">finalCallback</span><span class="s7">)</span><span class="s1"> finalCallback</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>next</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">function</span><span class="s1"> processCommand</span><span class="s7">(</span><span class="s1">cmd</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s10">const</span><span class="s1"> parts </span><span class="s7">=</span><span class="s1"> cmd</span><span class="s7">.</span><span class="s1">toLowerCase</span><span class="s7">().</span><span class="s1">split</span><span class="s7">(</span><span class="s8">' '</span><span class="s7">).</span><span class="s1">filter</span><span class="s7">(</span><span class="s1">p </span><span class="s7">=&gt;</span><span class="s1"> p</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s10">const</span><span class="s1"> command </span><span class="s7">=</span><span class="s1"> parts</span><span class="s7">[</span><span class="s12">0</span><span class="s7">];</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s10">const</span><span class="s1"> args </span><span class="s7">=</span><span class="s1"> parts</span><span class="s7">.</span><span class="s1">slice</span><span class="s7">(</span><span class="s12">1</span><span class="s7">);</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s10">switch</span><span class="s1"> </span><span class="s7">(</span><span class="s1">command</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">case</span><span class="s1"> </span><span class="s8">'/clear'</span><span class="s7">:</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>output</span><span class="s7">.</span><span class="s1">innerHTML </span><span class="s7">=</span><span class="s1"> </span><span class="s8">''</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>enableInput</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">break</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">case</span><span class="s1"> </span><span class="s8">'/help'</span><span class="s7">:</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>addLine</span><span class="s7">(</span><span class="s1">knowledgeBase</span><span class="s7">.</span><span class="s1">help</span><span class="s7">,</span><span class="s1"> </span><span class="s8">'text-cyan-400'</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>enableInput</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">break</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">case</span><span class="s1"> </span><span class="s8">'/status'</span><span class="s7">:</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                     </span>addLine</span><span class="s7">(</span><span class="s1">knowledgeBase</span><span class="s7">.</span><span class="s1">status</span><span class="s7">(),</span><span class="s1"> </span><span class="s8">'text-cyan-400'</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                     </span>enableInput</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">break</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">case</span><span class="s1"> </span><span class="s8">'/ask'</span><span class="s7">:</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">const</span><span class="s1"> topic </span><span class="s7">=</span><span class="s1"> args</span><span class="s7">.</span><span class="s1">includes</span><span class="s7">(</span><span class="s8">'about'</span><span class="s7">)</span><span class="s1"> </span><span class="s7">?</span><span class="s1"> args</span><span class="s7">[</span><span class="s1">args</span><span class="s7">.</span><span class="s1">indexOf</span><span class="s7">(</span><span class="s8">'about'</span><span class="s7">)</span><span class="s1"> </span><span class="s7">+</span><span class="s1"> </span><span class="s12">1</span><span class="s7">]</span><span class="s1"> </span><span class="s7">:</span><span class="s1"> args</span><span class="s7">[</span><span class="s12">0</span><span class="s7">];</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">if</span><span class="s1"> </span><span class="s7">(!</span><span class="s1">topic</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                        </span>addLine</span><span class="s7">(</span><span class="s1">"Usage: /ask [topic]"</span><span class="s7">,</span><span class="s4"> </span><span class="s1">'text-amber-400'</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                        </span>enableInput</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                        </span></span><span class="s10">return</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">const</span><span class="s1"> response </span><span class="s7">=</span><span class="s1"> knowledgeBase</span><span class="s7">[</span><span class="s1">topic</span><span class="s7">]</span><span class="s1"> </span><span class="s7">||</span><span class="s1"> knowledgeBase</span><span class="s7">.</span><span class="s10">default</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>addLine</span><span class="s7">(</span><span class="s1">response</span><span class="s7">,</span><span class="s1"> </span><span class="s8">'text-cyan-400'</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>enableInput</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">break</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">case</span><span class="s1"> </span><span class="s8">'/analyze'</span><span class="s7">:</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">const</span><span class="s1"> riskType </span><span class="s7">=</span><span class="s1"> args</span><span class="s7">[</span><span class="s12">0</span><span class="s7">];</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">analysisTasks</span><span class="s7">[</span><span class="s1">riskType</span><span class="s7">])</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                        </span>addLinesSequentially</span><span class="s7">(</span><span class="s1">analysisTasks</span><span class="s7">[</span><span class="s1">riskType</span><span class="s7">],</span><span class="s1"> output</span><span class="s7">,</span><span class="s1"> enableInput</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s7">}</span><span class="s1"> </span><span class="s10">else</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                        </span>addLine</span><span class="s7">(</span><span class="s1">"Unknown analysis type. Try 'centralization' or 'spam'."</span><span class="s7">,</span><span class="s4"> </span><span class="s1">'text-amber-400'</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                        </span>enableInput</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">break</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">case</span><span class="s1"> </span><span class="s8">'/simulate'</span><span class="s7">:</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                     </span></span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">args</span><span class="s7">[</span><span class="s12">0</span><span class="s7">]</span><span class="s1"> </span><span class="s7">===</span><span class="s1"> </span><span class="s8">'cycle'</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                        </span>addLinesSequentially</span><span class="s7">(</span><span class="s1">analysisTasks</span><span class="s7">.</span><span class="s1">simulation</span><span class="s7">,</span><span class="s1"> output</span><span class="s7">,</span><span class="s1"> enableInput</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                     </span></span><span class="s7">}</span><span class="s1"> </span><span class="s10">else</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                        </span>addLine</span><span class="s7">(</span><span class="s1">"Unknown simulation. Try '/simulate cycle'."</span><span class="s7">,</span><span class="s4"> </span><span class="s1">'text-amber-400'</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                        </span>enableInput</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                     </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">break</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">default</span><span class="s7">:</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                    </span>addLine</span><span class="s7">(</span><span class="s1">`Command not found: </span><span class="s7">${</span><span class="s4">cmd</span><span class="s7">}</span><span class="s1">. Type '/help' for available commands.`</span><span class="s7">,</span><span class="s4"> </span><span class="s1">'text-amber-400'</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>enableInput</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span></span><span class="s10">break</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">function</span><span class="s1"> disableInput</span><span class="s7">()</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>input</span><span class="s7">.</span><span class="s1">disabled </span><span class="s7">=</span><span class="s1"> </span><span class="s10">true</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>input</span><span class="s7">.</span><span class="s1">style</span><span class="s7">.</span><span class="s1">cursor </span><span class="s7">=</span><span class="s1"> </span><span class="s8">'not-allowed'</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">function</span><span class="s1"> enableInput</span><span class="s7">()</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>inputLine</span><span class="s7">.</span><span class="s1">style</span><span class="s7">.</span><span class="s1">display </span><span class="s7">=</span><span class="s1"> </span><span class="s8">'flex'</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>input</span><span class="s7">.</span><span class="s1">disabled </span><span class="s7">=</span><span class="s1"> </span><span class="s10">false</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>input</span><span class="s7">.</span><span class="s1">style</span><span class="s7">.</span><span class="s1">cursor </span><span class="s7">=</span><span class="s1"> </span><span class="s8">'text'</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>input</span><span class="s7">.</span><span class="s1">focus</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">}</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span>input</span><span class="s7">.</span><span class="s1">addEventListener</span><span class="s7">(</span><span class="s8">'keydown'</span><span class="s7">,</span><span class="s1"> </span><span class="s7">(</span><span class="s1">e</span><span class="s7">)</span><span class="s1"> </span><span class="s7">=&gt;</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">e</span><span class="s7">.</span><span class="s1">key </span><span class="s7">===</span><span class="s1"> </span><span class="s8">'Enter'</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>e</span><span class="s7">.</span><span class="s1">preventDefault</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">const</span><span class="s1"> cmd </span><span class="s7">=</span><span class="s1"> input</span><span class="s7">.</span><span class="s1">value</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">cmd</span><span class="s7">.</span><span class="s1">trim</span><span class="s7">()</span><span class="s1"> </span><span class="s7">===</span><span class="s1"> </span><span class="s8">''</span><span class="s7">)</span><span class="s1"> </span><span class="s10">return</span><span class="s7">;</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>commandHistory</span><span class="s7">.</span><span class="s1">unshift</span><span class="s7">(</span><span class="s1">cmd</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>historyIndex </span><span class="s7">=</span><span class="s1"> </span><span class="s7">-</span><span class="s12">1</span><span class="s7">;</span></p>
-<p class="p7"><span class="s1"><span class="Apple-converted-space">                </span></span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">const</span><span class="s1"> historyLine </span><span class="s7">=</span><span class="s1"> document</span><span class="s7">.</span><span class="s1">createElement</span><span class="s7">(</span><span class="s8">'div'</span><span class="s7">);</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">                </span>historyLine</span><span class="s7">.</span><span class="s4">innerHTML </span><span class="s7">=</span><span class="s4"> </span><span class="s1">`&lt;span class="text-cyan-400"&gt;&amp;gt;&lt;/span&gt; &lt;span class="text-magenta-400"&gt;</span><span class="s7">${</span><span class="s4">cmd</span><span class="s7">}</span><span class="s1">&lt;/span&gt;`</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>output</span><span class="s7">.</span><span class="s1">appendChild</span><span class="s7">(</span><span class="s1">historyLine</span><span class="s7">);</span></p>
-<p class="p7"><span class="s1"><span class="Apple-converted-space">                </span></span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>input</span><span class="s7">.</span><span class="s1">value </span><span class="s7">=</span><span class="s1"> </span><span class="s8">''</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>autocompleteSuggestionEl</span><span class="s7">.</span><span class="s1">textContent </span><span class="s7">=</span><span class="s1"> </span><span class="s8">''</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>disableInput</span><span class="s7">();</span></p>
-<p class="p7"><span class="s1"><span class="Apple-converted-space">                </span></span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>setTimeout</span><span class="s7">(()</span><span class="s1"> </span><span class="s7">=&gt;</span><span class="s1"> processCommand</span><span class="s7">(</span><span class="s1">cmd</span><span class="s7">),</span><span class="s1"> </span><span class="s12">300</span><span class="s7">);</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s7">}</span><span class="s1"> </span><span class="s10">else</span><span class="s1"> </span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">e</span><span class="s7">.</span><span class="s1">key </span><span class="s7">===</span><span class="s1"> </span><span class="s8">'Escape'</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>input</span><span class="s7">.</span><span class="s1">value </span><span class="s7">=</span><span class="s1"> </span><span class="s8">''</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>autocompleteSuggestionEl</span><span class="s7">.</span><span class="s1">textContent </span><span class="s7">=</span><span class="s1"> </span><span class="s8">''</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s7">}</span><span class="s1"> </span><span class="s10">else</span><span class="s1"> </span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">e</span><span class="s7">.</span><span class="s1">key </span><span class="s7">===</span><span class="s1"> </span><span class="s8">'ArrowUp'</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>e</span><span class="s7">.</span><span class="s1">preventDefault</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">historyIndex </span><span class="s7">&lt;</span><span class="s1"> commandHistory</span><span class="s7">.</span><span class="s1">length </span><span class="s7">-</span><span class="s1"> </span><span class="s12">1</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>historyIndex</span><span class="s7">++;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>input</span><span class="s7">.</span><span class="s1">value </span><span class="s7">=</span><span class="s1"> commandHistory</span><span class="s7">[</span><span class="s1">historyIndex</span><span class="s7">];</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s7">}</span><span class="s1"> </span><span class="s10">else</span><span class="s1"> </span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">e</span><span class="s7">.</span><span class="s1">key </span><span class="s7">===</span><span class="s1"> </span><span class="s8">'ArrowDown'</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>e</span><span class="s7">.</span><span class="s1">preventDefault</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">historyIndex </span><span class="s7">&gt;</span><span class="s1"> </span><span class="s12">0</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>historyIndex</span><span class="s7">--;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>input</span><span class="s7">.</span><span class="s1">value </span><span class="s7">=</span><span class="s1"> commandHistory</span><span class="s7">[</span><span class="s1">historyIndex</span><span class="s7">];</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s7">}</span><span class="s1"> </span><span class="s10">else</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>historyIndex </span><span class="s7">=</span><span class="s1"> </span><span class="s7">-</span><span class="s12">1</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>input</span><span class="s7">.</span><span class="s1">value </span><span class="s7">=</span><span class="s1"> </span><span class="s8">''</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s7">}</span><span class="s1"> </span><span class="s10">else</span><span class="s1"> </span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">e</span><span class="s7">.</span><span class="s1">key </span><span class="s7">===</span><span class="s1"> </span><span class="s8">'Tab'</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>e</span><span class="s7">.</span><span class="s1">preventDefault</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">autocompleteSuggestionEl</span><span class="s7">.</span><span class="s1">textContent</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>input</span><span class="s7">.</span><span class="s1">value </span><span class="s7">=</span><span class="s1"> autocompleteSuggestionEl</span><span class="s7">.</span><span class="s1">textContent</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>autocompleteSuggestionEl</span><span class="s7">.</span><span class="s1">textContent </span><span class="s7">=</span><span class="s1"> </span><span class="s8">''</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">});</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s10">const</span><span class="s4"> allCommands </span><span class="s7">=</span><span class="s4"> </span><span class="s7">[</span><span class="s1">'/ask'</span><span class="s7">,</span><span class="s4"> </span><span class="s1">'/analyze'</span><span class="s7">,</span><span class="s4"> </span><span class="s1">'/simulate'</span><span class="s7">,</span><span class="s4"> </span><span class="s1">'/clear'</span><span class="s7">,</span><span class="s4"> </span><span class="s1">'/status'</span><span class="s7">,</span><span class="s4"> </span><span class="s1">'/help'</span><span class="s7">];</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span>input</span><span class="s7">.</span><span class="s1">addEventListener</span><span class="s7">(</span><span class="s8">'input'</span><span class="s7">,</span><span class="s1"> </span><span class="s7">()</span><span class="s1"> </span><span class="s7">=&gt;</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s10">const</span><span class="s1"> currentVal </span><span class="s7">=</span><span class="s1"> input</span><span class="s7">.</span><span class="s1">value</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">currentVal</span><span class="s7">.</span><span class="s1">startsWith</span><span class="s7">(</span><span class="s8">'/'</span><span class="s7">))</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">const</span><span class="s1"> suggestion </span><span class="s7">=</span><span class="s1"> allCommands</span><span class="s7">.</span><span class="s1">find</span><span class="s7">(</span><span class="s1">c </span><span class="s7">=&gt;</span><span class="s1"> c</span><span class="s7">.</span><span class="s1">startsWith</span><span class="s7">(</span><span class="s1">currentVal</span><span class="s7">));</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">suggestion </span><span class="s7">&amp;&amp;</span><span class="s1"> suggestion </span><span class="s7">!==</span><span class="s1"> currentVal</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>autocompleteSuggestionEl</span><span class="s7">.</span><span class="s1">textContent </span><span class="s7">=</span><span class="s1"> suggestion</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s7">}</span><span class="s1"> </span><span class="s10">else</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                    </span>autocompleteSuggestionEl</span><span class="s7">.</span><span class="s1">textContent </span><span class="s7">=</span><span class="s1"> </span><span class="s8">''</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s7">}</span><span class="s1"> </span><span class="s10">else</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>autocompleteSuggestionEl</span><span class="s7">.</span><span class="s1">textContent </span><span class="s7">=</span><span class="s1"> </span><span class="s8">''</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">});</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p6"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s1">// Welcome Message</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s10">const</span><span class="s1"> welcomeMessage </span><span class="s7">=</span><span class="s1"> </span><span class="s7">[</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"Booting SAGA v7.1 (Oracle Edition)..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-gray-500"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"Loading CognitiveAnalyticsEngine..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-white"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"<span class="Apple-converted-space">  </span>- BehaviorNet model loaded."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-gray-500"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"<span class="Apple-converted-space">  </span>- CongestionPredictorLSTM model loaded."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-gray-500"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"Initializing Security Monitor..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-white"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"Connecting to QantoDAG state..."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-white"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"✓ &lt;span class='text-lime-400'&gt;SAGA is online.&lt;/span&gt; Awaiting your query."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-white"</span><span class="s4"> </span><span class="s7">},</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s7">{</span><span class="s4"> text</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"Type `/help` for a list of commands."</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">"text-gray-500"</span><span class="s4"> </span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">];</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span>addLinesSequentially</span><span class="s7">(</span><span class="s1">welcomeMessage</span><span class="s7">,</span><span class="s1"> output</span><span class="s7">,</span><span class="s1"> enableInput</span><span class="s7">);</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p6"><span class="s4"><span class="Apple-converted-space">        </span></span><span class="s1">// Dynamic Status Bar</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span>setInterval</span><span class="s7">(()</span><span class="s1"> </span><span class="s7">=&gt;</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>epochCounter</span><span class="s7">.</span><span class="s1">textContent </span><span class="s7">=</span><span class="s1"> parseInt</span><span class="s7">(</span><span class="s1">epochCounter</span><span class="s7">.</span><span class="s1">textContent</span><span class="s7">)</span><span class="s1"> </span><span class="s7">+</span><span class="s1"> </span><span class="s12">1</span><span class="s7">;</span></p>
-<p class="p8"><span class="s4"><span class="Apple-converted-space">            </span></span><span class="s10">const</span><span class="s4"> states </span><span class="s7">=</span><span class="s4"> </span><span class="s7">[{</span><span class="s4">name</span><span class="s7">:</span><span class="s4"> </span><span class="s1">'NOMINAL'</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">'text-lime-400'</span><span class="s7">},</span><span class="s4"> </span><span class="s7">{</span><span class="s4">name</span><span class="s7">:</span><span class="s4"> </span><span class="s1">'CONGESTED'</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">'text-amber-400'</span><span class="s7">},</span><span class="s4"> </span><span class="s7">{</span><span class="s4">name</span><span class="s7">:</span><span class="s4"> </span><span class="s1">'DEGRADED'</span><span class="s7">,</span><span class="s4"> color</span><span class="s7">:</span><span class="s4"> </span><span class="s1">'text-magenta-400'</span><span class="s7">}];</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s10">const</span><span class="s1"> randomState </span><span class="s7">=</span><span class="s1"> states</span><span class="s7">[</span><span class="s13">Math</span><span class="s7">.</span><span class="s1">floor</span><span class="s7">(</span><span class="s13">Math</span><span class="s7">.</span><span class="s1">random</span><span class="s7">()</span><span class="s1"> </span><span class="s7">*</span><span class="s1"> states</span><span class="s7">.</span><span class="s1">length</span><span class="s7">)];</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>networkStatusEl</span><span class="s7">.</span><span class="s1">textContent </span><span class="s7">=</span><span class="s1"> randomState</span><span class="s7">.</span><span class="s1">name</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span>networkStatusEl</span><span class="s7">.</span><span class="s1">className </span><span class="s7">=</span><span class="s1"> </span><span class="s8">`font-bold </span><span class="s7">${</span><span class="s1">randomState</span><span class="s7">.</span><span class="s1">color</span><span class="s7">}</span><span class="s8">`</span><span class="s7">;</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">},</span><span class="s1"> </span><span class="s12">15000</span><span class="s7">);</span></p>
-<p class="p7"><span class="s11"></span><br></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span>document</span><span class="s7">.</span><span class="s1">body</span><span class="s7">.</span><span class="s1">addEventListener</span><span class="s7">(</span><span class="s8">'click'</span><span class="s7">,</span><span class="s1"> </span><span class="s7">(</span><span class="s1">e</span><span class="s7">)</span><span class="s1"> </span><span class="s7">=&gt;</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s10">if</span><span class="s1"> </span><span class="s7">(</span><span class="s1">e</span><span class="s7">.</span><span class="s1">target</span><span class="s7">.</span><span class="s1">id </span><span class="s7">!==</span><span class="s1"> </span><span class="s8">'prompt-input'</span><span class="s7">)</span><span class="s1"> </span><span class="s7">{</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">                </span>input</span><span class="s7">.</span><span class="s1">focus</span><span class="s7">();</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">            </span></span><span class="s7">}</span></p>
-<p class="p4"><span class="s1"><span class="Apple-converted-space">        </span></span><span class="s7">});</span></p>
-<p class="p1"><span class="s4"><span class="Apple-converted-space">    </span></span><span class="s3">&lt;/</span><span class="s1">script</span><span class="s3">&gt;</span></p>
-<p class="p1"><span class="s3">&lt;/</span><span class="s1">body</span><span class="s3">&gt;</span></p>
-<p class="p1"><span class="s3">&lt;/</span><span class="s1">html</span><span class="s3">&gt;</span></p>
-<p class="p7"><span class="s11"></span><br></p>
+<body class="p-4 md:p-8 flex items-center justify-center min-h-screen">
+    <div id="background-grid"></div>
+    <div id="terminal" class="terminal w-full max-w-5xl mx-auto p-4 rounded-xl shadow-2xl flex flex-col h-[90vh]">
+        <!-- SAGA Logo -->
+        <div class="mb-4 flex-shrink-0">
+            <pre class="pixel-text font-bold">
+<span style="color: #6366f1;">&gt;</span><span style="color: #818cf8;"> </span><span class="gradient-text">S</span><span class="gradient-text">A</span><span class="gradient-text">G</span><span class="gradient-text">A</span>
+            </pre>
+        </div>
+
+        <!-- Dynamic Output -->
+        <div id="output" class="terminal-output text-base md:text-lg flex-grow overflow-y-auto pr-2"></div>
+
+        <!-- Input Box -->
+        <div id="prompt-box" class="prompt-box mt-4 p-2 flex-shrink-0">
+            <div class="text-indigo-400 text-sm mb-1">PROMPT</div>
+            <div id="input-line" class="flex items-center">
+                <span class="text-cyan-400 mr-2">&gt;</span>
+                <div class="relative flex-grow">
+                    <input type="text" id="prompt-input" class="prompt-input text-lg" autofocus autocomplete="off">
+                    <span id="autocomplete-suggestion" class="absolute left-0 top-0 text-gray-600 text-lg pointer-events-none"></span>
+                </div>
+                <div class="prompt-cursor"></div>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="mt-2 pt-2 border-t border-gray-700 flex justify-between items-center text-xs md:text-sm text-gray-400 flex-shrink-0">
+            <div>
+                <span>~/qanto/cli (main)</span>
+            </div>
+            <div>
+                <span id="network-status" class="font-bold">NOMINAL</span> (epoch <span id="epoch-counter">142</span>)
+            </div>
+            <div>
+                <span id="model-version" class="text-indigo-400">saga-oracle-v8.0</span> (<span id="context-left">98%</span> context)
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const output = document.getElementById('output');
+        const input = document.getElementById('prompt-input');
+        const inputLine = document.getElementById('input-line');
+        const epochCounter = document.getElementById('epoch-counter');
+        const networkStatusEl = document.getElementById('network-status');
+        const autocompleteSuggestionEl = document.getElementById('autocomplete-suggestion');
+
+        const commandHistory = [];
+        let historyIndex = -1;
+
+        const knowledgeBase = {
+             "help": "Available commands:\n  /ask [topic]       - Get info (e.g., /ask about SCS)\n  /analyze [risk]    - Run security analysis (e.g., /analyze centralization)\n  /simulate cycle    - Run a mock Sense-Think-Act loop\n  /gemini [question] - Ask the external Gemini LLM anything\n  /clear             - Clear the terminal screen\n  /status            - View detailed network status",
+             "status": () => `
++--------------------------------+
+| Qanto Network Status           |
++--------------------------------+
+| Epoch: ${epochCounter.textContent}                     |
+| Network State: ${networkStatusEl.textContent}         |
+| Omega Threat Level: GUARDED    |
+| Avg. Block Time: 3.2s          |
+| Validators: 87                 |
+| SCS Mean: 0.78                 |
++--------------------------------+
+`,
+            "poco": "\n<span class='text-indigo-400'>Proof-of-Carbon-Offset (PoCO)</span> is Qanto's innovative mechanism for integrating real-world environmental action into the blockchain consensus. Validators include verifiable `CarbonOffsetCredential` data in their blocks. SAGA's Cognitive Engine analyzes these credentials, and miners who include valid, high-quality credentials receive a boost to their 'environmental_contribution' score. This improves their overall Saga Credit Score (SCS), leading to higher block rewards.",
+            "scs": "\nYour <span class='text-indigo-400'>Saga Credit Score (SCS)</span> is your on-chain reputation (0.0 to 1.0). It's a weighted average of your trust score (from block analysis), Karma (long-term contributions), total stake, and environmental contributions (from PoCO). A higher SCS leads to greater block rewards and governance influence.",
+            "sense-think-act": "\nThe <span class='text-indigo-400'>Sense-Think-Act</span> loop is the core of SAGA's autonomous operation:\n  <span class='text-amber-400'>[Sense]</span>: SAGA continuously ingests on-chain data, security metrics, and economic indicators.\n  <span class='text-amber-400'>[Think]</span>: It analyzes long-term trends, predicts future states (like congestion), and formulates strategic responses.\n  <span class='text-amber-400'>[Act]</span>: Based on its conclusions, it autonomously issues edicts or proposes governance changes to optimize the network.",
+            "default": "Topic not found in knowledge base. Try '/help' for a list of topics."
+        };
+        
+        const analysisTasks = {
+            "centralization": [
+                { text: "+ Initializing security analysis protocol...", color: "text-indigo-400" },
+                { text: "-- Accessing DAG state for validator distribution...", color: "text-gray-500" },
+                { text: "-- Fetching block production data for last 10 epochs...", color: "text-gray-500" },
+                { text: "! SecurityMonitor: Calculating Herfindahl-Hirschman Index (HHI)...", color: "text-amber-400" },
+                { text: "HHI calculated: 1850. Moderate concentration detected.", color: "text-white" },
+                { text: "+ Formulating insight based on HHI score...", color: "text-indigo-400" },
+                { text: "✓ Analysis complete. Centralization risk is moderate but within nominal parameters.", color: "text-lime-400" }
+            ],
+            "spam": [
+                { text: "+ Initializing security analysis protocol...", color: "text-indigo-400" },
+                { text: "-- Analyzing transaction metadata integrity for the last 200 blocks...", color: "text-gray-500" },
+                { text: "-- Calculating zero-fee transaction ratio...", color: "text-gray-500" },
+                { text: "! SecurityMonitor: Zero-fee ratio at 12%. Shannon entropy of metadata is nominal.", color: "text-amber-400" },
+                { text: "✓ Analysis complete. No indicators of a coordinated spam attack detected.", color: "text-lime-400" }
+            ],
+            "simulation": [
+                { text: "+ Starting Sense-Think-Act loop for epoch governance...", color: "text-indigo-400" },
+                { text: "[Sense] Analyzing long-term network trends...", color: "text-white" },
+                { text: "-- Trend detected: Sustained network congestion (avg > 0.85 for 3 epochs).", color: "text-gray-500" },
+                { text: "-- Trend detected: High proposal rejection rate (78%).", color: "text-gray-500" },
+                { text: "[Think] Formulating strategic proposals...", color: "text-white" },
+                { text: "! Proposal Drafted: Increase 'base_tx_fee_min' by 15% to mitigate spam.", color: "text-amber-400" },
+                { text: "! Proposal Drafted: Lower 'proposal_vote_threshold' by 10% to encourage governance participation.", color: "text-amber-400" },
+                { text: "[Act] Submitting proposals to governance queue...", color: "text-white" },
+                { text: "✓ Autonomous governance cycle complete. 2 new proposals submitted.", color: "text-lime-400" }
+            ]
+        };
+
+        function addLine(html, color) {
+            const line = document.createElement('div');
+            line.className = color;
+            line.innerHTML = html;
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function typeStream(text, element, callback) {
+            let i = 0;
+            function type() {
+                if (i < text.length) {
+                    element.innerHTML += text.charAt(i);
+                    i++;
+                    output.scrollTop = output.scrollHeight;
+                    setTimeout(type, 10);
+                } else {
+                    if (callback) callback();
+                }
+            }
+            type();
+        }
+        
+        async function callGeminiApi(prompt) {
+            const loadingLine = document.createElement('div');
+            loadingLine.className = 'text-gray-500';
+            loadingLine.textContent = 'Contacting External Oracle (Gemini)...';
+            output.appendChild(loadingLine);
+            output.scrollTop = output.scrollHeight;
+
+            try {
+                let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+                const payload = { contents: chatHistory };
+                const apiKey = ""; // API key is handled by the environment
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API request failed with status ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                loadingLine.remove();
+
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    
+                    const responseContainer = document.createElement('div');
+                    responseContainer.className = 'text-cyan-400';
+                    const prefix = document.createElement('span');
+                    prefix.className = 'text-indigo-400';
+                    prefix.textContent = 'SAGA/Gemini Oracle > ';
+                    responseContainer.appendChild(prefix);
+                    
+                    const textElement = document.createElement('span');
+                    responseContainer.appendChild(textElement);
+                    output.appendChild(responseContainer);
+
+                    typeStream(text, textElement, enableInput);
+                } else {
+                    throw new Error("Invalid response structure from API.");
+                }
+            } catch (error) {
+                loadingLine.remove();
+                addLine(`Error contacting Gemini Oracle: ${error.message}`, 'text-amber-400');
+                enableInput();
+            }
+        }
+
+        function addLinesSequentially(lines, container, finalCallback) {
+            let index = 0;
+            function next() {
+                if (index < lines.length) {
+                    const lineData = lines[index];
+                    const lineEl = document.createElement('div');
+                    lineEl.className = lineData.color;
+                    lineEl.innerHTML = lineData.text;
+                    container.appendChild(lineEl);
+                    container.scrollTop = container.scrollHeight;
+                    index++;
+                    setTimeout(next, 100 + Math.random() * 150);
+                } else {
+                    if (finalCallback) finalCallback();
+                }
+            }
+            next();
+        }
+
+        function processCommand(cmd) {
+            const parts = cmd.trim().split(' ');
+            const command = parts[0].toLowerCase();
+            const args = parts.slice(1);
+
+            switch (command) {
+                case '/clear':
+                    output.innerHTML = '';
+                    enableInput();
+                    break;
+                case '/help':
+                    addLine(knowledgeBase.help, 'text-cyan-400');
+                    enableInput();
+                    break;
+                case '/status':
+                     addLine(knowledgeBase.status(), 'text-cyan-400');
+                     enableInput();
+                    break;
+                case '/ask':
+                    const topic = args.includes('about') ? args[args.indexOf('about') + 1] : args[0];
+                    if (!topic) {
+                        addLine("Usage: /ask [topic]", 'text-amber-400');
+                        enableInput();
+                        return;
+                    }
+                    const response = knowledgeBase[topic.toLowerCase()] || knowledgeBase.default;
+                    addLine(response, 'text-cyan-400');
+                    enableInput();
+                    break;
+                case '/analyze':
+                    const riskType = args[0];
+                    if (analysisTasks[riskType]) {
+                        addLinesSequentially(analysisTasks[riskType], output, enableInput);
+                    } else {
+                        addLine("Unknown analysis type. Try 'centralization' or 'spam'.", 'text-amber-400');
+                        enableInput();
+                    }
+                    break;
+                case '/simulate':
+                     if (args[0] === 'cycle') {
+                        addLinesSequentially(analysisTasks.simulation, output, enableInput);
+                     } else {
+                        addLine("Unknown simulation. Try '/simulate cycle'.", 'text-amber-400');
+                        enableInput();
+                     }
+                    break;
+                case '/gemini':
+                    const prompt = args.join(' ');
+                    if (!prompt) {
+                        addLine("Usage: /gemini [your question]", 'text-amber-400');
+                        enableInput();
+                        return;
+                    }
+                    callGeminiApi(prompt);
+                    break;
+                default:
+                    addLine(`Command not found: ${cmd}. Type '/help' for available commands.`, 'text-amber-400');
+                    enableInput();
+                    break;
+            }
+        }
+
+        function disableInput() {
+            input.disabled = true;
+            input.style.cursor = 'not-allowed';
+        }
+
+        function enableInput() {
+            inputLine.style.display = 'flex';
+            input.disabled = false;
+            input.style.cursor = 'text';
+            input.focus();
+        }
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const cmd = input.value;
+                if (cmd.trim() === '') return;
+
+                commandHistory.unshift(cmd);
+                historyIndex = -1;
+                
+                const historyLine = document.createElement('div');
+                historyLine.innerHTML = `<span class="text-cyan-400">&gt;</span> <span class="text-magenta-400">${cmd}</span>`;
+                output.appendChild(historyLine);
+                
+                input.value = '';
+                autocompleteSuggestionEl.textContent = '';
+                disableInput();
+                
+                setTimeout(() => processCommand(cmd), 300);
+            } else if (e.key === 'Escape') {
+                input.value = '';
+                autocompleteSuggestionEl.textContent = '';
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (historyIndex < commandHistory.length - 1) {
+                    historyIndex++;
+                    input.value = commandHistory[historyIndex];
+                }
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (historyIndex > 0) {
+                    historyIndex--;
+                    input.value = commandHistory[historyIndex];
+                } else {
+                    historyIndex = -1;
+                    input.value = '';
+                }
+            } else if (e.key === 'Tab') {
+                e.preventDefault();
+                if (autocompleteSuggestionEl.textContent) {
+                    input.value = autocompleteSuggestionEl.textContent;
+                    autocompleteSuggestionEl.textContent = '';
+                }
+            }
+        });
+
+        const allCommands = ['/ask', '/analyze', '/simulate', '/clear', '/status', '/help', '/gemini'];
+        input.addEventListener('input', () => {
+            const currentVal = input.value;
+            if (currentVal.startsWith('/')) {
+                const suggestion = allCommands.find(c => c.startsWith(currentVal));
+                if (suggestion && suggestion !== currentVal) {
+                    autocompleteSuggestionEl.textContent = suggestion;
+                } else {
+                    autocompleteSuggestionEl.textContent = '';
+                }
+            } else {
+                autocompleteSuggestionEl.textContent = '';
+            }
+        });
+
+        // Welcome Message
+        const welcomeMessage = [
+            { text: "Booting SAGA v8.0 (Gemini Integrated)...", color: "text-gray-500" },
+            { text: "Loading CognitiveAnalyticsEngine...", color: "text-white" },
+            { text: "  - BehaviorNet model loaded.", color: "text-gray-500" },
+            { text: "  - CongestionPredictorLSTM model loaded.", color: "text-gray-500" },
+            { text: "Initializing External Oracle Link (Gemini)...", color: "text-white" },
+            { text: "✓ <span class='text-lime-400'>SAGA is online.</span> Awaiting your query.", color: "text-white" },
+            { text: "Type `/help` for a list of commands.", color: "text-gray-500" }
+        ];
+
+        addLinesSequentially(welcomeMessage, output, enableInput);
+
+        // Dynamic Status Bar
+        setInterval(() => {
+            epochCounter.textContent = parseInt(epochCounter.textContent) + 1;
+            const states = [{name: 'NOMINAL', color: 'text-lime-400'}, {name: 'CONGESTED', color: 'text-amber-400'}, {name: 'DEGRADED', color: 'text-magenta-400'}];
+            const randomState = states[Math.floor(Math.random() * states.length)];
+            networkStatusEl.textContent = randomState.name;
+            networkStatusEl.className = `font-bold ${randomState.color}`;
+        }, 15000);
+
+        document.body.addEventListener('click', (e) => {
+            if (e.target.id !== 'prompt-input') {
+                input.focus();
+            }
+        });
+    </script>
 </body>
 </html>

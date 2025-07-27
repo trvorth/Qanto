@@ -1094,6 +1094,16 @@ impl SagaGuidanceSystem {
     pub fn new() -> Self {
         let mut knowledge_base = HashMap::new();
         // Populating the knowledge base with detailed, helpful articles.
+        knowledge_base.insert(
+            "help".to_string(),
+            "**SAGA Command List**\n\
+            - **help**: Shows this list of available commands.\n\
+            - **ask about [topic]**: Get information on a specific topic (e.g., ask about scs).\n\
+            - **status**: View detailed network status.\n\
+            - **security**: Learn about best practices for wallet and network security.\n\
+            - **peers**: Get help troubleshooting peer connection issues."
+                .to_string(),
+        );
         knowledge_base.insert("setup".to_string(), "To get started with Qanto, follow these steps:\n1. **Download:** Get the latest `qanto` binary for your OS from the official repository.\n2. **Configuration:** Run `./qanto --init` in your terminal. This will create a default `config.toml` and a `wallet.key` file in your current directory.\n3. **Review Config:** Open `config.toml` to review settings. To connect to the network, add trusted peer multiaddresses to the `peers` array. Example: `peers = [\"/ip4/192.168.1.10/tcp/8008/p2p/12D3Koo...\"].\n4. **First Run:** Start the node with `./qanto`. It will automatically connect to peers if specified. If no peers are listed, it will run in a local, single-node mode, which is great for testing.".to_string());
         knowledge_base.insert("staking".to_string(), "Staking is the process of locking up QNTO tokens to act as a validator. Validators are the backbone of the network, responsible for proposing new blocks, confirming transactions, and maintaining consensus.\n- **Become a Validator:** To become a validator, you must stake at least the minimum amount of QNTO required by the current epoch rules (check the `/dag` endpoint for current parameters). Your node must be consistently online and performant to avoid penalties.\n- **Earn Rewards:** Proposing valid blocks earns rewards, which are dynamically calculated by SAGA. The reward amount is boosted by your Saga Credit Score (SCS), meaning more reputable validators earn more.\n- **Slashing Risk:** Malicious behavior (e.g., proposing invalid blocks, attempting a double-spend) or being consistently offline can cause your stake to be 'slashed', meaning a portion is forfeited as a penalty. This mechanism secures the network by disincentivizing bad actors.".to_string());
         knowledge_base.insert("send".to_string(), "To send tokens, you create and broadcast a transaction using your available funds, which are tracked as Unspent Transaction Outputs (UTXOs).\n1. **Check Balance/UTXOs:** Use the API endpoint `/utxos/{your_address}` to see a list of your UTXOs. The sum of these is your total balance.\n2. **Construct Transaction:** Create a transaction specifying which of your UTXOs will be used as inputs. Then, define the outputs: one for the recipient's address and the amount they should receive, and another 'change' output back to your own address with the remaining funds.\n3. **Sign & Submit:** Sign the complete transaction data with your private key (this is typically handled by your wallet software). Submit the signed transaction JSON to the `/transaction` API endpoint. The network will then pick it up for inclusion in a future block.".to_string());
@@ -1276,6 +1286,7 @@ impl SagaGuidanceSystem {
 
         // Keywords to map to internal knowledge base topics
         let topic_keywords: HashMap<&str, Vec<&str>> = HashMap::from([
+            ("help", vec!["help", "commands"]),
             ("setup", vec!["setup", "start", "install", "config", "init"]),
             ("staking", vec!["stake", "staking", "validator"]),
             (
