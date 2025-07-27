@@ -100,6 +100,7 @@ nonzero_ext = "0.3.0"
 # --- Environment & Secrets ---
 dotenvy = "0.15.7"
 rpassword = "7.3.1"
+colored = "2.0"
 
 # --- Async Traits ---
 async-trait = "0.1.80"
@@ -146,7 +147,7 @@ path = "src/bin/qantowallet.rs"
 
 [[bin]]
 name = "saga_cli"
-path = "src/bin/saga_cli.rs"
+path = "src/bin/saga_assistant.rs"
 
 [[bin]]
 name = "saga_web"
