@@ -25,11 +25,6 @@
 node*/cert.pem
 /filter_sensitive_commits.py
 /integrate_isnm.sh
-/migrations
-/models
-/routes
-/templates
-/utils
 
 # --- IDE & Editor Files ---
 .idea/
