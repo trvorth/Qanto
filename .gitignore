@@ -31,7 +31,7 @@ node*/cert.pem
 .vscode/
 *.sublime-project
 *.sublime-workspace
-.DS_Store
+*.DS_Store
 Thumbs.db
 
 # --- macOS & System Files ---
@@ -97,6 +97,8 @@ node*/*.txt
 # --- Language & Framework Specific ---
 # Python
 /venv/
+*.env
+.env\n__pycache__/\ninstance/\nvenv/
 __pycache__/
 *.pyc
 
@@ -121,5 +123,4 @@ yarn-error.log*
 
 # --- Local Scripts ---
 /scripts/run_local_net.sh
-.env
-__pycache__/
+

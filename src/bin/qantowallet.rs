@@ -14,11 +14,11 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-// --- NEURAL-VAULT™ Constants ---
+// --- Constants ---
 const DEV_ADDRESS: &str = "74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41";
 const DEV_FEE_RATE: f64 = 0.0304;
 
-// --- CLI Structure for NEURAL-VAULT™ ---
+// --- CLI Structure ---
 
 #[derive(Parser, Debug)]
 #[command(
@@ -36,13 +36,13 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// [gen] Generates a new quantum-safe wallet.
-    Gen {
+    /// [generate] Creates a new, secure, and encrypted wallet file.
+    Generate {
         #[arg(short, long, value_name = "OUTPUT_FILE", default_value = "wallet.key")]
         output: PathBuf,
     },
-    /// [show-keys] Reveals the private key and mnemonic of a wallet.
-    ShowKeys {
+    /// [show-secrets] CRITICAL: Reveals the private key and mnemonic of a wallet.
+    ShowSecrets {
         #[arg(short, long, value_name = "WALLET_FILE", default_value = "wallet.key")]
         wallet: PathBuf,
     },
@@ -80,8 +80,8 @@ enum Commands {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     let result = match cli.command {
-        Commands::Gen { output } => generate_wallet(output).await,
-        Commands::ShowKeys { wallet } => show_keys(wallet).await,
+        Commands::Generate { output } => generate_wallet(output).await,
+        Commands::ShowSecrets { wallet } => show_secrets(wallet).await,
         Commands::Import {
             mnemonic,
             private_key,
@@ -114,12 +114,13 @@ async fn generate_wallet(output: PathBuf) -> Result<()> {
     println!("\n✅ NEURAL-VAULT™ Generated Successfully!");
     println!("   Address (Ed25519): {}", new_wallet.address());
     println!("   Saved to: {}", output.display());
-    println!("\n⚠️ CRITICAL: The mnemonic phrase is the ONLY way to recover your vault.");
-    println!("   Use the 'show-keys' command to view and securely back it up now.");
+    println!("\n⚠️ CRITICAL: Your wallet is created but not yet backed up.");
+    println!("   To ensure you can recover your funds, run the 'show-secrets' command.");
+    println!("   This will display your mnemonic phrase, which you must write down and store securely.");
     Ok(())
 }
 
-async fn show_keys(wallet_path: PathBuf) -> Result<()> {
+async fn show_secrets(wallet_path: PathBuf) -> Result<()> {
     if !wallet_path.exists() {
         return Err(anyhow::anyhow!(
             "Wallet file not found at: {:?}",
@@ -127,7 +128,7 @@ async fn show_keys(wallet_path: PathBuf) -> Result<()> {
         ));
     }
 
-    println!("Enter password to decrypt wallet:");
+    println!("Enter password to decrypt and reveal secrets:");
     let password = prompt_for_password(false, "")?;
 
     println!("🔓 Decrypting NEURAL-VAULT™...");
@@ -138,15 +139,23 @@ async fn show_keys(wallet_path: PathBuf) -> Result<()> {
     let private_key_hex = hex::encode(loaded_wallet.get_signing_key()?.to_bytes());
     let mnemonic_phrase = loaded_wallet.mnemonic().expose_secret();
 
-    println!("\n--- ⚠️  SECURITY WARNING ⚠️ ---");
-    println!("NEVER share your private key or mnemonic phrase with anyone.");
-    println!("Exposing this information WILL result in the permanent loss of your funds.");
-    println!("----------------------------------------------------------");
-    println!("Wallet File:     {wallet_path:?}");
+    // **SECURITY FIX: Display a severe, unmissable warning before showing secrets.**
+    println!("\n+----------------------------------------------------------+");
+    println!("|           🔥🔥🔥 CRITICAL SECURITY WARNING 🔥🔥🔥           |");
+    println!("+----------------------------------------------------------+");
+    println!("|                                                          |");
+    println!("|  NEVER share your Private Key or Mnemonic Phrase.          |");
+    println!("|  Anyone with this information can STEAL ALL YOUR FUNDS.    |");
+    println!("|                                                          |");
+    println!("|  Store this information OFFLINE and in a SECURE location.  |");
+    println!("|  Do NOT save it in a plain text file or cloud storage.     |");
+    println!("|                                                          |");
+    println!("+----------------------------------------------------------+");
+    println!("\nWallet File:     {wallet_path:?}");
     println!("Public Address:  {}", loaded_wallet.address());
     println!("Private Key:     {private_key_hex}");
     println!("Mnemonic Phrase: {mnemonic_phrase}");
-    println!("----------------------------------------------------------\n");
+    println!("\n+----------------------------------------------------------+\n");
 
     Ok(())
 }
