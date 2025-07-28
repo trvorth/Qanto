@@ -41,4 +41,4 @@ EXPOSE 4001
 # Define the entrypoint for the container.
 # This command will run when the container starts.
 # It expects config.toml and wallet.key to be mounted into /data.
-ENTRYPOINT ["hyperchain", "start", "--config", "/data/config.toml", "--wallet", "/data/wallet.key"]
+ENTRYPOINT ["qanto", "start", "--config", "/data/config.toml", "--wallet", "/data/wallet.key"]
