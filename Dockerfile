@@ -10,7 +10,11 @@ WORKDIR /usr/src/qanto
 COPY . .
 
 # Install dependencies needed for some crates (e.g., rocksdb).
-RUN apt-get update && apt-get install -y clang libclang-dev
+RUN apt-get update && apt-get install -y clang libclang-dev wget unzip
+RUN wget https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.0.0%2Bcpu.zip -O libtorch.zip && \
+    unzip libtorch.zip -d /usr/local && \
+    rm libtorch.zip
+ENV LIBTORCH=/usr/local/libtorch
 
 # Build the project in release mode for performance.
 # This will cache dependencies and speed up subsequent builds.
@@ -28,6 +32,8 @@ RUN apt-get update && \
 
 # Copy the compiled binary from the builder stage.
 COPY --from=builder /usr/src/qanto/target/release/qanto /usr/local/bin/qanto
+COPY --from=builder /usr/local/libtorch /usr/local/libtorch
+ENV LD_LIBRARY_PATH=/usr/local/libtorch/lib:$LD_LIBRARY_PATH
 
 # Create a directory for the node's data (config, wallet, db).
 WORKDIR /data
