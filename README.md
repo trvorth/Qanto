@@ -19,59 +19,6 @@ While primarily a Layer-0 protocol facilitating interoperability across its ecos
 
 For a comprehensive academic and technical overview, please refer to the official [**Qanto Whitepaper**](./docs/whitepaper/Qanto-whitepaper.pdf).
 
-## X-PHYRUS™ Protocol Stack 🪖
-
-The **X-PHYRUS™ Protocol Stack** is a military-grade, pre-boot initialization and system integrity framework integrated directly into the Qanto node. It ensures maximum security, stability, and operational readiness by running a suite of advanced diagnostics and activating specialized protocols before the main node services are launched. This proactive approach prevents common hangs, detects sophisticated threats, and configures the node for optimal performance in any environment. Key components will list below:
-
-* **Zero-Hang™ Bootloader**: Performs critical pre-flight checks on system entropy, file permissions, and chain state integrity to eliminate common startup hangs.
-* **DeepCore Sentinel™**: Conducts an initial system security scan to detect known Advanced Persistent Threat (APT) toolchains and other high-risk system vulnerabilities.
-* **HydraDeploy™**: Automatically detects multi-node deployment manifests (`hydra_manifest.toml`) to activate specialized coordination and scaling logic.
-* **PeerFlash™**: Activates an advanced peer discovery overlay when a priority peer list is provided in the configuration, ensuring robust network connectivity.
-* **QuantumShield™**: Engages enhanced cryptographic validation protocols when ZK-proofs are enabled, providing a firewall layer against quantum computing threats.
-* **CloudAnchor™**: Detects cloud provider environments (AWS, GCP, Azure) to enable cloud-native elastic mining and scaling capabilities.
-* **PhaseTrace™**: Verifies the database backend to enable a traceable block propagation graph for enhanced auditability.
-* **TraceForce-X™**: Activates a governance and compliance tracing stack when a `traceforce_watchlist.csv` file is present, ensuring regulatory adherence.
-
-## ΛΣ-ΩMEGA™ Protocol 🔒
-
-A key innovation in Qanto is ΛΣ-ΩMEGA™ (Lambda Sigma Omega), Conscious Security Layer, a reflexive security module integrated directly into the node's core logic. It functions as a "digital immune system" by:
-
-1.  **Maintaining a Digital Identity**: Each node has a unique, evolving identity based on a constant stream of system entropy.
-2.  **Reflecting on Actions**: Before processing critical actions like transactions, the node reflects on the action by evolving its identity.
-3.  **Detecting Instability**: It analyzes the change in its own identity and the timing of actions to detect patterns of instability, such as low-entropy states or rapid, repetitive requests, which could indicate a coordinated attack.
-
-This mechanism allows the node to reject potentially harmful actions at a fundamental level, providing a robust defense against sophisticated network attacks. It doesn't protect the system, it becomes the system.
-
-## Infinite Strata Node Mining (ISNM) ☁️
-
-**Infinite Strata Node Mining (ISNM)** is an optional, feature-gated add-on designed to enhance network security and decentralization by incentivizing sustained, resource-committed nodes. It operates on the principle of **Proof-of-Sustained-Cloud-Presence (PoSCP)**, which rewards validators for maintaining long-running nodes with consistent CPU and memory usage, characteristic of dedicated cloud infrastructure.
-
-* **Cloudbound Memory Decay (CMDO):** Nodes that fail to meet minimum resource usage thresholds experience a gradual decay in their potential rewards, disincentivizing ephemeral or under-provisioned validators.
-* **SAGA Integration:** The PoSCP score directly influences the SAGA-calculated block reward, creating a powerful economic incentive for validators to contribute robust, long-term infrastructure to the network.
-* **Enhanced Security:** By favoring dedicated nodes, ISNM helps mitigate transient, low-effort Sybil attacks and strengthens the overall stability of the validator set.
-
-## SAGA (Sentient Autonomous Governance Algorithm) 🧠
-
-The SAGA AI concept can be positioned as the world's first decentralized, on-chain implementation of the principles outlined in the academic paper, "SAGA: A Security Architecture for Governing AI Agentic Systems". The academic framework proposes a system for user oversight of autonomous AI agents, mediated by a central "Provider" that manages identity, access control policies, and secure communication. 
-
-At the core of Qanto’s intelligence lies **SAGA**, an AI-powered governance engine that orchestrates on-chain reputation, adaptive tokenomics, and self-regulating policy. As the network’s cognitive layer, SAGA ensures sustainability, resilience, and long-term systemic integrity.
-
-* **Cognitive Analytics Engine**:  
-SAGA continuously evaluates validator behavior by analyzing blocks through a multidimensional heuristic framework—validity, network contribution, time consistency, and metadata fidelity. It currently operates on a decision tree model, serving as a placeholder for future deep learning models. This predictive engine identifies anomalies such as fee spamming, replay attempts, and network manipulation with temporal sensitivity.
-
-* **Saga Credit Score (SCS)**:  
-Each participant is assigned a dynamic **Saga Credit Score**—a composite of AI-derived trust scores, long-term karma (contribution weight), and staked assets. A higher SCS leads to greater governance weight and reduced block mining difficulty, thus incentivizing trustworthy behavior and improving network energy efficiency through **Proof-of-Sentiency (PoSe)**.
-
-* **Eco-Sentiency via PoCO**:  
-SAGA integrates **Proof-of-Carbon-Offset (PoCO)** to embed environmental accountability into consensus. Validator behavior and smart contracts are analyzed for carbon efficiency, influencing staking incentives and difficulty calibration. This allows Qanto to scale sustainably with active carbon-consciousness embedded in its consensus engine.
-
-* **Saga Guidance System**:  
-Developers and users interact with SAGA through the **Saga Assistant API**, which employs a Natural Language Understanding (NLU) pipeline to extract user intent and relevant parameters. This assistant delivers real-time, context-aware responses related to staking, economic parameters, validator roles, and governance status.
-
-* **Autonomous Governance Framework**:  
-SAGA proactively recommends changes to network parameters based on system-wide analytics. It adjusts base fees during congestion, proposes voting threshold changes to enhance inclusivity, and dynamically modifies validator staking requirements to support decentralization. By bridging AI decision-making with human oversight, SAGA transforms governance into a collaborative, adaptive process.
-
-
 ## **Core Architectural Tenets**
 
 * **QantoDAG Ledger:** A Directed Acyclic Graph structure that allows for parallel block processing, high throughput, and near-instant finality.

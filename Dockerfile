@@ -1,7 +1,7 @@
 # --- Stage 1: Builder ---
 # Use the official Rust image as a build environment.
 # Using a specific version ensures reproducible builds.
-FROM rust:1.78 as builder
+FROM rust:latest as builder
 
 # Create a new, empty workspace.
 WORKDIR /usr/src/hyperchain

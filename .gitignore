@@ -83,7 +83,6 @@ node*/*.txt
 /mermaid-filter.err
 /scripts
 /docs/whitepaper/assets
-/Dockerfile
 /docker-compose.yml
 /mining_rig_config.toml
 /deploy.sh
