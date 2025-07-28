@@ -115,10 +115,11 @@ yarn-error.log*
 /deployment/payload/
 
 # --- Cargo & Rust Specific ---
-Cargo.lock
 
 # --- Documentation ---
 /docs/assets/diagrams/*.svg
 
 # --- Local Scripts ---
 /scripts/run_local_net.sh
+.env
+__pycache__/

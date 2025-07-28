@@ -189,19 +189,49 @@
             ]
         };
 
-        function addLine(html, color) {
+        // **FIX START: Replaced vulnerable addLine with safe and specific functions**
+
+        /**
+         * Safely adds a line of plain text to the output.
+         * @param {string} text The text to add.
+         * @param {string} color The CSS class for color.
+         */
+        function addTextLine(text, color) {
             const line = document.createElement('div');
-            line.className = color;
+            if (color) line.className = color;
+            line.textContent = text;
+            output.appendChild(line);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        /**
+         * Adds a line of HTML from a TRUSTED source to the output.
+         * This should ONLY be used for developer-defined strings with intentional HTML.
+         * @param {string} html The trusted HTML string to add.
+         * @param {string} color The CSS class for color.
+         */
+        function addHtmlLine(html, color) {
+            const line = document.createElement('div');
+            if (color) line.className = color;
             line.innerHTML = html;
             output.appendChild(line);
             output.scrollTop = output.scrollHeight;
         }
 
+        // **FIX END**
+
+        /**
+         * Safely types out a stream of text character by character.
+         * @param {string} text The text to type out.
+         * @param {HTMLElement} element The element to type into.
+         * @param {Function} callback A function to call when typing is complete.
+         */
         function typeStream(text, element, callback) {
             let i = 0;
             function type() {
                 if (i < text.length) {
-                    element.innerHTML += text.charAt(i);
+                    // **FIX: Use textContent to prevent XSS from API response**
+                    element.textContent += text.charAt(i);
                     i++;
                     output.scrollTop = output.scrollHeight;
                     setTimeout(type, 10);
@@ -261,21 +291,19 @@
                 }
             } catch (error) {
                 loadingLine.remove();
-                addLine(`Error contacting Gemini Oracle: ${error.message}`, 'text-amber-400');
+                // **FIX: Use safe addTextLine for error messages**
+                addTextLine(`Error contacting Gemini Oracle: ${error.message}`, 'text-amber-400');
                 enableInput();
             }
         }
 
-        function addLinesSequentially(lines, container, finalCallback) {
+        function addLinesSequentially(lines, finalCallback) {
             let index = 0;
             function next() {
                 if (index < lines.length) {
                     const lineData = lines[index];
-                    const lineEl = document.createElement('div');
-                    lineEl.className = lineData.color;
-                    lineEl.innerHTML = lineData.text;
-                    container.appendChild(lineEl);
-                    container.scrollTop = container.scrollHeight;
+                    // **FIX: Use addHtmlLine as this content is trusted HTML**
+                    addHtmlLine(lineData.text, lineData.color);
                     index++;
                     setTimeout(next, 100 + Math.random() * 150);
                 } else {
@@ -292,56 +320,60 @@
 
             switch (command) {
                 case '/clear':
-                    output.innerHTML = '';
+                    output.innerHTML = ''; // This is safe
                     enableInput();
                     break;
                 case '/help':
-                    addLine(knowledgeBase.help, 'text-cyan-400');
+                    // Content is plain text
+                    addTextLine(knowledgeBase.help, 'text-cyan-400');
                     enableInput();
                     break;
                 case '/status':
-                     addLine(knowledgeBase.status(), 'text-cyan-400');
+                     // Content is plain text
+                     addTextLine(knowledgeBase.status(), 'text-cyan-400');
                      enableInput();
                     break;
                 case '/ask':
                     const topic = args.includes('about') ? args[args.indexOf('about') + 1] : args[0];
                     if (!topic) {
-                        addLine("Usage: /ask [topic]", 'text-amber-400');
+                        addTextLine("Usage: /ask [topic]", 'text-amber-400');
                         enableInput();
                         return;
                     }
                     const response = knowledgeBase[topic.toLowerCase()] || knowledgeBase.default;
-                    addLine(response, 'text-cyan-400');
+                    // This content can contain trusted HTML, so we use addHtmlLine
+                    addHtmlLine(response, 'text-cyan-400');
                     enableInput();
                     break;
                 case '/analyze':
                     const riskType = args[0];
                     if (analysisTasks[riskType]) {
-                        addLinesSequentially(analysisTasks[riskType], output, enableInput);
+                        addLinesSequentially(analysisTasks[riskType], enableInput);
                     } else {
-                        addLine("Unknown analysis type. Try 'centralization' or 'spam'.", 'text-amber-400');
+                        addTextLine("Unknown analysis type. Try 'centralization' or 'spam'.", 'text-amber-400');
                         enableInput();
                     }
                     break;
                 case '/simulate':
                      if (args[0] === 'cycle') {
-                        addLinesSequentially(analysisTasks.simulation, output, enableInput);
+                        addLinesSequentially(analysisTasks.simulation, enableInput);
                      } else {
-                        addLine("Unknown simulation. Try '/simulate cycle'.", 'text-amber-400');
+                        addTextLine("Unknown simulation. Try '/simulate cycle'.", 'text-amber-400');
                         enableInput();
                      }
                     break;
                 case '/gemini':
                     const prompt = args.join(' ');
                     if (!prompt) {
-                        addLine("Usage: /gemini [your question]", 'text-amber-400');
+                        addTextLine("Usage: /gemini [your question]", 'text-amber-400');
                         enableInput();
                         return;
                     }
                     callGeminiApi(prompt);
                     break;
                 default:
-                    addLine(`Command not found: ${cmd}. Type '/help' for available commands.`, 'text-amber-400');
+                    // **FIX: Use safe addTextLine to handle untrusted user input `cmd`**
+                    addTextLine(`Command not found: ${cmd}. Type '/help' for available commands.`, 'text-amber-400');
                     enableInput();
                     break;
             }
@@ -368,9 +400,6 @@
                 commandHistory.unshift(cmd);
                 historyIndex = -1;
                 
-                // **FIXED CODE BLOCK**
-                // Create elements programmatically and use textContent to prevent XSS.
-                // This preserves the appearance while ensuring security.
                 const historyLine = document.createElement('div');
                 
                 const promptSpan = document.createElement('span');
@@ -380,11 +409,10 @@
 
                 const cmdSpan = document.createElement('span');
                 cmdSpan.className = 'text-magenta-400';
-                cmdSpan.textContent = cmd; // Use textContent to safely insert the command
+                cmdSpan.textContent = cmd;
                 historyLine.appendChild(cmdSpan);
                 
                 output.appendChild(historyLine);
-                // **END OF FIXED CODE BLOCK**
                 
                 input.value = '';
                 autocompleteSuggestionEl.textContent = '';
@@ -444,7 +472,7 @@
             { text: "Type `/help` for a list of commands.", color: "text-gray-500" }
         ];
 
-        addLinesSequentially(welcomeMessage, output, enableInput);
+        addLinesSequentially(welcomeMessage, enableInput);
 
         // Dynamic Status Bar
         setInterval(() => {
