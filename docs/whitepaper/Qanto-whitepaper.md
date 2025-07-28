@@ -12,9 +12,9 @@ The prevailing paradigm of distributed ledger technology (DLT), based on linear-
 
 The primary contribution of this work is the rigorous architectural synthesis of several key components, substantiated by a reference implementation. We define a **heterogeneous multi-chain architecture** that supports two distinct, interoperable ledger models: (1) a set of high-throughput **Dynamic DAG Shards** based on a Directed Acyclic Graph (DAG) structure, which we term the **QantoDAG**, facilitating parallel transaction processing and featuring a novel mechanism for dynamic shard creation based on network load; and (2) a series of independent **Execution Chains**, designed for specific applications and secured by a unique weighted Proof-of-Work consensus.
 
-Consensus across the framework is achieved via a multi-layered hybrid protocol, enhanced by the **SAGA-AI governed Node Mining Add-on**, a Sentient Autonomous Governance Algorithm that optimizes miner behavior and network efficiency. Block proposal remains permissionless through Proof-of-Work (PoW), while deterministic finality is provided by a Proof-of-Stake (PoS) based validator overlay that finalizes checkpoints for all constituent chains. Security is further enhanced by an on-chain **Intrusion Detection System (IDS)** with economic slashing penalties, the **ΛΣ-ΩMEGA™** post-quantum cryptographic framework, and the native integration of a **post-quantum lattice-based signature scheme**, modeled after the NIST standard CRYSTALS-Dilithium, for all validator attestations. We also integrate **Zero-Knowledge Succinct Non-Interactive Arguments of Knowledge (ZK-SNARKs)** for a robust optional privacy layer. The **X-PHYRUS™ Protocol Stack** provides a secure and scalable networking layer, optimizing peer-to-peer communication for high-throughput environments.
+Consensus across the framework is achieved via a multi-layered hybrid protocol, enhanced by the **SAGA AI**, a Sentient Autonomous Governance Algorithm that optimizes miner behavior and network efficiency through **Proof-of-Sentiency (PoSe)**. Block proposal remains permissionless through **Proof-of-Work (PoW)**, which serves as the primary finality mechanism, while a **Proof-of-Stake (PoS)** validator overlay acts as a "finality helper". Security is further enhanced by an on-chain **Intrusion Detection System (IDS)** with economic slashing penalties, the **ΛΣ-ΩMEGA™** post-quantum cryptographic framework, and the native integration of a post-quantum lattice-based signature scheme. Furthermore, we also integrate **Zero-Knowledge Succinct Non-Interactive Arguments of Knowledge (ZK-SNARKs)** for a robust optional privacy layer.
 
-We provide a formal specification of the protocol's data structures, its unique hashing algorithms, its state transition functions, its comprehensive cryptographic suite, and its incentive-compatible economic model. The resulting framework presents a viable pathway toward a DLT ecosystem that is performant, adaptable, and secure against both classical and quantum threats.
+We provide a formal specification of the protocol's data structures, its state transition functions, its comprehensive cryptographic suite, and its incentive-compatible economic model. The resulting framework presents a viable pathway toward a DLT ecosystem that is performant, adaptable, and secure against both classical and quantum threats.
 
 ## **1\. Introduction**
 
@@ -38,11 +38,9 @@ This whitepaper outlines the technical innovations that make Qanto possible:
 * **An Incentive-Compatible Economic Model:** Designed for long-term network health and sustainable development.
 * **A Scalable Networking Layer with X-PHYRUS™:** Leveraging the X-PHYRUS™ Protocol Stack for robust and efficient peer-to-peer communication.
 
-![QantoDAG Structure](./docs/whitepaper/assets/diagrams/Qanto_solution_overview.png)
-
 ![QantoDAG Structure](./docs/whitepaper/assets/diagrams/Qanto_advanced_comparison.png)
 
-This paper proceeds by presenting the formal architectural specification of the Qanto framework (Section 2), its multi-layered hybrid consensus protocol with SAGA-AI (Section 3), its comprehensive cryptographic suite with ΛΣ-ΩMEGA™ (Section 4), its economic model (Section 5), its P2P network with X-PHYRUS™ and governance model (Section 6), a discussion of use cases, implementation, and roadmap (Section 7), and concludes with a summary and directions for future research (Section 8).
+This paper proceeds by presenting the formal architectural specification of the Qanto framework (Section 2), its multi-layered hybrid consensus protocol with SAGA-AI (Section 3 and 4), its comprehensive cryptographic suite with ΛΣ-ΩMEGA™ (Section 5), its economic model (Section 6), its P2P network with X-PHYRUS™ and governance model (Section 7), a discussion of use cases, implementation, and roadmap (Section 8), and concludes with a summary and directions for future research (Section 9).
 
 ## **2. The Qanto Architectural Framework**
 
@@ -97,18 +95,9 @@ Qanto employs a multi-layered hybrid consensus protocol, augmented by the **SAGA
 
 We assume a partially synchronous network model, where messages are delivered within some unknown but bounded time Δ \[47\]. The security of the protocol relies on two economic assumptions: that any adversary controls less than 50% of the total PoW hashrate and less than 33% of the total value staked by validators, consistent with standard security models for hybrid protocols \[54\].
 
-### **3.2. Consensus on DAG Shards: PoW with Delegated Finality (PoW-DF), aka PoW²**
+### **3.2. Primary Finality: Proof-of-Work with Proof-of-Sentiency (PoW + PoSe)**
 
-On the DAG shards, any node may act as a **Miner** to propose a QantoBlock by solving a PoW puzzle. This provides a permissionless and Sybil-resistant mechanism for extending the ledger \[1\]. A distinct set of **Validators** is responsible for creating checkpoint blocks that reference a consistent cut of the DAG, thereby finalizing all preceding transactions. This is philosophically similar to the "finality gadget" concept \[7\]. This two-layered mechanism is also referred to as **Proof-of-Work Squared (PoW²)**. Finality is achieved for any block B at a depth of at least kf (FINALIZATION_DEPTH) behind a valid checkpoint block C. The finality condition is:
-
-\text{is_finalized}(B) \iff \exists C : (\text{is_checkpoint}(C) \land B \in \text{history}(C) \land (\text{depth}(C) - \text{depth}(B) \geq k_f))
-
-#### **3.2.1. SAGA-AI Governed Node Mining Add-on**
-
-The **SAGA-AI** (Sentient Autonomous Governance Algorithm) add-on enhances the PoW-DF consensus by introducing an AI-driven optimization layer for miner behavior. SAGA-AI dynamically analyzes network conditions, such as hashrate distribution, transaction volume, and shard load, to guide miners in selecting optimal DAG tips for block proposals. This reduces the likelihood of conflicting block proposals and improves overall network throughput. The algorithm employs a lightweight machine learning model, trained on historical network data, to predict and prioritize high-impact transactions, ensuring efficient resource allocation and minimizing latency. SAGA-AI operates in a decentralized manner, with each miner node running an instance of the algorithm, ensuring alignment with the permissionless ethos of PoW while enhancing coordination.
-
-![Hybrid Consensus Architecture](./docs/whitepaper/assets/diagrams/consensus.png)
----
+On the DAG shards, any node may act as a Miner to propose a QantoBlock by solving a PoW puzzle. This provides a permissionless and Sybil-resistant mechanism for extending the ledger [1]. The core innovation is the integration of Proof-of-Sentiency (PoSe), an intelligence layer powered by the SAGA AI. PoSe makes the PoW mechanism "smarter" by dynamically adjusting the PoW difficulty for each miner based on their on-chain reputation, known as the Saga Credit Score (SCS). A miner with a high SCS will face a lower effective difficulty, while a miner with a poor reputation will face a higher one, making the network more efficient and secure without replacing PoW. Finality is therefore achieved through the cumulative, reputation-weighted work recorded on the DAG, rather than through a separate checkpointing mechanism.
 
 *Diagram: DAG Structure with Tip Selection and Finalization*
 ```
@@ -122,45 +111,84 @@ The **SAGA-AI** (Sentient Autonomous Governance Algorithm) add-on enhances the P
 ```
 *In this graphic, B1-B6 are blocks. (T1) is a transaction. B5, B6 are current "tips" of the DAG. A miner can choose to build upon them. C1 is a checkpoint block created by validators, which finalizes all preceding blocks (B1-B6) once it reaches the required depth.*
 
-### **3.3. Consensus on Execution Chains: Weighted PoW**
+### **3.3. ISNM: Proof-of-Sustained-Cloud-Presence (PoSCP)**
+
+To further enhance the economic security model and incentivize high-quality, long-term infrastructure providers, Qanto specifies an optional module known as Infinite Strata Node Mining (ISNM). This module introduces a novel incentive layer, Proof-of-Sustained-Cloud-Presence (PoSCP), which augments the SAGA-AI framework. PoSCP provides a direct economic reward multiplier to validators who demonstrate a sustained commitment of computational resources, characteristic of dedicated cloud-hosted nodes. 
+The mechanism functions by periodically assessing two key metrics: cumulative uptime and consistent resource utilization (CPU and memory). A node's PoSCP score is a function of its continuous online presence and its adherence to predefined resource usage thresholds. A key component of this model is Cloudbound Memory Decay (CMDO), an economic penalty function that reduces the reward multiplier for nodes that fall below the required resource utilization levels. This disincentivizes ephemeral nodes that may join the network opportunistically without contributing to its long-term stability.
+The PoSCP score is integrated directly into the SAGA reward calculation function, acting as a final multiplier on the block reward. This mechanism aligns validator incentives with the network’s need for a stable, robust, and well-provisioned set of participants, thereby strengthening the security assumptions of the PoS finality layer. 
+
+
+### **3.4. Consensus on Execution Chains: Weighted PoW**
 
 On the Execution Chains, a different hybrid model is used. Miners perform PoW to create new Blocks. The Block structure contains a stake_weight field, calculated from the UTXO value of the block's proposer. The canonical chain is determined by a fork-choice rule that considers not only the cumulative PoW difficulty but also the cumulative stake-weight, blending the permissionless nature of PoW with the "skin-in-the-game" security of PoS \[13\], a model analogous to protocols like Peercoin \[48\].
 
 The fork choice rule `F` is defined as: `F(chain) = Σ(block.difficulty * block.stake_weight)` for all blocks in the chain. The chain with the highest `F` value is considered canonical.
 
-### **3.4. Security Analysis: Integrated IDS and Slashing**
+Finality in Qanto is achieved through the interaction of three distinct but interconnected layers:  
+
+**1. Primary Finality (Proof-of-Work)**: Proof-of-Work (PoW): is the fundamental security and default finality layer of the Qanto network. Every valid block MUST contain a valid PoW solution, making the history of the ledger computationally expensive to rewrite and providing a permissionless method for block proposal.  
+**2. Finality Helper (Proof-of-Stake)**: The Proof-of-Stake (PoS): mechanism is a supplementary layer that accelerates the appearance of finality and signals validator confidence in a block. Critically, a minimum stake is no longer required for a validator to produce a block; a block with valid PoW is considered valid regardless of the validator's stake. However, a low stake will result in a "Low PoS confidence" warning, indicating that the block lacks strong economic backing from the validator set. This two-layered (PoW + PoS) mechanism is also referred to as Proof-of-Work Squared (PoW²).  
+**3. Intelligence Layer (Proof-of-Sentiency - PoSe)**: This is the most innovative layer, powered by the SAGA AI. PoSe makes the primary PoW mechanism "smarter" by dynamically adjusting the PoW difficulty for each miner based on their on-chain reputation, known as the Saga Credit Score (SCS). This makes the network more secure and efficient without replacing the fundamental security guarantees of PoW.
+
+### **3.5. Finality Helper: Proof-of-Stake (PoS)** 
+ 
+A distinct set of Validators can participate in a Proof-of-Stake mechanism that acts as a "finality helper". This is philosophically similar to the "finality gadget" concept. Critically, a minimum stake is no longer required for a validator to produce a block. A block with valid PoW is considered valid regardless of the validator's stake. However, a low stake will result in a "Low PoS confidence" warning, indicating that while the block is valid by PoW standards, it lacks strong economic backing from the validator set. This two-layered mechanism is also referred to as Proof-of-Work Squared (PoW²).
+
+
+### **3.6. Security Analysis: Integrated IDS and Slashing**
 
 The protocol's security is augmented by an on-chain **Intrusion Detection System (IDS)**. The detect_anomaly function calculates a score based on a block's deviation from statistical norms (e.g., transaction count, gas usage). Validators who sign blocks with high anomaly scores are automatically penalized via the SLASHING_PENALTY on their stake. This extends the concept of slashing from purely protocol-level faults (e.g., double-signing in PoS protocols \[28\]) to include a broader class of potentially destabilizing behaviors, creating a powerful economic disincentive against network abuse, a principle from mechanism design \[49\].
 
 The anomaly score `S(B)` for a block `B` is calculated as: `S(B) = |tx_count(B) - avg_tx_count| / max(1, avg_tx_count)` If `S(B) > T_anomaly`(a threshold), a slash is triggered.
 
-## **4. Cryptographic Suite**
+## **4. SAGA (sentient Autonomous Governance Algorithm)**
+
+SAGA is the AI-driven core of the Qanto network, functioning as a "decentralized brain" that autonomously manages the network's health, security, and economy. It replaces a static rule-based system with a dynamic, adaptive intelligence layer.  
+
+### **4.1. Cognitive Analytics Engine & BehaviorNet**  
+SAGA’s Cognitive Analytics Engine analyzes validator behavior by scoring blocks based on multiple factors, including validity, network contribution, historical performance, temporal consistency, and metadata integrity. It uses an AI model called BehaviorNet to classify this behavior as Malicious, Neutral, or Beneficial, forming the basis of a validator's reputation.  
+
+### **4.2. Saga Credit Score (SCS)**
+Every network participant is assigned a dynamic Saga Credit Score (SCS), a reputation score ranging from 0.0 to 1.0. The SCS is a weighted average of several components:  
+**AI-driven Trust Score**: The output from the BehaviorNet model's analysis of a validator's blocks.  
+**Long-term Karma**: A measure of a participant's positive, long-term contributions to the ecosystem, such as successful governance proposals. 
+**Total Stake**: The amount of QNTO staked by the validator.  
+**Environmental Contributions**: A score derived from the Proof-of-Carbon-Offset (PoCO) mechanism, which rewards validators for including verifiable carbon offset credentials in their blocks.  
+A higher SCS leads to a lower effective PoW difficulty, greater block rewards, and more influence in on-chain governance.
+  
+### **4.3. Autonomous Governance & Predictive Modeling**
+SAGA operates on a Sense-Think-Act loop to manage the network:  
+[Sense]: It continuously ingests on-chain data, security metrics from its Security Monitor, and economic indicators. The Security Monitor actively checks for various attacks in real-time, including Sybil, spam, centralization, and collusion attacks. 
+[Think]: It uses predictive models, including an LSTM (Long Short-Term Memory) model, to forecast future network states like congestion. Based on these predictions, it formulates strategic responses.  
+[Act]: It autonomously issues temporary Edicts to stabilize the network in response to immediate threats (e.g., raising transaction fees during a spam attack). For permanent changes, SAGA can draft and submit formal Governance Proposals to be voted on by stakeholders.
+
+## **5. Cryptographic Suite**
 
 Qanto integrates a comprehensive suite of cryptographic primitives chosen for security, performance, and quantum resistance, enhanced by the **ΛΣ-ΩMEGA™** framework.
 
-### **4.1. Foundational Hashing Algorithms**
+### **5.1. Foundational Hashing Algorithms**
 
 The protocol specifies the use of the **SHA-3** family of hash functions \[29\]. Keccak256 is used for block hashing and Merkle tree construction \[12\], while the wider Keccak512 is used for generating transaction identifiers to reduce the probability of hash collisions.
 
-### **4.2. The Reliable Hashing Algorithm (RHA)**
+### **5.2. The Reliable Hashing Algorithm (RHA)**
 
 The Execution Chain implementation introduces a novel, computationally complex hashing function, reliable_hashing_algorithm. This function performs a three-stage process: an initial hash using **BLAKE3** \[30\], a non-linear transformation of the output via 4×4 matrix multiplication using the nalgebra library, and a final hash using Keccak256. While a formal security analysis is an area for future research, the design motivation is to increase the computational complexity beyond simple hash-preimage resistance, potentially creating a degree of resistance against specialized mining hardware such as ASICs \[31\].
 
 **RHA Formalization:** Let `H_B3` be BLAKE3, `M` be the matrix transformation, and `H_K` be Keccak256. `RHA(input) = H_K(M(H_B3(input)))`
 
-### **4.3. Post-Quantum Signatures**
+### **5.3. Post-Quantum Signatures**
 
 The protocol mandates **quantum-resistant signatures** for all validator attestations. The LatticeSignature struct is specified for this purpose. A production implementation will utilize a scheme standardized by NIST, such as **CRYSTALS-Dilithium** \[10, 11\]. The security of Dilithium is based on the conjectured hardness of problems such as the Module Learning With Errors (Module-LWE) and Module Shortest Integer Solution (Module-SIS) in mathematical lattices \[14, 15\], which are believed to be intractable for quantum adversaries \[50\].
 
-### **4.4. The ΛΣ-ΩMEGA™ Cryptographic Framework**
+### **5.4. The ΛΣ-ΩMEGA™ Cryptographic Framework**
 
 The **ΛΣ-ΩMEGA™** framework enhances the cryptographic suite by integrating a modular, extensible system for managing post-quantum cryptographic operations. It provides a unified interface for combining multiple quantum-resistant algorithms, including CRYSTALS-Dilithium for signatures and Kyber for key encapsulation, ensuring seamless upgrades as new NIST-standardized algorithms emerge. ΛΣ-ΩMEGA™ employs a dynamic key rotation mechanism to mitigate long-term key exposure risks, using a time-based rekeying schedule enforced by the protocol. This framework also supports hybrid cryptography, allowing the combination of classical and post-quantum algorithms during the transition period to ensure compatibility with existing systems while preparing for quantum threats.
 
-### **4.5. Privacy-Preserving Technologies**
+### *5.5. Privacy-Preserving Technologies**
 
 Privacy is not an afterthought in Qanto; it is a core, optional feature.
 
-#### **4.5.1. Zero-Knowledge Proofs (ZK-SNARKs)**
+#### **5.5.1. Zero-Knowledge Proofs (ZK-SNARKs)**
 
 We integrate **ZK-SNARKs** \[32\] to provide users with the ability to conduct transactions with complete privacy. A ZK-SNARK allows one party (the prover) to prove to another (the verifier) that a statement is true, without revealing any information beyond the validity of the statement itself. In Qanto, this means a user can prove they own the funds they are sending and have not double-spent them, all without revealing their address, the recipient's address, or the transaction amount.
 
@@ -169,15 +197,15 @@ Users can choose between two types of transactions:
 1. **Public Transactions:** Transparent and auditable, similar to Bitcoin.
 2. **Private Transactions:** Shielded transactions that leverage ZK-SNARKs to hide all transaction metadata. The protocol specification includes a UtxoCircuit defined using the Bellman library for this purpose, enabling confidential transactions based on foundational research in interactive proof systems \[33\].
 
-#### **4.5.2. Homomorphic Encryption**
+#### **5.5.2. Homomorphic Encryption**
 
 The HomomorphicEncrypted struct specification outlines a design for integrating a scheme such as BGV \[16\] or BFV \[17\]. This would allow for the validation of transaction sums on-chain without decrypting the constituent amounts, significantly enhancing user privacy in specific applications.
 
-## **5. Economic Model and Incentive Engineering**
+## **6. Economic Model and Incentive Engineering**
 
 The protocol's security is underpinned by a carefully engineered economic model designed to ensure incentive compatibility \[18\].
 
-### **5.1. Monetary Policy and Emission**
+### **6.1. Monetary Policy and Emission**
 
 The protocol defines a fixed TOTAL_SUPPLY of 10¹⁷ base units (representing 100 billion coins) and an INITIAL_REWARD (Rᵢₙᵢₜᵢₐₗ) of 50 units per checkpoint. The reward undergoes a gradual reduction every HALVING_PERIOD (Pₕₐₗᵥᵢₙ₉), where it is multiplied by a HALVING_FACTOR (fₕₐₗᵥᵢₙ₉) of 0.97. The reward for any given block at time t on one of N chains is defined as:
 
@@ -216,9 +244,9 @@ Where:
 2. **Progressive Halving**: Accelerating emission reductions
 3. **Asymptotic Scarcity**: Approaches near-zero emission by Year 16
 
-> **Note**: Emission checkpoints occur every 2000 blocks (~2 weeks)
+> **Note**: Emission checkpoints occur every 12000 blocks (~12 weeks)
 
-### **5.2. Fee Structure and Staking Model**
+### **6.2. Fee Structure and Staking Model**
 
 The system is funded through transaction fees and a protocol-level developer fee (DEV_FEE_RATE of 3.04%). This mechanism provides sustainable funding for public digital infrastructure and open-source development \[19\].
 
@@ -226,9 +254,9 @@ The system is funded through transaction fees and a protocol-level developer fee
 
 * **Staking Model:** The PoS finality layer requires validators to lock a MIN_VALIDATOR_STAKE, which acts as collateral that can be slashed for misbehavior (e.g., double-signing or attesting to anomalous blocks). This creates a direct economic incentive for honest behavior.
 
-## **6. P2P Network and Governance Framework**
+## **7. P2P Network and Governance Framework**
 
-### **6.1. P2P Networking Layer with X-PHYRUS™**
+### **7.1. P2P Networking Layer with X-PHYRUS™**
 
 The peer-to-peer network is built using the **X-PHYRUS™ Protocol Stack**, an advanced networking framework built on top of the modular **libp2p** framework \[20\]. X-PHYRUS™ enhances scalability and security by implementing adaptive bandwidth allocation, prioritizing high-priority transactions, and optimizing gossip protocols for high-throughput environments. It includes a dynamic topology manager that adjusts peer connections based on network load and latency, ensuring efficient data propagation across the global network.
 
@@ -238,13 +266,13 @@ The peer-to-peer network is built using the **X-PHYRUS™ Protocol Stack**, an a
 
 * **Security:** To defend against DoS and Sybil attacks \[34\], the protocol implements per-peer rate limiting, an automatic blacklisting mechanism for misbehaving nodes, and X-PHYRUS™’s anomaly detection for real-time threat mitigation.
 
-### **6.2. On-Chain Governance with SAGA-AI**
+### **7.2. On-Chain Governance with SAGA-AI**
 
 Qanto incorporates an on-chain governance framework, enhanced by the **SAGA-AI** governance module, to enable decentralized protocol evolution, avoiding the contentious hard forks seen in other projects \[23\]. The model, specified in Qantodag.rs, consists of a GovernanceProposal system. Proposals can be submitted by high-stake validators and are voted on by all stakeholders, with voting power proportional to their stake. SAGA-AI assists in proposal evaluation by simulating the impact of proposed changes on network performance, security, and economic stability, providing data-driven recommendations to voters. This mechanism, similar in principle to the utility-maximizing governance models of Tezos \[24\] and Polkadot \[25\], allows for the orderly, transparent, and decentralized modification of core protocol parameters over time.
 
-## **7. Use Cases, Implementation, and Roadmap**
+## **8. Use Cases, Implementation, and Roadmap**
 
-### **7.1. Use Cases**
+### **8.1. Use Cases**
 
 The unique architecture of Qanto opens the door to a wide array of applications that are not feasible on traditional blockchains:
 
@@ -253,15 +281,15 @@ The unique architecture of Qanto opens the door to a wide array of applications 
 * **Supply Chain & Logistics:** The ability to process a massive volume of parallel events makes Qanto suitable for tracking goods and assets in real-time across global supply chains.
 * **Digital Identity:** Secure, private, and self-sovereign identity solutions can be built on Qanto's ZK-SNARK layer.
 
-### **7.2. Reference Implementation**
+### **8.2. Reference Implementation**
 
 The specification presented in this paper is substantiated by a reference implementation written in the **Rust** programming language. The implementation leverages several high-performance, industry-standard libraries, including the tokio runtime for asynchronous I/O, rocksdb for persistent state storage, rayon for parallel computation, and libp2p for networking, with additional optimizations from the X-PHYRUS™ Protocol Stack. This provides a concrete foundation for empirical analysis and future development.
 
-### **7.3. Performance and Bottlenecks**
+### **8.3. Performance and Bottlenecks**
 
 The primary performance goal of Qanto is to achieve high transactional throughput via its sharded, parallel architecture. The main performance bottlenecks are anticipated to be state contention under high load (mitigated by fine-grained locking with tokio::sync::RwLock and DashMap), disk I/O for the rocksdb state database, and the computational overhead of cryptographic operations, particularly the post-quantum LatticeSignature and the novel reliable_hashing_algorithm. The SAGA-AI add-on and X-PHYRUS™ Protocol Stack further optimize performance by improving miner coordination and network efficiency.
 
-### **7.4. Development Roadmap**
+### **8.4. Development Roadmap**
 
 Our development roadmap is structured to deliver value incrementally while ensuring the security and stability of the network at each stage.
 
@@ -290,7 +318,7 @@ Our development roadmap is structured to deliver value incrementally while ensur
   * [ ] Establishment of a decentralized governance model with SAGA-AI integration.
   * [ ] Integration of Execution Chains and the weighted PoW consensus model.
 
-## **8. Conclusion and Future Work**
+## **9. Conclusion and Future Work**
 
 This paper has provided a formal specification for Qanto, a DLT protocol architectured to holistically address the challenges of scalability, security, and long-term quantum resistance. We have detailed its core innovations: the heterogeneous architecture combining dynamic DAG shards and Execution Chains; the hybrid consensus protocol with SAGA-AI; the comprehensive cryptographic suite with ΛΣ-ΩMEGA™; and the scalable networking layer with X-PHYRUS™. This synthesis offers a robust and adaptable framework for next-generation decentralized applications.
 
@@ -304,7 +332,7 @@ Future work will proceed along several research vectors:
 
 * **Economic Modeling:** Developing a comprehensive game-theoretic model \[39, 40\] of the dynamic sharding mechanism and SAGA-AI to analyze its strategic stability and resistance to economic attacks.
 
-## **9\. References**
+## **10\. References**
 
 \[1\] Nakamoto, S. (2008). Bitcoin: A Peer-to-Peer Electronic Cash System.
 
