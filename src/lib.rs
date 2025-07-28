@@ -1,6 +1,7 @@
 pub mod config;
 pub mod consensus;
 pub mod emission;
+pub mod hame;
 pub mod keygen;
 pub mod mempool;
 pub mod miner;
