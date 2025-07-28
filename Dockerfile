@@ -4,7 +4,7 @@
 FROM rust:latest as builder
 
 # Create a new, empty workspace.
-WORKDIR /usr/src/hyperchain
+WORKDIR /usr/src/qanto
 
 # Copy over project files.
 COPY . .
@@ -27,7 +27,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the compiled binary from the builder stage.
-COPY --from=builder /usr/src/hyperchain/target/release/hyperchain /usr/local/bin/hyperchain
+COPY --from=builder /usr/src/qanto/target/release/qanto /usr/local/bin/qanto
 
 # Create a directory for the node's data (config, wallet, db).
 WORKDIR /data
