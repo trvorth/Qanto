@@ -368,9 +368,23 @@
                 commandHistory.unshift(cmd);
                 historyIndex = -1;
                 
+                // **FIXED CODE BLOCK**
+                // Create elements programmatically and use textContent to prevent XSS.
+                // This preserves the appearance while ensuring security.
                 const historyLine = document.createElement('div');
-                historyLine.innerHTML = `<span class="text-cyan-400">&gt;</span> <span class="text-magenta-400">${cmd}</span>`;
+                
+                const promptSpan = document.createElement('span');
+                promptSpan.className = 'text-cyan-400';
+                promptSpan.textContent = '> ';
+                historyLine.appendChild(promptSpan);
+
+                const cmdSpan = document.createElement('span');
+                cmdSpan.className = 'text-magenta-400';
+                cmdSpan.textContent = cmd; // Use textContent to safely insert the command
+                historyLine.appendChild(cmdSpan);
+                
                 output.appendChild(historyLine);
+                // **END OF FIXED CODE BLOCK**
                 
                 input.value = '';
                 autocompleteSuggestionEl.textContent = '';
