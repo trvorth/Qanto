@@ -116,7 +116,9 @@ async fn generate_wallet(output: PathBuf) -> Result<()> {
     println!("   Saved to: {}", output.display());
     println!("\n⚠️ CRITICAL: Your wallet is created but not yet backed up.");
     println!("   To ensure you can recover your funds, run the 'show-secrets' command.");
-    println!("   This will display your mnemonic phrase, which you must write down and store securely.");
+    println!(
+        "   This will display your mnemonic phrase, which you must write down and store securely."
+    );
     Ok(())
 }
 

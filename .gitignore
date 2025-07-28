@@ -25,6 +25,11 @@
 node*/cert.pem
 /filter_sensitive_commits.py
 /integrate_isnm.sh
+/migrations
+/models
+/routes
+/templates
+/utils
 
 # --- IDE & Editor Files ---
 .idea/
@@ -56,8 +61,6 @@ Thumbs.db
 /peer_cache.json
 
 # --- Sensitive Information ---
-# Ignore wallet keys, private keys, and environment files by default.
-# Use specific names for committed templates, e.g., 'wallet.key.example'.
 *.key
 *.keys
 *.keystore
@@ -74,7 +77,9 @@ node*/*.txt
 /wallet.key
 /private_key.txt
 /keypair.txt
+.env
 .env*
+!.env.example
 /deployment/*.local.toml
 
 # --- Generated Project Files ---
@@ -97,10 +102,14 @@ node*/*.txt
 # --- Language & Framework Specific ---
 # Python
 /venv/
-*.env
-.env\n__pycache__/\ninstance/\nvenv/
+.venv/
+env/
+.env/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+/instance/
 
 # Node.js / Web
 /web
