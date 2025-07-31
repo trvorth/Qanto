@@ -10,4 +10,3 @@ fn benchmark_hash(c: &mut Criterion) {
 
 criterion_group!(benches, benchmark_hash);
 criterion_main!(benches);
-

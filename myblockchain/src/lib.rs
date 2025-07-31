@@ -1,22 +1,22 @@
-use ed25519_dalek::{VerifyingKey, Signature, Verifier};
-use log::{info, warn, error};
-use nalgebra::Matrix2;
-use regex::Regex;
-use sha3::{Digest, Keccak256};
 use blake3::Hasher as Blake3Hasher;
-use rand::Rng;
-use rayon::prelude::*;
-use dashmap::DashMap;
-use lru::LruCache;
-use rocksdb::{DB, Options};
-use serde::{Serialize, Deserialize};
-use std::sync::Arc;
-use tokio::sync::{RwLock, Mutex};
 use chrono::Utc;
-use std::num::NonZeroUsize;
+use dashmap::DashMap;
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use hex;
+use log::{error, info, warn};
+use lru::LruCache;
+use nalgebra::Matrix2;
 #[cfg(feature = "metrics")]
 use prometheus::{register_int_counter, IntCounter};
+use rand::Rng;
+use rayon::prelude::*;
+use regex::Regex;
+use rocksdb::{Options, DB};
+use serde::{Deserialize, Serialize};
+use sha3::{Digest, Keccak256};
+use std::num::NonZeroUsize;
+use std::sync::Arc;
+use tokio::sync::{Mutex, RwLock};
 use tracing::instrument;
 
 #[cfg(feature = "zk")]
@@ -36,8 +36,13 @@ const SHARD_MERGE_THRESHOLD: usize = 5_000;
 // Metrics
 #[cfg(feature = "metrics")]
 lazy_static! {
-    static ref BLOCKS_PROCESSED: IntCounter = register_int_counter!("blocks_processed_total", "Total blocks processed").unwrap();
-    static ref TRANSACTIONS_PROCESSED: IntCounter = register_int_counter!("transactions_processed_total", "Total transactions processed").unwrap();
+    static ref BLOCKS_PROCESSED: IntCounter =
+        register_int_counter!("blocks_processed_total", "Total blocks processed").unwrap();
+    static ref TRANSACTIONS_PROCESSED: IntCounter = register_int_counter!(
+        "transactions_processed_total",
+        "Total transactions processed"
+    )
+    .unwrap();
 }
 
 // Enhanced Transaction with ZK and Multi-Signature Support
@@ -61,12 +66,12 @@ impl Transaction {
             return false;
         }
         let message = format!("{}{}{}", self.sender, self.receiver, self.amount);
-        
+
         if self.signature.len() != 64 {
             warn!("Invalid signature length: {}", self.signature.len());
             return false;
         }
-        
+
         let signature_bytes: [u8; 64] = match self.signature.as_slice().try_into() {
             Ok(bytes) => bytes,
             Err(_) => {
@@ -74,7 +79,7 @@ impl Transaction {
                 return false;
             }
         };
-        
+
         let signature = Signature::from_bytes(&signature_bytes);
         if let Err(e) = public_key.verify(message.as_bytes(), &signature) {
             warn!("Signature verification failed: {}", e);
@@ -149,7 +154,10 @@ impl ShardManager {
                 *shard_count += 1;
                 let mut new_loads = self.shard_loads.lock().await;
                 new_loads.push(load / 2);
-                info!("Shard {} split, new shard count: {}", shard_id, *shard_count);
+                info!(
+                    "Shard {} split, new shard count: {}",
+                    shard_id, *shard_count
+                );
             }
         }
 
@@ -157,7 +165,10 @@ impl ShardManager {
             let mut new_loads = Vec::new();
             let mut i = 0;
             while i < loads.len() {
-                if i + 1 < loads.len() && loads[i] < SHARD_MERGE_THRESHOLD && loads[i + 1] < SHARD_MERGE_THRESHOLD {
+                if i + 1 < loads.len()
+                    && loads[i] < SHARD_MERGE_THRESHOLD
+                    && loads[i + 1] < SHARD_MERGE_THRESHOLD
+                {
                     new_loads.push(loads[i] + loads[i + 1]);
                     *shard_count -= 1;
                     i += 2;
@@ -210,8 +221,13 @@ impl Blockchain {
             stake_weight: 1,
         };
         let blocks = Arc::new(RwLock::new(vec![genesis_block.clone()]));
-        let cache = Arc::new(RwLock::new(LruCache::new(NonZeroUsize::new(CACHE_SIZE).unwrap())));
-        cache.write().await.put(hex::encode(&genesis_block.hash), genesis_block.clone());
+        let cache = Arc::new(RwLock::new(LruCache::new(
+            NonZeroUsize::new(CACHE_SIZE).unwrap(),
+        )));
+        cache
+            .write()
+            .await
+            .put(hex::encode(&genesis_block.hash), genesis_block.clone());
         Blockchain {
             blocks,
             difficulty: Arc::new(RwLock::new(difficulty)),
@@ -224,7 +240,11 @@ impl Blockchain {
     }
 
     #[instrument]
-    pub async fn add_block(&self, transactions: Vec<Transaction>, reward_address: String) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn add_block(
+        &self,
+        transactions: Vec<Transaction>,
+        reward_address: String,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         if transactions.len() > MAX_TRANSACTIONS_PER_BLOCK {
             warn!("Too many transactions: {}", transactions.len());
             return Err("Transaction limit exceeded".into());
@@ -235,7 +255,10 @@ impl Blockchain {
 
         let valid = transactions.par_iter().all(|tx| {
             if !address_re.is_match(&tx.sender) || !address_re.is_match(&tx.receiver) {
-                warn!("Invalid address in transaction: sender={}, receiver={}", tx.sender, tx.receiver);
+                warn!(
+                    "Invalid address in transaction: sender={}, receiver={}",
+                    tx.sender, tx.receiver
+                );
                 return false;
             }
             if tx.amount == 0 || tx.amount > 10_000_000_000 {
@@ -281,7 +304,10 @@ impl Blockchain {
 
         mine_block(&mut new_block, self.difficulty.clone()).await?;
         let block_hash: String = hex::encode(&new_block.hash);
-        self.cache.write().await.put(block_hash.clone(), new_block.clone());
+        self.cache
+            .write()
+            .await
+            .put(block_hash.clone(), new_block.clone());
         self.db.put(b"block:", serde_json::to_vec(&new_block)?)?;
         let mut blocks = self.blocks.write().await;
         blocks.push(new_block.clone());
@@ -289,7 +315,9 @@ impl Blockchain {
         BLOCKS_PROCESSED.inc();
         #[cfg(feature = "metrics")]
         TRANSACTIONS_PROCESSED.inc_by(new_block.transactions.len() as u64);
-        self.shard_manager.update_load(shard_id, new_block.transactions.len()).await;
+        self.shard_manager
+            .update_load(shard_id, new_block.transactions.len())
+            .await;
         self.shard_manager.adjust_shards().await?;
         self.adjust_difficulty().await;
         Ok(())
@@ -307,7 +335,8 @@ impl Blockchain {
             return;
         }
         let last_ten = &blocks[blocks.len() - 10..];
-        let total_time: i64 = last_ten.windows(2)
+        let total_time: i64 = last_ten
+            .windows(2)
             .map(|w| w[1].timestamp - w[0].timestamp)
             .sum();
         let avg_time = total_time / 9;
@@ -353,7 +382,10 @@ pub fn reliable_hashing_algorithm(input: &[u8]) -> Vec<u8> {
 
 // Enhanced Mining with GPU Support and Parallelism
 #[instrument]
-pub async fn mine_block(block: &mut Block, difficulty: Arc<RwLock<usize>>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn mine_block(
+    block: &mut Block,
+    difficulty: Arc<RwLock<usize>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let target = vec![0u8; *difficulty.read().await];
     let mut nonce = 0;
     #[cfg(feature = "gpu")]
@@ -383,7 +415,7 @@ pub async fn mine_block(block: &mut Block, difficulty: Arc<RwLock<usize>>) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ed25519_dalek::{SigningKey, Signer};
+    use ed25519_dalek::{Signer, SigningKey};
     use rand::thread_rng;
 
     #[tokio::test]
@@ -409,7 +441,10 @@ mod tests {
         };
         let difficulty = Arc::new(RwLock::new(2));
         mine_block(&mut block, difficulty.clone()).await.unwrap();
-        assert!(block.hash.starts_with(&[0, 0]), "Hash should meet difficulty");
+        assert!(
+            block.hash.starts_with(&[0, 0]),
+            "Hash should meet difficulty"
+        );
         info!("Mining test passed with nonce: {}", block.nonce);
     }
 
@@ -419,7 +454,7 @@ mod tests {
         let keypair: SigningKey = SigningKey::generate(&mut rng);
         let public_key = keypair.verifying_key();
         let sender = hex::encode(public_key.as_bytes());
-        
+
         let mut tx = Transaction {
             sender: sender.clone(),
             receiver: "a".repeat(64),
@@ -429,10 +464,13 @@ mod tests {
             zk_proof: None,
             multi_signatures: vec![],
         };
-        
+
         let message = format!("{}{}{}", tx.sender, tx.receiver, tx.amount);
         tx.signature = keypair.sign(message.as_bytes()).to_bytes().to_vec();
-        assert!(tx.verify_signature(&public_key), "Signature verification failed");
+        assert!(
+            tx.verify_signature(&public_key),
+            "Signature verification failed"
+        );
         info!("Transaction signature test passed");
     }
 
@@ -443,7 +481,7 @@ mod tests {
         let keypair: SigningKey = SigningKey::generate(&mut rng);
         let public_key = keypair.verifying_key();
         let sender = hex::encode(public_key.as_bytes());
-        
+
         let mut tx = Transaction {
             sender: sender.clone(),
             receiver: "b".repeat(64),
@@ -453,10 +491,13 @@ mod tests {
             zk_proof: None,
             multi_signatures: vec![],
         };
-        
+
         let message = format!("{}{}{}", tx.sender, tx.receiver, tx.amount);
         tx.signature = keypair.sign(message.as_bytes()).to_bytes().to_vec();
-        assert!(blockchain.add_block(vec![tx], "reward_addr".to_string()).await.is_ok());
+        assert!(blockchain
+            .add_block(vec![tx], "reward_addr".to_string())
+            .await
+            .is_ok());
         info!("Block addition test passed");
     }
 }
