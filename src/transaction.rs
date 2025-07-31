@@ -468,10 +468,11 @@ impl Drop for Transaction {
 mod tests {
     use super::*;
     use crate::omega::{self, identity::set_threat_level, identity::ThreatLevel, OmegaState};
-    use crate::qantodag::QantoDAG;
+    use crate::qantodag::{QantoDAG, QantoDagConfig};
     use crate::saga::PalletSaga;
     use crate::wallet::Wallet;
     use serial_test::serial;
+	use pqcrypto_traits::sign::{PublicKey, SecretKey};
 
     #[tokio::test]
     #[serial]
@@ -491,12 +492,8 @@ mod tests {
         }
 
         let wallet = Arc::new(Wallet::new()?);
-
-        let signing_key_dalek = wallet.get_signing_key()?;
-        let signing_key_bytes_slice: &[u8] = &signing_key_dalek.to_bytes();
-
+		let (qr_secret_key, qr_public_key) = wallet.get_keypair()?;
         let sender_address = wallet.address();
-
         let amount_to_receiver = 50;
         let fee = 5;
         let dev_fee_on_transfer = (amount_to_receiver as f64 * 0.0304).round() as u64;
@@ -562,14 +559,14 @@ mod tests {
 
         let tx_config = TransactionConfig {
             sender: sender_address.clone(),
-            receiver: "0000000000000000000000000000000000000000000000000000000000000001"
-                .to_string(),
+            receiver: "0000000000000000000000000000000000000000000000000000000000000001".to_string(),
             amount: amount_to_receiver,
             fee,
             inputs: inputs_for_tx.clone(),
             outputs: outputs_for_tx.clone(),
             metadata: Some(metadata),
-            signing_key_bytes: signing_key_bytes_slice,
+            signing_key_bytes: qr_secret_key.as_bytes(),
+            public_key_bytes: qr_public_key.as_bytes(),
             tx_timestamps: tx_timestamps_map.clone(),
         };
 
@@ -579,15 +576,20 @@ mod tests {
             #[cfg(feature = "infinite-strata")]
             None,
         ));
-        let dag_arc = Arc::new(QantoDAG::new(
-            &sender_address,
-            60000,
-            100,
-            1,
-            signing_key_bytes_slice,
+
+		let dag_config = QantoDagConfig {
+			initial_validator: sender_address.clone(),
+			target_block_time: 60000,
+			difficulty: 100,
+			num_chains: 1,
+			qr_signing_key: &qr_secret_key,
+			qr_public_key: &qr_public_key,
+		};
+        let dag_arc = QantoDAG::new(
+            dag_config,
             saga_pallet,
             rocksdb::DB::open_default(db_path).unwrap(),
-        )?);
+        )?;
 
         let utxos_arc_for_test = Arc::new(RwLock::new(initial_utxos_map));
         let utxos_read_guard = utxos_arc_for_test.read().await;
