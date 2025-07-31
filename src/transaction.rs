@@ -471,8 +471,8 @@ mod tests {
     use crate::qantodag::{QantoDAG, QantoDagConfig};
     use crate::saga::PalletSaga;
     use crate::wallet::Wallet;
+    use pqcrypto_traits::sign::{PublicKey, SecretKey};
     use serial_test::serial;
-	use pqcrypto_traits::sign::{PublicKey, SecretKey};
 
     #[tokio::test]
     #[serial]
@@ -492,7 +492,7 @@ mod tests {
         }
 
         let wallet = Arc::new(Wallet::new()?);
-		let (qr_secret_key, qr_public_key) = wallet.get_keypair()?;
+        let (qr_secret_key, qr_public_key) = wallet.get_keypair()?;
         let sender_address = wallet.address();
         let amount_to_receiver = 50;
         let fee = 5;
@@ -559,7 +559,8 @@ mod tests {
 
         let tx_config = TransactionConfig {
             sender: sender_address.clone(),
-            receiver: "0000000000000000000000000000000000000000000000000000000000000001".to_string(),
+            receiver: "0000000000000000000000000000000000000000000000000000000000000001"
+                .to_string(),
             amount: amount_to_receiver,
             fee,
             inputs: inputs_for_tx.clone(),
@@ -577,14 +578,14 @@ mod tests {
             None,
         ));
 
-		let dag_config = QantoDagConfig {
-			initial_validator: sender_address.clone(),
-			target_block_time: 60000,
-			difficulty: 100,
-			num_chains: 1,
-			qr_signing_key: &qr_secret_key,
-			qr_public_key: &qr_public_key,
-		};
+        let dag_config = QantoDagConfig {
+            initial_validator: sender_address.clone(),
+            target_block_time: 60000,
+            difficulty: 100,
+            num_chains: 1,
+            qr_signing_key: &qr_secret_key,
+            qr_public_key: &qr_public_key,
+        };
         let dag_arc = QantoDAG::new(
             dag_config,
             saga_pallet,
