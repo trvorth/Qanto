@@ -42,10 +42,13 @@ enum Commands {
         #[arg(short, long, value_name = "OUTPUT_FILE", default_value = "wallet.key")]
         output: PathBuf,
     },
-    /// [show-secrets] CRITICAL: Reveals the private key and mnemonic of a wallet.
-    ShowSecrets {
+    /// [show] Shows wallet information. Use --keys to reveal secrets.
+    Show {
         #[arg(short, long, value_name = "WALLET_FILE", default_value = "wallet.key")]
         wallet: PathBuf,
+        /// DANGER: Reveals the private key and mnemonic phrase.
+        #[arg(long)]
+        keys: bool,
     },
     /// [import] Imports a wallet from a mnemonic or private key.
     Import {
@@ -82,7 +85,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let result = match cli.command {
         Commands::Generate { output } => generate_wallet(output).await,
-        Commands::ShowSecrets { wallet } => show_secrets(wallet).await,
+        Commands::Show { wallet, keys } => show_wallet_info(wallet, keys).await,
         Commands::Import {
             mnemonic,
             private_key,
@@ -116,14 +119,14 @@ async fn generate_wallet(output: PathBuf) -> Result<()> {
     println!("   Address (Ed25519): {}", new_wallet.address());
     println!("   Saved to: {}", output.display());
     println!("\n⚠️ CRITICAL: Your wallet is created but not yet backed up.");
-    println!("   To ensure you can recover your funds, run the 'show-secrets' command.");
+    println!("   To ensure you can recover your funds, run the 'show --keys' command.");
     println!(
         "   This will display your mnemonic phrase, which you must write down and store securely."
     );
     Ok(())
 }
 
-async fn show_secrets(wallet_path: PathBuf) -> Result<()> {
+async fn show_wallet_info(wallet_path: PathBuf, show_keys: bool) -> Result<()> {
     if !wallet_path.exists() {
         return Err(anyhow::anyhow!(
             "Wallet file not found at: {:?}",
@@ -131,7 +134,7 @@ async fn show_secrets(wallet_path: PathBuf) -> Result<()> {
         ));
     }
 
-    println!("Enter password to decrypt and reveal secrets:");
+    println!("Enter password to decrypt vault:");
     let password = prompt_for_password(false, "")?;
 
     println!("🔓 Decrypting NEURAL-VAULT™...");
@@ -139,27 +142,30 @@ async fn show_secrets(wallet_path: PathBuf) -> Result<()> {
         anyhow::anyhow!("Failed to decrypt vault. Check your password. Error: {}", e)
     })?;
 
-    let private_key_hex = hex::encode(loaded_wallet.get_signing_key()?.to_bytes());
-    let mnemonic_phrase = loaded_wallet.mnemonic().expose_secret();
-
-    // **SECURITY FIX: Display a severe, unmissable warning before showing secrets.**
     println!("\n+----------------------------------------------------------+");
-    println!("|           🔥🔥🔥 CRITICAL SECURITY WARNING 🔥🔥🔥           |");
-    println!("+----------------------------------------------------------+");
-    println!("|                                                          |");
-    println!("|  NEVER share your Private Key or Mnemonic Phrase.          |");
-    println!("|  Anyone with this information can STEAL ALL YOUR FUNDS.    |");
-    println!("|                                                          |");
-    println!("|  Store this information OFFLINE and in a SECURE location.  |");
-    println!("|  Do NOT save it in a plain text file or cloud storage.     |");
-    println!("|                                                          |");
+    println!("|                   QANTO WALLET DETAILS                   |");
     println!("+----------------------------------------------------------+");
     println!("\nWallet File:     {wallet_path:?}");
     println!("Public Address:  {}", loaded_wallet.address());
-    println!("Private Key:     {private_key_hex}");
-    println!("Mnemonic Phrase: {mnemonic_phrase}");
-    println!("\n+----------------------------------------------------------+\n");
 
+    if show_keys {
+        let private_key_hex = hex::encode(loaded_wallet.get_signing_key()?.to_bytes());
+        let mnemonic_phrase = loaded_wallet.mnemonic().expose_secret();
+
+        println!("\n+----------------------------------------------------------+");
+        println!("|           🔥🔥🔥 CRITICAL SECURITY WARNING 🔥🔥🔥           |");
+        println!("+----------------------------------------------------------+");
+        println!("|  NEVER share your Private Key or Mnemonic Phrase.          |");
+        println!("|  Anyone with this information can STEAL ALL YOUR FUNDS.    |");
+        println!("|  Store this information OFFLINE and in a SECURE location.  |");
+        println!("+----------------------------------------------------------+");
+        println!("Private Key:     {private_key_hex}");
+        println!("Mnemonic Phrase: {mnemonic_phrase}");
+    } else {
+        println!("\nTo show private key and mnemonic, run again with the --keys flag.");
+    }
+
+    println!("\n+----------------------------------------------------------+\n");
     Ok(())
 }
 
