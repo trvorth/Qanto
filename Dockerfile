@@ -1,50 +1,41 @@
 # --- Stage 1: Builder ---
-# Use the official Rust image as a build environment.
-# Using a specific version ensures reproducible builds.
+# Use the latest stable version of Rust to build our application.
 FROM rust:latest as builder
 
-# Create a new, empty workspace.
+# Set the working directory
 WORKDIR /usr/src/qanto
 
-# Copy over project files.
+# Copy the entire project context into the builder
 COPY . .
 
-# Install dependencies needed for some crates (e.g., rocksdb).
+# Install dependencies required for the build (like clang and libtorch)
 RUN apt-get update && apt-get install -y clang libclang-dev wget unzip
-RUN wget https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.0.0%2Bcpu.zip -O libtorch.zip && \
-    unzip libtorch.zip -d /usr/local && \
-    rm libtorch.zip
-ENV LIBTORCH=/usr/local/libtorch
 
-# Build the project in release mode for performance.
-# This will cache dependencies and speed up subsequent builds.
-# We enable the 'ai' feature flag here.
+# Download and unzip libtorch (CPU version)
+RUN wget https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.3.1%2Bcpu.zip && \
+    unzip libtorch-cxx11-abi-shared-with-deps-2.3.1%2Bcpu.zip && \
+    rm libtorch-cxx11-abi-shared-with-deps-2.3.1%2Bcpu.zip
+ENV LIBTORCH=/usr/src/qanto/libtorch
+
+# Build the project in release mode with the 'ai' feature
 RUN cargo build --release --features ai
 
+
 # --- Stage 2: Final Image ---
-# Use a slim base image to keep the final container size small.
+# Use a minimal, secure base image for our final container.
 FROM debian:bullseye-slim
 
-# Install necessary runtime dependencies (like OpenSSL).
-RUN apt-get update && \
-    apt-get install -y openssl ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+# Install only necessary runtime dependencies
+RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# Copy the compiled binary from the builder stage.
-COPY --from=builder /usr/src/qanto/target/release/qanto /usr/local/bin/qanto
-COPY --from=builder /usr/local/libtorch /usr/local/libtorch
-ENV LD_LIBRARY_PATH=/usr/local/libtorch/lib:$LD_LIBRARY_PATH
+# Set the working directory
+WORKDIR /usr/local/bin
 
-# Create a directory for the node's data (config, wallet, db).
-WORKDIR /data
-RUN mkdir /data/db
+# Copy the compiled binary from the 'builder' stage
+COPY --from=builder /usr/src/qanto/target/release/qanto .
 
-# Expose the API and P2P ports.
-# Replace with actual ports from config.toml.
-EXPOSE 8080
-EXPOSE 4001
+# Make the binary executable
+RUN chmod +x qanto
 
-# Define the entrypoint for the container.
-# This command will run when the container starts.
-# It expects config.toml and wallet.key to be mounted into /data.
-ENTRYPOINT ["qanto", "start", "--config", "/data/config.toml", "--wallet", "/data/wallet.key"]
+# Set the entrypoint to run the node when the container starts
+ENTRYPOINT ["./qanto"]

@@ -1,6 +1,17 @@
+//! --- Qanto Transaction ---
+//! v2.3.2 - Crypto API Update
+//! This version aligns the transaction module with the latest crypto API changes.
+//!
+//! - API CORRECTION: Removed a flawed call to the non-existent `keypair_from_seed`
+//!   function, as key reconstruction is handled correctly from bytes.
+//! - LOGIC FIX: The `new_coinbase` function continues to accept the public key
+//!   to ensure it signs with the correct validator keypair.
+
 use crate::omega;
-use crate::qantodag::{HomomorphicEncrypted, LatticeSignature, QantoDAG, UTXO};
+use crate::qantodag::{HomomorphicEncrypted, QantoDAG, QuantumResistantSignature, UTXO};
 use hex;
+use pqcrypto_dilithium::dilithium5;
+use pqcrypto_traits::sign::{PublicKey, SecretKey};
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak512};
 use sp_core::H256;
@@ -16,12 +27,11 @@ const MAX_TRANSACTIONS_PER_MINUTE: u64 = 1000;
 const MAX_METADATA_PAIRS: usize = 16;
 const MAX_METADATA_KEY_LEN: usize = 64;
 const MAX_METADATA_VALUE_LEN: usize = 256;
-// EVOLVED: Constants for the new dynamic fee model.
 const FEE_TIER1_THRESHOLD: u64 = 1_000_000;
 const FEE_TIER2_THRESHOLD: u64 = 100_000_000;
-const FEE_RATE_TIER1: f64 = 0.01; // 1%
-const FEE_RATE_TIER2: f64 = 0.02; // 2%
-const FEE_RATE_TIER3: f64 = 0.03; // 3%
+const FEE_RATE_TIER1: f64 = 0.01;
+const FEE_RATE_TIER2: f64 = 0.02;
+const FEE_RATE_TIER3: f64 = 0.03;
 
 #[derive(Error, Debug)]
 pub enum TransactionError {
@@ -29,8 +39,8 @@ pub enum TransactionError {
     OmegaRejection,
     #[error("Invalid address format")]
     InvalidAddress,
-    #[error("Lattice signature verification failed")]
-    LatticeSignatureVerification,
+    #[error("Quantum-resistant signature verification failed")]
+    QuantumSignatureVerification,
     #[error("Insufficient funds")]
     InsufficientFunds,
     #[error("Invalid transaction structure: {0}")]
@@ -49,6 +59,8 @@ pub enum TransactionError {
     Wallet(#[from] crate::wallet::WalletError),
     #[error("Invalid metadata: {0}")]
     InvalidMetadata(String),
+    #[error("Post-quantum crypto error: {0}")]
+    PqCrypto(String),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
@@ -64,7 +76,6 @@ pub struct Output {
     pub homomorphic_encrypted: HomomorphicEncrypted,
 }
 
-#[derive(Debug)]
 pub struct TransactionConfig<'a> {
     pub sender: String,
     pub receiver: String,
@@ -74,6 +85,7 @@ pub struct TransactionConfig<'a> {
     pub outputs: Vec<Output>,
     pub metadata: Option<HashMap<String, String>>,
     pub signing_key_bytes: &'a [u8],
+    pub public_key_bytes: &'a [u8],
     pub tx_timestamps: Arc<RwLock<HashMap<String, u64>>>,
 }
 
@@ -98,15 +110,12 @@ pub struct Transaction {
     pub fee: u64,
     pub inputs: Vec<Input>,
     pub outputs: Vec<Output>,
-    pub lattice_signature: Vec<u8>,
-    pub public_key: Vec<u8>,
+    pub qr_signature: QuantumResistantSignature,
     pub timestamp: u64,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, String>,
 }
 
-/// This function calculates the transaction fee based on the amount being sent,
-/// according to the specified tiered structure.
 pub fn calculate_dynamic_fee(amount: u64) -> u64 {
     let rate = if amount < FEE_TIER1_THRESHOLD {
         FEE_RATE_TIER1
@@ -148,8 +157,14 @@ impl Transaction {
         if !omega::reflect_on_action(action_hash).await {
             return Err(TransactionError::OmegaRejection);
         }
-        let signature_obj = LatticeSignature::sign(config.signing_key_bytes, &signature_data)
-            .map_err(|_| TransactionError::LatticeSignatureVerification)?;
+
+        let sk = dilithium5::SecretKey::from_bytes(config.signing_key_bytes)
+            .map_err(|e| TransactionError::PqCrypto(e.to_string()))?;
+        let pk = dilithium5::PublicKey::from_bytes(config.public_key_bytes)
+            .map_err(|e| TransactionError::PqCrypto(e.to_string()))?;
+        let signature_obj = QuantumResistantSignature::sign(&sk, &pk, &signature_data)
+            .map_err(|_| TransactionError::QuantumSignatureVerification)?;
+
         let mut tx = Self {
             id: String::new(),
             sender: config.sender,
@@ -158,8 +173,7 @@ impl Transaction {
             fee: config.fee,
             inputs: config.inputs,
             outputs: config.outputs,
-            lattice_signature: signature_obj.signature,
-            public_key: signature_obj.public_key,
+            qr_signature: signature_obj,
             timestamp,
             metadata,
         };
@@ -178,6 +192,7 @@ impl Transaction {
         receiver: String,
         reward: u64,
         signing_key_bytes: &[u8],
+        public_key_bytes: &[u8],
         outputs: Vec<Output>,
     ) -> Result<Self, TransactionError> {
         let sender = "0000000000000000000000000000000000000000000000000000000000000000".to_string();
@@ -194,8 +209,15 @@ impl Transaction {
             timestamp,
         };
         let signature_data = Self::serialize_for_signing(&signing_payload)?;
-        let signature_obj = LatticeSignature::sign(signing_key_bytes, &signature_data)
-            .map_err(|_| TransactionError::LatticeSignatureVerification)?;
+
+        let sk = dilithium5::SecretKey::from_bytes(signing_key_bytes)
+            .map_err(|e| TransactionError::PqCrypto(e.to_string()))?;
+        let pk = dilithium5::PublicKey::from_bytes(public_key_bytes)
+            .map_err(|e| TransactionError::PqCrypto(e.to_string()))?;
+
+        let signature_obj = QuantumResistantSignature::sign(&sk, &pk, &signature_data)
+            .map_err(|_| TransactionError::QuantumSignatureVerification)?;
+
         let mut tx = Self {
             id: String::new(),
             sender,
@@ -204,8 +226,7 @@ impl Transaction {
             fee: 0,
             inputs: vec![],
             outputs,
-            lattice_signature: signature_obj.signature,
-            public_key: signature_obj.public_key,
+            qr_signature: signature_obj,
             timestamp,
             metadata,
         };
@@ -213,12 +234,10 @@ impl Transaction {
         Ok(tx)
     }
 
-    /// A coinbase transaction is defined as having no inputs.
     pub fn is_coinbase(&self) -> bool {
         self.inputs.is_empty()
     }
 
-    /// Returns a reference to the transaction's metadata.
     pub fn get_metadata(&self) -> &HashMap<String, String> {
         &self.metadata
     }
@@ -360,10 +379,6 @@ impl Transaction {
         _dag: &QantoDAG,
         utxos: &HashMap<String, UTXO>,
     ) -> Result<(), TransactionError> {
-        let verifier_sig = LatticeSignature {
-            public_key: self.public_key.clone(),
-            signature: self.lattice_signature.clone(),
-        };
         let signing_payload = TransactionSigningPayload {
             sender: &self.sender,
             receiver: &self.receiver,
@@ -375,9 +390,11 @@ impl Transaction {
             timestamp: self.timestamp,
         };
         let data_to_verify = Self::serialize_for_signing(&signing_payload)?;
-        if !verifier_sig.verify(&data_to_verify) {
-            return Err(TransactionError::LatticeSignatureVerification);
+
+        if !self.qr_signature.verify(&data_to_verify) {
+            return Err(TransactionError::QuantumSignatureVerification);
         }
+
         if self.is_coinbase() {
             if self.fee != 0 {
                 return Err(TransactionError::InvalidStructure(
@@ -436,8 +453,6 @@ impl Zeroize for Transaction {
         self.fee = 0;
         self.inputs.clear();
         self.outputs.clear();
-        self.lattice_signature.zeroize();
-        self.public_key.zeroize();
         self.timestamp = 0;
         self.metadata.clear();
     }

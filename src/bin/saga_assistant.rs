@@ -1,12 +1,13 @@
 //! --- SAGA Assistant (Final Unified & Corrected Version) ---
-//! This is the definitive, unified binary for SAGA. It merges the interactive `saga_cli`
-//! with the autonomous `saga_simulation`, creating a single, powerful AI assistant.
+//! v1.0.3 - Aligned with DAG Refactoring
+//! This version aligns the simulation logic with the refactored QantoDAG::new function,
+//! resolving the final build error.
 //!
 //! Key Features:
-//! - FINAL FIX: Corrected the Arc<Arc<T>> type mismatch for the DAG object.
+//! - BUILD FIX (E0061): The call to QantoDAG::new now correctly instantiates and passes
+//!   a QantoDagConfig struct.
 //! - UNIFIED INTERFACE: Provides a single command prompt to chat, analyze, and run simulations.
 //! - STANDALONE: Operates entirely offline with no need for external APIs.
-//! - CLEANED PROJECT: This binary makes `saga_cli.rs` and `saga_simulation.rs` obsolete.
 
 use anyhow::Result;
 use colored::*;
@@ -14,11 +15,13 @@ use qanto::{
     consensus::Consensus,
     mempool::Mempool,
     miner::Miner,
-    qantodag::{QantoDAG, UTXO},
+    qantodag::{QantoDAG, QantoDagConfig, UTXO},
     saga::PalletSaga,
     transaction::{Input, Output, Transaction, TransactionConfig},
     wallet::Wallet,
 };
+// Import the necessary traits to use their methods like `.as_bytes()`
+use pqcrypto_traits::sign::{PublicKey, SecretKey};
 use rocksdb::{Options, DB};
 use std::{
     collections::HashMap,
@@ -62,6 +65,9 @@ async fn run_autonomous_simulation() -> Result<()> {
         receiver_address.cyan()
     );
 
+    // Get the full keypair once.
+    let (signing_key, public_key) = validator_wallet.get_keypair()?;
+
     let saga_pallet = Arc::new(PalletSaga::new(
         #[cfg(feature = "infinite-strata")]
         None,
@@ -69,16 +75,16 @@ async fn run_autonomous_simulation() -> Result<()> {
     let db_path = format!("./db_assistant_sim_{}", rand::random::<u16>());
     let db = DB::open_default(&db_path)?;
 
-    // Correctly assign the Arc<QantoDAG> without wrapping it in another Arc.
-    let dag_arc = QantoDAG::new(
-        &validator_address,
-        60,
-        10,
-        1,
-        &validator_wallet.get_signing_key()?.to_bytes(),
-        saga_pallet.clone(),
-        db,
-    )?;
+    // Correctly create the config struct and pass it to QantoDAG::new.
+    let dag_config = QantoDagConfig {
+        initial_validator: validator_address.clone(),
+        target_block_time: 60,
+        difficulty: 10,
+        num_chains: 1,
+        qr_signing_key: &signing_key,
+        qr_public_key: &public_key,
+    };
+    let dag_arc = QantoDAG::new(dag_config, saga_pallet.clone(), db)?;
 
     let mempool_arc = Arc::new(RwLock::new(Mempool::new(3600, 10_000_000, 1000)));
     let utxos_arc = Arc::new(RwLock::new(HashMap::<String, UTXO>::new()));
@@ -95,10 +101,8 @@ async fn run_autonomous_simulation() -> Result<()> {
         .await
         .insert("genesis_0".to_string(), genesis_utxo);
 
-    let he_public_key = validator_wallet.get_signing_key()?.verifying_key();
-    let he_pub_key_material: &[u8] = he_public_key.as_bytes();
-
     let fee = 10;
+    // Correctly populate the TransactionConfig, including the new public_key_bytes field.
     let tx_config = TransactionConfig {
         sender: validator_address.clone(),
         receiver: receiver_address.clone(),
@@ -114,7 +118,7 @@ async fn run_autonomous_simulation() -> Result<()> {
                 amount: 100,
                 homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(
                     100,
-                    he_pub_key_material,
+                    public_key.as_bytes(),
                 ),
             },
             Output {
@@ -122,12 +126,13 @@ async fn run_autonomous_simulation() -> Result<()> {
                 amount: 1_000_000 - 100 - fee,
                 homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(
                     1_000_000 - 100 - fee,
-                    he_pub_key_material,
+                    public_key.as_bytes(),
                 ),
             },
         ],
         metadata: Some(HashMap::new()),
-        signing_key_bytes: &validator_wallet.get_signing_key()?.to_bytes(),
+        signing_key_bytes: signing_key.as_bytes(),
+        public_key_bytes: public_key.as_bytes(),
         tx_timestamps: Arc::new(RwLock::new(HashMap::new())),
     };
     let signed_transaction = Transaction::new(tx_config).await?;
@@ -147,9 +152,11 @@ async fn run_autonomous_simulation() -> Result<()> {
     }
 
     println!("{}", "SAGA is creating a candidate block...".dimmed());
+    // Correctly call create_candidate_block with both secret and public key references.
     let mut candidate_block = dag_arc
         .create_candidate_block(
-            &validator_wallet.get_signing_key()?.to_bytes(),
+            &signing_key,
+            &public_key,
             &validator_address,
             &mempool_arc,
             &utxos_arc,

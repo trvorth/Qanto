@@ -1,3 +1,15 @@
+//! --- Qanto Wallet ---
+//! v2.3.2 - Non-Deterministic Key Generation
+//! This version adapts to the latest `pqcrypto-dilithium` API change where the
+//! `keypair` function is now non-deterministic and takes no arguments.
+//!
+//! - API CORRECTION: Replaced calls to `dilithium5::keypair(seed)` with the
+//!   correct zero-argument `dilithium5::keypair()` function. Dilithium keys are
+//!   now generated non-deterministically, while Ed25519 keys remain
+//!   deterministic from the seed.
+//! - DUAL KEY SUPPORT: The wallet continues to generate, store, and manage both
+//!   Ed25519 and Dilithium keypairs.
+
 use aes_gcm::aead::{Aead, AeadCore, OsRng};
 use aes_gcm::{aead::generic_array, Aes256Gcm, Key, KeyInit};
 use anyhow::{Context, Result};
@@ -6,7 +18,9 @@ use argon2::{
     Argon2, PasswordHasher,
 };
 use bip39::Mnemonic;
-use ed25519_dalek::{Signer, SigningKey, VerifyingKey};
+use ed25519_dalek::{Signer, SigningKey as Ed25519SigningKey, VerifyingKey as Ed25519VerifyingKey};
+use pqcrypto_dilithium::dilithium5;
+use pqcrypto_traits::sign::{PublicKey, SecretKey};
 use rand::Rng;
 use secrecy::{ExposeSecret, Secret, SecretVec};
 use serde::{Deserialize, Serialize};
@@ -17,7 +31,7 @@ use std::path::Path;
 use typenum::Unsigned;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-const WALLET_FILE_VERSION: u8 = 2;
+const WALLET_FILE_VERSION: u8 = 3;
 
 #[derive(thiserror::Error, Debug)]
 pub enum WalletError {
@@ -41,18 +55,24 @@ pub enum WalletError {
     SliceToArrayError(#[from] std::array::TryFromSliceError),
     #[error("Hex decoding error: {0}")]
     Hex(#[from] hex::FromHexError),
+    #[error("Post-quantum crypto error: {0}")]
+    PqCrypto(String),
 }
 
 #[derive(Serialize, Deserialize)]
 struct PlainWalletData {
     signing_key: Vec<u8>,
     verifying_key: Vec<u8>,
+    qr_secret_key: Vec<u8>,
+    qr_public_key: Vec<u8>,
     mnemonic: String,
 }
 
 struct WalletData {
     signing_key: SecretVec<u8>,
     verifying_key: Vec<u8>,
+    qr_secret_key: SecretVec<u8>,
+    qr_public_key: Vec<u8>,
     mnemonic: Secret<String>,
 }
 
@@ -64,6 +84,8 @@ impl Serialize for WalletData {
         PlainWalletData {
             signing_key: self.signing_key.expose_secret().clone(),
             verifying_key: self.verifying_key.clone(),
+            qr_secret_key: self.qr_secret_key.expose_secret().clone(),
+            qr_public_key: self.qr_public_key.clone(),
             mnemonic: self.mnemonic.expose_secret().clone(),
         }
         .serialize(serializer)
@@ -79,6 +101,8 @@ impl<'de> Deserialize<'de> for WalletData {
         Ok(WalletData {
             signing_key: SecretVec::new(plain.signing_key),
             verifying_key: plain.verifying_key,
+            qr_secret_key: SecretVec::new(plain.qr_secret_key),
+            qr_public_key: plain.qr_public_key,
             mnemonic: Secret::new(plain.mnemonic),
         })
     }
@@ -93,6 +117,7 @@ impl Drop for WalletData {
 impl Zeroize for WalletData {
     fn zeroize(&mut self) {
         self.verifying_key.zeroize();
+        self.qr_public_key.zeroize();
     }
 }
 
@@ -114,11 +139,16 @@ impl Wallet {
         if key_bytes.len() != 32 {
             return Err(WalletError::InvalidKeyLength);
         }
-        let signing_key = SigningKey::from_bytes(&key_bytes.try_into().unwrap());
+        let signing_key = Ed25519SigningKey::from_bytes(&key_bytes.try_into().unwrap());
+        // Corrected: `keypair()` is now non-deterministic and takes no arguments.
+        let (pk, sk) = dilithium5::keypair();
+
         Ok(Self {
             data: WalletData {
                 signing_key: SecretVec::new(signing_key.to_bytes().to_vec()),
                 verifying_key: signing_key.verifying_key().to_bytes().to_vec(),
+                qr_secret_key: SecretVec::new(sk.as_bytes().to_vec()),
+                qr_public_key: pk.as_bytes().to_vec(),
                 mnemonic: Secret::new("".to_string()),
             },
         })
@@ -127,24 +157,43 @@ impl Wallet {
     pub fn from_mnemonic(mnemonic_phrase: &str) -> Result<Self, WalletError> {
         let mnemonic = Mnemonic::parse(mnemonic_phrase)?;
         let seed = mnemonic.to_seed("");
-        let signing_key = SigningKey::from_bytes(
-            seed.as_ref()[..32]
-                .try_into()
-                .map_err(|_| WalletError::InvalidKeyLength)?,
-        );
+        let seed_bytes: &[u8; 32] = seed.as_ref()[..32]
+            .try_into()
+            .map_err(|_| WalletError::InvalidKeyLength)?;
+
+        let signing_key = Ed25519SigningKey::from_bytes(seed_bytes);
+        // Corrected: `keypair()` is now non-deterministic and takes no arguments.
+        // The Ed25519 key remains deterministic, but the Dilithium key will be random.
+        let (pk, sk) = dilithium5::keypair();
 
         Ok(Self {
             data: WalletData {
                 signing_key: SecretVec::new(signing_key.to_bytes().to_vec()),
                 verifying_key: signing_key.verifying_key().to_bytes().to_vec(),
+                qr_secret_key: SecretVec::new(sk.as_bytes().to_vec()),
+                qr_public_key: pk.as_bytes().to_vec(),
                 mnemonic: Secret::new(mnemonic.to_string()),
             },
         })
     }
 
-    pub fn get_signing_key(&self) -> Result<SigningKey, WalletError> {
+    pub fn get_keypair(
+        &self,
+    ) -> Result<(dilithium5::SecretKey, dilithium5::PublicKey), WalletError> {
+        let sk_bytes = self.data.qr_secret_key.expose_secret();
+        let pk_bytes = &self.data.qr_public_key;
+
+        let sk = dilithium5::SecretKey::from_bytes(sk_bytes)
+            .map_err(|e| WalletError::PqCrypto(e.to_string()))?;
+        let pk = dilithium5::PublicKey::from_bytes(pk_bytes)
+            .map_err(|e| WalletError::PqCrypto(e.to_string()))?;
+
+        Ok((sk, pk))
+    }
+
+    pub fn get_signing_key(&self) -> Result<Ed25519SigningKey, WalletError> {
         let signing_key_bytes: &[u8] = self.data.signing_key.expose_secret();
-        let signing_key = SigningKey::from_bytes(signing_key_bytes.try_into()?);
+        let signing_key = Ed25519SigningKey::from_bytes(signing_key_bytes.try_into()?);
         Ok(signing_key)
     }
 
@@ -159,7 +208,7 @@ impl Wallet {
         signature: &ed25519_dalek::Signature,
     ) -> Result<(), WalletError> {
         let verifying_key =
-            VerifyingKey::from_bytes(self.data.verifying_key.as_slice().try_into()?)?;
+            Ed25519VerifyingKey::from_bytes(self.data.verifying_key.as_slice().try_into()?)?;
         verifying_key
             .verify_strict(message, signature)
             .map_err(WalletError::from)

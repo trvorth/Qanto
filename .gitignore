@@ -84,6 +84,8 @@ node*/*.txt
 /scripts
 /docs/whitepaper/assets
 /mining_rig_config.toml
+/Dockerfile
+/docker-compose.yml
 /deploy.sh
 /deployment
 /node1

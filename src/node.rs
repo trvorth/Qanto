@@ -1,16 +1,18 @@
-// src/node.rs
-
 //! --- Qanto Node Orchestrator ---
-//! v1.5.3 - Async Call Correction
-//! This version corrects a missing `.await` in the `ask_saga` API handler,
-//! resolving a compilation error related to future types.
+//! v1.6.4 - Aligned with DAG Refactoring
+//! This version updates the node's initialization logic to align with the refactored
+//! QantoDAG::new function, which now uses a configuration struct.
+//!
+//! - FIX (E0061): The call to QantoDAG::new now correctly instantiates and passes
+//!   a QantoDagConfig struct, resolving the mismatched types compile error.
+//! - LINTING: Unnecessary .clone() calls removed.
 
 use crate::config::{Config, ConfigError};
 use crate::mempool::Mempool;
 use crate::miner::{Miner, MinerConfig, MiningError};
 use crate::omega::{self, reflect_on_action};
 use crate::p2p::{P2PCommand, P2PConfig, P2PError, P2PServer};
-use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError, UTXO};
+use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError, QantoDagConfig, UTXO};
 use crate::saga::{PalletSaga, SagaError};
 use crate::transaction::Transaction;
 use crate::wallet::Wallet;
@@ -47,21 +49,18 @@ use tokio::task::{JoinError, JoinSet};
 use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, warn};
 
-// Import ISNM components when the 'infinite-strata' feature is enabled.
 #[cfg(feature = "infinite-strata")]
 use crate::infinite_strata_node::{
     DecentralizedOracleAggregator, InfiniteStrataNode, NodeConfig as IsnmNodeConfig,
     MIN_UPTIME_HEARTBEAT_SECS,
 };
 
-// Constants defining node limits and validation rules.
 const MAX_UTXOS: usize = 1_000_000;
 const MAX_PROPOSALS: usize = 10_000;
 const ADDRESS_REGEX: &str = r"^[0-9a-fA-F]{64}$";
-const MAX_SYNC_AGE_SECONDS: u64 = 3600; // 1 hour
-const DEFAULT_MINING_INTERVAL_SECS: u64 = 15; // Time between mining attempts
+const MAX_SYNC_AGE_SECONDS: u64 = 3600;
+const DEFAULT_MINING_INTERVAL_SECS: u64 = 15;
 
-// Comprehensive error enumeration for the node.
 #[derive(Error, Debug)]
 pub enum NodeError {
     #[error("DAG error: {0}")]
@@ -100,14 +99,12 @@ pub enum NodeError {
     NodeInitialization(String),
 }
 
-// Convert specific errors to the top-level NodeError
 impl From<NodeError> for String {
     fn from(err: NodeError) -> Self {
         err.to_string()
     }
 }
 
-// Structs for API responses, providing a clear view of the node's state.
 #[derive(Serialize, Debug)]
 struct DagInfo {
     block_count: usize,
@@ -130,13 +127,11 @@ struct PublishReadiness {
     issues: Vec<String>,
 }
 
-// Peer cache for persisting known peers between sessions.
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct PeerCache {
     pub peers: Vec<String>,
 }
 
-// The main Node struct, holding the state of all core components.
 pub struct Node {
     _config_path: String,
     config: Config,
@@ -149,7 +144,6 @@ pub struct Node {
     pub proposals: Arc<RwLock<Vec<QantoBlock>>>,
     peer_cache_path: String,
     pub saga_pallet: Arc<PalletSaga>,
-    // The ISNM service, conditionally compiled with the 'infinite-strata' feature.
     #[cfg(feature = "infinite-strata")]
     isnm_service: Arc<InfiniteStrataNode>,
 }
@@ -167,7 +161,6 @@ impl Node {
     ) -> Result<Self, NodeError> {
         config.validate()?;
 
-        // --- P2P Identity Initialization ---
         let local_keypair = match fs::read(p2p_identity_path).await {
             Ok(key_bytes) => {
                 info!("Loading P2P identity from file: {p2p_identity_path}");
@@ -204,7 +197,6 @@ impl Node {
             config.local_full_p2p_address = Some(full_local_p2p_address.clone());
             config.save(&config_path)?;
         }
-        // --- End P2P Identity Initialization ---
 
         let initial_validator = wallet.address().trim().to_lowercase();
         if initial_validator != config.genesis_validator.trim().to_lowercase() {
@@ -213,8 +205,7 @@ impl Node {
             )));
         }
 
-        let signing_key_dalek = wallet.get_signing_key()?;
-        let node_signing_key_bytes = signing_key_dalek.to_bytes().to_vec();
+        let (node_signing_key, node_public_key) = wallet.get_keypair()?;
 
         info!("Initializing SAGA and dependent services...");
 
@@ -244,15 +235,16 @@ impl Node {
             DB::open(&opts, "qantodag_db_evolved")?
         };
 
-        let dag_arc = QantoDAG::new(
-            &initial_validator,
-            config.target_block_time,
-            config.difficulty,
-            config.num_chains,
-            &node_signing_key_bytes,
-            saga_pallet.clone(),
-            db,
-        )?;
+        let dag_config = QantoDagConfig {
+            initial_validator,
+            target_block_time: config.target_block_time,
+            difficulty: config.difficulty,
+            num_chains: config.num_chains,
+            qr_signing_key: &node_signing_key,
+            qr_public_key: &node_public_key,
+        };
+
+        let dag_arc = QantoDAG::new(dag_config, saga_pallet.clone(), db)?;
 
         info!("QantoDAG initialized.");
 
@@ -260,7 +252,6 @@ impl Node {
         let utxos = Arc::new(RwLock::new(HashMap::with_capacity(MAX_UTXOS)));
         let proposals = Arc::new(RwLock::new(Vec::with_capacity(MAX_PROPOSALS)));
 
-        // --- Genesis UTXO initialization ---
         {
             let mut utxos_lock = utxos.write().await;
             for chain_id_val in 0..config.num_chains {
@@ -270,7 +261,7 @@ impl Node {
                 utxos_lock.insert(
                     utxo_id.clone(),
                     UTXO {
-                        address: initial_validator.clone(),
+                        address: config.genesis_validator.clone(),
                         amount: 100,
                         tx_id: genesis_id_convention,
                         output_index: 0,
@@ -279,7 +270,6 @@ impl Node {
                 );
             }
         }
-        // --- End Genesis UTXO Initialization ---
 
         let miner_config = MinerConfig {
             address: wallet.address(),
@@ -315,7 +305,6 @@ impl Node {
         let (tx_p2p_commands, mut rx_p2p_commands) = mpsc::channel::<P2PCommand>(100);
         let mut join_set: JoinSet<Result<(), NodeError>> = JoinSet::new();
 
-        // --- ISNM Periodic Check Task ---
         #[cfg(feature = "infinite-strata")]
         {
             info!("[ISNM] Spawning periodic cloud presence check task.");
@@ -337,9 +326,7 @@ impl Node {
                 Ok(())
             });
         }
-        // --- End ISNM Task ---
 
-        // --- Command Processor Task ---
         let command_processor_task = {
             let dag_clone = self.dag.clone();
             let mempool_clone = self.mempool.clone();
@@ -451,9 +438,7 @@ impl Node {
             }
         };
         join_set.spawn(command_processor_task);
-        // --- End Command Processor Task ---
 
-        // --- P2P Server Task ---
         if !self.config.peers.is_empty() {
             info!("Peers detected in config, initializing P2P server task...");
             let p2p_dag_clone = self.dag.clone();
@@ -465,7 +450,7 @@ impl Node {
             let p2p_listen_address_config_clone = self.config.p2p_address.clone();
             let p2p_initial_peers_config_clone = self.config.peers.clone();
             let p2p_settings_clone = self.config.p2p.clone();
-            let node_signing_key_bytes_for_p2p = self.wallet.get_signing_key()?.to_bytes().to_vec();
+            let (node_signing_key, node_public_key) = self.wallet.get_keypair()?;
             let peer_cache_path_clone = self.peer_cache_path.clone();
             let network_id_clone = self.config.network_id.clone();
             let p2p_task_fut = async move {
@@ -481,7 +466,8 @@ impl Node {
                         proposals: p2p_proposals_clone.clone(),
                         local_keypair: p2p_identity_keypair_clone.clone(),
                         p2p_settings: p2p_settings_clone.clone(),
-                        node_signing_key_material: &node_signing_key_bytes_for_p2p,
+                        node_qr_sk: &node_signing_key,
+                        node_qr_pk: &node_public_key,
                         peer_cache_path: peer_cache_path_clone.clone(),
                     };
                     info!(
@@ -542,9 +528,7 @@ impl Node {
                 Ok(())
             });
         }
-        // --- End P2P Server Task ---
 
-        // --- API Server Task ---
         let server_task_fut = {
             let app_state = AppState {
                 dag: self.dag.clone(),
@@ -590,9 +574,7 @@ impl Node {
             }
         };
         join_set.spawn(server_task_fut);
-        // --- End API Server Task ---
 
-        // --- Graceful Shutdown Logic ---
         tokio::select! {
             biased;
             _ = signal::ctrl_c() => {
@@ -611,7 +593,6 @@ impl Node {
         Ok(())
     }
 
-    // --- Topological Sort Helper ---
     async fn topological_sort_blocks(
         blocks: Vec<QantoBlock>,
         dag: &QantoDAG,
@@ -681,7 +662,6 @@ impl Node {
     }
 }
 
-// --- Rate Limiting Layer ---
 async fn rate_limit_layer(
     MiddlewareState(limiter): MiddlewareState<Arc<DirectApiRateLimiter>>,
     req: HttpRequest<Body>,
@@ -695,7 +675,6 @@ async fn rate_limit_layer(
     }
 }
 
-// The AppState for the API server.
 #[derive(Clone)]
 struct AppState {
     dag: Arc<QantoDAG>,
@@ -724,15 +703,12 @@ impl IntoResponse for ApiError {
     }
 }
 
-// --- API Handlers ---
-
 async fn ask_saga(
     State(state): State<AppState>,
     Json(payload): Json<SagaQuery>,
 ) -> Result<Json<String>, ApiError> {
     let saga = &state.saga;
     let network_state = *saga.economy.network_state.read().await;
-    // Correctly await the async function to get the ThreatLevel value.
     let threat_level = omega::identity::get_threat_level().await;
     let proactive_insight = saga
         .economy

@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
+use pqcrypto_traits::sign::{PublicKey, SecretKey};
 use qanto::{
     qantodag::UTXO,
     transaction::{self, Input, Output, Transaction, TransactionConfig},
@@ -303,7 +304,8 @@ async fn send_transaction(
     let mut metadata_map = HashMap::new();
     metadata_map.insert("gatt_uuid".to_string(), Uuid::new_v4().to_string());
 
-    let signing_key = wallet.get_signing_key()?;
+    let (signing_key, public_key) = wallet.get_keypair()?;
+
     let tx_config = TransactionConfig {
         sender: sender_address,
         receiver: to,
@@ -312,6 +314,7 @@ async fn send_transaction(
         inputs,
         outputs,
         signing_key_bytes: signing_key.as_bytes(),
+        public_key_bytes: public_key.as_bytes(),
         tx_timestamps: Arc::new(RwLock::new(HashMap::new())),
         metadata: Some(metadata_map),
     };
