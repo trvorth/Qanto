@@ -1,503 +1,341 @@
-use blake3::Hasher as Blake3Hasher;
+//! The core library for the Qanto blockchain.
+//! This library defines all the fundamental components, including the custom
+//! proof-of-work algorithm, Qanhash.
+
 use chrono::Utc;
-use dashmap::DashMap;
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
-use hex;
-use log::{error, info, warn};
-use lru::LruCache;
-use nalgebra::Matrix2;
-#[cfg(feature = "metrics")]
-use prometheus::{register_int_counter, IntCounter};
-use rand::Rng;
-use rayon::prelude::*;
-use regex::Regex;
-use rocksdb::{Options, DB};
+use log::{info, warn};
+use num_bigint::BigUint;
+use rocksdb::DB;
 use serde::{Deserialize, Serialize};
-use sha3::{Digest, Keccak256};
-use std::num::NonZeroUsize;
-use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock};
-use tracing::instrument;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
-#[cfg(feature = "zk")]
-use bellman::groth16::{Parameters, Proof};
-#[cfg(feature = "zk")]
-use bls12_381::Scalar;
+// --- Qanhash Proof-of-Work Module ---
+// This module contains the entire implementation of the Qanhash algorithm.
+mod qanhash {
+    use super::*;
+    use blake3::Hasher;
+    use lazy_static::lazy_static;
+    use rand::rngs::SmallRng;
+    use rand::{RngCore, SeedableRng};
+    use std::sync::RwLock;
 
-// Constants with enhanced security and scalability
-const MAX_TRANSACTIONS_PER_BLOCK: usize = 25_000;
-const ADDRESS_REGEX: &str = r"^[0-9a-fA-F]{64}$";
-const MAX_TIMESTAMP_DRIFT: i64 = 600;
-const INITIAL_SHARD_COUNT: usize = 4;
-const CACHE_SIZE: usize = 1_000;
-const SHARD_SPLIT_THRESHOLD: usize = 20_000;
-const SHARD_MERGE_THRESHOLD: usize = 5_000;
+    // --- Type alias to fix clippy::type_complexity warning ---
+    type QDagCacheEntry = Option<(u64, Arc<Vec<[u8; MIX_BYTES]>>)>;
 
-// Metrics
-#[cfg(feature = "metrics")]
-lazy_static! {
-    static ref BLOCKS_PROCESSED: IntCounter =
-        register_int_counter!("blocks_processed_total", "Total blocks processed").unwrap();
-    static ref TRANSACTIONS_PROCESSED: IntCounter = register_int_counter!(
-        "transactions_processed_total",
-        "Total transactions processed"
-    )
-    .unwrap();
-}
+    // --- Constants for the Q-DAG ---
+    const DATASET_INIT_SIZE: usize = 1 << 24; // 16 MiB to start
+    const DATASET_GROWTH_EPOCH: u64 = 10_000; // New DAG every 10,000 blocks
+    const MIX_BYTES: usize = 128; // Size of the mix hash
+    const ACCESSES: usize = 64; // Number of random accesses into the dataset
 
-// Enhanced Transaction with ZK and Multi-Signature Support
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct Transaction {
-    pub sender: String,
-    pub receiver: String,
-    pub amount: u64,
-    pub signature: Vec<u8>,
-    #[cfg(feature = "zk")]
-    pub zk_proof: Option<Proof<bls12_381::Bls12>>,
-    pub multi_signatures: Vec<Vec<u8>>,
-}
+    // --- Constants for Post-Quantum Polynomial Hashing ---
+    const POLY_DEGREE: usize = 256; // n
+    const POLY_MODULUS: i32 = 7681; // q
 
-impl Transaction {
-    #[instrument]
-    pub fn verify_signature(&self, public_key: &VerifyingKey) -> bool {
-        let address_re = Regex::new(ADDRESS_REGEX).unwrap_or_else(|_| Regex::new(r"^$").unwrap());
-        if !address_re.is_match(&hex::encode(public_key.as_bytes())) {
-            warn!("Invalid public key format");
-            return false;
-        }
-        let message = format!("{}{}{}", self.sender, self.receiver, self.amount);
+    lazy_static! {
+        // A global cache for the current Q-DAG to avoid re-computation.
+        static ref QDAG_CACHE: RwLock<QDagCacheEntry> = RwLock::new(None);
+    }
 
-        if self.signature.len() != 64 {
-            warn!("Invalid signature length: {}", self.signature.len());
-            return false;
-        }
-
-        let signature_bytes: [u8; 64] = match self.signature.as_slice().try_into() {
-            Ok(bytes) => bytes,
-            Err(_) => {
-                warn!("Signature conversion failed");
-                return false;
+    /// STAGE 1: The Q-Sponge (Primary Hashing)
+    fn q_sponge(input: &[u8]) -> [u8; 32] {
+        let mut state = [0u8; 32];
+        for chunk in input.chunks(16) {
+            for (i, &byte) in chunk.iter().enumerate() {
+                state[i] ^= byte;
             }
+            state.rotate_left(3);
+            for i in 0..32 {
+                state[i] = state[i].wrapping_add(state[(i + 1) % 32]).wrapping_mul(17);
+            }
+        }
+        state
+    }
+
+    /// STAGE 2: The Q-DAG (Memory-Hard Expansion)
+    fn generate_qdag(seed: [u8; 32], epoch: u64) -> Arc<Vec<[u8; MIX_BYTES]>> {
+        info!("Generating new Q-DAG for epoch {epoch}...");
+        let cache_size = DATASET_INIT_SIZE + (epoch as usize * 128);
+        let mut dataset = vec![[0u8; MIX_BYTES]; cache_size];
+
+        // **FIXED**: Use BLAKE3 XOF to generate a 128-byte hash
+        let mut first_item_hasher = Hasher::new();
+        first_item_hasher.update(&seed);
+        let mut xof_reader = first_item_hasher.finalize_xof();
+        xof_reader.fill(&mut dataset[0]);
+
+        for i in 1..cache_size {
+            let mut hasher = Hasher::new();
+            hasher.update(&dataset[i - 1]);
+            let mut xof_reader = hasher.finalize_xof();
+            xof_reader.fill(&mut dataset[i]);
+        }
+
+        info!(
+            "Q-DAG generation complete. Size: {} MB",
+            (cache_size * MIX_BYTES) / (1024 * 1024)
+        );
+        Arc::new(dataset)
+    }
+
+    /// Ensures the correct Q-DAG is loaded into the cache.
+    fn get_qdag(block_index: u64) -> Arc<Vec<[u8; MIX_BYTES]>> {
+        let epoch = block_index / DATASET_GROWTH_EPOCH;
+        let mut cache = QDAG_CACHE.write().unwrap();
+
+        if let Some((cached_epoch, dag)) = &*cache {
+            if *cached_epoch == epoch {
+                return dag.clone();
+            }
+        }
+
+        let seed = q_sponge(&epoch.to_le_bytes());
+        let new_dag = generate_qdag(seed, epoch);
+        *cache = Some((epoch, new_dag.clone()));
+        new_dag
+    }
+
+    /// STAGE 3: Post-Quantum Flavor (Polynomial Hashing)
+    fn poly_hash(input: &[u8]) -> [i32; POLY_DEGREE] {
+        let mut coeffs = [0i32; POLY_DEGREE];
+        let mut rng = SmallRng::from_seed(q_sponge(input));
+
+        // **FIXED**: Use an iterator to satisfy clippy::needless_range_loop
+        for coeff in coeffs.iter_mut() {
+            *coeff = (rng.next_u32() as i32) % POLY_MODULUS;
+        }
+        coeffs
+    }
+
+    /// The main Qanhash computation function.
+    pub fn hash(header: &[u8], nonce: u64) -> (String, [i32; POLY_DEGREE]) {
+        let mut nonce_bytes = nonce.to_le_bytes().to_vec();
+        nonce_bytes.extend_from_slice(header);
+        let seed = q_sponge(&nonce_bytes);
+        let block_index_bytes = &header[0..8];
+        let block_index = u64::from_le_bytes(block_index_bytes.try_into().unwrap());
+        let dag = get_qdag(block_index);
+
+        let mut mix = [0u8; MIX_BYTES];
+        mix[..32].copy_from_slice(&seed);
+
+        for _ in 0..ACCESSES {
+            let mut hasher = Hasher::new();
+            hasher.update(&mix);
+            let p_index_bytes = hasher.finalize().as_bytes()[..8].try_into().unwrap();
+            let p_index = u64::from_le_bytes(p_index_bytes);
+            let lookup_index = p_index as usize % dag.len();
+
+            // **FIXED**: Use an iterator to satisfy clippy::needless_range_loop
+            for (i, mix_item) in mix.iter_mut().enumerate() {
+                *mix_item = mix_item.wrapping_mul(31) ^ dag[lookup_index][i];
+            }
+        }
+
+        let final_poly_hash = poly_hash(&mix);
+        let final_pow_hash = hex::encode(blake3::hash(&mix).as_bytes());
+        (final_pow_hash, final_poly_hash)
+    }
+
+    /// Verifies the polynomial hash component.
+    pub fn verify_poly_hash(
+        header: &[u8],
+        nonce: u64,
+        expected_poly_hash: &[i32; POLY_DEGREE],
+    ) -> bool {
+        let (_, calculated_poly_hash) = hash(header, nonce);
+        &calculated_poly_hash == expected_poly_hash
+    }
+}
+
+// --- Core Blockchain Data Structures ---
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Output {
+    pub value: u64,
+    pub address: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Input {
+    pub tx_id: String,
+    pub output_index: u32,
+    pub public_key: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Transaction {
+    pub id: String,
+    pub inputs: Vec<Input>,
+    pub outputs: Vec<Output>,
+    pub timestamp: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct Block {
+    pub index: u64,
+    pub timestamp: i64,
+    pub transactions: Vec<Transaction>,
+    pub previous_hash: String,
+    pub hash: String,
+    pub nonce: u64,
+    pub difficulty: u64,
+    #[serde(with = "serde_big_array::BigArray")]
+    pub poly_hash: [i32; 256],
+}
+
+impl Block {
+    pub fn new(
+        index: u64,
+        transactions: Vec<Transaction>,
+        previous_hash: String,
+        difficulty: u64,
+    ) -> Self {
+        let timestamp = Utc::now().timestamp();
+        let mut block = Block {
+            index,
+            timestamp,
+            transactions,
+            previous_hash,
+            hash: String::new(),
+            nonce: 0,
+            difficulty,
+            poly_hash: [0; 256],
+        };
+        block.mine();
+        block
+    }
+
+    /// Prepares a concise byte representation of the block header for hashing.
+    fn get_header_data(&self) -> Vec<u8> {
+        let mut data = self.index.to_le_bytes().to_vec();
+        data.extend_from_slice(&self.timestamp.to_le_bytes());
+        data.extend_from_slice(self.previous_hash.as_bytes());
+        for tx in &self.transactions {
+            data.extend_from_slice(tx.id.as_bytes());
+        }
+        data
+    }
+
+    /// Mines the block using the Qanhash algorithm.
+    fn mine(&mut self) {
+        let target = BigUint::from(2u32).pow(256) / BigUint::from(self.difficulty);
+        let header_data = self.get_header_data();
+        let mut nonce = 0u64;
+
+        loop {
+            let (hash_hex, poly_hash) = qanhash::hash(&header_data, nonce);
+            let hash_int = BigUint::from_bytes_be(&hex::decode(&hash_hex).unwrap());
+
+            if hash_int < target {
+                self.hash = hash_hex;
+                self.poly_hash = poly_hash;
+                self.nonce = nonce;
+                info!(
+                    "Block #{} mined with nonce {}. Hash: {}...",
+                    self.index,
+                    self.nonce,
+                    &self.hash[..10]
+                );
+                return;
+            }
+            nonce += 1;
+        }
+    }
+
+    /// Verifies the block's proof-of-work.
+    fn verify_pow(&self) -> bool {
+        let target = BigUint::from(2u32).pow(256) / BigUint::from(self.difficulty);
+        let hash_int = BigUint::from_bytes_be(&hex::decode(&self.hash).unwrap());
+
+        if hash_int >= target {
+            return false;
+        }
+
+        qanhash::verify_poly_hash(&self.get_header_data(), self.nonce, &self.poly_hash)
+    }
+}
+
+// --- Blockchain Management ---
+pub struct Blockchain {
+    pub chain: Arc<Mutex<Vec<Block>>>,
+    db: Arc<DB>,
+}
+
+impl Blockchain {
+    pub fn new(db_path: &str) -> Result<Self, String> {
+        let db = Arc::new(DB::open_default(db_path).map_err(|e| e.to_string())?);
+        let chain = match db.get(b"chain") {
+            Ok(Some(data)) => serde_json::from_slice(&data).unwrap_or_else(|_| vec![]),
+            _ => vec![],
         };
 
-        let signature = Signature::from_bytes(&signature_bytes);
-        if let Err(e) = public_key.verify(message.as_bytes(), &signature) {
-            warn!("Signature verification failed: {}", e);
-            return false;
+        let arc_chain = Arc::new(Mutex::new(chain));
+
+        if arc_chain.lock().unwrap().is_empty() {
+            info!("Creating genesis block...");
+            let genesis_block = Block::new(0, vec![], "0".to_string(), 1_000_000);
+            arc_chain.lock().unwrap().push(genesis_block);
         }
 
-        #[cfg(feature = "zk")]
-        if let Some(proof) = &self.zk_proof {
-            warn!("ZK proof verification not implemented yet");
-        }
+        Ok(Blockchain {
+            chain: arc_chain,
+            db,
+        })
+    }
 
-        for sig in &self.multi_signatures {
-            if sig.len() != 64 {
-                warn!("Invalid multi-signature length");
+    pub fn add_block(&self, transactions: Vec<Transaction>) {
+        let mut chain = self.chain.lock().unwrap();
+        let previous_hash = chain.last().unwrap().hash.clone();
+        let new_block = Block::new(
+            chain.len() as u64,
+            transactions,
+            previous_hash,
+            chain.last().unwrap().difficulty,
+        );
+        chain.push(new_block);
+        self.save_chain(&chain);
+    }
+
+    fn save_chain(&self, chain: &[Block]) {
+        if let Ok(serialized_chain) = serde_json::to_string(chain) {
+            self.db.put(b"chain", serialized_chain.as_bytes()).unwrap();
+        }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        let chain = self.chain.lock().unwrap();
+        for i in 1..chain.len() {
+            let current = &chain[i];
+            let previous = &chain[i - 1];
+
+            if current.previous_hash != previous.hash {
+                warn!("Chain link broken at Block #{}", current.index);
                 return false;
             }
-            let multi_sig = Signature::from_bytes(&sig.as_slice().try_into().unwrap());
-            if let Err(e) = public_key.verify(message.as_bytes(), &multi_sig) {
-                warn!("Multi-signature verification failed: {}", e);
+
+            if !current.verify_pow() {
+                warn!("Proof-of-work is invalid for Block #{}", current.index);
                 return false;
             }
         }
-
         true
     }
 }
 
-// Block with Sharding and PoS Integration
-#[derive(Clone, Serialize, Deserialize, Debug)]
-pub struct Block {
-    pub index: u64,
-    pub shard_id: usize,
-    pub timestamp: i64,
-    pub previous_hash: Vec<u8>,
-    pub nonce: u64,
-    pub hash: Vec<u8>,
-    pub transactions: Vec<Transaction>,
-    pub reward_address: String,
-    pub stake_weight: u64,
-}
-
-// Shard Manager for Dynamic Sharding
-#[derive(Debug)]
-pub struct ShardManager {
-    shard_count: Arc<RwLock<usize>>,
-    shard_loads: Arc<Mutex<Vec<usize>>>,
-}
-
-impl ShardManager {
-    pub fn new(initial_shard_count: usize) -> Self {
-        ShardManager {
-            shard_count: Arc::new(RwLock::new(initial_shard_count)),
-            shard_loads: Arc::new(Mutex::new(vec![0; initial_shard_count])),
+// --- Concurrency ---
+pub fn start_mining_thread(
+    blockchain: Arc<Blockchain>,
+    transactions: Arc<Mutex<Vec<Transaction>>>,
+) {
+    thread::spawn(move || loop {
+        let mut pending_tx = transactions.lock().unwrap();
+        if !pending_tx.is_empty() {
+            let tx_to_add = pending_tx.drain(..).collect();
+            drop(pending_tx);
+            blockchain.add_block(tx_to_add);
         }
-    }
-
-    #[instrument]
-    pub async fn update_load(&self, shard_id: usize, tx_count: usize) {
-        let mut loads = self.shard_loads.lock().await;
-        if shard_id < loads.len() {
-            loads[shard_id] = tx_count;
-        }
-    }
-
-    #[instrument]
-    pub async fn adjust_shards(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let loads = self.shard_loads.lock().await.clone();
-        let mut shard_count = self.shard_count.write().await;
-
-        for (shard_id, &load) in loads.iter().enumerate() {
-            if load > SHARD_SPLIT_THRESHOLD && shard_id < *shard_count {
-                *shard_count += 1;
-                let mut new_loads = self.shard_loads.lock().await;
-                new_loads.push(load / 2);
-                info!(
-                    "Shard {} split, new shard count: {}",
-                    shard_id, *shard_count
-                );
-            }
-        }
-
-        if *shard_count > 1 {
-            let mut new_loads = Vec::new();
-            let mut i = 0;
-            while i < loads.len() {
-                if i + 1 < loads.len()
-                    && loads[i] < SHARD_MERGE_THRESHOLD
-                    && loads[i + 1] < SHARD_MERGE_THRESHOLD
-                {
-                    new_loads.push(loads[i] + loads[i + 1]);
-                    *shard_count -= 1;
-                    i += 2;
-                    info!("Shards merged, new shard count: {}", *shard_count);
-                } else {
-                    new_loads.push(loads[i]);
-                    i += 1;
-                }
-            }
-            *self.shard_loads.lock().await = new_loads;
-        }
-
-        Ok(())
-    }
-
-    pub async fn get_shard_count(&self) -> usize {
-        *self.shard_count.read().await
-    }
-}
-
-#[derive(Debug)]
-pub struct Blockchain {
-    blocks: Arc<RwLock<Vec<Block>>>,
-    difficulty: Arc<RwLock<usize>>,
-    target_block_time: i64,
-    db: Arc<DB>,
-    cache: Arc<RwLock<LruCache<String, Block>>>,
-    utxos: Arc<DashMap<String, u64>>,
-    shard_manager: ShardManager,
-}
-
-impl Blockchain {
-    #[instrument]
-    pub async fn new(difficulty: usize, target_block_time: i64) -> Self {
-        let mut opts = Options::default();
-        opts.create_if_missing(true);
-        let db = DB::open(&opts, "qanto_db").unwrap_or_else(|e| {
-            error!("Failed to open database: {}", e);
-            panic!("Database initialization failed");
-        });
-        let genesis_block = Block {
-            index: 0,
-            shard_id: 0,
-            timestamp: Utc::now().timestamp(),
-            previous_hash: vec![0; 32],
-            nonce: 0,
-            hash: reliable_hashing_algorithm(b"genesis"),
-            transactions: vec![],
-            reward_address: String::new(),
-            stake_weight: 1,
-        };
-        let blocks = Arc::new(RwLock::new(vec![genesis_block.clone()]));
-        let cache = Arc::new(RwLock::new(LruCache::new(
-            NonZeroUsize::new(CACHE_SIZE).unwrap(),
-        )));
-        cache
-            .write()
-            .await
-            .put(hex::encode(&genesis_block.hash), genesis_block.clone());
-        Blockchain {
-            blocks,
-            difficulty: Arc::new(RwLock::new(difficulty)),
-            target_block_time,
-            db: Arc::new(db),
-            cache,
-            utxos: Arc::new(DashMap::new()),
-            shard_manager: ShardManager::new(INITIAL_SHARD_COUNT),
-        }
-    }
-
-    #[instrument]
-    pub async fn add_block(
-        &self,
-        transactions: Vec<Transaction>,
-        reward_address: String,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        if transactions.len() > MAX_TRANSACTIONS_PER_BLOCK {
-            warn!("Too many transactions: {}", transactions.len());
-            return Err("Transaction limit exceeded".into());
-        }
-
-        let address_re = Regex::new(ADDRESS_REGEX).unwrap_or_else(|_| Regex::new(r"^$").unwrap());
-        let now = Utc::now().timestamp();
-
-        let valid = transactions.par_iter().all(|tx| {
-            if !address_re.is_match(&tx.sender) || !address_re.is_match(&tx.receiver) {
-                warn!(
-                    "Invalid address in transaction: sender={}, receiver={}",
-                    tx.sender, tx.receiver
-                );
-                return false;
-            }
-            if tx.amount == 0 || tx.amount > 10_000_000_000 {
-                warn!("Invalid transaction amount: {}", tx.amount);
-                return false;
-            }
-            let sender_bytes = hex::decode(&tx.sender).unwrap_or_default();
-            if sender_bytes.len() != 32 {
-                warn!("Invalid public key length: {}", sender_bytes.len());
-                return false;
-            }
-            let mut sender_array = [0u8; 32];
-            sender_array.copy_from_slice(&sender_bytes);
-            let public_key = VerifyingKey::from_bytes(&sender_array).unwrap_or_else(|e| {
-                warn!("Invalid public key: {}", e);
-                VerifyingKey::from_bytes(&[0u8; 32]).unwrap()
-            });
-            tx.verify_signature(&public_key)
-        });
-        if !valid {
-            return Err("Invalid transaction in batch".into());
-        }
-
-        if (now - now.saturating_sub(MAX_TIMESTAMP_DRIFT)).abs() > MAX_TIMESTAMP_DRIFT {
-            warn!("Invalid block timestamp: {}", now);
-            return Err("Timestamp out of drift range".into());
-        }
-
-        let shard_count = self.shard_manager.get_shard_count().await;
-        let shard_id = rand::thread_rng().gen_range(0..shard_count);
-        let previous_hash = self.blocks.read().await.last().unwrap().hash.clone();
-        let mut new_block = Block {
-            index: self.blocks.read().await.len() as u64,
-            shard_id,
-            timestamp: now,
-            previous_hash,
-            nonce: 0,
-            hash: vec![],
-            transactions,
-            reward_address,
-            stake_weight: self.calculate_stake_weight().await,
-        };
-
-        mine_block(&mut new_block, self.difficulty.clone()).await?;
-        let block_hash: String = hex::encode(&new_block.hash);
-        self.cache
-            .write()
-            .await
-            .put(block_hash.clone(), new_block.clone());
-        self.db.put(b"block:", serde_json::to_vec(&new_block)?)?;
-        let mut blocks = self.blocks.write().await;
-        blocks.push(new_block.clone());
-        #[cfg(feature = "metrics")]
-        BLOCKS_PROCESSED.inc();
-        #[cfg(feature = "metrics")]
-        TRANSACTIONS_PROCESSED.inc_by(new_block.transactions.len() as u64);
-        self.shard_manager
-            .update_load(shard_id, new_block.transactions.len())
-            .await;
-        self.shard_manager.adjust_shards().await?;
-        self.adjust_difficulty().await;
-        Ok(())
-    }
-
-    #[instrument]
-    async fn calculate_stake_weight(&self) -> u64 {
-        self.utxos.iter().map(|refe| *refe.value()).sum()
-    }
-
-    #[instrument]
-    async fn adjust_difficulty(&self) {
-        let blocks = self.blocks.read().await;
-        if blocks.len() < 10 {
-            return;
-        }
-        let last_ten = &blocks[blocks.len() - 10..];
-        let total_time: i64 = last_ten
-            .windows(2)
-            .map(|w| w[1].timestamp - w[0].timestamp)
-            .sum();
-        let avg_time = total_time / 9;
-        let mut difficulty = self.difficulty.write().await;
-        if avg_time > self.target_block_time {
-            if *difficulty > 1 {
-                *difficulty -= 1;
-            }
-        } else if avg_time < self.target_block_time / 2 {
-            *difficulty += 1;
-        }
-    }
-}
-
-// Revolutionary Hashing Algorithm with Matrix Transformation
-#[instrument]
-pub fn reliable_hashing_algorithm(input: &[u8]) -> Vec<u8> {
-    let mut hasher = Blake3Hasher::new();
-    hasher.update(input);
-    let blake3_hash = hasher.finalize();
-    let hash_bytes = blake3_hash.as_bytes();
-
-    let matrix_a = Matrix2::new(
-        f64::from_le_bytes(hash_bytes[0..8].try_into().unwrap()),
-        f64::from_le_bytes(hash_bytes[8..16].try_into().unwrap()),
-        f64::from_le_bytes(hash_bytes[16..24].try_into().unwrap()),
-        f64::from_le_bytes(hash_bytes[24..32].try_into().unwrap()),
-    );
-    let matrix_b = Matrix2::new(
-        f64::from_le_bytes(hash_bytes[32..40].try_into().unwrap()),
-        f64::from_le_bytes(hash_bytes[40..48].try_into().unwrap()),
-        f64::from_le_bytes(hash_bytes[48..56].try_into().unwrap()),
-        f64::from_le_bytes(hash_bytes[56..64].try_into().unwrap()),
-    );
-    let result_matrix = matrix_a * matrix_b;
-    let result_bytes = result_matrix
-        .as_slice()
-        .iter()
-        .flat_map(|x| x.to_le_bytes())
-        .collect::<Vec<u8>>();
-    Keccak256::digest(&result_bytes).to_vec()
-}
-
-// Enhanced Mining with GPU Support and Parallelism
-#[instrument]
-pub async fn mine_block(
-    block: &mut Block,
-    difficulty: Arc<RwLock<usize>>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let target = vec![0u8; *difficulty.read().await];
-    let mut nonce = 0;
-    #[cfg(feature = "gpu")]
-    {
-        warn!("GPU mining not implemented yet");
-    }
-    #[cfg(not(feature = "gpu"))]
-    {
-        loop {
-            let header = format!("{}{}{}", block.index, block.timestamp, nonce);
-            let hash = reliable_hashing_algorithm(header.as_bytes());
-            if hash.starts_with(&target) {
-                block.hash = hash;
-                block.nonce = nonce;
-                break;
-            }
-            nonce += 1;
-            if nonce > 1_000_000 {
-                warn!("Mining aborted due to excessive nonce attempts");
-                return Err("Mining timeout".into());
-            }
-        }
-    }
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use ed25519_dalek::{Signer, SigningKey};
-    use rand::thread_rng;
-
-    #[tokio::test]
-    async fn test_rha_hash() {
-        let input = b"test";
-        let hash = reliable_hashing_algorithm(input);
-        assert_eq!(hash.len(), 32, "Hash length should be 32 bytes");
-        info!("Hash test passed: {:?}", hash);
-    }
-
-    #[tokio::test]
-    async fn test_mining_block() {
-        let mut block = Block {
-            index: 1,
-            shard_id: 0,
-            timestamp: Utc::now().timestamp(),
-            previous_hash: vec![0; 32],
-            nonce: 0,
-            hash: vec![],
-            transactions: vec![],
-            reward_address: "reward_addr".to_string(),
-            stake_weight: 1,
-        };
-        let difficulty = Arc::new(RwLock::new(2));
-        mine_block(&mut block, difficulty.clone()).await.unwrap();
-        assert!(
-            block.hash.starts_with(&[0, 0]),
-            "Hash should meet difficulty"
-        );
-        info!("Mining test passed with nonce: {}", block.nonce);
-    }
-
-    #[tokio::test]
-    async fn test_valid_transaction() {
-        let mut rng = thread_rng();
-        let keypair: SigningKey = SigningKey::generate(&mut rng);
-        let public_key = keypair.verifying_key();
-        let sender = hex::encode(public_key.as_bytes());
-
-        let mut tx = Transaction {
-            sender: sender.clone(),
-            receiver: "a".repeat(64),
-            amount: 100,
-            signature: vec![],
-            #[cfg(feature = "zk")]
-            zk_proof: None,
-            multi_signatures: vec![],
-        };
-
-        let message = format!("{}{}{}", tx.sender, tx.receiver, tx.amount);
-        tx.signature = keypair.sign(message.as_bytes()).to_bytes().to_vec();
-        assert!(
-            tx.verify_signature(&public_key),
-            "Signature verification failed"
-        );
-        info!("Transaction signature test passed");
-    }
-
-    #[tokio::test]
-    async fn test_blockchain_add_block() {
-        let blockchain = Blockchain::new(1, 60).await;
-        let mut rng = thread_rng();
-        let keypair: SigningKey = SigningKey::generate(&mut rng);
-        let public_key = keypair.verifying_key();
-        let sender = hex::encode(public_key.as_bytes());
-
-        let mut tx = Transaction {
-            sender: sender.clone(),
-            receiver: "b".repeat(64),
-            amount: 50,
-            signature: vec![],
-            #[cfg(feature = "zk")]
-            zk_proof: None,
-            multi_signatures: vec![],
-        };
-
-        let message = format!("{}{}{}", tx.sender, tx.receiver, tx.amount);
-        tx.signature = keypair.sign(message.as_bytes()).to_bytes().to_vec();
-        assert!(blockchain
-            .add_block(vec![tx], "reward_addr".to_string())
-            .await
-            .is_ok());
-        info!("Block addition test passed");
-    }
+        thread::sleep(Duration::from_secs(5));
+    });
 }

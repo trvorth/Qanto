@@ -1,8 +1,8 @@
 [package]
 name = "my-blockchain"
-version = "0.2.0"
+version = "0.1.0"
 edition = "2021"
-authors = ["Trevor <thieuquangphu@icloud.com>"]
+authors = ["Trevor <trvorth@gmail.com>"]
 description = "An advanced blockchain implementation with innovative DAG-based consensus and cryptographic enhancements for Qanto"
 license = "MIT"
 readme = "README.md"
@@ -13,6 +13,8 @@ exclude = ["target/", "tests/data/"]
 
 [dependencies]
 # Core blockchain and networking
+num-bigint = "0.4"
+serde-big-array = "0.5"
 tokio = { version = "1.45.0", features = ["full", "time", "macros"] }
 log = "0.4.22"
 env_logger = "0.11.8"
@@ -21,7 +23,7 @@ sha3 = "0.10.8"
 ed25519-dalek = { version = "2.1.1", features = ["rand_core", "batch"] }
 nalgebra = "0.33.0"
 regex = "1.10.6"
-rand = "0.8.5"
+rand = { version = "0.8.5", features = ["small_rng"] }
 rayon = "1.10.0"
 dashmap = "6.0.1"
 lru = "0.12.5"

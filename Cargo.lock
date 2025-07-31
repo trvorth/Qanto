@@ -1497,7 +1497,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d162beedaa69905488a8da94f5ac3edb4dd4788b732fadb7bd120b2625c1976"
 dependencies = [
  "data-encoding",
- "syn 1.0.109",
+ "syn 2.0.104",
 ]
 
 [[package]]
@@ -4167,7 +4167,7 @@ dependencies = [
 
 [[package]]
 name = "my-blockchain"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -4186,6 +4186,7 @@ dependencies = [
  "log",
  "lru",
  "nalgebra",
+ "num-bigint",
  "ocl",
  "prometheus",
  "proptest",
@@ -4194,6 +4195,7 @@ dependencies = [
  "regex",
  "rocksdb",
  "serde",
+ "serde-big-array",
  "serde_json",
  "sha3",
  "tokio",
@@ -6155,6 +6157,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5f0e2c6ed6606019b4e29e69dbaba95b11854410e5347d525002456dbbb786b6"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-big-array"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11fc7cc2c76d73e0f27ee52abbd64eec84d46f370c88371120433196934e4b7f"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
