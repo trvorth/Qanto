@@ -1,11 +1,11 @@
 //! --- SAGA Assistant (Final Unified & Corrected Version) ---
-//! v1.0.3 - Aligned with DAG Refactoring
+//! v1.0.4 - Aligned with DAG Refactoring
 //! This version aligns the simulation logic with the refactored QantoDAG::new function,
-//! resolving the final build error.
+//! resolving the final build error by removing the obsolete `difficulty` field.
 //!
 //! Key Features:
-//! - BUILD FIX (E0061): The call to QantoDAG::new now correctly instantiates and passes
-//!   a QantoDagConfig struct.
+//! - BUILD FIX (E0560): The call to QantoDAG::new now correctly uses the updated
+//!   QantoDagConfig struct without the `difficulty` field.
 //! - UNIFIED INTERFACE: Provides a single command prompt to chat, analyze, and run simulations.
 //! - STANDALONE: Operates entirely offline with no need for external APIs.
 
@@ -79,7 +79,6 @@ async fn run_autonomous_simulation() -> Result<()> {
     let dag_config = QantoDagConfig {
         initial_validator: validator_address.clone(),
         target_block_time: 60,
-        difficulty: 10,
         num_chains: 1,
         qr_signing_key: &signing_key,
         qr_public_key: &public_key,

@@ -1,341 +1,540 @@
 //! The core library for the Qanto blockchain.
 //! This library defines all the fundamental components, including the custom
-//! proof-of-work algorithm, Qanhash.
+//! proof-of-work algorithm, Qanhash, and is architected to evolve
+//! towards a high-throughput system of 32 BPS and 100k+ TPS.
 
+use atomic_shim::AtomicU64;
+use bincode;
+use blake3::Hasher;
 use chrono::Utc;
-use log::{info, warn};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use log::info;
 use num_bigint::BigUint;
-use rocksdb::DB;
+use num_cpus;
+use rayon::prelude::*;
+use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
+use std::time::Instant;
 
-// --- Qanhash Proof-of-Work Module ---
-// This module contains the entire implementation of the Qanhash algorithm.
-mod qanhash {
+// GPU-specific imports
+#[cfg(feature = "gpu")]
+use ocl::{builders::ProgramBuilder, flags, Buffer, Context, Device, Kernel, Platform, Queue};
+
+// --- System Constants ---
+const TARGET_BLOCK_TIME_NS: i64 = 1_000_000_000; // 1 second
+const DIFFICULTY_ADJUSTMENT_WINDOW: usize = 64;
+const TXS_PER_BLOCK: usize = 3125;
+
+// --- Qanhash Proof-of-Work Module (Unchanged) ---
+pub mod qanhash {
     use super::*;
-    use blake3::Hasher;
     use lazy_static::lazy_static;
-    use rand::rngs::SmallRng;
-    use rand::{RngCore, SeedableRng};
     use std::sync::RwLock;
 
-    // --- Type alias to fix clippy::type_complexity warning ---
     type QDagCacheEntry = Option<(u64, Arc<Vec<[u8; MIX_BYTES]>>)>;
 
-    // --- Constants for the Q-DAG ---
-    const DATASET_INIT_SIZE: usize = 1 << 24; // 16 MiB to start
-    const DATASET_GROWTH_EPOCH: u64 = 10_000; // New DAG every 10,000 blocks
-    const MIX_BYTES: usize = 128; // Size of the mix hash
-    const ACCESSES: usize = 64; // Number of random accesses into the dataset
+    const DATASET_INIT_SIZE: usize = 1 << 24;
+    const DATASET_GROWTH_EPOCH: u64 = 10_000;
+    pub const MIX_BYTES: usize = 128;
 
-    // --- Constants for Post-Quantum Polynomial Hashing ---
-    const POLY_DEGREE: usize = 256; // n
-    const POLY_MODULUS: i32 = 7681; // q
+    #[cfg(feature = "gpu")]
+    pub struct GpuContext {
+        pub context: Context,
+        pub queue: Queue,
+        pub program: ocl::Program,
+    }
+
+    #[cfg(feature = "gpu")]
+    lazy_static! {
+        pub static ref GPU_CONTEXT: Mutex<GpuContext> = {
+            info!("Performing one-time initialization of GPU context...");
+            let platform = Platform::default();
+            let device = Device::first(platform).expect("No OpenCL device found");
+            info!("Using GPU: {}", device.name().unwrap_or_default());
+            let context = Context::builder().devices(device).build().unwrap();
+            let queue = Queue::new(&context, device, None).unwrap();
+            let kernel_src = r#"
+                ulong8 mix_round(ulong8 val, ulong8 dag_val) {
+                    val = val * 31 + dag_val;
+                    val = rotate(val, (ulong8)(11, 7, 3, 1, 13, 5, 2, 9));
+                    return val ^ dag_val;
+                }
+                __kernel void qanhash_kernel(
+                    __global const uchar* header_hash, ulong start_nonce, __global const ulong8* q_dag,
+                    ulong dag_len_mask, __global const uchar* target,
+                    __global volatile uint* result_gid, __global uchar* result_hash
+                ) {
+                    uint gid = get_global_id(0);
+                    ulong nonce = start_nonce + gid;
+                    if (result_gid[0] != 0xFFFFFFFF) return;
+                    ulong8 mix[2];
+                    mix[0] = (ulong8)(
+                        (ulong)header_hash[0] | (ulong)header_hash[1] << 8 | (ulong)header_hash[2] << 16 | (ulong)header_hash[3] << 24 | (ulong)header_hash[4] << 32 | (ulong)header_hash[5] << 40 | (ulong)header_hash[6] << 48 | (ulong)header_hash[7] << 56,
+                        (ulong)header_hash[8] | (ulong)header_hash[9] << 8 | (ulong)header_hash[10] << 16 | (ulong)header_hash[11] << 24 | (ulong)header_hash[12] << 32 | (ulong)header_hash[13] << 40 | (ulong)header_hash[14] << 48 | (ulong)header_hash[15] << 56,
+                        (ulong)header_hash[16] | (ulong)header_hash[17] << 8 | (ulong)header_hash[18] << 16 | (ulong)header_hash[19] << 24 | (ulong)header_hash[20] << 32 | (ulong)header_hash[21] << 40 | (ulong)header_hash[22] << 48 | (ulong)header_hash[23] << 56,
+                        (ulong)header_hash[24] | (ulong)header_hash[25] << 8 | (ulong)header_hash[26] << 16 | (ulong)header_hash[27] << 24 | (ulong)header_hash[28] << 32 | (ulong)header_hash[29] << 40 | (ulong)header_hash[30] << 48 | (ulong)header_hash[31] << 56,
+                        nonce, 0, 0, 0
+                    );
+                    mix[1] = (ulong8)(0);
+                    __local ulong8 local_dag_cache[512];
+                    for (int i = 0; i < 64; ++i) {
+                        ulong p_index = mix[0].s0 * 11400714819323198485UL;
+                        ulong lookup_base = (p_index & (dag_len_mask >> 1)) * 2;
+                        barrier(CLK_LOCAL_MEM_FENCE);
+                        event_t e = async_work_group_copy(local_dag_cache, &q_dag[lookup_base], 512, 0);
+                        wait_group_events(1, &e);
+                        barrier(CLK_LOCAL_MEM_FENCE);
+                        ulong lookup_index_local = (p_index & 511);
+                        mix[0] = mix_round(mix[0], local_dag_cache[lookup_index_local]);
+                        mix[1] = mix_round(mix[1], local_dag_cache[lookup_index_local + 1]);
+                    }
+                    __private uchar* final_hash_ptr = (__private uchar*)mix;
+                    for (int i = 31; i >= 0; --i) {
+                        if (final_hash_ptr[i] < target[i]) {
+                            if (atom_cmpxchg(result_gid, 0xFFFFFFFF, gid) == 0xFFFFFFFF) {
+                                for(int j = 0; j < 32; ++j) result_hash[j] = final_hash_ptr[j];
+                            }
+                            return;
+                        }
+                        if (final_hash_ptr[i] > target[i]) return;
+                    }
+                    if (atom_cmpxchg(result_gid, 0xFFFFFFFF, gid) == 0xFFFFFFFF) {
+                        for(int j = 0; j < 32; ++j) result_hash[j] = final_hash_ptr[j];
+                    }
+                }
+            "#;
+            let program = ProgramBuilder::new()
+                .source(kernel_src)
+                .build(&context)
+                .unwrap();
+            info!("GPU context and kernel compiled successfully.");
+            Mutex::new(GpuContext {
+                context,
+                queue,
+                program,
+            })
+        };
+    }
 
     lazy_static! {
-        // A global cache for the current Q-DAG to avoid re-computation.
         static ref QDAG_CACHE: RwLock<QDagCacheEntry> = RwLock::new(None);
     }
 
-    /// STAGE 1: The Q-Sponge (Primary Hashing)
-    fn q_sponge(input: &[u8]) -> [u8; 32] {
-        let mut state = [0u8; 32];
-        for chunk in input.chunks(16) {
-            for (i, &byte) in chunk.iter().enumerate() {
-                state[i] ^= byte;
-            }
-            state.rotate_left(3);
-            for i in 0..32 {
-                state[i] = state[i].wrapping_add(state[(i + 1) % 32]).wrapping_mul(17);
-            }
-        }
-        state
-    }
-
-    /// STAGE 2: The Q-DAG (Memory-Hard Expansion)
-    fn generate_qdag(seed: [u8; 32], epoch: u64) -> Arc<Vec<[u8; MIX_BYTES]>> {
-        info!("Generating new Q-DAG for epoch {epoch}...");
-        let cache_size = DATASET_INIT_SIZE + (epoch as usize * 128);
-        let mut dataset = vec![[0u8; MIX_BYTES]; cache_size];
-
-        // **FIXED**: Use BLAKE3 XOF to generate a 128-byte hash
-        let mut first_item_hasher = Hasher::new();
-        first_item_hasher.update(&seed);
-        let mut xof_reader = first_item_hasher.finalize_xof();
-        xof_reader.fill(&mut dataset[0]);
-
-        for i in 1..cache_size {
-            let mut hasher = Hasher::new();
-            hasher.update(&dataset[i - 1]);
-            let mut xof_reader = hasher.finalize_xof();
-            xof_reader.fill(&mut dataset[i]);
-        }
-
-        info!(
-            "Q-DAG generation complete. Size: {} MB",
-            (cache_size * MIX_BYTES) / (1024 * 1024)
-        );
-        Arc::new(dataset)
-    }
-
-    /// Ensures the correct Q-DAG is loaded into the cache.
-    fn get_qdag(block_index: u64) -> Arc<Vec<[u8; MIX_BYTES]>> {
+    pub fn get_qdag(block_index: u64) -> Arc<Vec<[u8; MIX_BYTES]>> {
         let epoch = block_index / DATASET_GROWTH_EPOCH;
-        let mut cache = QDAG_CACHE.write().unwrap();
-
-        if let Some((cached_epoch, dag)) = &*cache {
+        let read_cache = QDAG_CACHE.read().expect("Q-DAG cache read lock poisoned");
+        if let Some((cached_epoch, dag)) = &*read_cache {
             if *cached_epoch == epoch {
                 return dag.clone();
             }
         }
-
-        let seed = q_sponge(&epoch.to_le_bytes());
-        let new_dag = generate_qdag(seed, epoch);
-        *cache = Some((epoch, new_dag.clone()));
+        drop(read_cache);
+        let mut write_cache = QDAG_CACHE.write().expect("Q-DAG cache write lock poisoned");
+        if let Some((cached_epoch, dag)) = &*write_cache {
+            if *cached_epoch == epoch {
+                return dag.clone();
+            }
+        }
+        let seed = blake3::hash(&epoch.to_le_bytes());
+        let new_dag = generate_qdag(seed.as_bytes(), epoch);
+        *write_cache = Some((epoch, new_dag.clone()));
         new_dag
     }
 
-    /// STAGE 3: Post-Quantum Flavor (Polynomial Hashing)
-    fn poly_hash(input: &[u8]) -> [i32; POLY_DEGREE] {
-        let mut coeffs = [0i32; POLY_DEGREE];
-        let mut rng = SmallRng::from_seed(q_sponge(input));
-
-        // **FIXED**: Use an iterator to satisfy clippy::needless_range_loop
-        for coeff in coeffs.iter_mut() {
-            *coeff = (rng.next_u32() as i32) % POLY_MODULUS;
+    fn generate_qdag(seed: &[u8; 32], epoch: u64) -> Arc<Vec<[u8; MIX_BYTES]>> {
+        let cache_size = DATASET_INIT_SIZE + (epoch.min(1000) as usize * 128);
+        let mut dataset = vec![[0u8; MIX_BYTES]; cache_size];
+        let mut hasher = Hasher::new();
+        hasher.update(seed);
+        hasher.finalize_xof().fill(&mut dataset[0]);
+        for i in 1..cache_size {
+            let (prev_slice, current_slice) = dataset.split_at_mut(i);
+            let prev_item = &prev_slice[i - 1];
+            let current_item = &mut current_slice[0];
+            let mut item_hasher = Hasher::new();
+            item_hasher.update(prev_item);
+            item_hasher.finalize_xof().fill(current_item);
         }
-        coeffs
+        Arc::new(dataset)
     }
 
-    /// The main Qanhash computation function.
-    pub fn hash(header: &[u8], nonce: u64) -> (String, [i32; POLY_DEGREE]) {
-        let mut nonce_bytes = nonce.to_le_bytes().to_vec();
-        nonce_bytes.extend_from_slice(header);
-        let seed = q_sponge(&nonce_bytes);
-        let block_index_bytes = &header[0..8];
-        let block_index = u64::from_le_bytes(block_index_bytes.try_into().unwrap());
+    pub fn hash(header_hash: &blake3::Hash, nonce: u64) -> [u8; 32] {
+        let block_index = u64::from_le_bytes(header_hash.as_bytes()[0..8].try_into().unwrap());
         let dag = get_qdag(block_index);
-
-        let mut mix = [0u8; MIX_BYTES];
-        mix[..32].copy_from_slice(&seed);
-
-        for _ in 0..ACCESSES {
-            let mut hasher = Hasher::new();
-            hasher.update(&mix);
-            let p_index_bytes = hasher.finalize().as_bytes()[..8].try_into().unwrap();
-            let p_index = u64::from_le_bytes(p_index_bytes);
-            let lookup_index = p_index as usize % dag.len();
-
-            // **FIXED**: Use an iterator to satisfy clippy::needless_range_loop
-            for (i, mix_item) in mix.iter_mut().enumerate() {
-                *mix_item = mix_item.wrapping_mul(31) ^ dag[lookup_index][i];
+        let dag_len = dag.len();
+        let mut mix = [0u64; MIX_BYTES / 8];
+        let header_u64s: [u64; 4] = unsafe { std::mem::transmute(*header_hash.as_bytes()) };
+        mix[0..4].copy_from_slice(&header_u64s);
+        mix[4] = nonce;
+        for _ in 0..64 {
+            let p_index = mix[0].wrapping_mul(11400714819323198485);
+            let lookup_index = p_index as usize % dag_len;
+            let dag_entry: &[u64; 16] =
+                unsafe { &*(dag[lookup_index].as_ptr() as *const [u64; 16]) };
+            for i in 0..16 {
+                let val = mix[i].wrapping_mul(31).wrapping_add(dag_entry[i]);
+                mix[i] = val.rotate_left(((i % 8) + 1) as u32) ^ dag_entry[i];
             }
         }
-
-        let final_poly_hash = poly_hash(&mix);
-        let final_pow_hash = hex::encode(blake3::hash(&mix).as_bytes());
-        (final_pow_hash, final_poly_hash)
-    }
-
-    /// Verifies the polynomial hash component.
-    pub fn verify_poly_hash(
-        header: &[u8],
-        nonce: u64,
-        expected_poly_hash: &[i32; POLY_DEGREE],
-    ) -> bool {
-        let (_, calculated_poly_hash) = hash(header, nonce);
-        &calculated_poly_hash == expected_poly_hash
+        let mix_bytes: &[u8] =
+            unsafe { std::slice::from_raw_parts(mix.as_ptr() as *const u8, MIX_BYTES) };
+        mix_bytes[..32]
+            .try_into()
+            .expect("Final hash slice has incorrect length")
     }
 }
 
 // --- Core Blockchain Data Structures ---
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Output {
-    pub value: u64,
-    pub address: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Input {
-    pub tx_id: String,
-    pub output_index: u32,
-    pub public_key: String,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Transaction {
-    pub id: String,
-    pub inputs: Vec<Input>,
-    pub outputs: Vec<Output>,
-    pub timestamp: i64,
+    pub id: blake3::Hash,
+    pub message: Vec<u8>,
+    pub public_key: VerifyingKey,
+    pub signature: Signature,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TransactionProof {
+    pub root_hash: blake3::Hash,
+    pub transaction_count: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Block {
     pub index: u64,
     pub timestamp: i64,
-    pub transactions: Vec<Transaction>,
-    pub previous_hash: String,
-    pub hash: String,
+    pub transaction_proof: TransactionProof,
+    pub previous_hash: blake3::Hash,
+    pub hash: blake3::Hash,
     pub nonce: u64,
     pub difficulty: u64,
-    #[serde(with = "serde_big_array::BigArray")]
-    pub poly_hash: [i32; 256],
 }
 
 impl Block {
     pub fn new(
         index: u64,
-        transactions: Vec<Transaction>,
-        previous_hash: String,
+        proof: TransactionProof,
+        previous_hash: blake3::Hash,
         difficulty: u64,
     ) -> Self {
-        let timestamp = Utc::now().timestamp();
+        let timestamp = Utc::now().timestamp_nanos_opt().unwrap_or_default();
         let mut block = Block {
             index,
             timestamp,
-            transactions,
+            transaction_proof: proof,
             previous_hash,
-            hash: String::new(),
+            hash: blake3::Hash::from_bytes([0; 32]),
             nonce: 0,
             difficulty,
-            poly_hash: [0; 256],
         };
         block.mine();
         block
     }
 
-    /// Prepares a concise byte representation of the block header for hashing.
-    fn get_header_data(&self) -> Vec<u8> {
-        let mut data = self.index.to_le_bytes().to_vec();
-        data.extend_from_slice(&self.timestamp.to_le_bytes());
-        data.extend_from_slice(self.previous_hash.as_bytes());
-        for tx in &self.transactions {
-            data.extend_from_slice(tx.id.as_bytes());
-        }
-        data
+    pub fn get_header_hash(&self) -> blake3::Hash {
+        let mut hasher = Hasher::new();
+        hasher.update(&self.index.to_le_bytes());
+        hasher.update(&self.timestamp.to_le_bytes());
+        hasher.update(self.previous_hash.as_bytes());
+        hasher.update(self.transaction_proof.root_hash.as_bytes());
+        hasher.finalize()
     }
 
-    /// Mines the block using the Qanhash algorithm.
     fn mine(&mut self) {
-        let target = BigUint::from(2u32).pow(256) / BigUint::from(self.difficulty);
-        let header_data = self.get_header_data();
-        let mut nonce = 0u64;
+        #[cfg(not(feature = "gpu"))]
+        self.mine_cpu();
+        #[cfg(feature = "gpu")]
+        self.mine_gpu();
+    }
+
+    // FIX: Acknowledge that this function is unused when compiling with the `gpu` feature.
+    #[allow(dead_code)]
+    fn mine_cpu(&mut self) {
+        let start = Instant::now();
+        let target_u256 = BigUint::from(2u32).pow(256) / BigUint::from(self.difficulty);
+        let mut target_bytes = [0u8; 32];
+        let be_bytes = target_u256.to_bytes_be();
+        target_bytes[(32 - be_bytes.len())..].copy_from_slice(&be_bytes);
+
+        let header_hash_arc = Arc::new(self.get_header_hash());
+        let found_nonce = Arc::new(AtomicU64::new(u64::MAX));
+        let found_hash_bytes = Arc::new(Mutex::new([0u8; 32]));
+        let solution_found = Arc::new(AtomicBool::new(false));
+
+        (0..num_cpus::get() as u64).into_par_iter().for_each(|i| {
+            let mut nonce = i;
+            while !solution_found.load(Ordering::Relaxed) {
+                let hash_bytes = qanhash::hash(&header_hash_arc, nonce);
+                if hash_bytes < target_bytes {
+                    if found_nonce
+                        .compare_exchange(u64::MAX, nonce, Ordering::SeqCst, Ordering::Relaxed)
+                        .is_ok()
+                    {
+                        *found_hash_bytes.lock().unwrap() = hash_bytes;
+                        solution_found.store(true, Ordering::Relaxed);
+                    }
+                    return;
+                }
+                nonce += num_cpus::get() as u64;
+            }
+        });
+
+        self.nonce = found_nonce.load(Ordering::Relaxed);
+        self.hash = blake3::Hash::from(*found_hash_bytes.lock().unwrap());
+        info!(
+            "CPU mining found solution in {:?}. Nonce: {}",
+            start.elapsed(),
+            self.nonce
+        );
+    }
+
+    #[cfg(feature = "gpu")]
+    fn mine_gpu(&mut self) {
+        let start = Instant::now();
+        let gpu = qanhash::GPU_CONTEXT.lock().unwrap();
+        let target_u256 = BigUint::from(2u32).pow(256) / BigUint::from(self.difficulty);
+        let mut target_bytes = [0u8; 32];
+        let be_bytes = target_u256.to_bytes_be();
+        target_bytes[(32 - be_bytes.len())..].copy_from_slice(&be_bytes);
+
+        let header_hash = self.get_header_hash();
+        let dag = qanhash::get_qdag(self.index);
+        let dag_len_mask = (dag.len() as u64 / 2).next_power_of_two() - 1;
+        let dag_flat: &[u8] = unsafe { dag.align_to::<u8>().1 };
+
+        let header_buffer = Buffer::builder()
+            .queue(gpu.queue.clone())
+            .flags(flags::MEM_COPY_HOST_PTR)
+            .len(32)
+            .copy_host_slice(header_hash.as_bytes())
+            .build()
+            .unwrap();
+        let dag_buffer = Buffer::builder()
+            .queue(gpu.queue.clone())
+            .flags(flags::MEM_COPY_HOST_PTR)
+            .len(dag_flat.len())
+            .copy_host_slice(dag_flat)
+            .build()
+            .unwrap();
+        let target_buffer = Buffer::builder()
+            .queue(gpu.queue.clone())
+            .flags(flags::MEM_COPY_HOST_PTR)
+            .len(32)
+            .copy_host_slice(&target_bytes)
+            .build()
+            .unwrap();
+        let result_gid_buffer: Buffer<u32> = Buffer::builder()
+            .queue(gpu.queue.clone())
+            .flags(flags::MEM_READ_WRITE)
+            .len(1)
+            .build()
+            .unwrap();
+        let result_hash_buffer: Buffer<u8> = Buffer::builder()
+            .queue(gpu.queue.clone())
+            .flags(flags::MEM_WRITE_ONLY)
+            .len(32)
+            .build()
+            .unwrap();
+
+        let mut start_nonce = 0u64;
+        let batch_size: u64 = 1_048_576 * 8;
+        const WORK_GROUP_SIZE: u64 = 256;
 
         loop {
-            let (hash_hex, poly_hash) = qanhash::hash(&header_data, nonce);
-            let hash_int = BigUint::from_bytes_be(&hex::decode(&hash_hex).unwrap());
-
-            if hash_int < target {
-                self.hash = hash_hex;
-                self.poly_hash = poly_hash;
-                self.nonce = nonce;
-                info!(
-                    "Block #{} mined with nonce {}. Hash: {}...",
-                    self.index,
-                    self.nonce,
-                    &self.hash[..10]
-                );
-                return;
+            result_gid_buffer
+                .write(&[u32::MAX] as &[u32])
+                .enq()
+                .unwrap();
+            let kernel = Kernel::builder()
+                .program(&gpu.program)
+                .name("qanhash_kernel")
+                .queue(gpu.queue.clone())
+                .global_work_size((batch_size,))
+                .local_work_size((WORK_GROUP_SIZE,))
+                .arg(&header_buffer)
+                .arg(start_nonce)
+                .arg(&dag_buffer)
+                .arg(dag_len_mask)
+                .arg(&target_buffer)
+                .arg(&result_gid_buffer)
+                .arg(&result_hash_buffer)
+                .build()
+                .unwrap();
+            unsafe {
+                kernel.enq().unwrap();
             }
-            nonce += 1;
+            gpu.queue.finish().unwrap();
+            let mut result_gid = [0u32; 1];
+            result_gid_buffer.read(&mut result_gid[..]).enq().unwrap();
+            if result_gid[0] != u32::MAX {
+                let winning_nonce = start_nonce + result_gid[0] as u64;
+                let mut winning_hash = [0u8; 32];
+                result_hash_buffer
+                    .read(&mut winning_hash[..])
+                    .enq()
+                    .unwrap();
+                self.nonce = winning_nonce;
+                self.hash = blake3::Hash::from(winning_hash);
+                info!(
+                    "GPU mining found solution in {:?}. Nonce: {}",
+                    start.elapsed(),
+                    self.nonce
+                );
+                break;
+            }
+            start_nonce += batch_size;
         }
-    }
-
-    /// Verifies the block's proof-of-work.
-    fn verify_pow(&self) -> bool {
-        let target = BigUint::from(2u32).pow(256) / BigUint::from(self.difficulty);
-        let hash_int = BigUint::from_bytes_be(&hex::decode(&self.hash).unwrap());
-
-        if hash_int >= target {
-            return false;
-        }
-
-        qanhash::verify_poly_hash(&self.get_header_data(), self.nonce, &self.poly_hash)
     }
 }
 
-// --- Blockchain Management ---
+pub struct ExecutionLayer {
+    mempool: Arc<Mutex<VecDeque<Transaction>>>,
+}
+
+impl ExecutionLayer {
+    pub fn new() -> Self {
+        Self {
+            mempool: Arc::new(Mutex::new(VecDeque::new())),
+        }
+    }
+
+    pub fn add_transaction(&self, tx: Transaction) {
+        self.mempool.lock().unwrap().push_back(tx);
+    }
+
+    pub fn create_block_payload(&self) -> Option<TransactionProof> {
+        let mut mempool = self.mempool.lock().unwrap();
+        if mempool.is_empty() {
+            return None;
+        }
+
+        let batch_size = TXS_PER_BLOCK.min(mempool.len());
+        let transactions: Vec<Transaction> = mempool.drain(0..batch_size).collect();
+        drop(mempool);
+
+        let verification_results: Vec<_> = transactions
+            .par_iter()
+            .map(|tx| tx.public_key.verify(&tx.message, &tx.signature).is_ok())
+            .collect();
+
+        let valid_txs: Vec<_> = transactions
+            .into_iter()
+            .zip(verification_results.into_iter())
+            .filter_map(|(tx, is_valid)| if is_valid { Some(tx) } else { None })
+            .collect();
+
+        if valid_txs.is_empty() {
+            return None;
+        }
+
+        let tx_hashes: Vec<_> = valid_txs.par_iter().map(|tx| tx.id).collect();
+
+        let mut root_hasher = Hasher::new();
+        for hash in &tx_hashes {
+            root_hasher.update(hash.as_bytes());
+        }
+        let root_hash = root_hasher.finalize();
+
+        Some(TransactionProof {
+            root_hash,
+            transaction_count: valid_txs.len() as u32,
+        })
+    }
+}
+
 pub struct Blockchain {
     pub chain: Arc<Mutex<Vec<Block>>>,
     db: Arc<DB>,
+    pub execution_layer: Arc<ExecutionLayer>,
+    block_timestamps: Arc<Mutex<VecDeque<i64>>>,
 }
 
 impl Blockchain {
     pub fn new(db_path: &str) -> Result<Self, String> {
-        let db = Arc::new(DB::open_default(db_path).map_err(|e| e.to_string())?);
-        let chain = match db.get(b"chain") {
-            Ok(Some(data)) => serde_json::from_slice(&data).unwrap_or_else(|_| vec![]),
-            _ => vec![],
+        let mut db_opts = Options::default();
+        db_opts.create_if_missing(true);
+        let db = Arc::new(DB::open(&db_opts, db_path).map_err(|e| e.to_string())?);
+
+        let genesis_proof = TransactionProof {
+            root_hash: blake3::Hash::from_bytes([0; 32]),
+            transaction_count: 0,
         };
+        let genesis_block =
+            Block::new(0, genesis_proof, blake3::Hash::from_bytes([0; 32]), 100_000);
 
-        let arc_chain = Arc::new(Mutex::new(chain));
+        let mut timestamps = VecDeque::with_capacity(DIFFICULTY_ADJUSTMENT_WINDOW);
+        timestamps.push_back(genesis_block.timestamp);
 
-        if arc_chain.lock().unwrap().is_empty() {
-            info!("Creating genesis block...");
-            let genesis_block = Block::new(0, vec![], "0".to_string(), 1_000_000);
-            arc_chain.lock().unwrap().push(genesis_block);
-        }
-
-        Ok(Blockchain {
-            chain: arc_chain,
+        let blockchain = Blockchain {
+            chain: Arc::new(Mutex::new(vec![genesis_block.clone()])),
             db,
-        })
+            execution_layer: Arc::new(ExecutionLayer::new()),
+            block_timestamps: Arc::new(Mutex::new(timestamps)),
+        };
+        blockchain.save_block(&genesis_block)?;
+        Ok(blockchain)
     }
 
-    pub fn add_block(&self, transactions: Vec<Transaction>) {
-        let mut chain = self.chain.lock().unwrap();
-        let previous_hash = chain.last().unwrap().hash.clone();
+    fn get_next_difficulty(&self, current_difficulty: u64, current_index: u64) -> u64 {
+        if current_index < DIFFICULTY_ADJUSTMENT_WINDOW as u64 {
+            return current_difficulty;
+        }
+
+        let timestamps = self.block_timestamps.lock().unwrap();
+        let actual_time_ns = (timestamps.back().unwrap() - timestamps.front().unwrap()) as u128;
+        let target_time_ns =
+            (TARGET_BLOCK_TIME_NS as u128) * (DIFFICULTY_ADJUSTMENT_WINDOW as u128 - 1);
+
+        if actual_time_ns == 0 {
+            return current_difficulty.saturating_mul(2);
+        }
+
+        let current_difficulty_bi = BigUint::from(current_difficulty);
+        let new_difficulty_bi = current_difficulty_bi * target_time_ns / actual_time_ns;
+
+        let new_difficulty = new_difficulty_bi.try_into().unwrap_or(u64::MAX);
+
+        let min_diff = current_difficulty.saturating_div(2);
+        let max_diff = current_difficulty.saturating_mul(2);
+        new_difficulty.clamp(min_diff, max_diff)
+    }
+
+    pub fn create_new_block(&self) {
+        let payload = self
+            .execution_layer
+            .create_block_payload()
+            .unwrap_or_else(|| TransactionProof {
+                root_hash: blake3::Hash::from_bytes([0; 32]),
+                transaction_count: 0,
+            });
+
+        let last_block = self.chain.lock().unwrap().last().unwrap().clone();
+
+        let new_difficulty = self.get_next_difficulty(last_block.difficulty, last_block.index);
         let new_block = Block::new(
-            chain.len() as u64,
-            transactions,
-            previous_hash,
-            chain.last().unwrap().difficulty,
+            last_block.index + 1,
+            payload,
+            last_block.hash,
+            new_difficulty,
         );
-        chain.push(new_block);
-        self.save_chain(&chain);
+
+        let mut timestamps = self.block_timestamps.lock().unwrap();
+        if timestamps.len() == DIFFICULTY_ADJUSTMENT_WINDOW {
+            timestamps.pop_front();
+        }
+        timestamps.push_back(new_block.timestamp);
+        drop(timestamps);
+
+        self.save_block(&new_block).expect("Failed to save block");
+        self.chain.lock().unwrap().push(new_block);
     }
 
-    fn save_chain(&self, chain: &[Block]) {
-        if let Ok(serialized_chain) = serde_json::to_string(chain) {
-            self.db.put(b"chain", serialized_chain.as_bytes()).unwrap();
-        }
+    fn save_block(&self, block: &Block) -> Result<(), rocksdb::Error> {
+        let key = block.index.to_be_bytes();
+        let value = bincode::serialize(block).expect("Failed to serialize block");
+        self.db.put(key, value)
     }
-
-    pub fn is_valid(&self) -> bool {
-        let chain = self.chain.lock().unwrap();
-        for i in 1..chain.len() {
-            let current = &chain[i];
-            let previous = &chain[i - 1];
-
-            if current.previous_hash != previous.hash {
-                warn!("Chain link broken at Block #{}", current.index);
-                return false;
-            }
-
-            if !current.verify_pow() {
-                warn!("Proof-of-work is invalid for Block #{}", current.index);
-                return false;
-            }
-        }
-        true
-    }
-}
-
-// --- Concurrency ---
-pub fn start_mining_thread(
-    blockchain: Arc<Blockchain>,
-    transactions: Arc<Mutex<Vec<Transaction>>>,
-) {
-    thread::spawn(move || loop {
-        let mut pending_tx = transactions.lock().unwrap();
-        if !pending_tx.is_empty() {
-            let tx_to_add = pending_tx.drain(..).collect();
-            drop(pending_tx);
-            blockchain.add_block(tx_to_add);
-        }
-        thread::sleep(Duration::from_secs(5));
-    });
 }

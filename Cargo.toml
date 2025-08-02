@@ -1,6 +1,6 @@
 [package]
 name = "qanto"
-version = "0.2.1"
+version = "0.1.0"
 edition = "2021"
 authors = ["Trevor <trvorth@gmail.com>"]
 description = "A decentralized blockchain network with advanced P2P and cryptographic features"
@@ -124,6 +124,7 @@ ocl = { version = "0.19.7", optional = true }
 num_cpus = "1.16.0"
 blake3 = "1.5.0"
 futures-util = { version = "0.3.31", features = ["sink"] }
+primitive-types = "0.13.1"
 
 [build-dependencies]
 tonic-build = { version = "0.11.0", features = ["prost"] }

@@ -1,9 +1,11 @@
+// src/config.rs
+
 //! --- Qanto Node Configuration ---
-//! v1.5.0 - Testnet Ready
+//! v2.0.0 - Production & Standalone Ready
 //! This module defines the configuration structure for a Qanto node.
 //! It uses serde for deserialization from a TOML file and includes
 //! robust validation logic to ensure that all configured parameters
-//! are sane and within operational limits.
+//! are sane and within operational limits for a standalone system.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -15,14 +17,14 @@ use tracing::instrument;
 
 // --- Constants for Validation ---
 // EVOLVED: Time is now in MILLISECONDS to support high BPS.
-const MIN_TARGET_BLOCK_TIME: u64 = 25; // Minimum 25ms block time (~40 BPS)
-const MAX_TARGET_BLOCK_TIME: u64 = 60000; // Maximum 10 seconds (in ms)
-const MAX_PEERS: usize = 200;
+const MIN_TARGET_BLOCK_TIME: u64 = 30; // Minimum 30ms block time (~33 BPS)
+const MAX_TARGET_BLOCK_TIME: u64 = 15000; // Maximum 15 seconds
+const MAX_PEERS: usize = 128;
 const MIN_DIFFICULTY: u64 = 1;
-const MAX_DIFFICULTY: u64 = 1_000_000_000;
-const MAX_MINING_THREADS: usize = 128;
+const MAX_DIFFICULTY: u64 = u64::MAX / 2; // More realistic max
+const MAX_MINING_THREADS: usize = 256;
 const MIN_CHAINS: u32 = 1;
-const MAX_CHAINS: u32 = 64;
+const MAX_CHAINS: u32 = 32;
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -53,7 +55,7 @@ pub struct Config {
 
     // --- Consensus & DAG Configuration ---
     pub genesis_validator: String,
-    pub target_block_time: u64,
+    pub target_block_time: u64, // Now in milliseconds
     pub difficulty: u64,
     pub max_amount: u64,
 
@@ -78,7 +80,7 @@ pub struct LoggingConfig {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct P2pConfig {
-    pub heartbeat_interval: u64,
+    pub heartbeat_interval: u64, // in milliseconds
     pub mesh_n_low: usize,
     pub mesh_n: usize,
     pub mesh_n_high: usize,
@@ -88,7 +90,7 @@ pub struct P2pConfig {
 impl Default for P2pConfig {
     fn default() -> Self {
         Self {
-            heartbeat_interval: 5000, // 5 seconds
+            heartbeat_interval: 5000,
             mesh_n_low: 4,
             mesh_n: 8,
             mesh_n_high: 16,
@@ -98,24 +100,18 @@ impl Default for P2pConfig {
 }
 
 // --- Testnet Defaults ---
-// These values are used when a user starts a node without a config file,
-// ensuring they connect to the test network by default.
 impl Default for Config {
     fn default() -> Self {
         Self {
             p2p_address: "/ip4/0.0.0.0/tcp/8008".to_string(),
             api_address: "127.0.0.1:8080".to_string(),
-            // Default bootstrap nodes for the testnet can be added here.
             peers: vec![],
             local_full_p2p_address: None,
-            // Switched to the testnet identifier.
-            network_id: "qanto-testnet".to_string(),
+            network_id: "qanto-testnet-phoenix".to_string(),
             genesis_validator: "0000000000000000000000000000000000000000000000000000000000000000"
                 .to_string(),
-            // A faster block time for testing purposes (15 seconds).
-            target_block_time: 15000,
-            // A lower difficulty for easier block mining on the testnet.
-            difficulty: 20,
+            target_block_time: 1000, // Evolved to 1 second for higher throughput
+            difficulty: 1000,
             max_amount: 100_000_000_000,
             use_gpu: false,
             zk_enabled: false,

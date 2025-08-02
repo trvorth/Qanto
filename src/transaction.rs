@@ -1,11 +1,9 @@
+// src/transaction.rs
+
 //! --- Qanto Transaction ---
-//! v2.3.2 - Crypto API Update
-//! This version aligns the transaction module with the latest crypto API changes.
-//!
-//! - API CORRECTION: Removed a flawed call to the non-existent `keypair_from_seed`
-//!   function, as key reconstruction is handled correctly from bytes.
-//! - LOGIC FIX: The `new_coinbase` function continues to accept the public key
-//!   to ensure it signs with the correct validator keypair.
+//! v2.3.4 - Trait Compliance
+//! This version adds the required PartialEq and Eq traits to the Transaction
+//! struct, resolving compilation errors in the mempool.
 
 use crate::omega;
 use crate::qantodag::{HomomorphicEncrypted, QantoDAG, QuantumResistantSignature, UTXO};
@@ -69,7 +67,7 @@ pub struct Input {
     pub output_index: u32,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)] // Added Eq for comparison
 pub struct Output {
     pub address: String,
     pub amount: u64,
@@ -101,7 +99,8 @@ struct TransactionSigningPayload<'a> {
     timestamp: u64,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+// FIX: Added PartialEq and Eq to allow transactions to be compared.
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Transaction {
     pub id: String,
     pub sender: String,
@@ -478,14 +477,12 @@ mod tests {
     #[serial]
     async fn test_transaction_creation_and_verification() -> Result<(), Box<dyn std::error::Error>>
     {
-        // **FIX**: Reset the OMEGA_STATE to ensure a clean slate for this test.
         {
             let mut state = omega::OMEGA_STATE.lock().await;
             *state = OmegaState::new();
             set_threat_level(ThreatLevel::Nominal);
         }
 
-        // **FIX**: Ensure the correct database directory is cleaned up before the test runs.
         let db_path = "qantodag_db_test";
         if std::path::Path::new(db_path).exists() {
             std::fs::remove_dir_all(db_path)?;

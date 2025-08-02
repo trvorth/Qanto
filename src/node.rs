@@ -1,11 +1,12 @@
 //! --- Qanto Node Orchestrator ---
-//! v1.6.4 - Aligned with DAG Refactoring
-//! This version updates the node's initialization logic to align with the refactored
-//! QantoDAG::new function, which now uses a configuration struct.
+//! v1.6.5 - Difficulty Refactor Alignment
+//! This version aligns the node with the refactored QantoDAG, which now uses a
+//! per-chain difficulty model instead of a single global value.
 //!
-//! - FIX (E0061): The call to QantoDAG::new now correctly instantiates and passes
-//!   a QantoDagConfig struct, resolving the mismatched types compile error.
-//! - LINTING: Unnecessary .clone() calls removed.
+//! - FIX (E0609): Updated API handlers (`/dag`, `/info`) to correctly query and
+//!   display the new per-chain difficulty metrics from the QantoDAG.
+//! - REFACTOR: Removed references to the obsolete `config.difficulty` during
+//!   DAG initialization, as difficulty is now managed dynamically.
 
 use crate::config::{Config, ConfigError};
 use crate::mempool::Mempool;
@@ -59,7 +60,7 @@ const MAX_UTXOS: usize = 1_000_000;
 const MAX_PROPOSALS: usize = 10_000;
 const ADDRESS_REGEX: &str = r"^[0-9a-fA-F]{64}$";
 const MAX_SYNC_AGE_SECONDS: u64 = 3600;
-const DEFAULT_MINING_INTERVAL_SECS: u64 = 15;
+const DEFAULT_MINING_INTERVAL_SECS: u64 = 5;
 
 #[derive(Error, Debug)]
 pub enum NodeError {
@@ -109,7 +110,8 @@ impl From<NodeError> for String {
 struct DagInfo {
     block_count: usize,
     tip_count: usize,
-    difficulty: u64,
+    average_difficulty: f64,
+    chain_difficulties: HashMap<u32, u64>,
     target_block_time: u64,
     validator_count: usize,
     num_chains: u32,
@@ -238,7 +240,6 @@ impl Node {
         let dag_config = QantoDagConfig {
             initial_validator,
             target_block_time: config.target_block_time,
-            difficulty: config.difficulty,
             num_chains: config.num_chains,
             qr_signing_key: &node_signing_key,
             qr_public_key: &node_public_key,
@@ -274,7 +275,7 @@ impl Node {
         let miner_config = MinerConfig {
             address: wallet.address(),
             dag: dag_arc.clone(),
-            difficulty_hex: format!("{:x}", config.difficulty),
+            difficulty_hex: format!("{:x}", 1), // Difficulty is now per-chain, this is a placeholder
             target_block_time: config.target_block_time,
             use_gpu: config.use_gpu,
             zk_enabled: config.zk_enabled,
@@ -758,12 +759,21 @@ async fn info_handler(
     let tips_read_guard = state.dag.tips.read().await;
     let blocks_read_guard = state.dag.blocks.read().await;
     let num_chains_val = *state.dag.num_chains.read().await;
+    let difficulties = state.dag.difficulties.read().await;
+    let total_difficulty: u64 = difficulties.values().sum();
+    let avg_difficulty = if !difficulties.is_empty() {
+        total_difficulty as f64 / difficulties.len() as f64
+    } else {
+        0.0
+    };
+
     Ok(Json(serde_json::json!({
         "block_count": blocks_read_guard.len(),
         "tip_count": tips_read_guard.values().map(|t_set| t_set.len()).sum::<usize>(),
         "mempool_size": mempool_read_guard.size().await,
         "utxo_count": utxos_read_guard.len(),
         "num_chains": num_chains_val,
+        "average_difficulty": avg_difficulty,
     })))
 }
 
@@ -932,8 +942,16 @@ async fn get_dag(State(state): State<AppState>) -> Result<Json<DagInfo>, StatusC
     let blocks_read_guard = state.dag.blocks.read().await;
     let tips_read_guard = state.dag.tips.read().await;
     let validators_read_guard = state.dag.validators.read().await;
-    let difficulty_val = *state.dag.difficulty.read().await;
+    let difficulties = state.dag.difficulties.read().await;
     let num_chains_val = *state.dag.num_chains.read().await;
+
+    let total_difficulty: u64 = difficulties.values().sum();
+    let avg_difficulty = if !difficulties.is_empty() {
+        total_difficulty as f64 / difficulties.len() as f64
+    } else {
+        0.0
+    };
+
     let latest_block_timestamp = blocks_read_guard
         .values()
         .map(|b| b.timestamp)
@@ -942,7 +960,8 @@ async fn get_dag(State(state): State<AppState>) -> Result<Json<DagInfo>, StatusC
     Ok(Json(DagInfo {
         block_count: blocks_read_guard.len(),
         tip_count: tips_read_guard.values().map(|t_set| t_set.len()).sum(),
-        difficulty: difficulty_val,
+        average_difficulty: avg_difficulty,
+        chain_difficulties: difficulties.clone(),
         target_block_time: state.dag.target_block_time,
         validator_count: validators_read_guard.len(),
         num_chains: num_chains_val,
@@ -985,7 +1004,7 @@ mod tests {
             peers: vec![],
             genesis_validator: genesis_validator_addr.clone(),
             target_block_time: 60,
-            difficulty: 1, // Lower difficulty for faster testing
+            difficulty: 1, // This is now a placeholder in config
             max_amount: 10_000_000_000,
             use_gpu: false,
             zk_enabled: false,
