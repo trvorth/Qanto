@@ -4,13 +4,11 @@
 //! towards a high-throughput system of 32 BPS and 100k+ TPS.
 
 use atomic_shim::AtomicU64;
-use bincode;
 use blake3::Hasher;
 use chrono::Utc;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use log::info;
 use num_bigint::BigUint;
-use num_cpus;
 use rayon::prelude::*;
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
@@ -394,6 +392,12 @@ pub struct ExecutionLayer {
     mempool: Arc<Mutex<VecDeque<Transaction>>>,
 }
 
+impl Default for ExecutionLayer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ExecutionLayer {
     pub fn new() -> Self {
         Self {
@@ -422,7 +426,7 @@ impl ExecutionLayer {
 
         let valid_txs: Vec<_> = transactions
             .into_iter()
-            .zip(verification_results.into_iter())
+            .zip(verification_results)
             .filter_map(|(tx, is_valid)| if is_valid { Some(tx) } else { None })
             .collect();
 

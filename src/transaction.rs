@@ -578,7 +578,6 @@ mod tests {
         let dag_config = QantoDagConfig {
             initial_validator: sender_address.clone(),
             target_block_time: 60000,
-            difficulty: 100,
             num_chains: 1,
             qr_signing_key: &qr_secret_key,
             qr_public_key: &qr_public_key,
