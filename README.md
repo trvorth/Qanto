@@ -13,49 +13,58 @@
 **Website**: https://Qanto.live (coming soon)  
 
 **Topics**: blockchain, layer-0, dag, rust, post-quantum-cryptography, fintech, decentralized-finance  
-Qanto is a highly modern blockchain platform that has been developed to guarantee the utmost security, performance, and integrity in all operational aspects.    It incorporates a novel consensus mechanism, an AI-driven governance structure, and a complex architecture for peer-to-peer networking.    On the other hand, Rust's Layer-0 protocol aims to provide a safe, scalable, and interoperable platform for decentralised applications and monetary transactions.    Its multi-faceted architecture mixes traditional Proof-of-Work (PoW) and Proof-of-Stake (PoS) chains with Directed Acyclic Graphs (DAGs) for high-throughput parallel transaction processing and enhanced security.    Essential features of post-quantum cryptography include a hybrid consensus framework that combines Proof-of-Work for block proposals and Proof-of-Stake for deterministic finality, dynamic sharding to accommodate large transaction volumes, and lattice-based signatures (inspired by CRYSTALS-Dilithium) for everlasting security.    Qanto's goal is to make on-chain governance easier and more efficient while simultaneously improving privacy-preserving capabilities via the use of sophisticated cryptographic methods like zk-SNARKs and homomorphic encryption.
+Qanto is a modern Layer-0 blockchain designed for high performance and security. Its hybrid architecture combines Directed Acyclic Graphs (DAGs) for rapid, parallel transaction processing with traditional Proof-of-Work (PoW) and Proof-of-Stake (PoS) chains for robust security.
 
-While primarily a Layer-0 protocol facilitating interoperability across its ecosystem of shards and chains, Qanto can host Layer-1-like chains within its framework, processing transactions and smart contracts independently. Additionally, its planned zk-SNARKs integration could enable Layer-2 scaling solutions, such as rollups, on its shards, enhancing throughput while leveraging Qanto’s interoperability. Currently in Phase 1 (Foundation), the repository includes core components like the DAG ledger, node orchestrator, P2P networking, and wallet functionality, alongside documentation for local setup and testnet participation. Licensed under the MIT License, Qanto welcomes community contributions to drive its vision of a future-proof decentralized ecosystem.
+Key innovations include an AI-driven governance system, post-quantum security using lattice-based cryptography (inspired by CRYSTALS-Dilithium), and advanced privacy features like zk-SNARKs and homomorphic encryption.
+
+As a foundational protocol, Qanto facilitates interoperability across its ecosystem, capable of hosting Layer-1-like chains and enabling Layer-2 scaling solutions such as rollups. Currently in its foundational development phase, the open-source (MIT) project welcomes community contributions to help build a future-proof, decentralized ecosystem.
 
 For a comprehensive academic and technical overview, please refer to the official [**Qanto Whitepaper**](./docs/whitepaper/Qanto-whitepaper.pdf).
 
-## **Core Architectural Tenets**
+## **Performance Benchmarks** 📈
 
-* **QantoDAG Ledger:** A Directed Acyclic Graph structure that allows for parallel block processing, high throughput, and near-instant finality.
-* **Hybrid Consensus (PoW + PoS + PoSe):** Qanto utilizes a unique, multi-layered consensus model:
-    * **Proof-of-Work (PoW):** A lightweight PoW mechanism is used to secure the network against spam and provide a basic sybil resistance layer. Miners compete to solve a computational puzzle to propose a new block.
-    * **Proof-of-Stake (PoS):** Validator nodes must stake tokens to participate in consensus. The right to validate blocks is selected based on a stake-weighted algorithm, securing the network economically. Malicious behavior can result in a validator's stake being "slashed".
-    * **Proof-of-Sentiency (PoSe):** This is the top-level consensus layer, managed by the **SAGA** AI pallet. SAGA continuously analyzes the behavior and contributions of all validators, calculating a dynamic "Saga Credit Score" (SCS). This score directly influences a validator's block rewards and governance power. PoSe ensures that the most honest, reliable, and beneficial nodes are rewarded the most, promoting long-term network health and evolution beyond simple stake-based metrics.
-* **SAGA (Sentient Autonomous Governance Algorithm):** A fully-integrated AI pallet that functions as the network's decentralized brain. It manages economic parameters, node reputation, and adaptive security protocols in real-time.
-* **X-PHYRUS™ Protocol Stack:** A military-grade pre-boot and runtime security suite that performs integrity checks and activates advanced operational protocols.
-* **ΩMEGA (TIA/RDS) Protocol:** A low-level identity and reflex protocol that provides a final layer of defense against unstable or dangerous system state transitions.
-* **Heterogeneous Architecture**: Natively supports both DAG-based shards and linear PoW/PoS chains within one interoperable ecosystem.  
-* **Dynamic Sharding**: The network autonomously adjusts the number of active DAG shards based on real-time transactional load, ensuring scalability.  
-* **Post-Quantum Security**: Implements a lattice-based signature scheme (modeled after NIST standard CRYSTALS-Dilithium) for all validator attestations, ensuring long-term security.  
-* **On-Chain Governance**: A decentralized, stake-weighted governance mechanism allows for protocol upgrades and parameter changes without contentious hard forks.  
-* **Advanced Cryptography**: Includes specifications for Zero-Knowledge Proofs (zk-SNARKs) and Homomorphic Encryption for future privacy-preserving features.  
-* **Advanced Security**: Features a novel on-chain Intrusion Detection System (IDS) that economically penalizes validators for anomalous behavior.
+The following benchmarks were conducted on an Apple M-series CPU and an integrated GPU, demonstrating the performance of the core components.
 
-## **Project Structure**
+| Benchmark                               | Time             | Throughput (approx.)      | Notes                                                              |
+| --------------------------------------- | ---------------- | ------------------------- | ------------------------------------------------------------------ |
+| **CPU Hashrate (1k Hashes)** | `~363 µs`        | **~2.75 MHash/s** | Measures the performance of the `qanhash` algorithm on a single CPU core. |
+| **GPU Hashrate (1 Batch)** | `~2.4 ms`        | **~3.50 GHash/s** | Measures the performance of 8.3M hashes on an integrated GPU.        |
+| **Execution Layer (3,125 txs)** | `~17.8 ms`       | **~175,000 TPS** | Time to process a full block payload (signature verification & Merkle root). |
+
+These results validate the high-throughput design of the Qanto protocol, with transaction processing speed comfortably exceeding the **100,000 TPS** target.
+
+## **Structure, Key Features & Innovations**
+
+**Structure and Innovations**
 
 The Qanto repository is a Cargo workspace containing several key components:
 
 * **/src**: The main library crate containing the core logic.  
 * `src/node.rs`: Main node orchestration, managing all services.
 * `src/config.rs`: Configuration loading and validation.
-* `src/qantodag.rs`: The core DAG ledger implementation.
+* `src/qantodag.rs`: The core DAG ledger implementation natively supports both DAG-based shards and linear PoW/PoS chains within one interoperable ecosystem. A Directed Acyclic Graph structure that allows for parallel block processing, high throughput, and near-instant finality. **Heterogeneous Architecture**: Natively supports both DAG-based shards and linear PoW/PoS chains within one interoperable ecosystem. **Dynamic Sharding**: The network autonomously adjusts the number of active DAG shards based on real-time transactional load, ensuring scalability. **Post-Quantum Security**: Implements a lattice-based signature scheme (modeled after NIST standard CRYSTALS-Dilithium) for all validator attestations, ensuring long-term security.
+* `src/consensus.rs`: Qanto utilizes a unique, multi-layered consensus model:
+    * **Proof-of-Work (PoW):**
+    * **Proof-of-Stake (PoS):**
+    * **Proof-of-Sentiency (PoSe):** This is the top-level consensus layer, managed by the **SAGA** AI pallet.
 * `src/p2p.rs`: The libp2p-based peer-to-peer networking layer.
 * `src/miner.rs`: Proof-of-Work puzzle solving logic.
 * `src/transaction.rs`: Transaction creation and validation logic.
 * `src/wallet.rs`: Encrypted wallet management.
-* `src/saga.rs`: The AI governance and adaptive security pallet.
-* `src/omega.rs`: The system's core identity and reflex protocol.
-* `src/x_phyrus.rs`: The pre-boot security and diagnostics suite.
+* `src/saga.rs`: The fully-integrated  AI governance and adaptive security pallet, which functions as the network's decentralized brain.
+* `src/omega.rs`: The system's core identity and reflex protocol that provides a final layer of defense against unstable or dangerous system state transitions.
+* `src/x_phyrus.rs`: The military-grade pre-boot security and diagnostics suite integrity checks and activates advanced operational protocols.
 * `src/zk.rs`: (Feature-gated) ZK-proof circuit definitions.
 * `src/infinite_strata_node.rs`: Proof-of-Sustained-Cloud-Presence (PoSCP) and cloud-adaptive mining logic.
 * **/src/bin**: Executable crates for the node (start\_node.rs) and wallet (Qantowallet.rs).  
 * **/docs**: Project documentation, including the whitepaper and launch plans.  
 * **config.toml.example**: An example configuration file for the node.
+
+**Features**
+
+* **On-Chain Governance**: A decentralized, stake-weighted governance mechanism allows for protocol upgrades and parameter changes without contentious hard forks.  
+* **Advanced Cryptography**: Includes specifications for Zero-Knowledge Proofs (zk-SNARKs) and Homomorphic Encryption for future privacy-preserving features.  
+* **Advanced Security**: Features a novel on-chain Intrusion Detection System (IDS) that economically penalizes validators for anomalous behavior.
 
 ## **Developer & Research Materia**
 
@@ -168,7 +177,7 @@ Building on Windows requires the MSVC C++ toolchain and manual installation of R
     The Qanto node may be initiated by executing the `start_node` binary. The system will automatically load the configuration and wallet files.
     ```bash
     # You will be prompted for the wallet password
-    cargo run --release --features infinite-strata --bin qanto -- start --config config.toml --wallet wallet.key
+    cargo run --release --features infinite-strata --bin qanto -- start --config config.toml --wallet wallet.key --clean
     ```
     The operator will be prompted to supply the wallet passphrase, after which the node will initialize its services and commence network operations.
 4.  **Demonstrating the ΛΣ-ΩMEGA Module**
@@ -180,7 +189,7 @@ cargo run --bin omega_test
 ```
 ## **Testnet Participation**
 
-For details on joining the public testnet, including hardware requirements, incentive programs, and bootnode addresses, please refer to the [**Testnet Launch Plan**](./docs/testnet-plan.md), and [**Qantowallet Guidance**](./docs/QANTOWALLET_GUIDE.md).
+For details on joining the public testnet, including hardware requirements, incentive programs, and bootnode addresses, please refer to the [**Testnet Launch Plan**](./docs/testnet-plan.md), [**Testnet Guide**](./docs/testnet-guide.md) and [**Qantowallet Guidance**](./docs/QANTOWALLET_GUIDE.md).
 
 ## **Security**
 
@@ -194,4 +203,3 @@ All participants are expected to follow our [**Code of Conduct**](./CODE_OF_COND
 ## **License**
 
 This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
-

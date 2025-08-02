@@ -57,6 +57,21 @@ Building on Windows requires the MSVC C++ build tools and installing RocksDB via
         ```powershell
         ./vcpkg.exe install rocksdb:x64-windows
         ```
+4.  **Configuration of Environment Variables**:
+    * An environment variable must be established to inform the Cargo build system of the location of the RocksDB library files. A PowerShell terminal with administrative privileges must be utilized to execute the following command, with the file path adjusted to correspond to the `vcpkg` installation directory:
+        ```powershell
+        [System.Environment]::SetEnvironmentVariable('ROCKSDB_LIB_DIR', 'C:\path\to\vcpkg\installed\x64-windows\lib', [System.EnvironmentVariableTarget]::Machine)
+        ```
+    * **Note Bene**: A restart of the terminal or Integrated Development Environment (IDE) is mandatory for this environment variable modification to take effect.
+
+5.  **Repository Cloning and Compilation**:
+    * A new terminal instance must be opened.
+    ```bash
+    git clone [https://github.com/trvorth/Qanto.git](https://github.com/trvorth/Qanto.git)
+    cd Qanto
+    cargo build --release
+    ```
+    The compiled binaries will be located at `target/release/`.
 ---
 
 ## 3. Compile the Qanto Node
@@ -101,7 +116,7 @@ Now that the software is compiled, you can generate a wallet and configure your 
 3.  **Start the Node**:
     * Run the node with the `--clean` flag on the first start to ensure no old database files cause issues. You will be prompted for the wallet password you created.
     ```bash
-    cargo run --release --features infinite-strata --bin qanto -- start --clean
+    cargo run --release --features infinite-strata --bin qanto -- start --config config.toml --wallet wallet.key --clean
     ```
 
 Your node will now start, initialize its services using the **X-PHYRUS™** pre-boot sequence, and attempt to connect to the Qanto network.
