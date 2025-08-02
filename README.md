@@ -11,7 +11,7 @@
 
 **Repository for the official Rust implementation of the Qanto Protocol**  
 
-**Author**: trvorth | **License**: MIT | **Status**: Phase 1 \- Foundation (In Progress)
+**Author**: trvorth
 
 ---
 
