@@ -16,7 +16,7 @@ This document outlines the strategic phases for the development, launch, and exp
 -   **🟡 Whitepaper & Tokenomics Finalized**: The code (saga.rs) contains concrete, governable tokenomic parameters (e.g., base_reward, tiered transaction fees, etc.). SAGA's rule-based system acts as a "live" whitepaper for economic policy. However, a formal, human-readable whitepaper document that explains this complex system to a non-technical audience is a critical missing piece for community building and investor relations. The foundation is there, but it needs to be documented externally.
 -   **✅ Local Testnet Operational**: The logs show the node running successfully in a simulated single-node mode. The p2p logic (p2p.rs) and configuration for multiple peers exist, indicating that a local multi-node testnet is likely functional. However, the provided logs only show a single instance, so we can't fully confirm distributed consensus, block propagation, and state synchronization between multiple local nodes.
 -   **⬜ Successful Public Testnet Launch**: The node currently runs in a local environment. A public testnet, requiring deployment to cloud servers with public IP addresses, seed nodes, and community participation, has not yet been launched. This is the most critical next step in this phase.
--   **⬜ Security Audit Completed by a Reputable Firm**: This has not been started. A third-party audit is essential to identify vulnerabilities, especially given the complexity of the SAGA AI and ISNM modules, before any mainnet launch or significant value is held on the network.
+-   **⬜ Security Audit**: This has not been started. A third-party audit is essential to identify vulnerabilities, especially given the complexity of the SAGA AI and ISNM modules, before any mainnet launch or significant value is held on the network.
 
 ---
 
@@ -53,7 +53,7 @@ This document outlines the strategic phases for the development, launch, and exp
 
 ## **Phase 4: MARKET ENTRY (Liquidity & Listing)**
 
-**Goal**: Achieve tradable volume and meet CMC's listing criteria.
+**Goal**: Achieve tradable volume and listing criteria.
 **Status**: Not Started
 
 All milestones in this phase are not applicable yet, as they depend on the successful completion of Phases 1, 2, and 3.

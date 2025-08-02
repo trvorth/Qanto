@@ -1,4 +1,4 @@
-[![Status](https://img.shields.io/badge/Status-Phase%201%3A%20Foundation%20(85%25)-orange?style=for-the-badge)](ROADMAP.md)
+[![Status](https://img.shields.io/badge/Status-Phase%201%3A%20Foundation%20(85%25)-orange?style=for-the-badge)](./docs/ROADMAP.md)
 [![CI](https://img.shields.io/github/actions/workflow/status/trvorth/Qanto/rust.yml?branch=main&label=CI&style=for-the-badge)](https://github.com/trvorth/Qanto/actions/workflows/rust.yml)
 [![License](https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge)](https://github.com/trvorth/Qanto/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/Docs-Testnet%20Guide-blue?style=for-the-badge)](https://github.com/trvorth/Qanto/blob/main/docs/testnet-guide.md)
@@ -9,7 +9,7 @@
 
 ![Qanto Banner](https://placehold.co/1200x300/1a1a2e/e0e0e0?text=Qanto)
 
-**Repository for the official Rust implementation of the Qanto Protocol, A Heterogeneous, Post-Quantum DLT Framework.**  
+**Repository for the official Rust implementation of the Qanto Protocol**  
 
 **Author**: trvorth | **License**: MIT | **Status**: Phase 1 \- Foundation (In Progress)
 
