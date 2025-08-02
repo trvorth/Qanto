@@ -1,11 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use ed25519_dalek::{Signer, SigningKey};
 use my_blockchain::{qanhash, ExecutionLayer, Transaction};
-use rand::rngs::OsRng;
 use rand::Rng;
+use ed25519_dalek::{Signer, SigningKey};
+use rand::rngs::OsRng;
 
 #[cfg(feature = "gpu")]
 use criterion::BatchSize;
+
 
 /// This benchmark measures the performance of a single Qanhash operation on the CPU.
 fn qanhash_op_benchmark(c: &mut Criterion) {
@@ -88,6 +89,7 @@ fn execution_layer_benchmark(c: &mut Criterion) {
     group.finish();
 }
 
+
 /// This benchmark measures the GPU hash rate.
 #[cfg(feature = "gpu")]
 fn gpu_hashrate_benchmark(c: &mut Criterion) {
@@ -101,57 +103,22 @@ fn gpu_hashrate_benchmark(c: &mut Criterion) {
     let dag = my_blockchain::qanhash::get_qdag(index);
     let dag_len_mask = (dag.len() as u64 / 2).next_power_of_two() - 1;
     let dag_flat: &[u8] = unsafe { dag.align_to::<u8>().1 };
-    let header_buffer = ocl::Buffer::builder()
-        .queue(gpu.queue.clone())
-        .len(32)
-        .copy_host_slice(header_hash.as_bytes())
-        .build()
-        .unwrap();
-    let dag_buffer = ocl::Buffer::builder()
-        .queue(gpu.queue.clone())
-        .len(dag_flat.len())
-        .copy_host_slice(dag_flat)
-        .build()
-        .unwrap();
-    let target_buffer = ocl::Buffer::builder()
-        .queue(gpu.queue.clone())
-        .len(32)
-        .copy_host_slice(&[0u8; 32])
-        .build()
-        .unwrap();
-    let result_gid_buffer: ocl::Buffer<u32> = ocl::Buffer::builder()
-        .queue(gpu.queue.clone())
-        .len(1)
-        .build()
-        .unwrap();
-    let result_hash_buffer: ocl::Buffer<u8> = ocl::Buffer::builder()
-        .queue(gpu.queue.clone())
-        .len(32)
-        .build()
-        .unwrap();
+    let header_buffer = ocl::Buffer::builder().queue(gpu.queue.clone()).len(32).copy_host_slice(header_hash.as_bytes()).build().unwrap();
+    let dag_buffer = ocl::Buffer::builder().queue(gpu.queue.clone()).len(dag_flat.len()).copy_host_slice(dag_flat).build().unwrap();
+    let target_buffer = ocl::Buffer::builder().queue(gpu.queue.clone()).len(32).copy_host_slice(&[0u8;32]).build().unwrap();
+    let result_gid_buffer: ocl::Buffer<u32> = ocl::Buffer::builder().queue(gpu.queue.clone()).len(1).build().unwrap();
+    let result_hash_buffer: ocl::Buffer<u8> = ocl::Buffer::builder().queue(gpu.queue.clone()).len(32).build().unwrap();
     let batch_size: u64 = 1_048_576 * 8;
     group.bench_function("GPU Hash Rate (1 Batch)", |b| {
         b.iter_batched(
             || {
-                ocl::Kernel::builder()
-                    .program(&gpu.program)
-                    .name("qanhash_kernel")
-                    .queue(gpu.queue.clone())
-                    .global_work_size((batch_size,))
-                    .arg(&header_buffer)
-                    .arg(0u64)
-                    .arg(&dag_buffer)
-                    .arg(dag_len_mask)
-                    .arg(&target_buffer)
-                    .arg(&result_gid_buffer)
-                    .arg(&result_hash_buffer)
-                    .build()
-                    .unwrap()
+                ocl::Kernel::builder().program(&gpu.program).name("qanhash_kernel").queue(gpu.queue.clone())
+                    .global_work_size((batch_size,)).arg(&header_buffer).arg(0u64)
+                    .arg(&dag_buffer).arg(dag_len_mask).arg(&target_buffer).arg(&result_gid_buffer)
+                    .arg(&result_hash_buffer).build().unwrap()
             },
             |kernel| {
-                unsafe {
-                    kernel.enq().unwrap();
-                }
+                unsafe { kernel.enq().unwrap(); }
                 gpu.queue.finish().unwrap();
             },
             BatchSize::SmallInput,
@@ -162,20 +129,9 @@ fn gpu_hashrate_benchmark(c: &mut Criterion) {
 
 // Conditionally register the correct set of benchmarks.
 #[cfg(feature = "gpu")]
-criterion_group!(
-    benches,
-    qanhash_op_benchmark,
-    mine_cpu_benchmark,
-    execution_layer_benchmark,
-    gpu_hashrate_benchmark
-);
+criterion_group!(benches, qanhash_op_benchmark, mine_cpu_benchmark, execution_layer_benchmark, gpu_hashrate_benchmark);
 
 #[cfg(not(feature = "gpu"))]
-criterion_group!(
-    benches,
-    qanhash_op_benchmark,
-    mine_cpu_benchmark,
-    execution_layer_benchmark
-);
+criterion_group!(benches, qanhash_op_benchmark, mine_cpu_benchmark, execution_layer_benchmark);
 
 criterion_main!(benches);

@@ -1,4 +1,4 @@
-# Qanto: A Formal Specification for a Heterogeneous, Post-Quantum Framework with Hybrid Consensus and Dynamic Sharding
+# Qanto: A Heterogeneous, Post-Quantum, AI-Governed DLT Framework with Hybrid Consensus and Dynamic Sharding
 
 ![Qanto Banner](https://placehold.co/1200x300/1a1a2e/e0e0e0?text=Qanto)
 
@@ -7,12 +7,19 @@
 **Author**: trvorth | **License**: MIT | **Status**: Phase 1 \- Foundation (In Progress)
 
 ---
+![Release](https://img.shields.io/badge/release-v2.3.4-blue.svg?style=for-the-badge)
+![Docs](https://img.shields.io/badge/docs-passing-brightgreen.svg?style=for-the-badge)
 
+![Status](https://img.shields.io/badge/status-Phase%201%3A%20Foundation-orange.svg?style=for-the-badge)
+![CI](https://img.shields.io/github/actions/workflow/status/trvorth/Qanto/rust.yml?branch=main&label=ci&style=for-the-badge)
+![License](https://img.shields.io/badge/license-MIT-lightgrey.svg?style=for-the-badge)
+---
 ## **About Qanto**
 
 **Website**: https://Qanto.live (coming soon)  
 
-**Topics**: blockchain, layer-0, dag, rust, post-quantum-cryptography, fintech, decentralized-finance  
+**Topics**: blockchain, ai, layer-0, dag, rust, post-quantum-cryptography, fintech, decentralized-finance.
+
 Qanto is a modern Layer-0 blockchain designed for high performance and security. Its hybrid architecture combines Directed Acyclic Graphs (DAGs) for rapid, parallel transaction processing with traditional Proof-of-Work (PoW) and Proof-of-Stake (PoS) chains for robust security.
 
 Key innovations include an AI-driven governance system, post-quantum security using lattice-based cryptography (inspired by CRYSTALS-Dilithium), and advanced privacy features like zk-SNARKs and homomorphic encryption.
@@ -27,9 +34,9 @@ The following benchmarks were conducted on an Apple M-series CPU and an integrat
 
 | Benchmark                               | Time             | Throughput (approx.)      | Notes                                                              |
 | --------------------------------------- | ---------------- | ------------------------- | ------------------------------------------------------------------ |
-| **CPU Hashrate (1k Hashes)** | `~363 µs`        | **~2.75 MHash/s** | Measures the performance of the `qanhash` algorithm on a single CPU core. |
-| **GPU Hashrate (1 Batch)** | `~2.4 ms`        | **~3.50 GHash/s** | Measures the performance of 8.3M hashes on an integrated GPU.        |
-| **Execution Layer (3,125 txs)** | `~17.8 ms`       | **~175,000 TPS** | Time to process a full block payload (signature verification & Merkle root). |
+| **CPU Hashrate (1k Hashes)** | `~338 µs`        | **~2.96 MHash/s** | Measures the performance of the `qanhash` algorithm on a single CPU core. |
+| **GPU Hashrate (1 Batch)** | `~2.42 ms`        | **~3.47 GHash/s** | Measures the performance of 8.3M hashes on an integrated GPU.        |
+| **Execution Layer (3,125 txs)** | `~15.4 ms`       | **~202,000 TPS** | Time to process a full block payload (signature verification & Merkle root). |
 
 These results validate the high-throughput design of the Qanto protocol, with transaction processing speed comfortably exceeding the **100,000 TPS** target.
 
