@@ -64,14 +64,6 @@ Building on Windows requires the MSVC C++ build tools and installing RocksDB via
         ```
     * **Note Bene**: A restart of the terminal or Integrated Development Environment (IDE) is mandatory for this environment variable modification to take effect.
 
-5.  **Repository Cloning and Compilation**:
-    * A new terminal instance must be opened.
-    ```bash
-    git clone [https://github.com/trvorth/Qanto.git](https://github.com/trvorth/Qanto.git)
-    cd Qanto
-    cargo build --release
-    ```
-    The compiled binaries will be located at `target/release/`.
 ---
 
 ## 3. Compile the Qanto Node
@@ -120,3 +112,11 @@ Now that the software is compiled, you can generate a wallet and configure your 
     ```
 
 Your node will now start, initialize its services using the **X-PHYRUS™** pre-boot sequence, and attempt to connect to the Qanto network.
+
+4.  **Demonstrating the ΛΣ-ΩMEGA Module**
+
+To see a simulation of the conscious security layer, run the `omega_test` binary:
+
+```bash
+cargo run --bin omega_test
+```
