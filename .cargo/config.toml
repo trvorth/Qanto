@@ -30,4 +30,4 @@ c = "check"
 t = "test"
 r = "run"
 rr = "run --release"
-clippy = "clippy -- -D warnings" # Run clippy and treat all warnings as errors.
+lint = "clippy -- -D warnings" # Run clippy and treat all warnings as errors.
