@@ -123,8 +123,9 @@ yarn-error.log*
 # --- Cargo & Rust Specific ---
 
 # --- Documentation ---
-/docs/assets/diagrams/*.svg
-
+/docs/whitepaper/assets/diagrams/*.svg
+/docs/whitepaper/Qanto-whitepaper.docx
+/docs/whitepaper/~$nto-whitepaper.docx
 # --- Local Scripts ---
 /scripts/run_local_net.sh
 

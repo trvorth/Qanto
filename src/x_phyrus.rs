@@ -221,7 +221,10 @@ async fn perform_runtime_integrity_scan() -> Result<()> {
     // 5. Integrate with a behavioral anomaly detection engine.
 
     // Simulate a complex check
-    let entropy_check_passed = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() % 2 == 0; // Just an arbitrary check
+    let entropy_check_passed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)?
+        .as_secs()
+        .is_multiple_of(2); // Just an arbitrary check
     if !entropy_check_passed {
         warn!("[DeepCore::RuntimeScan] Minor behavioral anomaly detected (conceptual).");
     }

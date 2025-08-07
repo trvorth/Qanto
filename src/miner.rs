@@ -258,7 +258,7 @@ impl Miner {
                     }
                     let count = hashes_tried.fetch_add(1, Ordering::Relaxed);
 
-                    if count % 1_000_000 == 0 {
+                    if count.is_multiple_of(1_000_000) {
                         if let Ok(elapsed) = start_time.elapsed() {
                             if elapsed > timeout_duration {
                                 found_signal.store(true, Ordering::Relaxed);

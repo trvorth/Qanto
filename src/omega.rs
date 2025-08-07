@@ -195,7 +195,7 @@ impl OmegaState {
         self.record_action(action_hash);
 
         // If the system is stable, gradually lower the threat level.
-        if self.action_history.len() % 10 == 0 {
+        if self.action_history.len().is_multiple_of(10) {
             let old_level = GLOBAL_THREAT_LEVEL.load(Ordering::Relaxed);
             if old_level > 0 {
                 GLOBAL_THREAT_LEVEL.fetch_sub(1, Ordering::Relaxed);
@@ -377,7 +377,7 @@ mod tests {
         for i in 0..20 {
             tokio::time::sleep(Duration::from_millis(10)).await;
             let result = state.reflect(H256::random());
-            assert!(result, "De-escalation action {} should be stable", i);
+            assert!(result, "De-escalation action {i} should be stable");
         }
         assert_eq!(get_threat_level().await, ThreatLevel::Nominal);
     }

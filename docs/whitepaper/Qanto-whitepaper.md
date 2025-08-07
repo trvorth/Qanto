@@ -89,7 +89,7 @@ The entire Qanto ecosystem utilizes the UTXO model for state transitions. The UT
 
 ## **3. Hybrid Consensus and Finality Protocol**
 
-Qanto employs a multi-layered hybrid consensus protocol, augmented by the **SAGA-AI governed Node Mining Add-on**, to secure its heterogeneous architecture, separating block proposal from finality.
+Qanto employs a multi-layered hybrid consensus protocol, augmented by the **SAGA-AI** governed Node Mining Add-on, to secure its heterogeneous architecture, separating block proposal from finality.
 
 ### **3.1. Formal Model and Security Assumptions**
 
@@ -168,17 +168,22 @@ Qanto integrates a comprehensive suite of cryptographic primitives chosen for se
 
 ### **5.1. Foundational Hashing Algorithms**
 
-The protocol specifies the use of the **SHA-3** family of hash functions \[29\]. Keccak256 is used for block hashing and Merkle tree construction \[12\], while the wider Keccak512 is used for generating transaction identifiers to reduce the probability of hash collisions.
+The protocol specifies the use of the **SHA-3** family of hash functions \[29\]. Keccak256 is used for block hashing and Merkle tree construction \[12], while the wider Keccak512 is used for generating transaction identifiers to reduce the probability of hash collisions. For high-performance hashing of arbitrary data, the protocol utilizes BLAKE3 \[30], as seen in the qanto_hash standalone utility
 
-### **5.2. The Reliable Hashing Algorithm (RHA)**
+### **5.2. The Qanhash Proof-of-Work Algorithm**
 
-The Execution Chain implementation introduces a novel, computationally complex hashing function, reliable_hashing_algorithm. This function performs a three-stage process: an initial hash using **BLAKE3** \[30\], a non-linear transformation of the output via 4×4 matrix multiplication using the nalgebra library, and a final hash using Keccak256. While a formal security analysis is an area for future research, the design motivation is to increase the computational complexity beyond simple hash-preimage resistance, potentially creating a degree of resistance against specialized mining hardware such as ASICs \[31\].
+The primary Proof-of-Work function is Qanhash, a novel algorithm designed for quantum resistance and ASIC deterrence. Its security derives from its reliance on a large, dynamically generated, and memory-hard dataset known as the Q-DAG (Quantum-Dynamic Algorithmic Graph).
 
-**RHA Formalization:** Let `H_B3` be BLAKE3, `M` be the matrix transformation, and `H_K` be Keccak256. `RHA(input) = H_K(M(H_B3(input)))`
+Formalization: The Qanhash function, hash(header_hash, nonce), takes the block header and a nonce as input. It uses these inputs to pseudo-randomly access entries from the multi-gigabyte Q-DAG. The core of the algorithm involves 32 rounds of mixing, where each round combines the current hash state with two entries from the Q-DAG. This memory-intensive process ensures that efficient mining requires rapid access to the entire dataset, favoring GPUs with high memory bandwidth over specialized ASICs with limited on-chip memory. The full implementation is specified in qanhash.rs and the GPU-accelerated version in `kernel.cl`.
 
 ### **5.3. Post-Quantum Signatures**
 
-The protocol mandates **quantum-resistant signatures** for all validator attestations. The LatticeSignature struct is specified for this purpose. A production implementation will utilize a scheme standardized by NIST, such as **CRYSTALS-Dilithium** \[10, 11\]. The security of Dilithium is based on the conjectured hardness of problems such as the Module Learning With Errors (Module-LWE) and Module Shortest Integer Solution (Module-SIS) in mathematical lattices \[14, 15\], which are believed to be intractable for quantum adversaries \[50\].
+The protocol's post-quantum security is provided by a dedicated cryptographic kernel, specified in qanhash32x.rs. This suite includes:
+
+Qanhash32x: A high-throughput, quantum-resistant hash function that uses a Keccak-f[1600] permutation combined with a folding input stage for enhanced security. This is used for critical internal operations requiring the highest level of security.
+
+Post-Quantum Signatures: The protocol mandates quantum-resistant signatures for all validator attestations. The LatticeSignature struct is specified for this purpose. A production implementation will utilize a scheme standardized by NIST, such as CRYSTALS-Dilithium \[10, 11]. The security of Dilithium is based on the conjectured hardness of problems in mathematical lattices \[14, 15], which are believed to be intractable for quantum adversaries \[50].
+
 
 ### **5.4. The ΛΣ-ΩMEGA™ Cryptographic Framework**
 

@@ -3303,7 +3303,7 @@ impl PalletSaga {
     }
 
     async fn propose_governance_parameter_tuning(&self, current_epoch: u64) -> bool {
-        if current_epoch % 20 != 0 {
+        if !current_epoch.is_multiple_of(20) {
             return false;
         }
 
@@ -3381,7 +3381,7 @@ impl PalletSaga {
     }
 
     async fn propose_scs_weight_tuning(&self, current_epoch: u64) -> bool {
-        if current_epoch % 25 != 0 {
+        if !current_epoch.is_multiple_of(25) {
             return false;
         }
 

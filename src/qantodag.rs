@@ -456,7 +456,7 @@ impl QantoBlock {
             .collect();
 
         while leaves.len() > 1 {
-            if leaves.len() % 2 != 0 {
+            if !leaves.len().is_multiple_of(2) {
                 leaves.push(leaves.last().unwrap().clone());
             }
             leaves = leaves

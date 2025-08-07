@@ -248,9 +248,11 @@ mod tests {
 
     #[test]
     fn test_config_validation() {
-        let mut config = Config::default();
-
-        config.target_block_time = 5;
+        // FIX: Initialize with the desired non-default value directly.
+        let mut config = Config {
+            target_block_time: 5,
+            ..Default::default()
+        };
         assert!(config.validate().is_err());
         config.target_block_time = 60;
 
