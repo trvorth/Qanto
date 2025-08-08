@@ -12,7 +12,6 @@
 use crate::config::P2pConfig;
 use crate::mempool::Mempool;
 use crate::node::PeerCache;
-// Corrected: Replaced `LatticeSignature` with `QuantumResistantSignature`.
 use crate::qantodag::{QantoBlock, QantoDAG, QuantumResistantSignature, UTXO};
 use crate::saga::CarbonOffsetCredential;
 use crate::transaction::Transaction;
@@ -30,6 +29,7 @@ use libp2p::{
     yamux, Multiaddr, PeerId, Swarm, SwarmBuilder,
 };
 use nonzero_ext::nonzero;
+use pqcrypto_mldsa::mldsa65 as dilithium5;
 use prometheus::{register_int_counter, IntCounter};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -148,8 +148,8 @@ impl NetworkMessage {
     #[instrument(skip(signing_key, public_key))]
     fn new(
         data: NetworkMessageData,
-        signing_key: &pqcrypto_dilithium::dilithium5::SecretKey,
-        public_key: &pqcrypto_dilithium::dilithium5::PublicKey,
+        signing_key: &dilithium5::SecretKey,
+        public_key: &dilithium5::PublicKey,
     ) -> Result<Self, P2PError> {
         let hmac_secret = Self::get_hmac_secret();
         let serialized_data = serde_json::to_vec(&data)?;
@@ -217,16 +217,16 @@ pub struct P2PConfig<'a> {
     pub proposals: Arc<RwLock<Vec<QantoBlock>>>,
     pub local_keypair: identity::Keypair,
     pub p2p_settings: P2pConfig,
-    pub node_qr_sk: &'a pqcrypto_dilithium::dilithium5::SecretKey,
-    pub node_qr_pk: &'a pqcrypto_dilithium::dilithium5::PublicKey,
+    pub node_qr_sk: &'a dilithium5::SecretKey,
+    pub node_qr_pk: &'a dilithium5::PublicKey,
     pub peer_cache_path: String,
 }
 
 pub struct P2PServer {
     swarm: Swarm<NodeBehaviour>,
     topics: Vec<IdentTopic>,
-    node_qr_sk: pqcrypto_dilithium::dilithium5::SecretKey,
-    node_qr_pk: pqcrypto_dilithium::dilithium5::PublicKey,
+    node_qr_sk: dilithium5::SecretKey,
+    node_qr_pk: dilithium5::PublicKey,
     initial_peers_config: Vec<String>,
     peer_cache_path: String,
     p2p_command_sender: mpsc::Sender<P2PCommand>,

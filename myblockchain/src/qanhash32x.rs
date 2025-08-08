@@ -80,7 +80,8 @@ pub fn qanhash32x(input: &[u8]) -> Hash32 {
     // --- Folding Rounds for Increased Security ---
     for _ in 0..FOLD_ROUNDS {
         for lane in &mut state {
-            *lane = lane.wrapping_mul(0x9E3779B97F4A7C15).rotate_left(13) ^ *lane;
+            // FIX: Use compound assignment operator `^=`
+            *lane ^= lane.wrapping_mul(0x9E3779B97F4A7C15).rotate_left(13);
         }
         keccak_f(&mut state);
     }
@@ -95,8 +96,6 @@ pub fn qanhash32x(input: &[u8]) -> Hash32 {
 
 /// The core Keccak-f[1600] permutation function.
 fn keccak_f(st: &mut [u64; 25]) {
-    // FIX: Replaced the incorrect ρ and π step logic with the standard, correct implementation
-    // to resolve the "index out of bounds" panic.
     const ROTATION_CONSTANTS: [u32; 24] = [
         1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44,
     ];
@@ -105,7 +104,9 @@ fn keccak_f(st: &mut [u64; 25]) {
     ];
 
     let mut c = [0u64; 5];
-    for round in 0..KECCAK_ROUNDS {
+
+    // FIX: Iterate over constants directly instead of using a range loop.
+    for &round_constant in KECCAK_ROUND_CONSTANTS.iter() {
         // θ step
         for x in 0..5 {
             c[x] = st[x] ^ st[x + 5] ^ st[x + 10] ^ st[x + 15] ^ st[x + 20];
@@ -130,16 +131,17 @@ fn keccak_f(st: &mut [u64; 25]) {
         for y_step in 0..5 {
             let y = y_step * 5;
             let mut t = [0u64; 5];
-            for x in 0..5 {
-                t[x] = st[y + x];
-            }
+
+            // FIX: Replace manual memcpy with `copy_from_slice`.
+            t.copy_from_slice(&st[y..y + 5]);
+
             for x in 0..5 {
                 st[y + x] = t[x] ^ (!t[(x + 1) % 5] & t[(x + 2) % 5]);
             }
         }
 
         // ι step
-        st[0] ^= KECCAK_ROUND_CONSTANTS[round];
+        st[0] ^= round_constant;
     }
 }
 

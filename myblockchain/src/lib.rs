@@ -82,7 +82,15 @@ pub mod qanto_standalone {
         use std::hash::Hash;
         use std::sync::Arc;
 
+        #[derive(Clone)]
         pub struct ConcurrentHashMap<K, V>(Arc<DashMap<K, V>>);
+
+        // FIX: Implement `Default` for `ConcurrentHashMap`.
+        impl<K: Eq + Hash + Clone, V> Default for ConcurrentHashMap<K, V> {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
 
         impl<K: Eq + Hash + Clone, V> ConcurrentHashMap<K, V> {
             pub fn new() -> Self {
@@ -295,6 +303,13 @@ pub mod execution_shard {
         state: HashMap<Vec<u8>, Vec<u8>>,
     }
 
+    // FIX: Implement `Default` for `ExecutionShard`.
+    impl Default for ExecutionShard {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl ExecutionShard {
         pub fn new() -> Self {
             Self {
@@ -327,6 +342,13 @@ pub struct ExecutionLayer {
     verification_pool: Arc<ThreadPool>,
 }
 
+// FIX: Implement `Default` for `ExecutionLayer`.
+impl Default for ExecutionLayer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ExecutionLayer {
     pub fn new() -> Self {
         Self {
@@ -337,8 +359,6 @@ impl ExecutionLayer {
 
     /// Verifies and adds a batch of transactions to the mempool.
     pub async fn add_transaction_batch(&self, batch: Vec<Transaction>) {
-        // FIX: Replaced the blocking mpsc channel with a non-blocking tokio oneshot channel
-        // to prevent deadlocks in the async benchmark runtime.
         let (sender, receiver) = oneshot::channel();
 
         let batch_to_verify = batch.clone();
@@ -346,11 +366,9 @@ impl ExecutionLayer {
             let all_valid = batch_to_verify
                 .par_iter()
                 .all(|tx| tx.public_key.verify(&tx.message, &tx.signature).is_ok());
-            // The receiver might be dropped if the task times out, so we ignore the result.
             let _ = sender.send(all_valid);
         });
 
-        // Asynchronously await the verification result without blocking the thread.
         if receiver.await.unwrap_or(false) {
             let batch_hash = qanto_hash(
                 &batch
@@ -507,8 +525,12 @@ impl Blockchain {
             timestamps.pop_front();
         }
 
+        // FIX: Replaced manual modulo check with `is_multiple_of`.
         if block.header.index > 0
-            && block.header.index % qanhash::DIFFICULTY_ADJUSTMENT_WINDOW as u64 == 0
+            && block
+                .header
+                .index
+                .is_multiple_of(qanhash::DIFFICULTY_ADJUSTMENT_WINDOW as u64)
         {
             let mut diff = self.difficulty.write().await;
             let ts_vec: Vec<i64> = timestamps.iter().cloned().collect();

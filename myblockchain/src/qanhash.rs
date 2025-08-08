@@ -80,9 +80,6 @@ mod gpu_impl {
             let device = Device::new(device_id);
             let context = Context::from_device(&device)?;
 
-            // FIX: Suppress the deprecation warning. We are intentionally using the older `create`
-            // function for compatibility with macOS's OpenCL 1.2, which does not have the
-            // newer `create_with_properties` function.
             #[allow(deprecated)]
             let queue = unsafe { CommandQueue::create(&context, device_id, 0)? };
 
@@ -214,10 +211,9 @@ pub fn calculate_next_difficulty(last_difficulty: Difficulty, timestamps: &[i64]
     let adjustment =
         (target_timespan_ns as f64 / actual_timespan_ns as f64 - 1.0) / DAMPING_FACTOR as f64 + 1.0;
     let next_difficulty = (last_difficulty as f64 * adjustment).max(1.0) as Difficulty;
-    info!(
-        "[Qanhash] Difficulty adjusted from {} to {}",
-        last_difficulty, next_difficulty
-    );
+
+    // FIX: Replaced separate format arguments with inline variables.
+    info!("[Qanhash] Difficulty adjusted from {last_difficulty} to {next_difficulty}");
     next_difficulty
 }
 
@@ -249,7 +245,8 @@ pub fn get_qdag(block_index: u64) -> Arc<Vec<[u8; MIX_BYTES]>> {
             return dag.clone();
         }
     }
-    info!("[Qanhash] Generating new Q-DAG for epoch {}", epoch);
+    // FIX: Replaced separate format arguments with inline variables.
+    info!("[Qanhash] Generating new Q-DAG for epoch {epoch}");
     let seed = qanto_hash(&epoch.to_le_bytes());
     let new_dag = generate_qdag(seed.as_bytes(), epoch);
     *write_cache = Some((epoch, new_dag.clone()));
@@ -259,10 +256,8 @@ pub fn get_qdag(block_index: u64) -> Arc<Vec<[u8; MIX_BYTES]>> {
 fn generate_qdag(seed: &[u8; 32], epoch: u64) -> Arc<Vec<[u8; MIX_BYTES]>> {
     let base_size = DATASET_INIT_SIZE + (epoch.min(1000) as usize * 128);
     let dataset_size = base_size.next_power_of_two();
-    info!(
-        "[Qanhash] Generating DAG with size {} for epoch {}",
-        dataset_size, epoch
-    );
+    // FIX: Replaced separate format arguments with inline variables.
+    info!("[Qanhash] Generating DAG with size {dataset_size} for epoch {epoch}");
     let mut cache = Vec::with_capacity(CACHE_SIZE);
     let mut item_hash = qanto_hash(seed).as_bytes().to_vec();
     for _ in 0..CACHE_SIZE {
@@ -305,12 +300,9 @@ pub fn hash(header_hash: &QantoHash, nonce: u64) -> [u8; 32] {
     let dag = get_qdag(block_index);
     let dag_len_mask = dag.len() - 1;
     let mut mix = [0u64; MIX_BYTES / 8];
-    for i in 0..4 {
-        mix[i] = u64::from_le_bytes(
-            header_hash.as_bytes()[i * 8..(i + 1) * 8]
-                .try_into()
-                .unwrap(),
-        );
+    // FIX: Replaced needless range loop with a more idiomatic iterator-based approach.
+    for (i, chunk) in header_hash.as_bytes().chunks(8).take(4).enumerate() {
+        mix[i] = u64::from_le_bytes(chunk.try_into().unwrap());
     }
     mix[4] = nonce;
     for _ in 0..32 {

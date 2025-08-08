@@ -19,7 +19,7 @@ use argon2::{
 };
 use bip39::Mnemonic;
 use ed25519_dalek::{Signer, SigningKey as Ed25519SigningKey, VerifyingKey as Ed25519VerifyingKey};
-use pqcrypto_dilithium::dilithium5;
+use pqcrypto_mldsa::mldsa65 as dilithium5;
 use pqcrypto_traits::sign::{PublicKey, SecretKey};
 use rand::Rng;
 use secrecy::{ExposeSecret, Secret, SecretVec};

@@ -16,7 +16,7 @@ use crate::transaction::{Output, Transaction};
 use crate::wallet::Wallet;
 use hex;
 use lru::LruCache;
-use pqcrypto_dilithium::dilithium5;
+use pqcrypto_mldsa::mldsa65 as dilithium5;
 use pqcrypto_traits::sign::{PublicKey, SecretKey, SignedMessage};
 use primitive_types::U256;
 use prometheus::{register_int_counter, IntCounter};

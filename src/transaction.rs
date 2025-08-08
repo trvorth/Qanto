@@ -1,15 +1,13 @@
 // src/transaction.rs
 
 //! --- Qanto Transaction ---
-//! v2.3.4 - Trait Compliance
-//! This version adds the required PartialEq and Eq traits to the Transaction
-//! struct, resolving compilation errors in the mempool.
+//! v3.0.1 - Trait Scoping Resolved
 
 use crate::omega;
 use crate::qantodag::{HomomorphicEncrypted, QantoDAG, QuantumResistantSignature, UTXO};
 use hex;
-use pqcrypto_dilithium::dilithium5;
-use pqcrypto_traits::sign::{PublicKey, SecretKey};
+use pqcrypto_mldsa::mldsa65::{PublicKey, SecretKey};
+use pqcrypto_traits::sign::{PublicKey as _, SecretKey as _};
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak512};
 use sp_core::H256;
@@ -21,15 +19,23 @@ use tokio::sync::RwLock;
 use tracing::instrument;
 use zeroize::Zeroize;
 
-const MAX_TRANSACTIONS_PER_MINUTE: u64 = 1000;
+// --- Performance & Fee Constants ---
+// Increased rate limit to align with 10M+ TPS goal.
+const MAX_TRANSACTIONS_PER_MINUTE: u64 = 600_000_000;
 const MAX_METADATA_PAIRS: usize = 16;
 const MAX_METADATA_KEY_LEN: usize = 64;
 const MAX_METADATA_VALUE_LEN: usize = 256;
-const FEE_TIER1_THRESHOLD: u64 = 1_000_000;
-const FEE_TIER2_THRESHOLD: u64 = 100_000_000;
-const FEE_RATE_TIER1: f64 = 0.01;
-const FEE_RATE_TIER2: f64 = 0.02;
-const FEE_RATE_TIER3: f64 = 0.03;
+
+// --- New Dynamic Fee Structure ---
+// Represents the smallest unit of currency (e.g., satoshis, wei).
+// Assuming 1,000,000 units = $1 USD for this example.
+const FEE_TIER1_THRESHOLD: u64 = 1_000_000; // Transactions up to $1
+const FEE_TIER2_THRESHOLD: u64 = 10_000_000; // Transactions up to $10
+const FEE_TIER3_THRESHOLD: u64 = 100_000_000; // Transactions up to $100
+const FEE_RATE_TIER1: f64 = 0.00; // 0%
+const FEE_RATE_TIER2: f64 = 0.01; // 1%
+const FEE_RATE_TIER3: f64 = 0.02; // 2%
+const FEE_RATE_TIER4: f64 = 0.03; // 3%
 
 #[derive(Error, Debug)]
 pub enum TransactionError {
@@ -67,7 +73,7 @@ pub struct Input {
     pub output_index: u32,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)] // Added Eq for comparison
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Output {
     pub address: String,
     pub amount: u64,
@@ -99,7 +105,6 @@ struct TransactionSigningPayload<'a> {
     timestamp: u64,
 }
 
-// FIX: Added PartialEq and Eq to allow transactions to be compared.
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct Transaction {
     pub id: String,
@@ -115,13 +120,16 @@ pub struct Transaction {
     pub metadata: HashMap<String, String>,
 }
 
+/// Calculates the transaction fee based on the new tiered structure.
 pub fn calculate_dynamic_fee(amount: u64) -> u64 {
     let rate = if amount < FEE_TIER1_THRESHOLD {
-        FEE_RATE_TIER1
+        FEE_RATE_TIER1 // 0% fee for amounts under $1
     } else if amount < FEE_TIER2_THRESHOLD {
-        FEE_RATE_TIER2
+        FEE_RATE_TIER2 // 1% fee for amounts between $1 and $10
+    } else if amount < FEE_TIER3_THRESHOLD {
+        FEE_RATE_TIER3 // 2% fee for amounts between $10 and $100
     } else {
-        FEE_RATE_TIER3
+        FEE_RATE_TIER4 // 3% for amounts over $100
     };
     (amount as f64 * rate).round() as u64
 }
@@ -157,9 +165,11 @@ impl Transaction {
             return Err(TransactionError::OmegaRejection);
         }
 
-        let sk = dilithium5::SecretKey::from_bytes(config.signing_key_bytes)
+        // --- Corrected Key Creation ---
+        // Now that the traits are in scope, these calls will compile correctly.
+        let sk = SecretKey::from_bytes(config.signing_key_bytes)
             .map_err(|e| TransactionError::PqCrypto(e.to_string()))?;
-        let pk = dilithium5::PublicKey::from_bytes(config.public_key_bytes)
+        let pk = PublicKey::from_bytes(config.public_key_bytes)
             .map_err(|e| TransactionError::PqCrypto(e.to_string()))?;
         let signature_obj = QuantumResistantSignature::sign(&sk, &pk, &signature_data)
             .map_err(|_| TransactionError::QuantumSignatureVerification)?;
@@ -209,9 +219,10 @@ impl Transaction {
         };
         let signature_data = Self::serialize_for_signing(&signing_payload)?;
 
-        let sk = dilithium5::SecretKey::from_bytes(signing_key_bytes)
+        // --- Corrected Key Creation ---
+        let sk = SecretKey::from_bytes(signing_key_bytes)
             .map_err(|e| TransactionError::PqCrypto(e.to_string()))?;
-        let pk = dilithium5::PublicKey::from_bytes(public_key_bytes)
+        let pk = PublicKey::from_bytes(public_key_bytes)
             .map_err(|e| TransactionError::PqCrypto(e.to_string()))?;
 
         let signature_obj = QuantumResistantSignature::sign(&sk, &pk, &signature_data)
@@ -470,7 +481,6 @@ mod tests {
     use crate::qantodag::{QantoDAG, QantoDagConfig};
     use crate::saga::PalletSaga;
     use crate::wallet::Wallet;
-    use pqcrypto_traits::sign::{PublicKey, SecretKey};
     use serial_test::serial;
 
     #[tokio::test]
@@ -492,7 +502,10 @@ mod tests {
         let (qr_secret_key, qr_public_key) = wallet.get_keypair()?;
         let sender_address = wallet.address();
         let amount_to_receiver = 50;
-        let fee = 5;
+
+        // Use the new dynamic fee calculation
+        let fee = calculate_dynamic_fee(amount_to_receiver);
+
         let dev_fee_on_transfer = (amount_to_receiver as f64 * 0.0304).round() as u64;
 
         let mut initial_utxos_map = HashMap::new();
