@@ -203,7 +203,7 @@ impl Consensus {
         }
 
         let target_hash =
-            crate::miner::Miner::calculate_target_from_difficulty(effective_difficulty);
+            crate::miner::Miner::calculate_target_from_difficulty(effective_difficulty as f64);
         let block_pow_hash = hex::decode(block.hash()).map_err(|_| {
             ConsensusError::StateError("Failed to decode block PoW hash".to_string())
         })?;
