@@ -1,9 +1,0 @@
-- **Checklist**: Ensure you have completed the following:
-    - `[ ] Code follows Qanto's style guidelines.`
-    - `[ ] Changes have been tested locally.`
-    - `[ ] Documentation has been updated (if applicable).`
-    - `[ ] Security implications have been considered (e.g., IDS integration, cryptography).`
-- **Additional Notes**: Add any other context, such as dependencies or potential impacts on the network.
-</pull_request_formatting>
-
-
