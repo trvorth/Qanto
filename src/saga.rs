@@ -2622,7 +2622,7 @@ impl PalletSaga {
         let (rules, network_state) = {
             let eco = self.economy.epoch_rules.read().await;
             let net_state = *self.economy.network_state.read().await;
-            (eco.clone(), net_state)
+            (eco.clone(), net_state) 
         };
 
         let trust_breakdown = self
