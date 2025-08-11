@@ -191,7 +191,7 @@ impl Consensus {
     async fn validate_proof_of_work(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
         let effective_difficulty = self.get_effective_difficulty(&block.miner).await;
 
-        if block.difficulty != effective_difficulty {
+        if block.difficulty != effective_difficulty as f64 {
             warn!(
                 "Block {} has difficulty mismatch. Claimed: {}, Required (by PoSe): {}",
                 block.id, block.difficulty, effective_difficulty
