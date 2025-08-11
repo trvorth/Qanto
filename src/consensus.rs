@@ -147,7 +147,7 @@ impl Consensus {
         }
 
         let total_fees = block.transactions.iter().map(|tx| tx.fee).sum::<u64>();
- let expected_reward = self.saga.calculate_dynamic_reward(block, dag_arc, total_fees).await?;
+ let expected_reward = self.saga.calculate_dynamic_reward(block, dag_arc).await?;
         if block.reward != expected_reward {
             return Err(ConsensusError::InvalidBlockStructure(format!(
                 "Block reward mismatch. Claimed: {}, Expected (from SAGA): {}",
@@ -191,7 +191,7 @@ impl Consensus {
     async fn validate_proof_of_work(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
         let effective_difficulty = self.get_effective_difficulty(&block.miner).await;
 
-        if block.difficulty != effective_difficulty {
+        if block.difficulty != effective_difficulty as f64 {
             warn!(
                 "Block {} has difficulty mismatch. Claimed: {}, Required (by PoSe): {}",
                 block.id, block.difficulty, effective_difficulty

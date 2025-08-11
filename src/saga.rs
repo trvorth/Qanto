@@ -2619,7 +2619,7 @@ impl PalletSaga {
         block: &QantoBlock,
         dag_arc: &Arc<QantoDAG>,
     ) -> Result<()> {
-        let (_rules, network_state) = {
+        let (rules, network_state) = {
             let eco = self.economy.epoch_rules.read().await;
             let net_state = *self.economy.network_state.read().await;
             (eco.clone(), net_state) // Note: `rules` is cloned but unused. It might be needed later.
