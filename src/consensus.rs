@@ -146,8 +146,7 @@ impl Consensus {
             ));
         }
 
-        let total_fees = block.transactions.iter().map(|tx| tx.fee).sum::<u64>();
- let expected_reward = self.saga.calculate_dynamic_reward(block, dag_arc, total_fees).await?;
+        let expected_reward = self.saga.calculate_dynamic_reward(block, dag_arc).await?;
         if block.reward != expected_reward {
             return Err(ConsensusError::InvalidBlockStructure(format!(
                 "Block reward mismatch. Claimed: {}, Expected (from SAGA): {}",
