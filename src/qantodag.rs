@@ -1197,7 +1197,7 @@ impl QantoDAG {
             .sum::<u64>();
         let expected_reward = self
             .saga
-            .calculate_dynamic_reward(block, &self_arc_strong, total_fees)
+            .calculate_dynamic_reward(block, &self_arc_strong)
             .await?;
 
         if block.reward != expected_reward {
