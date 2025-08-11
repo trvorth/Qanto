@@ -130,7 +130,9 @@ impl Consensus {
                 "Block signature verification failed".to_string(),
             ));
         }
-
+        
+        let total_fees = block.transactions.iter().map(|tx| tx.fee).sum::<u64>();
+        let expected_reward = self.saga.calculate_dynamic_reward(block, dag_arc, total_fees).await?;
         let expected_merkle_root = QantoBlock::compute_merkle_root(&block.transactions)
             .map_err(|e| ConsensusError::InvalidBlockStructure(e.to_string()))?;
         if block.merkle_root != expected_merkle_root {
