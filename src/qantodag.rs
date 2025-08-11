@@ -1021,7 +1021,7 @@ impl QantoDAG {
             .ok_or(QantoDAGError::SelfReferenceNotInitialized)?;
         let reward = self
             .saga
-            .calculate_dynamic_reward(&temp_block_for_reward_calc, &self_arc_strong, total_fees)
+            .calculate_dynamic_reward(&temp_block_for_reward_calc, &self_arc_strong)
             .await?;
 
         // The block reward now goes entirely to the miner.
