@@ -1,12 +1,14 @@
 //! --- Qanto Node Orchestrator ---
-//! v1.6.5 - Difficulty Refactor Alignment
-//! This version aligns the node with the refactored QantoDAG, which now uses a
-//! per-chain difficulty model instead of a single global value.
+//! v1.7.1 - SAGA Difficulty Integration
+//! This version fixes critical build errors by updating the API handlers to fetch
+//! the network difficulty directly from the SAGA pallet, which now has sole
+//! control over this economic parameter.
 //!
-//! - FIX (E0609): Updated API handlers (`/dag`, `/info`) to correctly query and
-//!   display the new per-chain difficulty metrics from the QantoDAG.
-//! - REFACTOR: Removed references to the obsolete `config.difficulty` during
-//!   DAG initialization, as difficulty is now managed dynamically.
+//! - BUILD FIX (E0609): Replaced all references to the now-defunct `dag.difficulties`
+//!   field with `dag.saga.economy.current_difficulty` to reflect the new architecture.
+//! - REFACTOR: Updated the `/info` and `/dag` API endpoints and their response
+//!   structs to handle the new single, network-wide difficulty value (`f64`)
+//!   instead of the old per-chain map.
 
 use crate::config::{Config, ConfigError};
 use crate::mempool::Mempool;
@@ -56,12 +58,14 @@ use crate::infinite_strata_node::{
     MIN_UPTIME_HEARTBEAT_SECS,
 };
 
+// --- Constants ---
 const MAX_UTXOS: usize = 1_000_000;
 const MAX_PROPOSALS: usize = 10_000;
 const ADDRESS_REGEX: &str = r"^[0-9a-fA-F]{64}$";
 const MAX_SYNC_AGE_SECONDS: u64 = 3600;
 const DEFAULT_MINING_INTERVAL_SECS: u64 = 5;
 
+/// Represents the primary error types that can occur within the node.
 #[derive(Error, Debug)]
 pub enum NodeError {
     #[error("DAG error: {0}")]
@@ -106,18 +110,21 @@ impl From<NodeError> for String {
     }
 }
 
+// --- API Response Structs ---
+
+/// Provides a high-level overview of the DAG's state.
 #[derive(Serialize, Debug)]
 struct DagInfo {
     block_count: usize,
     tip_count: usize,
-    average_difficulty: f64,
-    chain_difficulties: HashMap<u32, u64>,
+    current_difficulty: f64,
     target_block_time: u64,
     validator_count: usize,
     num_chains: u32,
     latest_block_timestamp: u64,
 }
 
+/// A readiness probe for external systems, indicating if the node is synced and operational.
 #[derive(Serialize, Debug)]
 struct PublishReadiness {
     is_ready: bool,
@@ -129,11 +136,13 @@ struct PublishReadiness {
     issues: Vec<String>,
 }
 
+/// A simple structure for caching peer addresses to disk.
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct PeerCache {
     pub peers: Vec<String>,
 }
 
+/// The main orchestrator for all node components.
 pub struct Node {
     _config_path: String,
     config: Config,
@@ -150,9 +159,13 @@ pub struct Node {
     isnm_service: Arc<InfiniteStrataNode>,
 }
 
+/// A type alias for the API rate limiter.
 type DirectApiRateLimiter = RateLimiter<NotKeyed, InMemoryState, QuantaClock>;
 
 impl Node {
+    /// Creates a new `Node` instance, initializing all sub-components.
+    /// This function handles P2P identity loading/creation, DAG initialization from the database,
+    /// and setting up the SAGA pallet and other services.
     #[instrument(skip(config, wallet))]
     pub async fn new(
         mut config: Config,
@@ -163,6 +176,7 @@ impl Node {
     ) -> Result<Self, NodeError> {
         config.validate()?;
 
+        // Load or generate the libp2p identity keypair.
         let local_keypair = match fs::read(p2p_identity_path).await {
             Ok(key_bytes) => {
                 info!("Loading P2P identity from file: {p2p_identity_path}");
@@ -191,6 +205,8 @@ impl Node {
         }?;
         let local_peer_id = PeerId::from(local_keypair.public());
         info!("Node Local P2P Peer ID: {local_peer_id}");
+
+        // Update config with the full P2P address if it's not already set.
         let full_local_p2p_address = format!("{}/p2p/{}", config.p2p_address, local_peer_id);
         if config.local_full_p2p_address.as_deref() != Some(&full_local_p2p_address) {
             info!(
@@ -200,6 +216,7 @@ impl Node {
             config.save(&config_path)?;
         }
 
+        // Validate that the wallet address matches the genesis validator specified in the config.
         let initial_validator = wallet.address().trim().to_lowercase();
         if initial_validator != config.genesis_validator.trim().to_lowercase() {
             return Err(NodeError::Config(ConfigError::Validation(
@@ -211,14 +228,16 @@ impl Node {
 
         info!("Initializing SAGA and dependent services...");
 
+        // Conditionally compile and initialize the Infinite Strata service.
         #[cfg(feature = "infinite-strata")]
         let isnm_service = {
             info!("[ISNM] Infinite Strata feature enabled, initializing service.");
             let isnm_config = IsnmNodeConfig::default();
-            let oracle_aggregator = DecentralizedOracleAggregator::new();
+            let oracle_aggregator = Arc::new(DecentralizedOracleAggregator::default());
             Arc::new(InfiniteStrataNode::new(isnm_config, oracle_aggregator))
         };
 
+        // Initialize the SAGA pallet, injecting the ISNM service if the feature is enabled.
         let saga_pallet = {
             #[cfg(feature = "infinite-strata")]
             {
@@ -234,9 +253,11 @@ impl Node {
         let db = {
             let mut opts = Options::default();
             opts.create_if_missing(true);
+            // Using a distinct DB name for this version.
             DB::open(&opts, "qantodag_db_evolved")?
         };
 
+        // Configure and create the core DAG structure.
         let dag_config = QantoDagConfig {
             initial_validator,
             target_block_time: config.target_block_time,
@@ -244,15 +265,15 @@ impl Node {
             qr_signing_key: &node_signing_key,
             qr_public_key: &node_public_key,
         };
-
         let dag_arc = QantoDAG::new(dag_config, saga_pallet.clone(), db)?;
-
         info!("QantoDAG initialized.");
 
+        // Initialize shared state components.
         let mempool = Arc::new(RwLock::new(Mempool::new(3600, 10_000_000, 10_000)));
         let utxos = Arc::new(RwLock::new(HashMap::with_capacity(MAX_UTXOS)));
         let proposals = Arc::new(RwLock::new(Vec::with_capacity(MAX_PROPOSALS)));
 
+        // Create genesis UTXOs for each chain to bootstrap the system.
         {
             let mut utxos_lock = utxos.write().await;
             for chain_id_val in 0..config.num_chains {
@@ -263,7 +284,7 @@ impl Node {
                     utxo_id.clone(),
                     UTXO {
                         address: config.genesis_validator.clone(),
-                        amount: 100,
+                        amount: 100, // A nominal amount for genesis.
                         tx_id: genesis_id_convention,
                         output_index: 0,
                         explorer_link: format!("https://qantoblockexplorer.org/utxo/{utxo_id}"),
@@ -272,10 +293,12 @@ impl Node {
             }
         }
 
+        // Configure and initialize the miner.
         let miner_config = MinerConfig {
             address: wallet.address(),
             dag: dag_arc.clone(),
-            difficulty_hex: format!("{:x}", 1), // Difficulty is now per-chain, this is a placeholder
+            // Difficulty is now managed per-chain by the DAG, this config value is a placeholder.
+            difficulty_hex: format!("{:x}", 1),
             target_block_time: config.target_block_time,
             use_gpu: config.use_gpu,
             zk_enabled: config.zk_enabled,
@@ -302,15 +325,21 @@ impl Node {
         })
     }
 
+    /// Starts all node services and enters the main event loop.
+    /// This function spawns tasks for the P2P server, API server, miner (if in solo mode),
+    /// and the core command processing loop. It gracefully handles shutdown on Ctrl+C.
     pub async fn start(&self) -> Result<(), NodeError> {
+        // Create a channel for passing commands between the P2P layer and the core logic.
         let (tx_p2p_commands, mut rx_p2p_commands) = mpsc::channel::<P2PCommand>(100);
         let mut join_set: JoinSet<Result<(), NodeError>> = JoinSet::new();
 
+        // If the 'infinite-strata' feature is enabled, spawn its periodic task.
         #[cfg(feature = "infinite-strata")]
         {
             info!("[ISNM] Spawning periodic cloud presence check task.");
             let isnm_service_clone = self.isnm_service.clone();
             join_set.spawn(async move {
+                // Initial delay to allow the node to stabilize.
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 let mut interval =
                     tokio::time::interval(Duration::from_secs(MIN_UPTIME_HEARTBEAT_SECS));
@@ -328,6 +357,8 @@ impl Node {
             });
         }
 
+        // --- Core Command Processor Task ---
+        // This task is the heart of the node, processing incoming P2P commands.
         let command_processor_task = {
             let dag_clone = self.dag.clone();
             let mempool_clone = self.mempool.clone();
@@ -366,6 +397,7 @@ impl Node {
                                 blocks.len(),
                                 utxos.len()
                             );
+                            // Extend the local UTXO set with the synced data.
                             {
                                 let mut utxos_writer = utxos_clone.write().await;
                                 let initial_utxo_count = utxos_writer.len();
@@ -375,6 +407,7 @@ impl Node {
                                     utxos_writer.len() - initial_utxo_count
                                 );
                             }
+                            // Topologically sort and add the received blocks to the DAG.
                             if let Ok(sorted_blocks) =
                                 Self::topological_sort_blocks(blocks, &dag_clone).await
                             {
@@ -383,7 +416,7 @@ impl Node {
                                 for b in sorted_blocks {
                                     match dag_clone.add_block(b, &utxos_clone).await {
                                         Ok(true) => added_count += 1,
-                                        Ok(false) => { /* block already exists */ }
+                                        Ok(false) => { /* block already exists, not an error */ }
                                         Err(e) => {
                                             warn!("Failed to add block from sync response: {}", e);
                                             failed_count += 1;
@@ -394,6 +427,7 @@ impl Node {
                                     "Block sync complete. Added: {}, Failed: {}.",
                                     added_count, failed_count
                                 );
+                                // Run maintenance to update DAG state after sync.
                                 dag_clone.run_periodic_maintenance().await;
                             } else {
                                 error!(
@@ -432,7 +466,7 @@ impl Node {
                                 info!(cred_id=%cred.id, "Successfully verified and stored CarbonOffsetCredential from network.");
                             }
                         }
-                        _ => {}
+                        _ => { /* Ignore other command types not relevant to this processor */ }
                     }
                 }
                 Ok(())
@@ -440,6 +474,8 @@ impl Node {
         };
         join_set.spawn(command_processor_task);
 
+        // --- P2P Server / Solo Miner Task ---
+        // If peers are configured, start the P2P server. Otherwise, run in solo mining mode.
         if !self.config.peers.is_empty() {
             info!("Peers detected in config, initializing P2P server task...");
             let p2p_dag_clone = self.dag.clone();
@@ -454,8 +490,10 @@ impl Node {
             let (node_signing_key, node_public_key) = self.wallet.get_keypair()?;
             let peer_cache_path_clone = self.peer_cache_path.clone();
             let network_id_clone = self.config.network_id.clone();
+
             let p2p_task_fut = async move {
                 let mut attempts = 0;
+                // Retry loop for P2P server initialization with exponential backoff.
                 let mut p2p_server = loop {
                     let p2p_config = P2PConfig {
                         topic_prefix: &network_id_clone,
@@ -497,6 +535,8 @@ impl Node {
                     warn!("Retrying P2P initialization in {:?}", backoff_duration);
                     tokio::time::sleep(backoff_duration).await;
                 };
+
+                // Request state from peers on startup to sync the DAG.
                 if !p2p_initial_peers_config_clone.is_empty() {
                     if let Err(e) = p2p_command_sender_clone
                         .send(P2PCommand::RequestState)
@@ -505,6 +545,8 @@ impl Node {
                         error!("Failed to send initial RequestState P2P command: {e}");
                     }
                 }
+
+                // Run the P2P server's event loop.
                 let (_p2p_tx, p2p_rx) = mpsc::channel::<P2PCommand>(100);
                 p2p_server.run(p2p_rx).await.map_err(NodeError::P2PSpecific)
             };
@@ -530,6 +572,7 @@ impl Node {
             });
         }
 
+        // --- API Server Task ---
         let server_task_fut = {
             let app_state = AppState {
                 dag: self.dag.clone(),
@@ -540,8 +583,11 @@ impl Node {
                 saga: self.saga_pallet.clone(),
             };
             async move {
+                // Set up a rate limiter for the API to prevent abuse.
                 let rate_limiter: Arc<DirectApiRateLimiter> =
                     Arc::new(RateLimiter::direct(Quota::per_second(nonzero!(50u32))));
+
+                // Define the API routes using Axum router.
                 let app = Router::new()
                     .route("/info", get(info_handler))
                     .route("/balance/:address", get(get_balance))
@@ -558,6 +604,7 @@ impl Node {
                         rate_limit_layer,
                     ))
                     .with_state(app_state.clone());
+
                 let addr: SocketAddr = app_state.api_address.parse().map_err(|e| {
                     NodeError::Config(ConfigError::Validation(format!("Invalid API address: {e}")))
                 })?;
@@ -565,6 +612,8 @@ impl Node {
                     NodeError::ServerExecution(format!("Failed to bind to API address {addr}: {e}"))
                 })?;
                 info!("API server listening on {}", listener.local_addr().unwrap());
+
+                // Start the Axum server.
                 if let Err(e) = axum::serve(listener, app.into_make_service()).await {
                     error!("API server failed: {e}");
                     return Err(NodeError::ServerExecution(format!(
@@ -576,6 +625,8 @@ impl Node {
         };
         join_set.spawn(server_task_fut);
 
+        // --- Main Shutdown Handler ---
+        // Waits for either a Ctrl+C signal or for a critical task to fail.
         tokio::select! {
             biased;
             _ = signal::ctrl_c() => {
@@ -589,11 +640,16 @@ impl Node {
                 }
             },
         }
+
+        // Gracefully shut down all spawned tasks.
         join_set.shutdown().await;
         info!("Node shutdown complete.");
         Ok(())
     }
 
+    /// Topologically sorts a vector of blocks.
+    /// This is crucial for correctly processing blocks received during a state sync,
+    /// ensuring that parents are processed before their children.
     async fn topological_sort_blocks(
         blocks: Vec<QantoBlock>,
         dag: &QantoDAG,
@@ -606,9 +662,12 @@ impl Node {
         let mut in_degree: HashMap<String, usize> = HashMap::new();
         let mut children_map: HashMap<String, Vec<String>> = HashMap::new();
         let local_blocks = dag.blocks.read().await;
+
+        // Calculate the in-degree for each block in the batch.
         for (id, block) in &block_map {
             let mut degree = 0;
             for parent_id in &block.parents {
+                // If the parent is also in the sync batch, it's an edge in our graph.
                 if block_map.contains_key(parent_id) {
                     degree += 1;
                     children_map
@@ -616,6 +675,7 @@ impl Node {
                         .or_default()
                         .push(id.clone());
                 } else if !local_blocks.contains_key(parent_id) {
+                    // If a parent is missing from both the batch and the local DAG, the sort is impossible.
                     warn!(
                         "Sync Error: Block {} has a missing parent {} that is not in the local DAG or the sync batch.",
                         id, parent_id
@@ -627,12 +687,17 @@ impl Node {
             }
             in_degree.insert(id.clone(), degree);
         }
+
+        // Initialize the queue with all nodes that have an in-degree of 0.
         let mut queue: VecDeque<String> = in_degree
             .iter()
             .filter(|(_, &degree)| degree == 0)
             .map(|(id, _)| id.clone())
             .collect();
+
         let mut sorted_blocks = Vec::with_capacity(block_map.len());
+
+        // Process the queue (Kahn's algorithm).
         while let Some(id) = queue.pop_front() {
             if let Some(children) = children_map.get(&id) {
                 for child_id in children {
@@ -648,6 +713,8 @@ impl Node {
                 sorted_blocks.push(block.clone());
             }
         }
+
+        // If the sorted list doesn't contain all blocks, there must be a cycle.
         if sorted_blocks.len() != block_map.len() {
             error!(
                 "Cycle detected in block sync batch or missing parent. Sorted {} of {} blocks.",
@@ -663,6 +730,7 @@ impl Node {
     }
 }
 
+/// Axum middleware to enforce API rate limiting.
 async fn rate_limit_layer(
     MiddlewareState(limiter): MiddlewareState<Arc<DirectApiRateLimiter>>,
     req: HttpRequest<Body>,
@@ -676,6 +744,7 @@ async fn rate_limit_layer(
     }
 }
 
+/// Holds the shared state accessible by all API handlers.
 #[derive(Clone)]
 struct AppState {
     dag: Arc<QantoDAG>,
@@ -686,6 +755,7 @@ struct AppState {
     saga: Arc<PalletSaga>,
 }
 
+// --- API Error Handling ---
 #[derive(Deserialize)]
 struct SagaQuery {
     query: String,
@@ -704,6 +774,9 @@ impl IntoResponse for ApiError {
     }
 }
 
+// --- API Handlers ---
+
+/// Handles queries to the SAGA guidance system.
 async fn ask_saga(
     State(state): State<AppState>,
     Json(payload): Json<SagaQuery>,
@@ -751,6 +824,7 @@ async fn ask_saga(
     }
 }
 
+/// Provides a general information summary of the node's state.
 async fn info_handler(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
@@ -759,13 +833,8 @@ async fn info_handler(
     let tips_read_guard = state.dag.tips.read().await;
     let blocks_read_guard = state.dag.blocks.read().await;
     let num_chains_val = *state.dag.num_chains.read().await;
-    let difficulties = state.dag.difficulties.read().await;
-    let total_difficulty: u64 = difficulties.values().sum();
-    let avg_difficulty = if !difficulties.is_empty() {
-        total_difficulty as f64 / difficulties.len() as f64
-    } else {
-        0.0
-    };
+    // BUILD FIX (E0609): Get the current difficulty from the SAGA pallet.
+    let current_difficulty = *state.dag.saga.economy.current_difficulty.read().await;
 
     Ok(Json(serde_json::json!({
         "block_count": blocks_read_guard.len(),
@@ -773,10 +842,11 @@ async fn info_handler(
         "mempool_size": mempool_read_guard.size().await,
         "utxo_count": utxos_read_guard.len(),
         "num_chains": num_chains_val,
-        "average_difficulty": avg_difficulty,
+        "current_difficulty": current_difficulty,
     })))
 }
 
+/// Returns the current contents of the mempool.
 async fn mempool_handler(
     State(state): State<AppState>,
 ) -> Result<Json<HashMap<String, Transaction>>, StatusCode> {
@@ -784,6 +854,7 @@ async fn mempool_handler(
     Ok(Json(mempool_read_guard.get_transactions().await))
 }
 
+/// A readiness probe endpoint.
 async fn publish_readiness_handler(
     State(state): State<AppState>,
 ) -> Result<Json<PublishReadiness>, StatusCode> {
@@ -791,12 +862,14 @@ async fn publish_readiness_handler(
     let utxos_read_guard = state.utxos.read().await;
     let blocks_read_guard = state.dag.blocks.read().await;
     let mut issues = vec![];
+
     if blocks_read_guard.len() < 2 {
         issues.push("Insufficient blocks in DAG".to_string());
     }
     if utxos_read_guard.is_empty() {
         issues.push("No UTXOs available".to_string());
     }
+
     let latest_timestamp = blocks_read_guard
         .values()
         .map(|b| b.timestamp)
@@ -806,6 +879,7 @@ async fn publish_readiness_handler(
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
+
     let is_synced = now.saturating_sub(latest_timestamp) < MAX_SYNC_AGE_SECONDS;
     if !is_synced {
         issues.push(format!(
@@ -813,18 +887,20 @@ async fn publish_readiness_handler(
             now.saturating_sub(latest_timestamp)
         ));
     }
+
     let is_ready = issues.is_empty();
     Ok(Json(PublishReadiness {
         is_ready,
         block_count: blocks_read_guard.len(),
         utxo_count: utxos_read_guard.len(),
-        peer_count: 0,
+        peer_count: 0, // Placeholder, a real implementation would get this from the P2P layer.
         mempool_size: mempool_read_guard.size().await,
         is_synced,
         issues,
     }))
 }
 
+/// Returns the total balance for a given address.
 async fn get_balance(
     State(state): State<AppState>,
     AxumPath(address): AxumPath<String>,
@@ -846,6 +922,7 @@ async fn get_balance(
     Ok(Json(balance))
 }
 
+/// Returns all UTXOs for a given address.
 async fn get_utxos(
     State(state): State<AppState>,
     AxumPath(address): AxumPath<String>,
@@ -867,10 +944,12 @@ async fn get_utxos(
     Ok(Json(filtered_utxos_map))
 }
 
+/// Submits a new transaction to the network.
 async fn submit_transaction(
     State(state): State<AppState>,
     Json(tx_data): Json<Transaction>,
 ) -> Result<Json<String>, ApiError> {
+    // Perform a preliminary check with the ΩMEGA protocol.
     let tx_hash_bytes = match hex::decode(&tx_data.id) {
         Ok(bytes) => bytes,
         Err(_) => {
@@ -890,6 +969,8 @@ async fn submit_transaction(
             details: None,
         });
     }
+
+    // Verify the transaction before broadcasting.
     let utxos_read_guard = state.utxos.read().await;
     if let Err(e) = tx_data.verify(&state.dag, &utxos_read_guard).await {
         warn!(
@@ -902,6 +983,8 @@ async fn submit_transaction(
             details: Some(e.to_string()),
         });
     }
+
+    // Send the transaction to the P2P layer for broadcast.
     let tx_id = tx_data.id.clone();
     if let Err(e) = state
         .p2p_command_sender
@@ -918,10 +1001,12 @@ async fn submit_transaction(
             details: None,
         });
     }
+
     info!("Transaction {} submitted via API", tx_id);
     Ok(Json(tx_id))
 }
 
+/// Retrieves a specific block by its ID.
 async fn get_block(
     State(state): State<AppState>,
     AxumPath(id_str): AxumPath<String>,
@@ -938,30 +1023,25 @@ async fn get_block(
     Ok(Json(block_data))
 }
 
+/// Returns detailed information about the entire DAG structure.
 async fn get_dag(State(state): State<AppState>) -> Result<Json<DagInfo>, StatusCode> {
     let blocks_read_guard = state.dag.blocks.read().await;
     let tips_read_guard = state.dag.tips.read().await;
     let validators_read_guard = state.dag.validators.read().await;
-    let difficulties = state.dag.difficulties.read().await;
+    // BUILD FIX (E0609): Get the current difficulty from the SAGA pallet.
+    let current_difficulty = *state.dag.saga.economy.current_difficulty.read().await;
     let num_chains_val = *state.dag.num_chains.read().await;
-
-    let total_difficulty: u64 = difficulties.values().sum();
-    let avg_difficulty = if !difficulties.is_empty() {
-        total_difficulty as f64 / difficulties.len() as f64
-    } else {
-        0.0
-    };
 
     let latest_block_timestamp = blocks_read_guard
         .values()
         .map(|b| b.timestamp)
         .max()
         .unwrap_or(0);
+
     Ok(Json(DagInfo {
         block_count: blocks_read_guard.len(),
         tip_count: tips_read_guard.values().map(|t_set| t_set.len()).sum(),
-        average_difficulty: avg_difficulty,
-        chain_difficulties: difficulties.clone(),
+        current_difficulty,
         target_block_time: state.dag.target_block_time,
         validator_count: validators_read_guard.len(),
         num_chains: num_chains_val,
@@ -969,34 +1049,43 @@ async fn get_dag(State(state): State<AppState>) -> Result<Json<DagInfo>, StatusC
     }))
 }
 
+/// A simple health check endpoint.
 async fn health_check() -> Result<Json<serde_json::Value>, StatusCode> {
     Ok(Json(serde_json::json!({ "status": "healthy" })))
 }
 
+// --- Unit Tests ---
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::{LoggingConfig, P2pConfig};
     use crate::wallet::Wallet;
-    use rand::Rng; // Import Rng trait
+    use rand::Rng;
     use serial_test::serial;
     use std::fs as std_fs;
 
     #[tokio::test]
     #[serial]
     async fn test_node_creation_and_config_save() {
+        // Setup paths for test artifacts.
         let db_path = "qantodag_db_test_node_creation";
         if std::path::Path::new(db_path).exists() {
-            std_fs::remove_dir_all(db_path).unwrap();
+            let _ = std_fs::remove_dir_all(db_path);
         }
         let _ = tracing_subscriber::fmt::try_init();
+
+        // Create a new wallet for the test.
         let wallet = Wallet::new().expect("Failed to create new wallet for test");
         let wallet_arc = Arc::new(wallet);
         let genesis_validator_addr = wallet_arc.address();
-        let rand_id: u32 = rand::thread_rng().gen(); // Use thread_rng()
+
+        // Use a random ID to prevent test conflicts.
+        let rand_id: u32 = rand::thread_rng().gen();
         let temp_config_path = format!("./temp_test_config_{rand_id}.toml");
         let temp_identity_path = format!("./temp_p2p_identity_{rand_id}.key");
         let temp_peer_cache_path = format!("./temp_peer_cache_{rand_id}.json");
+
+        // Create a default config for the test.
         let test_config = Config {
             p2p_address: "/ip4/127.0.0.1/tcp/0".to_string(),
             local_full_p2p_address: None,
@@ -1004,7 +1093,7 @@ mod tests {
             peers: vec![],
             genesis_validator: genesis_validator_addr.clone(),
             target_block_time: 60,
-            difficulty: 1, // This is now a placeholder in config
+            difficulty: 1, // This is a placeholder and is dynamically managed by the DAG now.
             max_amount: 10_000_000_000,
             use_gpu: false,
             zk_enabled: false,
@@ -1021,6 +1110,7 @@ mod tests {
             .save(&temp_config_path)
             .expect("Failed to save initial temp config for test");
 
+        // Attempt to create a new node instance.
         let node_instance_result = Node::new(
             test_config,
             temp_config_path.clone(),
@@ -1030,18 +1120,19 @@ mod tests {
         )
         .await;
 
+        // --- Teardown ---
         if std::path::Path::new(db_path).exists() {
-            std_fs::remove_dir_all(db_path).unwrap();
+            let _ = std_fs::remove_dir_all(db_path);
         }
+        let _ = std_fs::remove_file(&temp_config_path);
+        let _ = std_fs::remove_file(&temp_identity_path);
+        let _ = std_fs::remove_file(&temp_peer_cache_path);
 
+        // Assert that node creation was successful.
         assert!(
             node_instance_result.is_ok(),
             "Node::new failed: {:?}",
             node_instance_result.err()
         );
-
-        let _ = std_fs::remove_file(&temp_config_path);
-        let _ = std_fs::remove_file(&temp_identity_path);
-        let _ = std_fs::remove_file(&temp_peer_cache_path);
     }
 }

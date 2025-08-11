@@ -1,10 +1,11 @@
 //! --- Qanto QantoDAG Ledger ---
-//! v2.3.1 - Final Cleanup
-//! This version cleans up a misleading compiler warning.
+//! v2.4.2 - Block Reward Calculation Fix
+//! This version corrects the block reward calculation by ensuring that transaction
+//! fees are properly calculated and included in the final reward amount.
 //!
-//! - LINT: The `TransactionError` import is required for the `#[from]` attribute
-//!   in the error enum, but the compiler was incorrectly flagging it as unused.
-//!   The import is kept as it is necessary for the build.
+//! - FIX: The `create_candidate_block` function now calculates the total fees
+//!   from mempool transactions *before* calling SAGA's reward calculation,
+//!   ensuring the final reward includes both the base amount and fees.
 
 use crate::emission::Emission;
 use crate::mempool::Mempool;
@@ -12,13 +13,14 @@ use crate::miner::Miner;
 use crate::saga::{
     CarbonOffsetCredential, GovernanceProposal, PalletSaga, ProposalStatus, ProposalType,
 };
+// This import is required for the `#[from]` attribute in QantoDAGError.
+// The compiler may incorrectly flag it as unused, but it is necessary.
 use crate::transaction::{Output, Transaction};
 use crate::wallet::Wallet;
 use hex;
 use lru::LruCache;
 use pqcrypto_mldsa::mldsa65 as dilithium5;
 use pqcrypto_traits::sign::{PublicKey, SecretKey, SignedMessage};
-use primitive_types::U256;
 use prometheus::{register_int_counter, IntCounter};
 use rand::Rng;
 use rayon::prelude::*;
@@ -36,23 +38,26 @@ use tokio::task;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
-pub const MAX_BLOCK_SIZE: usize = 20_000_000;
-pub const MAX_TRANSACTIONS_PER_BLOCK: usize = 25_000;
-pub const DEV_ADDRESS: &str = "74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41";
-pub const DEV_FEE_RATE: f64 = 0.0304;
+// --- High-Throughput Constants ---
+// To achieve ~10M TPS at 32 BPS, each block must hold ~312,500 transactions.
+pub const MAX_TRANSACTIONS_PER_BLOCK: usize = 320_000;
+// Increased block size to accommodate the higher transaction count.
+pub const MAX_BLOCK_SIZE: usize = 80_000_000; // 80 MB
 
+// --- Network & Economic Constants ---
+pub const DEV_ADDRESS: &str = "74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41";
+pub const INITIAL_BLOCK_REWARD: u64 = 50_000_000_000; // In smallest units (assuming 10^9 per QNTO)
+const SMALLEST_UNITS_PER_QNTO: u64 = 1_000_000_000;
 const FINALIZATION_DEPTH: u64 = 8;
 const SHARD_THRESHOLD: u32 = 2;
 const TEMPORAL_CONSENSUS_WINDOW: u64 = 600;
-const MAX_BLOCKS_PER_MINUTE: u64 = 32 * 60; // Adjusted for high throughput
+const MAX_BLOCKS_PER_MINUTE: u64 = 32 * 60;
 const MIN_VALIDATOR_STAKE: u64 = 50;
 const SLASHING_PENALTY: u64 = 30;
 const CACHE_SIZE: usize = 1_000;
 const ANOMALY_DETECTION_BASELINE_BLOCKS: usize = 100;
 const ANOMALY_Z_SCORE_THRESHOLD: f64 = 3.5;
-const ASERT_IDEAL_BLOCK_TIME: i64 = 2; // Target block time in seconds (for ~32 BPS, this is aggressive)
-const ASERT_HALFLIFE: i64 = 172800; // Halflife for adjustment (2 days), controls responsiveness.
-const INITIAL_DIFFICULTY: u64 = 1;
+const INITIAL_DIFFICULTY: f64 = 1.0; // Difficulty is now a float managed by SAGA's PID controller
 
 lazy_static::lazy_static! {
     static ref BLOCKS_PROCESSED: IntCounter = register_int_counter!("blocks_processed_total", "Total blocks processed").unwrap();
@@ -133,7 +138,7 @@ pub struct SigningData<'a> {
     pub parents: &'a [String],
     pub transactions: &'a [Transaction],
     pub timestamp: u64,
-    pub difficulty: u64,
+    pub difficulty: f64,
     pub validator: &'a str,
     pub miner: &'a str,
     pub chain_id: u32,
@@ -145,7 +150,7 @@ pub struct QantoBlockCreationData<'a> {
     pub chain_id: u32,
     pub parents: Vec<String>,
     pub transactions: Vec<Transaction>,
-    pub difficulty: u64,
+    pub difficulty: f64,
     pub validator: String,
     pub miner: String,
     pub qr_signing_key: &'a dilithium5::SecretKey,
@@ -308,7 +313,7 @@ pub struct QantoBlock {
     pub id: String,
     pub parents: Vec<String>,
     pub transactions: Vec<Transaction>,
-    pub difficulty: u64,
+    pub difficulty: f64,
     pub validator: String,
     pub miner: String,
     pub nonce: u64,
@@ -362,9 +367,14 @@ impl fmt::Display for QantoBlock {
         writeln!(f, "╟─ Mining Details ─{}╢", "─".repeat(70))?;
         writeln!(f, "║ ⛏️  Miner:           {}", self.miner)?;
         writeln!(f, "║ ✨ Nonce:          {}", self.nonce)?;
-        writeln!(f, "║ 🎯 Difficulty:    {}", self.difficulty)?;
+        writeln!(f, "║ 🎯 Difficulty:    {:.4}", self.difficulty)?;
         writeln!(f, "║ 💪 Effort:         {} hashes", self.effort)?;
-        writeln!(f, "║ 💰 Block Reward:    {} $QNTO (from SAGA)", self.reward)?;
+        // FIX: Format the u64 reward into a decimal representation of QNTO.
+        writeln!(
+            f,
+            "║ 💰 Block Reward:    {:.9} $QNTO (from SAGA)",
+            self.reward as f64 / SMALLEST_UNITS_PER_QNTO as f64
+        )?;
         writeln!(f, "╚{border}╝")?;
         Ok(())
     }
@@ -510,21 +520,12 @@ pub struct QantoDagConfig<'a> {
     pub qr_public_key: &'a dilithium5::PublicKey,
 }
 
-#[derive(Clone, Debug)]
-pub struct DaaAnchor {
-    pub height: u64,
-    pub timestamp: u64,
-    pub target: U256, // Use a 256-bit integer for the target, which is the inverse of difficulty
-}
-
 #[derive(Debug)]
 pub struct QantoDAG {
     pub blocks: Arc<RwLock<HashMap<String, QantoBlock>>>,
     pub tips: Arc<RwLock<HashMap<u32, HashSet<String>>>>,
     pub validators: Arc<RwLock<HashMap<String, u64>>>,
     pub target_block_time: u64,
-    pub difficulties: Arc<RwLock<HashMap<u32, u64>>>,
-    pub difficulty_anchors: Arc<RwLock<HashMap<u32, DaaAnchor>>>,
     pub emission: Arc<RwLock<Emission>>,
     pub num_chains: Arc<RwLock<u32>>,
     pub finalized_blocks: Arc<RwLock<HashSet<String>>>,
@@ -551,7 +552,6 @@ impl QantoDAG {
         let mut blocks_map = HashMap::new();
         let mut tips_map = HashMap::new();
         let mut validators_map = HashMap::new();
-        let mut difficulties_map = HashMap::new();
         let genesis_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
         for chain_id_val in 0..config.num_chains {
@@ -569,7 +569,7 @@ impl QantoDAG {
                 height: 0,
             };
             let mut genesis_block = QantoBlock::new(genesis_creation_data)?;
-            genesis_block.reward = 0;
+            genesis_block.reward = INITIAL_BLOCK_REWARD;
             let genesis_id = genesis_block.id.clone();
 
             blocks_map.insert(genesis_id.clone(), genesis_block);
@@ -577,7 +577,6 @@ impl QantoDAG {
                 .entry(chain_id_val)
                 .or_insert_with(HashSet::new)
                 .insert(genesis_id);
-            difficulties_map.insert(chain_id_val, INITIAL_DIFFICULTY);
         }
         validators_map.insert(
             config.initial_validator.clone(),
@@ -589,8 +588,6 @@ impl QantoDAG {
             tips: Arc::new(RwLock::new(tips_map)),
             validators: Arc::new(RwLock::new(validators_map)),
             target_block_time: config.target_block_time,
-            difficulties: Arc::new(RwLock::new(difficulties_map)),
-            difficulty_anchors: Arc::new(RwLock::new(HashMap::new())),
             emission: Arc::new(RwLock::new(Emission::default_with_timestamp(
                 genesis_timestamp,
                 config.num_chains,
@@ -997,14 +994,13 @@ impl QantoDAG {
 
         let epoch = *self.current_epoch.read().await;
 
-        let current_difficulty = self
-            .difficulties
-            .read()
-            .await
-            .get(&chain_id_val)
-            .cloned()
-            .unwrap_or(INITIAL_DIFFICULTY);
+        let current_difficulty = *self.saga.economy.current_difficulty.read().await;
 
+        // FIX: Calculate total fees from selected transactions BEFORE calculating reward.
+        let total_fees = selected_transactions.iter().map(|tx| tx.fee).sum::<u64>();
+
+        // A temporary block is created with a placeholder transaction vec
+        // to calculate the reward. The actual transactions will be added later.
         let temp_block_for_reward_calc = QantoBlock::new(QantoBlockCreationData {
             chain_id: chain_id_val,
             parents: parent_tips.clone(),
@@ -1025,24 +1021,15 @@ impl QantoDAG {
             .ok_or(QantoDAGError::SelfReferenceNotInitialized)?;
         let reward = self
             .saga
-            .calculate_dynamic_reward(&temp_block_for_reward_calc, &self_arc_strong)
+            .calculate_dynamic_reward(&temp_block_for_reward_calc, &self_arc_strong, total_fees)
             .await?;
 
-        let dev_fee = (reward as f64 * DEV_FEE_RATE).round() as u64;
-        let miner_reward = reward.saturating_sub(dev_fee);
-
-        let coinbase_outputs = vec![
-            Output {
-                address: validator_address.to_string(),
-                amount: miner_reward,
-                homomorphic_encrypted: HomomorphicEncrypted::new(0, &[]),
-            },
-            Output {
-                address: DEV_ADDRESS.to_string(),
-                amount: dev_fee,
-                homomorphic_encrypted: HomomorphicEncrypted::new(0, &[]),
-            },
-        ];
+        // The block reward now goes entirely to the miner.
+        let coinbase_outputs = vec![Output {
+            address: validator_address.to_string(),
+            amount: reward,
+            homomorphic_encrypted: HomomorphicEncrypted::new(reward, &[]),
+        }];
 
         let reward_tx = Transaction::new_coinbase(
             validator_address.to_string(),
@@ -1202,9 +1189,15 @@ impl QantoDAG {
             .self_arc
             .upgrade()
             .ok_or(QantoDAGError::SelfReferenceNotInitialized)?;
+        let total_fees = block
+            .transactions
+            .iter()
+            .skip(1)
+            .map(|tx| tx.fee)
+            .sum::<u64>();
         let expected_reward = self
             .saga
-            .calculate_dynamic_reward(block, &self_arc_strong)
+            .calculate_dynamic_reward(block, &self_arc_strong, total_fees)
             .await?;
 
         if block.reward != expected_reward {
@@ -1310,66 +1303,6 @@ impl QantoDAG {
         tx.verify(self, utxos_map).await.is_ok()
     }
 
-    #[instrument(skip(self))]
-    pub async fn adjust_difficulty(&self) -> Result<(), QantoDAGError> {
-        const DIFFICULTY_WINDOW: usize = 100;
-        let mut difficulties_guard = self.difficulties.write().await;
-        let blocks_guard = self.blocks.read().await;
-        let num_chains_val = *self.num_chains.read().await;
-
-        for chain_id in 0..num_chains_val {
-            let mut chain_blocks: Vec<&QantoBlock> = blocks_guard
-                .values()
-                .filter(|b| b.chain_id == chain_id)
-                .collect();
-
-            if chain_blocks.len() < DIFFICULTY_WINDOW {
-                continue; // Not enough data to adjust
-            }
-
-            chain_blocks.sort_by_key(|b| b.height);
-
-            let last_block = chain_blocks.last().unwrap();
-            let first_block_in_window = chain_blocks[chain_blocks.len() - DIFFICULTY_WINDOW];
-
-            let time_span = last_block
-                .timestamp
-                .saturating_sub(first_block_in_window.timestamp);
-            let blocks_span = (DIFFICULTY_WINDOW - 1) as u64;
-
-            if time_span == 0 || blocks_span == 0 {
-                continue;
-            }
-
-            // ASERT DAA calculation
-            // target_t = target_parent * 2^((time_diff - ideal_block_time * height_diff) / halflife)
-            // Since we use difficulty (not target), the formula is inverted.
-            let time_diff = time_span as i64 - (blocks_span as i64 * ASERT_IDEAL_BLOCK_TIME);
-
-            // Use f64 for exponent calculation to avoid overflow and allow for fractional results
-            let exponent = time_diff as f64 / ASERT_HALFLIFE as f64;
-            let adjustment_factor = 2.0f64.powf(exponent);
-
-            let current_difficulty = difficulties_guard
-                .get(&chain_id)
-                .cloned()
-                .unwrap_or(INITIAL_DIFFICULTY);
-            let new_difficulty_f64 = (current_difficulty as f64 * adjustment_factor).max(1.0);
-            let new_difficulty = new_difficulty_f64.round() as u64;
-
-            difficulties_guard.insert(chain_id, new_difficulty);
-
-            debug!(
-                "Chain {}: Difficulty adjusted to {}. Actual time/block: {:.2}s, Target: {}s",
-                chain_id,
-                new_difficulty,
-                time_span as f64 / blocks_span as f64,
-                self.target_block_time
-            );
-        }
-        Ok(())
-    }
-
     #[instrument]
     pub async fn finalize_blocks(&self) -> Result<(), QantoDAGError> {
         let blocks_guard = self.blocks.read().await;
@@ -1443,7 +1376,6 @@ impl QantoDAG {
 
         let mut tips_guard = self.tips.write().await;
         let mut blocks_guard = self.blocks.write().await;
-        let mut difficulties_guard = self.difficulties.write().await;
 
         let epoch = *self.current_epoch.read().await;
 
@@ -1463,11 +1395,7 @@ impl QantoDAG {
             chain_loads_guard.insert(new_chain_id, new_load_for_new);
 
             let new_genesis_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-            let parent_difficulty = difficulties_guard
-                .get(&chain_id_to_split)
-                .cloned()
-                .unwrap_or(INITIAL_DIFFICULTY);
-            difficulties_guard.insert(new_chain_id, parent_difficulty);
+            let parent_difficulty = *self.saga.economy.current_difficulty.read().await;
 
             let mut genesis_block = QantoBlock::new(QantoBlockCreationData {
                 chain_id: new_chain_id,
@@ -1482,7 +1410,7 @@ impl QantoDAG {
                 current_epoch: epoch,
                 height: 0,
             })?;
-            genesis_block.reward = 0;
+            genesis_block.reward = INITIAL_BLOCK_REWARD;
             let new_genesis_id = genesis_block.id.clone();
 
             blocks_guard.insert(new_genesis_id.clone(), genesis_block);
@@ -1530,11 +1458,11 @@ impl QantoDAG {
             justification: None,
         };
 
+        // --- FIX (E0599): Interact with DashMap directly ---
+        // No .write().await needed. DashMap handles concurrent access.
         self.saga
             .governance
             .proposals
-            .write()
-            .await
             .insert(proposal_id_val.clone(), proposal_obj);
 
         info!("New governance proposal {} submitted.", proposal_id_val);
@@ -1555,10 +1483,16 @@ impl QantoDAG {
                 QantoDAGError::Governance("Voter not found or no stake".to_string())
             })?;
         }
-        let mut proposals_guard = self.saga.governance.proposals.write().await;
-        let proposal_obj = proposals_guard
+
+        // --- FIX (E0599): Interact with DashMap directly ---
+        // Use .get_mut() for mutable access.
+        let mut proposal_obj = self
+            .saga
+            .governance
+            .proposals
             .get_mut(&proposal_id)
             .ok_or_else(|| QantoDAGError::Governance("Proposal not found".to_string()))?;
+
         if proposal_obj.status != ProposalStatus::Voting {
             return Err(QantoDAGError::Governance(
                 "Proposal is not active".to_string(),
@@ -1664,9 +1598,7 @@ impl QantoDAG {
     pub async fn run_periodic_maintenance(&self) {
         debug!("Running periodic DAG maintenance...");
 
-        if let Err(e) = self.adjust_difficulty().await {
-            warn!("Failed to adjust difficulty during maintenance: {e}");
-        }
+        // Difficulty adjustment is now fully handled by SAGA during epoch evolution.
         if let Err(e) = self.finalize_blocks().await {
             warn!("Failed to finalize blocks during maintenance: {e}");
         }
@@ -1678,8 +1610,14 @@ impl QantoDAG {
         *epoch_guard += 1;
         let current_epoch = *epoch_guard;
 
-        let _rules = self.saga.economy.epoch_rules.read().await;
-        self.saga.process_epoch_evolution(current_epoch, self).await;
+        // The self_arc needs to be upgraded to a strong reference to pass to SAGA.
+        if let Some(self_arc_strong) = self.self_arc.upgrade() {
+            self.saga
+                .process_epoch_evolution(current_epoch, &self_arc_strong)
+                .await;
+        } else {
+            error!("QantoDAG self-reference is no longer valid. Cannot run epoch evolution. This is a critical error.");
+        }
 
         debug!("Periodic DAG maintenance complete for epoch {current_epoch}.");
     }
@@ -1692,8 +1630,6 @@ impl Clone for QantoDAG {
             tips: self.tips.clone(),
             validators: self.validators.clone(),
             target_block_time: self.target_block_time,
-            difficulties: self.difficulties.clone(),
-            difficulty_anchors: self.difficulty_anchors.clone(),
             emission: self.emission.clone(),
             num_chains: self.num_chains.clone(),
             finalized_blocks: self.finalized_blocks.clone(),

@@ -1,11 +1,11 @@
 //! --- SAGA Assistant (Final Unified & Corrected Version) ---
-//! v1.0.4 - Aligned with DAG Refactoring
-//! This version aligns the simulation logic with the refactored QantoDAG::new function,
-//! resolving the final build error by removing the obsolete `difficulty` field.
+//! v1.0.5 - Difficulty Formatting Fix
+//! This version resolves a critical build error by correctly formatting the f64
+//! difficulty value as a standard float instead of hexadecimal.
 //!
 //! Key Features:
-//! - BUILD FIX (E0560): The call to QantoDAG::new now correctly uses the updated
-//!   QantoDagConfig struct without the `difficulty` field.
+//! - BUILD FIX (E0277): Changed the format specifier for `difficulty` in the
+//!   MinerConfig from `"{:x}"` to `"{}"` to handle the `f64` type correctly.
 //! - UNIFIED INTERFACE: Provides a single command prompt to chat, analyze, and run simulations.
 //! - STANDALONE: Operates entirely offline with no need for external APIs.
 
@@ -170,7 +170,8 @@ async fn run_autonomous_simulation() -> Result<()> {
     let miner = Miner::new(qanto::miner::MinerConfig {
         address: validator_address.clone(),
         dag: dag_arc.clone(),
-        difficulty_hex: format!("{:x}", candidate_block.difficulty),
+        // FIX (E0277): Format f64 difficulty as a standard float, not hex.
+        difficulty_hex: format!("{}", candidate_block.difficulty),
         target_block_time: 60,
         use_gpu: false,
         zk_enabled: false,

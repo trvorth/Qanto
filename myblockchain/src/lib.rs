@@ -17,6 +17,7 @@
 //!   `qanto_standalone` module for portability and security.
 
 // --- Module Declarations ---
+pub mod jsonrpc_server;
 pub mod qanhash;
 pub mod qanhash32x;
 
@@ -436,6 +437,14 @@ pub struct Blockchain {
 }
 
 impl Blockchain {
+    pub fn start_jsonrpc(
+        self: std::sync::Arc<Self>,
+        addr: String,
+        chain_id: u64,
+    ) -> tokio::task::JoinHandle<()> {
+        // Use the jsonrpc_server module to run the HTTP server.
+        jsonrpc_server::run_server(self.clone(), addr, chain_id)
+    }
     pub fn new(db_path: &str) -> anyhow::Result<Self> {
         let db = Arc::new(KeyValueStore::open(db_path)?);
 
