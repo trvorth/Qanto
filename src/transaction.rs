@@ -29,9 +29,9 @@ const MAX_METADATA_VALUE_LEN: usize = 256;
 // --- New Dynamic Fee Structure ---
 // Represents the smallest unit of currency (e.g., satoshis, wei).
 // Assuming 1,000,000 units = $1 USD for this example.
-const FEE_TIER1_THRESHOLD: u64 = 1_000_000; // Transactions up to $1
-const FEE_TIER2_THRESHOLD: u64 = 10_000_000; // Transactions up to $10
-const FEE_TIER3_THRESHOLD: u64 = 100_000_000; // Transactions up to $100
+const FEE_TIER1_THRESHOLD: u64 = 1_000_000;
+const FEE_TIER2_THRESHOLD: u64 = 10_000_000;
+const FEE_TIER3_THRESHOLD: u64 = 100_000_000;
 const FEE_RATE_TIER1: f64 = 0.00; // 0%
 const FEE_RATE_TIER2: f64 = 0.01; // 1%
 const FEE_RATE_TIER3: f64 = 0.02; // 2%

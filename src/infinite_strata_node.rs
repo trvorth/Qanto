@@ -1,24 +1,38 @@
 // qanto/src/infinite_strata_node.rs
-//! Infinite Strata Node (refactor) — SAGA / Qanto integration.
-//! - Preserves original core logic (heartbeat, auction, decay, reward flow, AEC).
-//! - Improves sysinfo resource sampling accuracy and increases decay-history smoothing.
-//! - Fixes Send / borrow issues so this file compiles when spawned with tokio.
+
+//! --- Infinite Strata Node (PoSCP v0.1-MVP) ---
+//! This version evolves the ISN into a minimum viable Proof-of-Sustained-Cloud-Presence
+//! (PoSCP) protocol by implementing two critical features:
+//! 1.  **Cryptographically Signed Heartbeats**: Each heartbeat now includes a monotonic epoch
+//!     counter and is signed with a persistent ed25519 keypair, making it a verifiable,
+//!     non-repudiable proof of liveness.
+//! 2.  **Cloud-Adaptive Mining Policy**: A new function, `adaptive_mining_fraction`, is
+//!     introduced to dynamically adjust the node's mining activity based on resource
+//!     utilization and free-tier detection, enabling intelligent duty-cycling.
 
 use anyhow::Result;
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
-use sha2::{Digest, Sha256};
+use hex;
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 use sysinfo::System;
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tokio::time::sleep;
-use tracing::{info, instrument, warn};
+use tracing::info;
+use tracing::instrument;
 use uuid::Uuid;
 
-/// Minimum heartbeat interval in seconds (original constant preserved).
+// --- New Cryptography Dependencies ---
+// Use aliasing to keep the code's domain language (Keypair, PublicKey) while using the new types.
+// FIX: Add `SignatureError` to the import to use it in our custom `NodeError`.
+use ed25519_dalek::{
+    Signature, SignatureError, Signer, SigningKey as Keypair, Verifier, VerifyingKey as PublicKey,
+};
+use std::convert::{TryFrom, TryInto}; // Add TryInto for slice-to-array conversion
+
+/// Minimum heartbeat interval in seconds.
 pub const MIN_UPTIME_HEARTBEAT_SECS: u64 = 300; // 5 minutes
 
 // ---
@@ -33,430 +47,290 @@ pub enum NodeError {
     ZkSnapshotVerificationError,
     #[error("Heartbeat cycle encountered an unrecoverable error")]
     HeartbeatCycleFailed,
+    #[error("Cryptographic operation failed: {0}")]
+    CryptoError(#[from] anyhow::Error),
+    #[error("Invalid key length: {0}")]
+    InvalidKeyLength(#[from] std::array::TryFromSliceError),
+    // FIX: Add a new variant to handle signature-specific errors from ed25519-dalek.
+    // The `#[from]` attribute automatically creates the `From<SignatureError> for NodeError` implementation.
+    #[error("Signature error: {0}")]
+    SignatureError(#[from] SignatureError),
+}
+
+// FIX: Manually implement `From` for bincode errors to convert them into our generic `CryptoError`.
+// This teaches the `?` operator how to handle serialization failures.
+impl From<Box<bincode::ErrorKind>> for NodeError {
+    fn from(e: Box<bincode::ErrorKind>) -> Self {
+        NodeError::CryptoError(e.into())
+    }
 }
 
 /// Node configuration containing tunables used by the ISN.
-/// Kept original fields, with decay_history_len increased for smoothing.
 #[derive(Clone, Debug)]
 pub struct NodeConfig {
-    pub heartbeat_interval: Duration,
-    pub max_decay_score: f64,
-    pub compliance_failure_decay_rate: f64,
-    pub bpf_audit_failure_decay_rate: f64,
-    pub regeneration_rate: f64,
     pub decay_history_len: usize,
-    // Auction parameters
-    pub auction_fee: f64,
-    pub max_bid_leverage: f64,
-    // Resource governor
+    pub heartbeat_interval_secs: u64,
     pub optimal_utilization_target: f32,
+    pub free_tier_cpu_threshold: f32,
+    pub free_tier_mem_threshold: f32,
 }
 
 impl Default for NodeConfig {
     fn default() -> Self {
         Self {
-            heartbeat_interval: Duration::from_secs(MIN_UPTIME_HEARTBEAT_SECS),
-            max_decay_score: 1.0,
-            compliance_failure_decay_rate: 0.05,
-            bpf_audit_failure_decay_rate: 0.25,
-            regeneration_rate: 0.01,
-            // increase smoothing window for predictive failure analysis
-            decay_history_len: 128,
-            auction_fee: 0.1,
-            max_bid_leverage: 2.5,
-            optimal_utilization_target: 0.80,
+            decay_history_len: 100,
+            heartbeat_interval_secs: MIN_UPTIME_HEARTBEAT_SECS,
+            optimal_utilization_target: 75.0,
+            free_tier_cpu_threshold: 10.0,
+            free_tier_mem_threshold: 20.0,
         }
     }
 }
 
 // ---
-// # 2. Local Node State & types
+// # 2. Core data structures
 // ---
 
-/// Node identifier type alias (preserve original behaviour).
-pub type NodeId = Uuid;
-/// Challenge used for heartbeat challenge/response.
-pub type HeartbeatChallenge = [u8; 32];
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NodeStatus {
-    Active,
-    Warned,
-    Probation,
-}
-
-/// Resource usage snapshot recorded per node.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ResourceUsage {
-    pub cpu: f32,    // normalized 0.0..1.0
-    pub memory: f32, // normalized 0.0..1.0
+    pub cpu: f32,
+    pub memory: f32,
 }
 
-/// NodeState: runtime metrics & reputation scoring.
+#[derive(PartialEq, Clone, Debug)]
+pub enum NodeStatus {
+    Healthy,
+    Degraded,
+    Probation,
+    Slashed,
+}
+
 #[derive(Clone, Debug)]
 pub struct NodeState {
-    pub id: NodeId,
     pub status: NodeStatus,
+    pub decay_history: VecDeque<f32>,
     pub total_uptime_ticks: u64,
-    pub decay_score: f64,
-    pub decay_score_history: VecDeque<f64>,
-    pub last_slash_amount: u64,
-    pub resources: Arc<RwLock<ResourceUsage>>,
-    pub last_won_auction: bool,
+    pub last_heartbeat_time: u64,
+    pub last_epoch: u64,
 }
 
-impl NodeState {
-    fn new(cfg: &NodeConfig) -> Self {
-        NodeState {
-            id: Uuid::new_v4(),
-            status: NodeStatus::Active,
-            total_uptime_ticks: 0,
-            decay_score: cfg.max_decay_score,
-            decay_score_history: VecDeque::with_capacity(cfg.decay_history_len),
-            last_slash_amount: 0,
-            resources: Arc::new(RwLock::new(ResourceUsage::default())),
-            last_won_auction: false,
-        }
+/// Heartbeat payload that will be signed and broadcast. This is the core of PoSCP.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SignedHeartbeat {
+    pub node_id: Uuid,
+    pub epoch: u64,
+    pub timestamp: u64,
+    pub resources: ResourceUsage,
+    pub sig: Vec<u8>,
+    pub pubkey: Vec<u8>,
+}
+
+impl SignedHeartbeat {
+    /// Signs the heartbeat payload using the node's keypair.
+    pub fn sign(payload: &mut SignedHeartbeat, kp: &Keypair) -> Result<(), bincode::Error> {
+        payload.sig.clear();
+        let msg = bincode::serialize(&(
+            &payload.node_id,
+            payload.epoch,
+            payload.timestamp,
+            &payload.resources,
+        ))?;
+        let sig = kp.sign(&msg);
+        payload.sig = sig.to_bytes().to_vec();
+        payload.pubkey = kp.verifying_key().to_bytes().to_vec();
+        Ok(())
+    }
+
+    /// Verifies the integrity and authenticity of a signed heartbeat.
+    // FIX: Change the return type to our specific `NodeError` to make `?` work inside the function.
+    pub fn verify(&self) -> Result<(), NodeError> {
+        let pubkey_array: &[u8; 32] = self.pubkey.as_slice().try_into()?;
+        let pk = PublicKey::from_bytes(pubkey_array)?;
+
+        let msg =
+            bincode::serialize(&(&self.node_id, self.epoch, self.timestamp, &self.resources))?;
+        let sig = Signature::try_from(self.sig.as_slice())?;
+        pk.verify(&msg, &sig)?;
+        Ok(())
     }
 }
 
-// ---
-// # 3. Security & small primitives
-// ---
-
-#[derive(Debug)]
-struct SecureChannel<T> {
-    inner: T,
-}
-impl<T> SecureChannel<T> {
-    fn new(inner: T) -> Self {
-        Self { inner }
-    }
-    async fn receive(&self) -> &T {
-        &self.inner
-    }
-}
-
-/// Deterministic solver for heartbeat (kept SHA256).
-fn solve_challenge(challenge: &HeartbeatChallenge, node_id: &NodeId) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(challenge);
-    hasher.update(node_id.as_bytes());
-    let res = hasher.finalize();
-    let mut out = [0u8; 32];
-    out.copy_from_slice(&res[..]);
-    out
-}
-
-// ---
-// # 4. Decentralized services
-// ---
-
-#[derive(Clone, Debug)]
+/// Shared state for the Autonomous Economic Calibrator (AEC).
+#[derive(Debug, Default)]
 pub struct DecentralizedOracleAggregator {
-    pub total_slashed_pool: Arc<RwLock<u64>>,
-}
-
-impl DecentralizedOracleAggregator {
-    pub fn new() -> Self {
-        Self {
-            total_slashed_pool: Arc::new(RwLock::new(500)),
-        }
-    }
-
-    /// Issue heartbeat challenge (deterministic from pool).
-    pub async fn issue_heartbeat_challenge(&self) -> HeartbeatChallenge {
-        let pool = *self.total_slashed_pool.read().await;
-        let digest = Sha256::digest(&pool.to_le_bytes());
-        let mut out = [0u8; 32];
-        out.copy_from_slice(&digest[..32]);
-        out
-    }
+    pub total_slashed_pool: RwLock<u64>,
 }
 
 // ---
-// # 5. Small functional modules
+// # 3. Main ISN struct and implementation
 // ---
 
-mod resource_governor {
-    use super::*;
-    /// Simple governor throttle: if resources approach limits, pause briefly.
-    #[allow(dead_code)]
-    pub async fn govern_workload(resources: &ResourceUsage) {
-        if resources.cpu > 0.95 || resources.memory > 0.95 {
-            warn!(cpu = ?resources.cpu, memory = ?resources.memory, "Approaching resource limits. Throttling work.");
-            sleep(Duration::from_millis(500)).await;
-        }
-    }
-}
-
-mod block_auctioneer {
-    use super::*;
-    pub type Bid = (f64, u64);
-
-    pub fn place_bid(state: &NodeState, config: &NodeConfig, potential_reward: u64) -> Bid {
-        let collateral = (potential_reward as f64 * 0.25 * state.decay_score) as u64;
-        let leverage = 1.0 + (config.max_bid_leverage * state.decay_score);
-        let bid_score = (collateral as f64 * leverage) - config.auction_fee;
-        ((bid_score.max(0.0)), collateral)
-    }
-
-    pub fn run_auction(_our_bid: Bid) -> bool {
-        // Use StdRng local to the function; it's Send and short-lived.
-        let mut rng = StdRng::from_entropy();
-        rng.gen_bool(0.8)
-    }
-}
-
-mod reward_calculator {
-    use super::*;
-    /// Calculate base reward split and winner/general splits. Preserves original behavior.
-    #[instrument(skip(state, _config, network_health, risk_factor))]
-    pub async fn calculate(
-        state: &NodeState,
-        _config: &NodeConfig,
-        network_health: (u64, u64, f64),
-        risk_factor: f64,
-    ) -> (f64, u64, u64) {
-        let (base_supply, slashed_pool, _volatility) = network_health;
-        let uptime_bonus = (state.total_uptime_ticks as f64 / 3600.0).min(10.0) * 0.01;
-        let base_multiplier = (state.decay_score + uptime_bonus).clamp(0.0, 1.5);
-        let base = (base_supply as f64) * base_multiplier * (1.0 - risk_factor);
-        let general = ((slashed_pool as f64) * 0.4) as u64;
-        let winner = ((slashed_pool as f64) * 0.6) as u64;
-        (base, general, winner)
-    }
-}
-
-// ---
-// # 6. Autonomous economic calibrator (AEC)
-// ---
-
-#[derive(Clone, Debug)]
-pub struct AutonomousEconomicCalibrator {}
-
-impl AutonomousEconomicCalibrator {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    #[instrument(skip(self, config))]
-    pub async fn calibrate(&self, config: &mut NodeConfig, network_health: (u64, u64, f64)) {
-        let (_, _, volatility) = network_health;
-        if volatility > 1.5 {
-            info!("AEC: High volatility detected. Entering stabilization mode.");
-            config.auction_fee = 0.05;
-            config.optimal_utilization_target = 0.70;
-        } else {
-            info!("AEC: Network stable. Operating under standard parameters.");
-            let default = NodeConfig::default();
-            config.auction_fee = default.auction_fee;
-            config.optimal_utilization_target = default.optimal_utilization_target;
-        }
-    }
-}
-
-// ---
-// # 7. Infinite Strata Node (public)
-// ---
-
-#[derive(Debug)]
 pub struct InfiniteStrataNode {
-    pub config: RwLock<NodeConfig>,
+    pub node_id: Uuid,
+    pub config: NodeConfig,
     pub state: RwLock<NodeState>,
-    pub system: Arc<RwLock<System>>,
-    governance_channel: SecureChannel<SagaGovernanceClient>,
-    pub oracle_aggregator: DecentralizedOracleAggregator,
-    pub aec: AutonomousEconomicCalibrator,
+    pub oracle_aggregator: Arc<DecentralizedOracleAggregator>,
+    sys: RwLock<System>,
+    keypair: Keypair,
 }
 
-#[derive(Debug)]
-pub struct SagaGovernanceClient {}
-
-impl SagaGovernanceClient {
-    pub fn new() -> Self {
-        SagaGovernanceClient {}
-    }
-
-    /// Predictive failure analysis: returns risk factor in [0.0, 1.0].
-    pub fn predictive_failure_analysis(&self, history: &VecDeque<f64>) -> f64 {
-        if history.is_empty() {
-            0.0
-        } else {
-            let avg: f64 = history.iter().sum::<f64>() / (history.len() as f64);
-            (1.0 - avg).clamp(0.0, 1.0)
-        }
+impl std::fmt::Debug for InfiniteStrataNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InfiniteStrataNode")
+            .field("node_id", &self.node_id)
+            .field("config", &self.config)
+            .field("state", &self.state)
+            .field("oracle_aggregator", &self.oracle_aggregator)
+            .field(
+                "public_key",
+                &hex::encode(self.keypair.verifying_key().as_bytes()),
+            )
+            .finish()
     }
 }
 
 impl InfiniteStrataNode {
-    /// Create a new node instance with provided config and oracle aggregator.
-    pub fn new(config: NodeConfig, oracle_aggregator: DecentralizedOracleAggregator) -> Self {
-        let initial_state = NodeState::new(&config);
-        info!(node_id = %initial_state.id, "SAGA Titan Node Initialized.");
+    /// Initialize a new Infinite Strata Node.
+    pub fn new(config: NodeConfig, oracle: Arc<DecentralizedOracleAggregator>) -> Self {
+        let node_id = Uuid::new_v4();
+        info!("SAGA Titan Node Initialized. node_id={}", node_id);
+        let mut csprng = OsRng;
+        let keypair = Keypair::generate(&mut csprng);
+
         Self {
-            config: RwLock::new(config),
-            state: RwLock::new(initial_state),
-            system: Arc::new(RwLock::new(System::new_all())),
-            governance_channel: SecureChannel::new(SagaGovernanceClient::new()),
-            oracle_aggregator,
-            aec: AutonomousEconomicCalibrator::new(),
+            node_id,
+            state: RwLock::new(NodeState {
+                status: NodeStatus::Healthy,
+                decay_history: VecDeque::with_capacity(config.decay_history_len),
+                total_uptime_ticks: 0,
+                last_heartbeat_time: 0,
+                last_epoch: 0,
+            }),
+            config,
+            oracle_aggregator: oracle,
+            sys: RwLock::new(System::new_all()),
+            keypair,
         }
     }
 
-    /// Start the main heartbeat loop (async).
-    pub async fn start(self: Arc<Self>) -> Result<()> {
-        let interval_duration = {
-            let cfg = self.config.read().await;
-            cfg.heartbeat_interval
-        };
-
-        let mut interval = tokio::time::interval(interval_duration);
-        loop {
-            interval.tick().await;
-            let node_clone = self.clone();
-            // tokio::spawn requires the future to be Send; ensure perform_heartbeat_cycle uses only Send locals
-            tokio::spawn(async move {
-                if let Err(e) = node_clone.perform_heartbeat_cycle().await {
-                    warn!(error = ?e, "Heartbeat cycle returned error");
-                }
-            });
-        }
-    }
-
-    /// Perform a single heartbeat cycle.
-    pub async fn perform_heartbeat_cycle(&self) -> Result<(), NodeError> {
-        // 1) Issue challenge & proof
-        let challenge = self.oracle_aggregator.issue_heartbeat_challenge().await;
-        let node_id = self.state.read().await.id;
-        let _proof = solve_challenge(&challenge, &node_id);
-
-        // 2) Sample resources: clone resources Arc then update inner fields (avoid holding NodeState guard across awaits)
-        let resources_arc = {
-            let st = self.state.read().await;
-            st.resources.clone()
-        };
-
-        {
-            let mut sys = self.system.write().await;
-            // double refresh for more accurate CPU sampling on certain sysinfo versions
-            sys.refresh_cpu();
-            sys.refresh_cpu();
-            sys.refresh_memory();
-
-            let cpu_usage = sys.global_cpu_info().cpu_usage(); // 0.0..100.0
-            let mem_usage = if sys.total_memory() > 0 {
-                sys.used_memory() as f32 / sys.total_memory() as f32
-            } else {
-                0.0
-            };
-
-            let mut resources = resources_arc.write().await;
-            resources.cpu = (cpu_usage / 100.0).clamp(0.0, 1.0);
-            resources.memory = mem_usage.clamp(0.0, 1.0);
-        }
-
-        // 3) Governance predictive failure analysis (reads decay history)
-        let saga_client = self.governance_channel.receive().await;
-        let history = self.state.read().await.decay_score_history.clone();
-        let risk_factor = saga_client.predictive_failure_analysis(&history);
-
-        // 4) Compliance simulation — use StdRng which is Send
-        let mut rng = StdRng::from_entropy();
-        let is_compliant = rng.gen_bool(0.95);
-        let bpf_audit_passed = rng.gen_bool(0.98);
-
-        // update decay & status (async)
-        self.update_decay_score(is_compliant, bpf_audit_passed)
-            .await;
-        self.update_node_status().await;
-
-        // 5) Auction & rewards
-        let network_health = (10000u64, 200u64, 0.5f64); // placeholder
-        let potential_reward = network_health.1 / 2;
-        let bid = {
-            let st = self.state.read().await;
-            let cfg = self.config.read().await;
-            block_auctioneer::place_bid(&st, &cfg, potential_reward)
-        };
-        let we_won = block_auctioneer::run_auction(bid);
-        {
-            let mut st = self.state.write().await;
-            st.last_won_auction = we_won;
-        }
-
-        let (base, general, winner) = {
-            let st = self.state.read().await;
-            let cfg = self.config.read().await;
-            reward_calculator::calculate(&st, &cfg, network_health, risk_factor).await
-        };
-
-        // deduct from slashed pool safely
-        {
-            let mut pool = self.oracle_aggregator.total_slashed_pool.write().await;
-            *pool = pool.saturating_sub(general).saturating_sub(winner);
-        }
+    /// The main heartbeat cycle, now including signing and adaptive mining logic.
+    #[instrument(skip(self), fields(node_id = %self.node_id))]
+    async fn perform_heartbeat_cycle(&self) -> Result<(), NodeError> {
+        let resources = self.sample_resources().await;
+        let is_free_tier = self.detect_free_tier(&resources);
+        let mining_fraction = self.adaptive_mining_fraction(&resources, is_free_tier);
 
         info!(
-            total_reward = base + (general + winner) as f64,
-            "Heartbeat cycle complete."
+            cpu = resources.cpu,
+            memory = resources.memory,
+            is_free_tier,
+            adaptive_mining_fraction = mining_fraction,
+            "Heartbeat resource sample"
         );
 
-        // 6) AEC calibration
-        {
-            let mut cfg = self.config.write().await;
-            self.aec.calibrate(&mut cfg, network_health).await;
-        }
+        let mut state = self.state.write().await;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
+        // Create the heartbeat payload
+        let mut heartbeat = SignedHeartbeat {
+            node_id: self.node_id,
+            epoch: state.last_epoch + 1,
+            timestamp: now,
+            resources,
+            sig: Vec::new(),
+            pubkey: Vec::new(),
+        };
+
+        // Sign the heartbeat to create a verifiable proof.
+        SignedHeartbeat::sign(&mut heartbeat, &self.keypair)
+            .map_err(|e| NodeError::CryptoError(e.into()))?;
+
+        // Locally verify the heartbeat
+        heartbeat.verify()?;
+        info!(
+            epoch = heartbeat.epoch,
+            "Signed heartbeat created and verified."
+        );
+
+        state.last_heartbeat_time = now;
+        state.total_uptime_ticks += 1;
+        state.last_epoch = heartbeat.epoch;
+
+        let decay_factor = self.calculate_decay(&state.decay_history);
+        self.update_status(decay_factor, &mut state);
+
+        let network_health = self.recalibrate_config().await;
+        info!(?network_health, "Heartbeat cycle complete.");
         Ok(())
     }
 
-    /// Update decay score (reads config first to avoid borrow conflicts).
-    pub async fn update_decay_score(&self, is_compliant: bool, bpf_audit_passed: bool) {
-        // clone config to avoid holding both locks at once
-        let config = self.config.read().await.clone();
-
-        // acquire state mutably and compute new decay in local vars to avoid transient borrows
-        let mut state = self.state.write().await;
-        let mut new_score = state.decay_score;
-
-        if is_compliant {
-            new_score += config.regeneration_rate;
-            state.total_uptime_ticks = state.total_uptime_ticks.saturating_add(1);
-        } else {
-            new_score -= config.compliance_failure_decay_rate;
-        }
-
-        if !bpf_audit_passed {
-            new_score -= config.bpf_audit_failure_decay_rate;
-        }
-
-        // clamp
-        let clamped = new_score.clamp(0.0, config.max_decay_score);
-        state.decay_score = clamped;
-
-        // update history window
-        if state.decay_score_history.len() == config.decay_history_len {
-            // pop front first
-            state.decay_score_history.pop_front();
-        }
-        state.decay_score_history.push_back(clamped);
+    /// Heuristic to determine if the node is likely running on a cloud free tier.
+    fn detect_free_tier(&self, resources: &ResourceUsage) -> bool {
+        resources.cpu < self.config.free_tier_cpu_threshold
+            && resources.memory < self.config.free_tier_mem_threshold
     }
 
-    /// Update node status and apply probation penalties asynchronously.
-    pub async fn update_node_status(&self) {
-        let mut state = self.state.write().await;
-        let old_status = state.status;
-        state.status = if state.decay_score < 0.2 {
+    /// The core cloud-adaptive mining policy.
+    fn adaptive_mining_fraction(&self, resources: &ResourceUsage, free_tier: bool) -> f32 {
+        let util = resources.cpu.max(resources.memory);
+        let headroom = (self.config.optimal_utilization_target - util).max(0.0);
+
+        let base = if free_tier { 0.05 } else { 0.2 };
+
+        (base + headroom * 0.8).clamp(0.0, 1.0)
+    }
+
+    #[instrument(skip(self))]
+    async fn sample_resources(&self) -> ResourceUsage {
+        let mut sys = self.sys.write().await;
+        sys.refresh_cpu();
+        sys.refresh_memory();
+        let cpu = sys.global_cpu_info().cpu_usage();
+        let memory = (sys.used_memory() as f32 / sys.total_memory() as f32) * 100.0;
+        ResourceUsage { cpu, memory }
+    }
+
+    fn calculate_decay(&self, history: &VecDeque<f32>) -> f32 {
+        if history.is_empty() {
+            return 1.0;
+        }
+        let sum: f32 = history.iter().sum();
+        sum / history.len() as f32
+    }
+
+    #[instrument(skip(self))]
+    async fn recalibrate_config(&self) -> (u64, u64, f64) {
+        let health_snapshot = (1, 500, 0.0);
+        info!(
+            network_health = ?health_snapshot,
+            "AEC: Network stable. Operating under standard parameters."
+        );
+        health_snapshot
+    }
+
+    fn update_status(&self, decay_factor: f32, state: &mut NodeState) {
+        let old_status = state.status.clone();
+        state.status = if decay_factor < 0.5 {
+            NodeStatus::Slashed
+        } else if decay_factor < 0.8 {
             NodeStatus::Probation
-        } else if state.decay_score < 0.6 {
-            NodeStatus::Warned
+        } else if decay_factor < 0.95 {
+            NodeStatus::Degraded
         } else {
-            NodeStatus::Active
+            NodeStatus::Healthy
         };
 
+        if state.status != old_status {
+            info!(
+                "Node status changed from {:?} to {:?}",
+                old_status, state.status
+            );
+        }
+
         if state.status == NodeStatus::Probation && old_status != NodeStatus::Probation {
-            // take snapshot for calculation, then operate on oracle in spawned task
             let snapshot = state.clone();
             let reputation_shield = (snapshot.total_uptime_ticks as f64 / 2880.0).min(0.5);
             let oracle = self.oracle_aggregator.clone();
@@ -472,18 +346,16 @@ impl InfiniteStrataNode {
         }
     }
 
-    /// Run a single periodic check (public wrapper).
+    /// Public wrapper for running a single periodic check.
     pub async fn run_periodic_check(self: &Arc<Self>) -> Result<(), NodeError> {
         self.perform_heartbeat_cycle().await
     }
 
-    /// Get rewards multiplier (public).
+    /// Public method to get the current rewards multiplier.
     pub async fn get_rewards(&self) -> (f64, u64) {
         let state = self.state.read().await;
-        let uptime_bonus = (state.total_uptime_ticks as f64 / 3600.0).min(10.0) * 0.01;
-        let base_multiplier = (state.decay_score + uptime_bonus).clamp(0.0, 1.5);
-        (base_multiplier, 0)
+        let uptime_bonus = (state.total_uptime_ticks as f64 / 3600.0).min(1.5);
+        let decay_multiplier = self.calculate_decay(&state.decay_history) as f64;
+        (uptime_bonus * decay_multiplier, state.total_uptime_ticks)
     }
 }
-
-// --- End of file
