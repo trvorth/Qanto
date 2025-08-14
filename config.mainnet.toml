@@ -4,7 +4,7 @@
 
 [network]
 # Connect to the mainnet bootnode
-peers = ["/ip4/3.80.56.18/tcp/30333"]
+peers = ["/ip4/52.5.135.12/tcp/30333"]
 
 [node]
 # Your node's public address - replace with your own
