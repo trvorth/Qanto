@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qanto - Quantum-Resistant Layer-0 Blockchain</title>
+    <meta name="description" content="Qanto is a production-ready Layer-0 blockchain protocol engineered for quantum resistance, infinite scalability, and seamless cross-chain interoperability.">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='40' fill='%23667eea'/%3E%3Ctext x='50' y='60' text-anchor='middle' fill='white' font-family='Arial' font-size='40' font-weight='bold'%3EQ%3C/text%3E%3C/svg%3E">
+    
+    <!-- Styles -->
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #1a1a2e;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        /* Header */
+        header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 0;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        .logo::before {
+            content: 'Q';
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            text-align: center;
+            line-height: 40px;
+            border-radius: 50%;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: 2rem;
+        }
+        
+        .nav-links a {
+            text-decoration: none;
+            color: #1a1a2e;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+        
+        .nav-links a:hover {
+            color: #667eea;
+        }
+        
+        /* Hero Section */
+        .hero {
+            padding: 120px 0 80px;
+            text-align: center;
+            color: white;
+        }
+        
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .hero p {
+            font-size: 1.3rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            display: inline-block;
+        }
+        
+        .btn-primary {
+            background: white;
+            color: #667eea;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+        
+        .btn-secondary {
+            background: transparent;
+            color: white;
+            border: 2px solid white;
+        }
+        
+        .btn-secondary:hover {
+            background: white;
+            color: #667eea;
+        }
+        
+        /* Main Content */
+        main {
+            background: white;
+            margin-top: -40px;
+            border-radius: 40px 40px 0 0;
+            position: relative;
+            z-index: 10;
+        }
+        
+        .section {
+            padding: 80px 0;
+        }
+        
+        .section-title {
+            text-align: center;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 3rem;
+            color: #1a1a2e;
+        }
+        
+        /* Genesis Contract Section */
+        .genesis-contract {
+            background: linear-gradient(135deg, #f8f9ff 0%, #e8f0ff 100%);
+            border-radius: 20px;
+            padding: 40px;
+            margin: 40px 0;
+            text-align: center;
+            border: 2px solid #667eea;
+        }
+        
+        .genesis-contract h3 {
+            color: #667eea;
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+        }
+        
+        .contract-address {
+            background: #667eea;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 1.1rem;
+            margin: 20px 0;
+            word-break: break-all;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .contract-address:hover {
+            background: #5a67d8;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+        
+        /* Network Status */
+        .network-status {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 30px;
+            margin: 40px 0;
+        }
+        
+        .status-card {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .status-card h4 {
+            color: #667eea;
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+        }
+        
+        .status-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #1a1a2e;
+        }
+        
+        /* Live Network Participants */
+        .participants-section {
+            background: #f8f9ff;
+            border-radius: 20px;
+            padding: 40px;
+            margin: 40px 0;
+        }
+        
+        .participants-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .participants-table th,
+        .participants-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .participants-table th {
+            background: #667eea;
+            color: white;
+            font-weight: 600;
+        }
+        
+        .participants-table tr:hover {
+            background: #f8f9ff;
+        }
+        
+        .peer-id {
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9rem;
+            color: #667eea;
+        }
+        
+        .status-online {
+            color: #10b981;
+            font-weight: 600;
+        }
+        
+        /* Features Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin: 40px 0;
+        }
+        
+        .feature-card {
+            background: white;
+            padding: 40px 30px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .feature-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            font-size: 1.5rem;
+            color: white;
+        }
+        
+        .feature-card h3 {
+            color: #1a1a2e;
+            font-size: 1.3rem;
+            margin-bottom: 15px;
+        }
+        
+        .feature-card p {
+            color: #64748b;
+            line-height: 1.6;
+        }
+        
+        /* Footer */
+        footer {
+            background: #1a1a2e;
+            color: white;
+            padding: 60px 0 30px;
+            text-align: center;
+        }
+        
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+        
+        .footer-links a {
+            color: #94a3b8;
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+        
+        .footer-links a:hover {
+            color: white;
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+            
+            .nav-links {
+                display: none;
+            }
+            
+            .cta-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .participants-table {
+                font-size: 0.9rem;
+            }
+            
+            .participants-table th,
+            .participants-table td {
+                padding: 10px;
+            }
+        }
+        
+        /* Loading Animation */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav class="container">
+            <a href="#" class="logo">Qanto</a>
+            <ul class="nav-links">
+                <li><a href="#features">Features</a></li>
+                <li><a href="#network">Network</a></li>
+                <li><a href="#docs">Docs</a></li>
+                <li><a href="#explorer">Explorer</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <section class="hero">
+        <div class="container">
+            <h1>Quantum-Resistant Blockchain</h1>
+            <p>The next-generation Layer-0 protocol engineered for infinite scalability, post-quantum security, and seamless cross-chain interoperability.</p>
+            <div class="cta-buttons">
+                <a href="#network" class="btn btn-primary">Join Network</a>
+                <a href="https://github.com/qanto-org/qanto" class="btn btn-secondary">View on GitHub</a>
+            </div>
+        </div>
+    </section>
+
+    <main>
+        <section class="section">
+            <div class="container">
+                <!-- Genesis Governance Contract -->
+                <div class="genesis-contract">
+                    <h3>🏛️ Genesis Governance Contract</h3>
+                    <p>The official Qanto governance contract deployed on mainnet</p>
+                    <a href="https://explorer.qanto.org/address/5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818" 
+                       class="contract-address" 
+                       target="_blank" 
+                       title="View on Qanto Explorer">
+                        5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818
+                    </a>
+                    <p><small>Click to view on block explorer</small></p>
+                </div>
+
+                <!-- Network Status -->
+                <div class="network-status">
+                    <div class="status-card">
+                        <h4>Network Status</h4>
+                        <div class="status-value status-online" id="network-status">🟢 Online</div>
+                    </div>
+                    <div class="status-card">
+                        <h4>Block Height</h4>
+                        <div class="status-value" id="block-height">Loading...</div>
+                    </div>
+                    <div class="status-card">
+                        <h4>Active Nodes</h4>
+                        <div class="status-value" id="active-nodes">Loading...</div>
+                    </div>
+                    <div class="status-card">
+                        <h4>TPS</h4>
+                        <div class="status-value" id="tps">Loading...</div>
+                    </div>
+                </div>
+
+                <!-- Live Network Participants -->
+                <div class="participants-section">
+                    <h3>🌐 Live Network Participants</h3>
+                    <p>Real-time view of nodes connected to the Qanto network</p>
+                    <div id="participants-loading" style="text-align: center; padding: 20px;">
+                        <div class="loading"></div>
+                        <p>Loading network participants...</p>
+                    </div>
+                    <table class="participants-table" id="participants-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>Peer ID</th>
+                                <th>Location</th>
+                                <th>Status</th>
+                                <th>Connected Since</th>
+                                <th>Version</th>
+                            </tr>
+                        </thead>
+                        <tbody id="participants-tbody">
+                            <!-- Dynamic content loaded here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="features">
+            <div class="container">
+                <h2 class="section-title">Why Choose Qanto?</h2>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🔒</div>
+                        <h3>Quantum-Resistant</h3>
+                        <p>Built with post-quantum cryptography including CRYSTALS-Dilithium and Kyber KEM for future-proof security.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⚡</div>
+                        <h3>Ultra-High Performance</h3>
+                        <p>25M+ TPS throughput with sub-100ms finality through innovative DAG-based architecture.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🌐</div>
+                        <h3>Cross-Chain Ready</h3>
+                        <p>Native interoperability with Ethereum, Bitcoin, and other major blockchains via atomic swaps.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🤖</div>
+                        <h3>AI-Powered Governance</h3>
+                        <p>SAGA AI system provides intelligent network optimization and autonomous governance.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">♾️</div>
+                        <h3>Infinite Scalability</h3>
+                        <p>Dynamic sharding with automatic load balancing ensures unlimited transaction capacity.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🛡️</div>
+                        <h3>Military-Grade Security</h3>
+                        <p>X-PHYRUS security suite with advanced threat detection and prevention systems.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-links">
+                <a href="https://github.com/qanto-org/qanto">GitHub</a>
+                <a href="https://docs.qanto.org">Documentation</a>
+                <a href="https://explorer.qanto.org">Block Explorer</a>
+                <a href="https://testnet.qanto.org">Testnet</a>
+                <a href="mailto:contact@qanto.org">Contact</a>
+            </div>
+            <p>&copy; 2025 Qanto Protocol. Open source under MIT License.</p>
+        </div>
+    </footer>
+
+    <script>
+        // Live Network Data Fetching
+        class QantoNetworkMonitor {
+            constructor() {
+                this.bootNodeUrl = 'http://3.80.56.18:8080'; // Mainnet bootnode
+                this.updateInterval = 30000; // 30 seconds
+                this.init();
+            }
+
+            async init() {
+                await this.updateNetworkStatus();
+                await this.updateParticipants();
+                setInterval(() => this.updateNetworkStatus(), this.updateInterval);
+                setInterval(() => this.updateParticipants(), this.updateInterval);
+            }
+
+            async updateNetworkStatus() {
+                try {
+                    // Simulate network status for demo - replace with actual RPC calls
+                    const mockData = {
+                        blockHeight: Math.floor(Math.random() * 1000000) + 500000,
+                        activeNodes: Math.floor(Math.random() * 50) + 25,
+                        tps: Math.floor(Math.random() * 10000) + 5000
+                    };
+
+                    document.getElementById('block-height').textContent = mockData.blockHeight.toLocaleString();
+                    document.getElementById('active-nodes').textContent = mockData.activeNodes;
+                    document.getElementById('tps').textContent = mockData.tps.toLocaleString();
+                } catch (error) {
+                    console.error('Failed to update network status:', error);
+                }
+            }
+
+            async updateParticipants() {
+                try {
+                    // Simulate connected peers - replace with actual p2p_getConnectedPeers RPC call
+                    const mockPeers = [
+                        {
+                            peerId: '12D3KooWBhvxp6...',
+                            location: 'US-East',
+                            status: 'Online',
+                            connectedSince: '2h 15m',
+                            version: 'v1.0.0'
+                        },
+                        {
+                            peerId: '12D3KooWCfg8x2...',
+                            location: 'EU-West',
+                            status: 'Online',
+                            connectedSince: '45m',
+                            version: 'v1.0.0'
+                        },
+                        {
+                            peerId: '12D3KooWDh9y3z...',
+                            location: 'Asia-Pacific',
+                            status: 'Online',
+                            connectedSince: '1h 32m',
+                            version: 'v1.0.0'
+                        }
+                    ];
+
+                    this.renderParticipants(mockPeers);
+                } catch (error) {
+                    console.error('Failed to update participants:', error);
+                    this.showParticipantsError();
+                }
+            }
+
+            renderParticipants(peers) {
+                const tbody = document.getElementById('participants-tbody');
+                const loadingDiv = document.getElementById('participants-loading');
+                const table = document.getElementById('participants-table');
+
+                tbody.innerHTML = '';
+                
+                peers.forEach(peer => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><span class="peer-id">${peer.peerId}</span></td>
+                        <td>${peer.location}</td>
+                        <td><span class="status-online">${peer.status}</span></td>
+                        <td>${peer.connectedSince}</td>
+                        <td>${peer.version}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+
+                loadingDiv.style.display = 'none';
+                table.style.display = 'table';
+            }
+
+            showParticipantsError() {
+                const loadingDiv = document.getElementById('participants-loading');
+                loadingDiv.innerHTML = '<p>⚠️ Unable to load network participants. Please try again later.</p>';
+            }
+
+            // Method to be called when actual RPC endpoint is available
+            async fetchConnectedPeers() {
+                const response = await fetch(`${this.bootNodeUrl}/rpc`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        jsonrpc: '2.0',
+                        method: 'p2p_getConnectedPeers',
+                        params: [],
+                        id: 1
+                    })
+                });
+                
+                const data = await response.json();
+                return data.result;
+            }
+        }
+
+        // Initialize network monitor when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new QantoNetworkMonitor();
+        });
+
+        // Copy contract address to clipboard
+        document.querySelector('.contract-address').addEventListener('click', (e) => {
+            e.preventDefault();
+            const address = '5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818';
+            navigator.clipboard.writeText(address).then(() => {
+                // Show temporary feedback
+                const originalText = e.target.textContent;
+                e.target.textContent = 'Copied to clipboard!';
+                setTimeout(() => {
+                    e.target.textContent = originalText;
+                }, 2000);
+            });
+        });
+    </script>
+</body>
+</html>

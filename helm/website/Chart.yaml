@@ -1,0 +1,13 @@
+apiVersion: v2
+name: qanto-website
+description: Helm chart for Qanto investor website with high availability
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - qanto
+  - website
+  - investor
+maintainers:
+  - name: Qanto Team
+    email: admin@qanto.io

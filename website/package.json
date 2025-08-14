@@ -1,0 +1,10 @@
+{
+  "name": "qanto-website",
+  "version": "1.0.0",
+  "description": "Qanto Network Official Website",
+  "scripts": {
+    "build": "echo 'Using static files - no build required'"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

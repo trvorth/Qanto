@@ -1,0 +1,13 @@
+Component,Architecture & Design,Cross-Chain Interoperability,Security Infrastructure,Performance & Scalability,Developer Experience,Network Resilience,Data & State Management
+Consensus,3.5,1.0,3.0,3.0,3.5,2.5,2.5
+DAG/State,3.5,2.0,3.0,3.5,3.5,3.0,3.5
+P2P,3.0,1.5,2.5,3.0,3.0,2.5,2.5
+Miner,4.0,1.0,3.5,3.5,3.5,2.5,2.0
+Mempool,3.5,1.0,3.0,3.5,3.5,2.5,3.0
+Node/API,3.5,2.0,3.0,3.5,4.0,3.0,3.0
+Config,4.0,2.0,3.0,4.0,4.0,3.0,3.0
+Wallet/Keys,3.0,1.5,2.5,2.5,3.0,2.0,2.5
+Interchain/Bridge,2.0,2.5,1.0,1.5,2.0,1.0,1.5
+JSON-RPC Adapter,2.5,2.0,2.0,2.5,3.0,2.0,2.0
+DevOps/CI,3.0,1.5,3.0,2.0,3.0,2.0,2.0
+SAGA/ΩMEGA,3.0,1.5,2.5,3.0,3.0,2.5,2.5

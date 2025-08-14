@@ -182,7 +182,7 @@ impl NetworkMessage {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum P2PCommand {
     BroadcastBlock(QantoBlock),
     BroadcastTransaction(Transaction),
@@ -200,6 +200,9 @@ pub enum P2PCommand {
     SendBlockToOnePeer {
         peer_id: PeerId,
         block: Box<QantoBlock>,
+    },
+    GetConnectedPeers {
+        response_sender: tokio::sync::oneshot::Sender<Vec<String>>,
     },
 }
 
@@ -512,6 +515,11 @@ impl P2PServer {
                 )
                 .await
             }
+            P2PCommand::GetConnectedPeers { response_sender } => {
+                let connected_peers = self.get_connected_peers();
+                let _ = response_sender.send(connected_peers);
+                Ok(())
+            }
             _ => Ok(()),
         }
     }
@@ -609,5 +617,13 @@ impl P2PServer {
                 info!("Broadcasted {log_info}: {msg_id}");
             })
             .map_err(P2PError::Broadcast)
+    }
+
+    /// Get the list of currently connected peer IDs
+    pub fn get_connected_peers(&self) -> Vec<String> {
+        self.swarm
+            .connected_peers()
+            .map(|peer_id| peer_id.to_string())
+            .collect()
     }
 }

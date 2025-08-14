@@ -419,12 +419,32 @@ async fn receive_transactions(node_url: &str, wallet_path: PathBuf) -> Result<()
 // --- Utility Functions ---
 
 fn prompt_for_password(confirm: bool, prompt_text: &str) -> Result<SecretString, WalletError> {
+    // Check for WALLET_PASSWORD environment variable first
+    if let Ok(env_password) = std::env::var("WALLET_PASSWORD") {
+        // Validate that the password is not empty
+        if env_password.is_empty() {
+            return Err(WalletError::Passphrase(
+                "WALLET_PASSWORD environment variable is set but empty.".to_string(),
+            ));
+        }
+        println!("Using password from WALLET_PASSWORD environment variable.");
+        return Ok(SecretString::new(env_password));
+    }
+
+    // Fallback to interactive prompt if no environment variable
     if !prompt_text.is_empty() {
         println!("{prompt_text}");
     }
     print!("Enter password: ");
     io::stdout().flush().map_err(WalletError::Io)?;
     let password = rpassword::read_password().map_err(WalletError::Io)?;
+
+    // Validate that the password is not empty
+    if password.is_empty() {
+        return Err(WalletError::Passphrase(
+            "Password cannot be empty.".to_string(),
+        ));
+    }
 
     if confirm {
         print!("Confirm password: ");

@@ -10,6 +10,7 @@
 use crate::emission::Emission;
 use crate::mempool::Mempool;
 use crate::miner::Miner;
+use crate::mining_celebration::{celebrate_mining_success, MiningCelebrationParams};
 use crate::saga::{
     CarbonOffsetCredential, GovernanceProposal, PalletSaga, ProposalStatus, ProposalType,
 };
@@ -46,6 +47,7 @@ pub const MAX_BLOCK_SIZE: usize = 80_000_000; // 80 MB
 
 // --- Network & Economic Constants ---
 pub const DEV_ADDRESS: &str = "74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41";
+pub const CONTRACT_ADDRESS: &str = "5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818";
 pub const INITIAL_BLOCK_REWARD: u64 = 50_000_000_000; // In smallest units (assuming 10^9 per QNTO)
 const SMALLEST_UNITS_PER_QNTO: u64 = 1_000_000_000;
 const FINALIZATION_DEPTH: u64 = 8;
@@ -184,6 +186,7 @@ impl QuantumResistantSignature {
         public_key: &dilithium5::PublicKey,
         message: &[u8],
     ) -> Result<Self, QantoDAGError> {
+        // FIX (E0425): Call the sign function from the dilithium5 module directly.
         let signed_message = dilithium5::sign(message, signing_key);
         Ok(Self {
             signer_public_key: public_key.as_bytes().to_vec(),
@@ -198,6 +201,7 @@ impl QuantumResistantSignature {
         let Ok(signed_message) = dilithium5::SignedMessage::from_bytes(&self.signature) else {
             return false;
         };
+        // FIX (E0425): Call the open function from the dilithium5 module directly.
         match dilithium5::open(&signed_message, &pk) {
             Ok(recovered_message) => recovered_message == message,
             Err(_) => false,
@@ -621,7 +625,7 @@ impl QantoDAG {
         Ok(arc_dag)
     }
 
-    #[instrument(skip(self, wallet, mempool, utxos, miner))]
+    #[instrument(skip(self, wallet, mempool, utxos, miner, shutdown_token))]
     pub async fn run_solo_miner(
         self: Arc<Self>,
         wallet: Arc<Wallet>,
@@ -629,15 +633,59 @@ impl QantoDAG {
         utxos: Arc<RwLock<HashMap<String, UTXO>>>,
         miner: Arc<Miner>,
         mining_interval_secs: u64,
-    ) {
+        shutdown_token: tokio_util::sync::CancellationToken,
+    ) -> Result<(), QantoDAGError> {
         info!(
             "SOLO MINER: Starting proactive mining loop with an interval of {} seconds.",
             mining_interval_secs
         );
+        debug!("[DEBUG] Solo miner initialized - entering main loop");
+
+        let mut mining_cycles = 0u64;
+        let mut blocks_mined = 0u64;
+        let mut last_heartbeat = std::time::Instant::now();
+        const HEARTBEAT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
+
+        // Create interval timer for mining
+        let mut mining_interval =
+            tokio::time::interval(tokio::time::Duration::from_secs(mining_interval_secs));
+        mining_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(mining_interval_secs)).await;
-            debug!("SOLO MINER: Waking up to attempt block creation.");
+            // Check for shutdown signal
+            tokio::select! {
+                biased;
+
+                _ = shutdown_token.cancelled() => {
+                    info!("SOLO MINER: Received shutdown signal, stopping mining loop.");
+                    break;
+                }
+
+                _ = mining_interval.tick() => {
+                    // Continue with mining
+                }
+            }
+
+            debug!(
+                "[DEBUG] Mining loop iteration start - cycle {}",
+                mining_cycles
+            );
+
+            // Heartbeat logging to show the miner is alive
+            if last_heartbeat.elapsed() >= HEARTBEAT_INTERVAL {
+                info!(
+                    "SOLO MINER HEARTBEAT: Alive - Cycles: {}, Blocks Mined: {}, Next attempt in {} seconds",
+                    mining_cycles, blocks_mined, mining_interval_secs
+                );
+                last_heartbeat = std::time::Instant::now();
+            }
+
+            mining_cycles += 1;
+            info!("SOLO MINER: Starting mining cycle #{}", mining_cycles);
+            debug!("SOLO MINER: Attempting block creation.");
+
+            // Yield to allow other tasks to run
+            tokio::task::yield_now().await;
 
             let miner_address = wallet.address();
             let (signing_key, public_key) = match wallet.get_keypair() {
@@ -653,6 +701,12 @@ impl QantoDAG {
 
             let chain_id_to_mine: u32 = 0;
 
+            info!(
+                "SOLO MINER: Creating candidate block for chain {}",
+                chain_id_to_mine
+            );
+            let candidate_creation_start = std::time::Instant::now();
+
             let mut candidate_block = match self
                 .create_candidate_block(
                     &signing_key,
@@ -665,58 +719,149 @@ impl QantoDAG {
                 .await
             {
                 Ok(block) => {
-                    debug!(
-                        "SOLO MINER: Successfully created candidate block {}.",
-                        block.id
+                    info!(
+                        "SOLO MINER: Successfully created candidate block {} in {:?}",
+                        block.id,
+                        candidate_creation_start.elapsed()
                     );
                     block
                 }
                 Err(e) => {
                     warn!(
-                        "SOLO MINER: Failed to create candidate block: {}. Retrying after delay.",
+                        "SOLO MINER: Failed to create candidate block after {:?}: {}. Retrying after delay.",
+                        candidate_creation_start.elapsed(),
                         e
                     );
                     continue;
                 }
             };
 
-            debug!(
-                "SOLO MINER: Starting proof-of-work for candidate block {}...",
-                candidate_block.id
-            );
-            if let Err(e) = miner.solve_pow(&mut candidate_block) {
-                warn!(
-                    "SOLO MINER: Mining failed for the current candidate block: {}",
-                    e
-                );
-                continue;
-            }
-
-            let mined_block = candidate_block;
             info!(
-                "SOLO MINER: Successfully mined block with ID: {}",
-                mined_block.id
+                "SOLO MINER: Starting proof-of-work for candidate block {} with difficulty {}",
+                candidate_block.id, candidate_block.difficulty
             );
-            println!("{mined_block}");
 
-            match self.add_block(mined_block.clone(), &utxos).await {
-                Ok(true) => {
-                    info!("SOLO MINER: Successfully added new block to the QantoDAG.");
-                    mempool
-                        .read()
-                        .await
-                        .remove_transactions(&mined_block.transactions)
-                        .await;
+            // Spawn blocking task for CPU-intensive mining with cancellation support
+            let miner_clone = miner.clone();
+            let shutdown_clone = shutdown_token.clone();
+            let pow_start = std::time::Instant::now();
+
+            let mining_result = tokio::task::spawn_blocking(move || {
+                miner_clone
+                    .solve_pow_with_cancellation(&mut candidate_block, shutdown_clone)
+                    .map(|_| candidate_block) // Return the modified block on success
+            })
+            .await;
+
+            // Handle mining result and get the mined block
+            let mined_block = match mining_result {
+                Ok(Ok(block)) => {
+                    info!(
+                        "SOLO MINER: Proof-of-work completed in {:?}, nonce: {}",
+                        pow_start.elapsed(),
+                        block.nonce
+                    );
+                    block
                 }
-                Ok(false) => {
-                    warn!("SOLO MINER: Mined block was rejected by the DAG (already exists?).")
+                Ok(Err(e)) => {
+                    if shutdown_token.is_cancelled() {
+                        info!("SOLO MINER: Mining cancelled due to shutdown.");
+                        break;
+                    }
+                    warn!(
+                        "SOLO MINER: Mining failed after {:?} for the current candidate block: {}",
+                        pow_start.elapsed(),
+                        e
+                    );
+                    continue;
                 }
-                Err(e) => warn!("SOLO MINER: Failed to add mined block to DAG: {}", e),
+                Err(e) => {
+                    warn!("SOLO MINER: Mining task panicked: {}", e);
+                    continue;
+                }
+            };
+
+            blocks_mined += 1;
+
+            // Get block height from the DAG
+            let block_height = mined_block.height;
+
+            // Calculate mining statistics
+            let mining_time = pow_start.elapsed();
+
+            // Display enhanced celebration with colorful output and statistics
+            celebrate_mining_success(MiningCelebrationParams {
+                block_height,
+                block_hash: mined_block.hash(),
+                nonce: mined_block.nonce,
+                difficulty: mined_block.difficulty,
+                transactions_count: mined_block.transactions.len(),
+                mining_time,
+                effort: mined_block.effort,
+                total_blocks_mined: blocks_mined,
+                chain_id: mined_block.chain_id,
+                block_reward: mined_block.reward,
+                compact: false,
+            });
+
+            info!(
+                "SOLO MINER: Successfully mined block #{} with ID: {} (Total blocks mined: {})",
+                blocks_mined, mined_block.id, blocks_mined
+            );
+
+            // Yield before DAG operations
+            tokio::task::yield_now().await;
+
+            if self.add_block(mined_block.clone(), &utxos).await? {
+                info!("SOLO MINER: Successfully added new block to the QantoDAG.");
+                let removed_count = mined_block.transactions.len();
+                mempool
+                    .read()
+                    .await
+                    .remove_transactions(&mined_block.transactions)
+                    .await;
+                info!(
+                    "SOLO MINER: Removed {} transactions from mempool",
+                    removed_count
+                );
+
+                // Query the reward from state for live verification
+                if let Some(queried_reward) = self.get_block_reward(&mined_block.id).await {
+                    celebrate_mining_success(MiningCelebrationParams {
+                        block_height,
+                        block_hash: mined_block.hash(),
+                        nonce: mined_block.nonce,
+                        difficulty: mined_block.difficulty,
+                        transactions_count: mined_block.transactions.len(),
+                        mining_time,
+                        effort: mined_block.effort,
+                        total_blocks_mined: blocks_mined,
+                        chain_id: mined_block.chain_id,
+                        block_reward: queried_reward,
+                        compact: true,
+                    });
+                } else {
+                    warn!("Failed to query reward for block {}", mined_block.id);
+                }
+            } else {
+                warn!("SOLO MINER: Mined block was rejected by the DAG (already exists?).")
             }
+
+            info!(
+                "SOLO MINER: Mining cycle #{} complete. Next cycle in {} seconds.",
+                mining_cycles, mining_interval_secs
+            );
         }
+
+        info!("SOLO MINER: Mining loop has stopped.");
+        Ok(())
     }
 
     #[instrument]
+    pub async fn get_block_reward(&self, block_id: &str) -> Option<u64> {
+        self.blocks.read().await.get(block_id).map(|b| b.reward)
+    }
+
     pub async fn get_average_tx_per_block(&self) -> f64 {
         let blocks_guard = self.blocks.read().await;
         if blocks_guard.is_empty() {
@@ -994,17 +1139,17 @@ impl QantoDAG {
 
         let epoch = *self.current_epoch.read().await;
 
-        let current_difficulty = *self.saga.economy.current_difficulty.read().await;
+        let current_difficulty = {
+            let rules = self.saga.economy.epoch_rules.read().await;
+            rules.get("base_difficulty").map_or(10.0, |r| r.value)
+        };
 
-        // FIX: Calculate total fees from selected transactions BEFORE calculating reward.
         let total_fees = selected_transactions.iter().map(|tx| tx.fee).sum::<u64>();
 
-        // A temporary block is created with a placeholder transaction vec
-        // to calculate the reward. The actual transactions will be added later.
         let temp_block_for_reward_calc = QantoBlock::new(QantoBlockCreationData {
             chain_id: chain_id_val,
             parents: parent_tips.clone(),
-            transactions: vec![],
+            transactions: vec![], // Placeholder for reward calculation
             difficulty: current_difficulty,
             validator: validator_address.to_string(),
             miner: validator_address.to_string(),
@@ -1024,7 +1169,6 @@ impl QantoDAG {
             .calculate_dynamic_reward(&temp_block_for_reward_calc, &self_arc_strong, total_fees)
             .await?;
 
-        // The block reward now goes entirely to the miner.
         let coinbase_outputs = vec![Output {
             address: validator_address.to_string(),
             amount: reward,
@@ -1372,6 +1516,7 @@ impl QantoDAG {
         }
 
         let initial_validator_placeholder = DEV_ADDRESS.to_string();
+        // FIX (E0425): Call keypair from the dilithium5 module directly.
         let (placeholder_pk, placeholder_sk) = dilithium5::keypair();
 
         let mut tips_guard = self.tips.write().await;
@@ -1395,7 +1540,10 @@ impl QantoDAG {
             chain_loads_guard.insert(new_chain_id, new_load_for_new);
 
             let new_genesis_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-            let parent_difficulty = *self.saga.economy.current_difficulty.read().await;
+            let parent_difficulty = {
+                let rules = self.saga.economy.epoch_rules.read().await;
+                rules.get("base_difficulty").map_or(10.0, |r| r.value)
+            };
 
             let mut genesis_block = QantoBlock::new(QantoBlockCreationData {
                 chain_id: new_chain_id,
@@ -1458,11 +1606,11 @@ impl QantoDAG {
             justification: None,
         };
 
-        // --- FIX (E0599): Interact with DashMap directly ---
-        // No .write().await needed. DashMap handles concurrent access.
         self.saga
             .governance
             .proposals
+            .write()
+            .await
             .insert(proposal_id_val.clone(), proposal_obj);
 
         info!("New governance proposal {} submitted.", proposal_id_val);
@@ -1484,12 +1632,8 @@ impl QantoDAG {
             })?;
         }
 
-        // --- FIX (E0599): Interact with DashMap directly ---
-        // Use .get_mut() for mutable access.
-        let mut proposal_obj = self
-            .saga
-            .governance
-            .proposals
+        let mut proposals_guard = self.saga.governance.proposals.write().await;
+        let proposal_obj = proposals_guard
             .get_mut(&proposal_id)
             .ok_or_else(|| QantoDAGError::Governance("Proposal not found".to_string()))?;
 

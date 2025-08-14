@@ -53,8 +53,9 @@ pub struct Config {
     pub local_full_p2p_address: Option<String>,
     pub network_id: String,
 
-    // --- Consensus & DAG Configuration ---
+    // --- Blockchain Configuration ---
     pub genesis_validator: String,
+    pub contract_address: String,
     pub target_block_time: u64, // Now in milliseconds
     pub difficulty: u64,
     pub max_amount: u64,
@@ -109,6 +110,8 @@ impl Default for Config {
             local_full_p2p_address: None,
             network_id: "qanto-testnet-phoenix".to_string(),
             genesis_validator: "0000000000000000000000000000000000000000000000000000000000000000"
+                .to_string(),
+            contract_address: "5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818"
                 .to_string(),
             target_block_time: 1000, // Evolved to 1 second for higher throughput
             difficulty: 1000,
@@ -221,6 +224,12 @@ impl Config {
         if self.genesis_validator.len() != 64 || hex::decode(&self.genesis_validator).is_err() {
             return Err(ConfigError::Validation(
                 "Invalid genesis_validator address format".to_string(),
+            ));
+        }
+
+        if self.contract_address.len() != 64 || hex::decode(&self.contract_address).is_err() {
+            return Err(ConfigError::Validation(
+                "Invalid contract_address format".to_string(),
             ));
         }
 

@@ -1,0 +1,40 @@
+{
+  "criteria": [
+    "Architecture & Design",
+    "Cross-Chain Interoperability",
+    "Security Infrastructure",
+    "Performance & Scalability",
+    "Developer Experience",
+    "Network Resilience",
+    "Data & State Management"
+  ],
+  "scores": {
+    "Consensus": {"Architecture & Design": 4.5, "Cross-Chain Interoperability": 4.0, "Security Infrastructure": 4.5, "Performance & Scalability": 4.5, "Developer Experience": 4.0, "Network Resilience": 4.0, "Data & State Management": 4.0},
+    "DAG/State": {"Architecture & Design": 4.5, "Cross-Chain Interoperability": 4.5, "Security Infrastructure": 4.5, "Performance & Scalability": 5.0, "Developer Experience": 4.5, "Network Resilience": 4.5, "Data & State Management": 5.0},
+    "P2P": {"Architecture & Design": 4.0, "Cross-Chain Interoperability": 4.0, "Security Infrastructure": 4.0, "Performance & Scalability": 4.5, "Developer Experience": 4.0, "Network Resilience": 4.5, "Data & State Management": 4.0},
+    "Miner": {"Architecture & Design": 4.5, "Cross-Chain Interoperability": 3.5, "Security Infrastructure": 4.5, "Performance & Scalability": 5.0, "Developer Experience": 4.5, "Network Resilience": 4.0, "Data & State Management": 4.0},
+    "Mempool": {"Architecture & Design": 4.0, "Cross-Chain Interoperability": 3.5, "Security Infrastructure": 4.0, "Performance & Scalability": 4.5, "Developer Experience": 4.0, "Network Resilience": 4.0, "Data & State Management": 4.5},
+    "Node/API": {"Architecture & Design": 4.5, "Cross-Chain Interoperability": 4.5, "Security Infrastructure": 4.5, "Performance & Scalability": 4.5, "Developer Experience": 5.0, "Network Resilience": 4.5, "Data & State Management": 4.5},
+    "Config": {"Architecture & Design": 4.5, "Cross-Chain Interoperability": 4.0, "Security Infrastructure": 4.5, "Performance & Scalability": 4.5, "Developer Experience": 5.0, "Network Resilience": 4.5, "Data & State Management": 4.0},
+    "Wallet/Keys": {"Architecture & Design": 4.0, "Cross-Chain Interoperability": 4.0, "Security Infrastructure": 4.5, "Performance & Scalability": 4.0, "Developer Experience": 4.5, "Network Resilience": 4.0, "Data & State Management": 4.0},
+    "Interchain/Bridge": {"Architecture & Design": 4.5, "Cross-Chain Interoperability": 5.0, "Security Infrastructure": 4.5, "Performance & Scalability": 4.5, "Developer Experience": 4.5, "Network Resilience": 4.0, "Data & State Management": 4.5},
+    "JSON-RPC Adapter": {"Architecture & Design": 4.0, "Cross-Chain Interoperability": 4.5, "Security Infrastructure": 4.0, "Performance & Scalability": 4.0, "Developer Experience": 4.5, "Network Resilience": 4.0, "Data & State Management": 4.0},
+    "DevOps/CI": {"Architecture & Design": 4.5, "Cross-Chain Interoperability": 4.0, "Security Infrastructure": 4.5, "Performance & Scalability": 4.5, "Developer Experience": 4.5, "Network Resilience": 4.5, "Data & State Management": 4.0},
+    "SAGA/ΩMEGA": {"Architecture & Design": 4.5, "Cross-Chain Interoperability": 4.0, "Security Infrastructure": 4.5, "Performance & Scalability": 4.5, "Developer Experience": 4.5, "Network Resilience": 4.5, "Data & State Management": 4.5}
+  },
+  "heatmap": {
+    "color_scale": {
+      "0-1": "#e74c3c",
+      "2-2.9": "#e67e22",
+      "3-3.4": "#f1c40f",
+      "3.5-4.4": "#2ecc71",
+      "4.5-5": "#27ae60"
+    },
+    "highlight_gating": {
+      "criterion": "Security Infrastructure",
+      "threshold": 3.0,
+      "style": "red-border"
+    }
+  }
+}
+

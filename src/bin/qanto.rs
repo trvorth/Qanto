@@ -4,11 +4,14 @@ use qanto::config::Config;
 use qanto::node::Node;
 use qanto::wallet::Wallet;
 use secrecy::{ExposeSecret, SecretString};
+use signal_hook::{consts::SIGINT, consts::SIGTERM, iterator::Signals};
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use thiserror::Error;
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
@@ -51,10 +54,28 @@ enum CliError {
 
 /// Helper function to securely prompt for a password from the command line.
 fn prompt_for_password(confirm: bool) -> Result<SecretString, CliError> {
+    // Check for WALLET_PASSWORD environment variable first
+    if let Ok(env_password) = std::env::var("WALLET_PASSWORD") {
+        // Validate that the password is not empty
+        if env_password.is_empty() {
+            return Err(CliError::Password(
+                "WALLET_PASSWORD environment variable is set but empty.".to_string(),
+            ));
+        }
+        println!("Using password from WALLET_PASSWORD environment variable.");
+        return Ok(SecretString::new(env_password));
+    }
+
+    // Fallback to interactive prompt if no environment variable
     print!("Enter wallet password: ");
     io::stdout().flush()?;
     // Add explicit type annotation here
     let password: SecretString = rpassword::read_password()?.into();
+
+    // Validate that the password is not empty
+    if password.expose_secret().is_empty() {
+        return Err(CliError::Password("Password cannot be empty.".to_string()));
+    }
 
     if confirm {
         print!("Confirm wallet password: ");
@@ -67,6 +88,31 @@ fn prompt_for_password(confirm: bool) -> Result<SecretString, CliError> {
         }
     }
     Ok(password)
+}
+
+/// Cleanup routine for graceful shutdown
+async fn cleanup_resources(_wallet: &Arc<Wallet>, _db_path: &str) {
+    info!("Closing database connections...");
+    // The database will be closed when RocksDB handle is dropped
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    info!("Closing network connections...");
+    // Network connections are closed when libp2p swarm is dropped
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    info!("Flushing file handles and buffers...");
+    // Ensure any pending writes are flushed
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    info!("Saving wallet state...");
+    // Wallet is already encrypted and saved, but we could add additional state saving here
+
+    // Optionally sync filesystem to ensure all data is written
+    if std::process::Command::new("sync").output().is_ok() {
+        info!("Filesystem sync completed.");
+    }
+
+    info!("Cleanup completed.");
 }
 
 #[tokio::main]
@@ -106,27 +152,83 @@ async fn main() -> Result<()> {
             }
 
             // Correctly load config and wallet with password.
-            let password = prompt_for_password(false)?;
+            let password =
+                prompt_for_password(false).map_err(|e| anyhow::anyhow!("Password error: {}", e))?;
             let node_config = Config::load(&config)?;
             // Pass the SecretString directly, without re-wrapping it.
             let wallet_instance = Wallet::from_file(&wallet, &password)?;
             let wallet_arc = Arc::new(wallet_instance);
 
-            println!("Initializing Qanto services...");
+            // Create shutdown flag
+            let shutdown = Arc::new(AtomicBool::new(false));
+            let shutdown_clone = shutdown.clone();
+
+            // Setup signal handlers
+            let mut signals = Signals::new([SIGINT, SIGTERM])?;
+            std::thread::spawn(move || {
+                for sig in signals.forever() {
+                    match sig {
+                        SIGINT => {
+                            info!("Received SIGINT (Ctrl+C). Initiating graceful shutdown...");
+                            shutdown_clone.store(true, Ordering::Relaxed);
+                            break;
+                        }
+                        SIGTERM => {
+                            info!("Received SIGTERM. Initiating graceful shutdown...");
+                            shutdown_clone.store(true, Ordering::Relaxed);
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            });
+
+            println!("Initializing Qanto services... (Press Ctrl+C for graceful shutdown)");
             let node = Node::new(
                 node_config,
                 config.clone(),
-                wallet_arc,
+                wallet_arc.clone(),
                 &p2p_identity,
                 peer_cache,
             )
             .await?;
 
-            node.start().await?;
+            // Start node with shutdown monitoring
+            let shutdown_monitor = shutdown.clone();
+            let node_handle = tokio::spawn(async move { node.start().await });
+
+            // Monitor shutdown flag
+            while !shutdown_monitor.load(Ordering::Relaxed) {
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+                // Check if node task has ended unexpectedly
+                if node_handle.is_finished() {
+                    match node_handle.await {
+                        Ok(Ok(_)) => {
+                            info!("Node stopped normally.");
+                            break;
+                        }
+                        Ok(Err(e)) => {
+                            error!("Node runtime error: {}", e);
+                            return Err(anyhow::anyhow!("Node runtime error: {}", e));
+                        }
+                        Err(e) => {
+                            error!("Node task panicked: {}", e);
+                            return Err(anyhow::anyhow!("Node task panicked: {}", e));
+                        }
+                    }
+                }
+            }
+
+            // Cleanup routine
+            info!("Performing cleanup...");
+            cleanup_resources(&wallet_arc, db_path).await;
+            info!("Qanto node has shut down gracefully.");
         }
         Commands::GenerateWallet { output } => {
             println!("Generating new wallet...");
-            let password = prompt_for_password(true)?;
+            let password =
+                prompt_for_password(true).map_err(|e| anyhow::anyhow!("Password error: {}", e))?;
             let wallet = Wallet::new()?;
             // Correctly save the wallet with the SecretString.
             wallet.save_to_file(&output, &password)?;

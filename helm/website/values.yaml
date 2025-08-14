@@ -1,0 +1,202 @@
+# ============================================================================
+# Next.js Website Configuration for Production
+# ============================================================================
+
+replicaCount: 3
+
+image:
+  repository: ""  # Will be set by deployment script
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# ============================================================================
+# Service Configuration
+# ============================================================================
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 3000
+
+# ============================================================================
+# Ingress Configuration
+# ============================================================================
+
+ingress:
+  enabled: true
+  className: "alb"
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/certificate-arn: ""  # Will be set by deployment script
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: '30'
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: '5'
+    alb.ingress.kubernetes.io/healthy-threshold-count: '2'
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: '3'
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=60
+    external-dns.alpha.kubernetes.io/hostname: qanto.org,www.qanto.org
+  hosts:
+    - host: qanto.org
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: www.qanto.org
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: qanto-org-tls
+      hosts:
+        - qanto.org
+        - www.qanto.org
+
+# ============================================================================
+# Deployment Configuration
+# ============================================================================
+
+nodeSelector:
+  workload: web
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - qanto-website
+          topologyKey: kubernetes.io/hostname
+
+# ============================================================================
+# Autoscaling
+# ============================================================================
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# ============================================================================
+# Resource Limits
+# ============================================================================
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+# ============================================================================
+# Health Checks
+# ============================================================================
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+
+# ============================================================================
+# Security Context
+# ============================================================================
+
+podSecurityContext:
+  fsGroup: 1000
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# ============================================================================
+# Environment Variables for Next.js Production
+# ============================================================================
+
+env:
+  - name: NODE_ENV
+    value: "production"
+  - name: PORT
+    value: "3000"
+  - name: API_URL
+    value: "https://api.qanto.org"
+  - name: CDN_URL
+    value: "https://cdn.qanto.org"
+  - name: ASSETS_URL
+    value: "https://assets.qanto.org"
+  - name: NEXT_PUBLIC_API_URL
+    value: "https://api.qanto.org"
+  - name: NEXT_PUBLIC_CDN_URL
+    value: "https://cdn.qanto.org"
+  - name: NEXT_PUBLIC_DOCS_URL
+    value: "https://docs.qanto.org"
+  - name: NEXT_PUBLIC_EXPLORER_URL
+    value: "https://explorer.qanto.org"
+  - name: NEXT_PUBLIC_TESTNET_URL
+    value: "https://testnet.qanto.org"
+  - name: S3_STATIC_BUCKET
+    valueFrom:
+      secretKeyRef:
+        name: qanto-s3-config
+        key: static-bucket
+  - name: CLOUDFRONT_DISTRIBUTION_ID
+    valueFrom:
+      secretKeyRef:
+        name: qanto-cloudfront-config
+        key: distribution-id
+
+# ============================================================================
+# Service Account with IAM Role for S3 Access
+# ============================================================================
+
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: ""  # Will be set by deployment script
+  name: "qanto-website"
+
+# ============================================================================
+# Pod Disruption Budget
+# ============================================================================
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+  # maxUnavailable: 1

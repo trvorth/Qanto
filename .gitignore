@@ -108,7 +108,75 @@ __pycache__/
 
 # Node.js / Web
 /web
-/web/node_modules/
+/web/node_modules
+
+# Additional cleanup entries for production deployment
+# Deployment artifacts
+*.tar.gz
+*.tar
+*.zip
+*.tgz
+
+# Terraform state and modules
+terraform/.terraform/
+terraform/*.tfstate*
+terraform/*.tfplan
+terraform/.terraform.lock.hcl
+
+# AWS and cloud provider files
+.aws/credentials
+.aws/config
+*.pem
+*.ppk
+
+# Docker build context
+.dockerignore.bak
+docker-compose.override.yml
+
+# IDE and development
+.vscode/settings.json
+.idea/workspace.xml
+.idea/tasks.xml
+
+# OS specific
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+
+# Backup and temporary files
+*.backup
+*.bak
+*.swp
+*.swo
+*~
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime and process files
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage and test reports
+coverage/
+.nyc_output/
+.coverage
+
+# Build outputs
+dist/
+build/
+out/
+
+# Package manager lock files (keep package-lock.json for consistency)
+yarn.lock
+pnpm-lock.yaml
+
 /web/dist/
 /web/.env*
 npm-debug.log*
@@ -126,6 +194,138 @@ yarn-error.log*
 /docs/whitepaper/assets/diagrams/*.svg
 /docs/whitepaper/Qanto-whitepaper.docx
 /docs/whitepaper/~$nto-whitepaper.docx
+
 # --- Local Scripts ---
 /scripts/run_local_net.sh
 
+# ===============================================================
+# Additional general ignores (additions only; no removals above)
+# ===============================================================
+
+# OS / System
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+.DS_Store?
+ehthumbs.db
+Desktop.ini
+
+# Build artifacts & reports
+/debug/
+/out/
+/build/
+/dist/
+/coverage/
+/reports/
+*.gcda
+*.gcno
+*.profraw
+*.profdata
+
+# Crash dumps & cores
+core
+core.*
+*.dmp
+*.stackdump
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# Certificates & secret files (private material)
+*.crt
+*.csr
+*.der
+*.p12
+*.pfx
+*.pkcs12
+*.pem
+*.enc
+*.age
+*.asc
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+*.secret
+*.secrets
+secrets/*
+
+# Local databases & dumps
+*.sqlite
+*.sqlite3
+*.db
+*.db3
+*.mdb
+*.sql
+*.dump
+
+# Python caches & tooling
+.mypy_cache/
+.pytest_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.pyright/
+
+# Node/JS tooling caches (project and web/ subdir)
+.npm/
+.pnpm-store/
+.yarn/
+.yarn/cache/
+.yarn/unplugged/
+.turbo/
+.next/
+.nuxt/
+.parcel-cache/
+.vite/
+.svelte-kit/
+web/.parcel-cache/
+web/.next/
+web/.nuxt/
+web/.turbo/
+web/.vite/
+
+# Rust tooling & perf outputs
+.cargo/
+flamegraph.svg
+perf.data*
+callgrind.out.*
+cachegrind.out.*
+
+# Editor/IDE miscellany
+*.code-workspace
+.history/
+.fleet/
+
+# Direnv / env tooling
+.envrc
+.direnv/
+
+# Docker/K8s local data
+docker/*.env
+docker/*.local.env
+Dockerfile.local
+
+# Security & SBOM scan outputs
+gitleaks-report.*
+trivy-report.*
+sbom-*.json
+sbom-*.xml
+
+
+# Deployment sensitive files
+deployment/docker/secrets/
+deployment/docker/keys/
+deployment/docker/config/
+deployment/docker/logs/
+deployment/kubernetes/secrets-prod.yaml
+*.key
+wallet_password.txt
+
+node_modules

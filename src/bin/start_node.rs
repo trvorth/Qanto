@@ -52,7 +52,23 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
-    let passphrase = rpassword::prompt_password("Enter passphrase to unlock wallet: ")?;
+    // Check for WALLET_PASSWORD environment variable first
+    let passphrase = std::env::var("WALLET_PASSWORD").unwrap_or_else(|_| {
+        // Fallback to interactive prompt if no environment variable
+        rpassword::prompt_password("Enter passphrase to unlock wallet: ")
+            .expect("Failed to read password")
+    });
+
+    // Validate that the password is not empty
+    if passphrase.is_empty() {
+        anyhow::bail!("Password cannot be empty.");
+    }
+
+    // Log when using environment variable (for debugging/audit purposes)
+    if std::env::var("WALLET_PASSWORD").is_ok() {
+        info!("Using password from WALLET_PASSWORD environment variable.");
+    }
+
     let secret_passphrase = Secret::new(passphrase);
 
     let wallet = Wallet::from_file(&args.wallet_path, &secret_passphrase)

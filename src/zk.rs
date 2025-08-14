@@ -55,7 +55,7 @@ impl Circuit<Scalar> for UtxoCircuit {
         for i in 0..64 {
             let bit_val = self.amount.map(|a| (a >> i) & 1);
             let bit_var = cs.alloc(
-                || format!("amount bit {}", i),
+                || format!("amount bit {i}"),
                 || {
                     bit_val
                         .map(Scalar::from)
@@ -69,7 +69,7 @@ impl Circuit<Scalar> for UtxoCircuit {
         let mut coeff = Scalar::one();
         for (i, bit_var) in amount_bits_vars.iter().enumerate() {
             cs.enforce(
-                || format!("bit {} enforcement", i),
+                || format!("bit {i} enforcement"),
                 |lc| lc + *bit_var,
                 |lc| lc + CS::one() - *bit_var,
                 |lc| lc,
@@ -90,7 +90,7 @@ impl Circuit<Scalar> for UtxoCircuit {
             || {
                 let address_hash = self
                     .address
-                    .map(|addr| Sha256::digest(addr))
+                    .map(Sha256::digest)
                     .ok_or(SynthesisError::AssignmentMissing)?;
                 let address_hash_slice: [u8; 32] = address_hash.into();
                 Scalar::from_bytes(&address_hash_slice)

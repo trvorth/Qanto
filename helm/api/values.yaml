@@ -1,0 +1,203 @@
+# ============================================================================
+# Qanto API Gateway Configuration for api.qanto.org
+# ============================================================================
+
+replicaCount: 2
+
+image:
+  repository: ""  # Will be set by deployment script
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# ============================================================================
+# Service Configuration
+# ============================================================================
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# ============================================================================
+# Ingress Configuration for API
+# ============================================================================
+
+ingress:
+  enabled: true
+  className: "alb"
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/certificate-arn: ""  # Will be set by deployment script
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: '30'
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: '5'
+    alb.ingress.kubernetes.io/healthy-threshold-count: '2'
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: '3'
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=300
+    external-dns.alpha.kubernetes.io/hostname: api.qanto.org
+  hosts:
+    - host: api.qanto.org
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: qanto-org-tls
+      hosts:
+        - api.qanto.org
+
+# ============================================================================
+# Deployment Configuration
+# ============================================================================
+
+nodeSelector:
+  workload: web
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - qanto-api
+          topologyKey: kubernetes.io/hostname
+
+# ============================================================================
+# Autoscaling for API
+# ============================================================================
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+# ============================================================================
+# Resource Limits for API
+# ============================================================================
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# ============================================================================
+# Health Checks
+# ============================================================================
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 30
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  successThreshold: 1
+  failureThreshold: 3
+
+# ============================================================================
+# Security Context
+# ============================================================================
+
+podSecurityContext:
+  fsGroup: 1000
+  runAsNonRoot: true
+  runAsUser: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# ============================================================================
+# Environment Variables for API
+# ============================================================================
+
+env:
+  - name: NODE_ENV
+    value: "production"
+  - name: PORT
+    value: "8080"
+  - name: DB_HOST
+    valueFrom:
+      secretKeyRef:
+        name: qanto-db-config
+        key: host
+  - name: DB_PORT
+    value: "5432"
+  - name: DB_NAME
+    value: "qanto_production"
+  - name: DB_USER
+    valueFrom:
+      secretKeyRef:
+        name: qanto-db-config
+        key: username
+  - name: DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: qanto-db-config
+        key: password
+  - name: REDIS_URL
+    valueFrom:
+      secretKeyRef:
+        name: qanto-redis-config
+        key: url
+  - name: JWT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: qanto-jwt-config
+        key: secret
+  - name: API_RATE_LIMIT
+    value: "1000"
+  - name: CORS_ORIGIN
+    value: "https://qanto.org,https://www.qanto.org,https://docs.qanto.org,https://explorer.qanto.org,https://testnet.qanto.org"
+
+# ============================================================================
+# Service Account with IAM Role
+# ============================================================================
+
+serviceAccount:
+  create: true
+  annotations:
+    eks.amazonaws.com/role-arn: ""  # Will be set by deployment script
+  name: "qanto-api"
+
+# ============================================================================
+# Pod Disruption Budget
+# ============================================================================
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

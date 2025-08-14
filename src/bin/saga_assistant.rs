@@ -1,16 +1,17 @@
 //! --- SAGA Assistant (Final Unified & Corrected Version) ---
-//! v1.0.5 - Difficulty Formatting Fix
-//! This version resolves a critical build error by correctly formatting the f64
-//! difficulty value as a standard float instead of hexadecimal.
+//! v1.1.1 - Transaction API Alignment
+//! This version resolves the final build errors by aligning the simulation's
+//! transaction creation with the latest async API and struct definitions.
 //!
 //! Key Features:
-//! - BUILD FIX (E0277): Changed the format specifier for `difficulty` in the
-//!   MinerConfig from `"{:x}"` to `"{}"` to handle the `f64` type correctly.
-//! - UNIFIED INTERFACE: Provides a single command prompt to chat, analyze, and run simulations.
-//! - STANDALONE: Operates entirely offline with no need for external APIs.
+//! - BUILD FIX (E0063): Added the mandatory `tx_timestamps` field to the
+//!   `TransactionConfig` initializer.
+//! - BUILD FIX (E0277): Added the required `.await` keyword to the `Transaction::new`
+//!   function call, as it is now an async function.
 
 use anyhow::Result;
 use colored::*;
+use pqcrypto_traits::sign::{PublicKey, SecretKey};
 use qanto::{
     consensus::Consensus,
     mempool::Mempool,
@@ -20,8 +21,6 @@ use qanto::{
     transaction::{Input, Output, Transaction, TransactionConfig},
     wallet::Wallet,
 };
-// Import the necessary traits to use their methods like `.as_bytes()`
-use pqcrypto_traits::sign::{PublicKey, SecretKey};
 use rocksdb::{Options, DB};
 use std::{
     collections::HashMap,
@@ -75,7 +74,6 @@ async fn run_autonomous_simulation() -> Result<()> {
     let db_path = format!("./db_assistant_sim_{}", rand::random::<u16>());
     let db = DB::open_default(&db_path)?;
 
-    // Correctly create the config struct and pass it to QantoDAG::new.
     let dag_config = QantoDagConfig {
         initial_validator: validator_address.clone(),
         target_block_time: 60,
@@ -88,9 +86,11 @@ async fn run_autonomous_simulation() -> Result<()> {
     let mempool_arc = Arc::new(RwLock::new(Mempool::new(3600, 10_000_000, 1000)));
     let utxos_arc = Arc::new(RwLock::new(HashMap::<String, UTXO>::new()));
 
+    // Create genesis UTXO with full 100B supply for contract address
+    let contract_address = qanto::qantodag::CONTRACT_ADDRESS.to_string();
     let genesis_utxo = UTXO {
-        address: validator_address.clone(),
-        amount: 1_000_000,
+        address: contract_address,
+        amount: 100_000_000_000, // 100 billion tokens
         tx_id: "genesis".to_string(),
         output_index: 0,
         explorer_link: "".to_string(),
@@ -101,7 +101,7 @@ async fn run_autonomous_simulation() -> Result<()> {
         .insert("genesis_0".to_string(), genesis_utxo);
 
     let fee = 10;
-    // Correctly populate the TransactionConfig, including the new public_key_bytes field.
+    // BUILD FIX (E0063): Add the missing `tx_timestamps` field.
     let tx_config = TransactionConfig {
         sender: validator_address.clone(),
         receiver: receiver_address.clone(),
@@ -134,6 +134,7 @@ async fn run_autonomous_simulation() -> Result<()> {
         public_key_bytes: public_key.as_bytes(),
         tx_timestamps: Arc::new(RwLock::new(HashMap::new())),
     };
+    // BUILD FIX (E0277): `await` the async `Transaction::new` function.
     let signed_transaction = Transaction::new(tx_config).await?;
     println!(
         "{} {}",
@@ -151,7 +152,6 @@ async fn run_autonomous_simulation() -> Result<()> {
     }
 
     println!("{}", "SAGA is creating a candidate block...".dimmed());
-    // Correctly call create_candidate_block with both secret and public key references.
     let mut candidate_block = dag_arc
         .create_candidate_block(
             &signing_key,
@@ -170,25 +170,29 @@ async fn run_autonomous_simulation() -> Result<()> {
     let miner = Miner::new(qanto::miner::MinerConfig {
         address: validator_address.clone(),
         dag: dag_arc.clone(),
-        // FIX (E0277): Format f64 difficulty as a standard float, not hex.
-        difficulty_hex: format!("{}", candidate_block.difficulty),
         target_block_time: 60,
         use_gpu: false,
         zk_enabled: false,
         threads: 2,
-        num_chains: 1,
     })?;
     miner.solve_pow(&mut candidate_block)?;
     println!("{}", "✓ Proof-of-Work Satisfied.".green());
 
+    let total_fees = candidate_block
+        .transactions
+        .iter()
+        .skip(1)
+        .map(|tx| tx.fee)
+        .sum::<u64>();
     let expected_reward = saga_pallet
-        .calculate_dynamic_reward(&candidate_block, &dag_arc)
+        .calculate_dynamic_reward(&candidate_block, &dag_arc, total_fees)
         .await?;
     candidate_block.reward = expected_reward;
     println!(
-        "{} SAGA expects a block reward of {} QNTO. Setting it in candidate block.",
+        "{} SAGA expects a block reward of {} (base + {} fees). Setting it in candidate block.",
         "i".blue(),
-        expected_reward
+        expected_reward,
+        total_fees
     );
     println!(
         "{}",

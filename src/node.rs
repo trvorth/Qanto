@@ -1,22 +1,20 @@
 //! --- Qanto Node Orchestrator ---
-//! v1.7.1 - SAGA Difficulty Integration
-//! This version fixes critical build errors by updating the API handlers to fetch
-//! the network difficulty directly from the SAGA pallet, which now has sole
-//! control over this economic parameter.
+//! v1.8.0 - Deterministic PoW Integration
+//! This version aligns the node's instantiation of the Miner with the new
+//! deterministic PoW configuration, resolving build errors from the consensus-
+//! critical refactor.
 //!
-//! - BUILD FIX (E0609): Replaced all references to the now-defunct `dag.difficulties`
-//!   field with `dag.saga.economy.current_difficulty` to reflect the new architecture.
-//! - REFACTOR: Updated the `/info` and `/dag` API endpoints and their response
-//!   structs to handle the new single, network-wide difficulty value (`f64`)
-//!   instead of the old per-chain map.
+//! - BUILD FIX (E0560): Removed `difficulty_hex` and `num_chains` from the
+//!   `MinerConfig` struct during initialization in `Node::new`, as these are
+//!   no longer required by the refactored Miner.
 
 use crate::config::{Config, ConfigError};
 use crate::mempool::Mempool;
 use crate::miner::{Miner, MinerConfig, MiningError};
-use crate::omega::{self, reflect_on_action};
+use crate::omega::reflect_on_action;
 use crate::p2p::{P2PCommand, P2PConfig, P2PError, P2PServer};
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError, QantoDagConfig, UTXO};
-use crate::saga::{PalletSaga, SagaError};
+use crate::saga::PalletSaga;
 use crate::transaction::Transaction;
 use crate::wallet::Wallet;
 use anyhow;
@@ -47,7 +45,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::fs;
 use tokio::signal;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio::task::{JoinError, JoinSet};
 use tokio::time::timeout;
 use tracing::{debug, error, info, instrument, warn};
@@ -283,7 +281,7 @@ impl Node {
                 utxos_lock.insert(
                     utxo_id.clone(),
                     UTXO {
-                        address: config.genesis_validator.clone(),
+                        address: config.contract_address.clone(),
                         amount: 100, // A nominal amount for genesis.
                         tx_id: genesis_id_convention,
                         output_index: 0,
@@ -293,17 +291,15 @@ impl Node {
             }
         }
 
-        // Configure and initialize the miner.
+        // BUILD FIX (E0560): Remove `difficulty_hex` and `num_chains` from MinerConfig.
+        // These are no longer needed as the difficulty is determined dynamically from the block template.
         let miner_config = MinerConfig {
             address: wallet.address(),
             dag: dag_arc.clone(),
-            // Difficulty is now managed per-chain by the DAG, this config value is a placeholder.
-            difficulty_hex: format!("{:x}", 1),
             target_block_time: config.target_block_time,
             use_gpu: config.use_gpu,
             zk_enabled: config.zk_enabled,
             threads: config.mining_threads,
-            num_chains: config.num_chains,
         };
         let miner_instance = Miner::new(miner_config)?;
         let miner = Arc::new(miner_instance);
@@ -333,6 +329,9 @@ impl Node {
         let (tx_p2p_commands, mut rx_p2p_commands) = mpsc::channel::<P2PCommand>(100);
         let mut join_set: JoinSet<Result<(), NodeError>> = JoinSet::new();
 
+        // Create cancellation tokens for graceful shutdown
+        let shutdown_token = tokio_util::sync::CancellationToken::new();
+
         // If the 'infinite-strata' feature is enabled, spawn its periodic task.
         #[cfg(feature = "infinite-strata")]
         {
@@ -350,6 +349,19 @@ impl Node {
                     debug!("[ISNM] Running periodic cloud presence check...");
                     if let Err(e) = isnm_service_clone.run_periodic_check().await {
                         warn!("[ISNM] Periodic check failed: {}", e);
+                    }
+
+                    // Activate Quantum State Verification protocol
+                    debug!("[ISNM] Initiating Quantum State Verification protocol...");
+                    let epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+                    match isnm_service_clone.perform_quantum_state_verification(epoch).await {
+                        Ok(proof) => {
+                            info!("[ISNM] Quantum State Verification completed successfully. Security factor: {}", 
+                                  isnm_service_clone.calculate_quantum_security_factor(Some(&proof)).await);
+                        },
+                        Err(e) => {
+                            warn!("[ISNM] Quantum State Verification failed: {}", e);
+                        }
                     }
                 }
                 #[allow(unreachable_code)]
@@ -558,7 +570,10 @@ impl Node {
             let miner_mempool_clone = self.mempool.clone();
             let miner_utxos_clone = self.utxos.clone();
             let miner_clone = self.miner.clone();
+            let miner_shutdown_token = shutdown_token.clone();
+
             join_set.spawn(async move {
+                debug!("[DEBUG] Spawning solo miner task");
                 miner_dag_clone
                     .run_solo_miner(
                         miner_wallet_clone,
@@ -566,9 +581,10 @@ impl Node {
                         miner_utxos_clone,
                         miner_clone,
                         DEFAULT_MINING_INTERVAL_SECS,
+                        miner_shutdown_token,
                     )
-                    .await;
-                Ok(())
+                    .await
+                    .map_err(|e| NodeError::DAG(e.to_string()))
             });
         }
 
@@ -598,7 +614,8 @@ impl Node {
                     .route("/health", get(health_check))
                     .route("/mempool", get(mempool_handler))
                     .route("/publish-readiness", get(publish_readiness_handler))
-                    .route("/saga/ask", post(ask_saga))
+                    // /saga/ask route removed for production hardening
+                    .route("/p2p_getConnectedPeers", get(get_connected_peers_handler))
                     .layer(middleware::from_fn_with_state(
                         rate_limiter,
                         rate_limit_layer,
@@ -752,14 +769,12 @@ struct AppState {
     utxos: Arc<RwLock<HashMap<String, UTXO>>>,
     api_address: String,
     p2p_command_sender: mpsc::Sender<P2PCommand>,
+    #[allow(dead_code)]
     saga: Arc<PalletSaga>,
 }
 
 // --- API Error Handling ---
-#[derive(Deserialize)]
-struct SagaQuery {
-    query: String,
-}
+// SagaQuery struct removed for production hardening
 #[derive(Serialize)]
 struct ApiError {
     code: u16,
@@ -776,53 +791,8 @@ impl IntoResponse for ApiError {
 
 // --- API Handlers ---
 
-/// Handles queries to the SAGA guidance system.
-async fn ask_saga(
-    State(state): State<AppState>,
-    Json(payload): Json<SagaQuery>,
-) -> Result<Json<String>, ApiError> {
-    let saga = &state.saga;
-    let network_state = *saga.economy.network_state.read().await;
-    let threat_level = omega::identity::get_threat_level().await;
-    let proactive_insight = saga
-        .economy
-        .proactive_insights
-        .read()
-        .await
-        .first()
-        .cloned();
-    match saga
-        .guidance_system
-        .get_guidance_response(
-            &payload.query,
-            network_state,
-            threat_level,
-            proactive_insight.as_ref(),
-        )
-        .await
-    {
-        Ok(response) => Ok(Json(response)),
-        Err(SagaError::AmbiguousQuery(topics)) => {
-            let error_message = format!(
-                "SAGA query is too ambiguous. Please be more specific. Possible topics: {topics:?}"
-            );
-            error!("{}", error_message);
-            Err(ApiError {
-                code: 400,
-                message: "Ambiguous query".to_string(),
-                details: Some(error_message),
-            })
-        }
-        Err(e) => {
-            warn!("SAGA guidance query failed: {}", e);
-            Err(ApiError {
-                code: 500,
-                message: "Internal SAGA error".to_string(),
-                details: None,
-            })
-        }
-    }
-}
+// ask_saga function removed for production hardening
+// LLM guidance functionality has been excised
 
 /// Provides a general information summary of the node's state.
 async fn info_handler(
@@ -833,8 +803,10 @@ async fn info_handler(
     let tips_read_guard = state.dag.tips.read().await;
     let blocks_read_guard = state.dag.blocks.read().await;
     let num_chains_val = *state.dag.num_chains.read().await;
-    // BUILD FIX (E0609): Get the current difficulty from the SAGA pallet.
-    let current_difficulty = *state.dag.saga.economy.current_difficulty.read().await;
+    let current_difficulty = {
+        let rules = state.dag.saga.economy.epoch_rules.read().await;
+        rules.get("base_difficulty").map_or(10.0, |r| r.value)
+    };
 
     Ok(Json(serde_json::json!({
         "block_count": blocks_read_guard.len(),
@@ -1028,8 +1000,10 @@ async fn get_dag(State(state): State<AppState>) -> Result<Json<DagInfo>, StatusC
     let blocks_read_guard = state.dag.blocks.read().await;
     let tips_read_guard = state.dag.tips.read().await;
     let validators_read_guard = state.dag.validators.read().await;
-    // BUILD FIX (E0609): Get the current difficulty from the SAGA pallet.
-    let current_difficulty = *state.dag.saga.economy.current_difficulty.read().await;
+    let current_difficulty = {
+        let rules = state.dag.saga.economy.epoch_rules.read().await;
+        rules.get("base_difficulty").map_or(10.0, |r| r.value)
+    };
     let num_chains_val = *state.dag.num_chains.read().await;
 
     let latest_block_timestamp = blocks_read_guard
@@ -1052,6 +1026,38 @@ async fn get_dag(State(state): State<AppState>) -> Result<Json<DagInfo>, StatusC
 /// A simple health check endpoint.
 async fn health_check() -> Result<Json<serde_json::Value>, StatusCode> {
     Ok(Json(serde_json::json!({ "status": "healthy" })))
+}
+
+/// Returns the list of connected peers from the P2P server.
+async fn get_connected_peers_handler(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<String>>, StatusCode> {
+    let (response_sender, response_receiver) = oneshot::channel();
+
+    // Send command to P2P server to get connected peers
+    if let Err(e) = state
+        .p2p_command_sender
+        .send(P2PCommand::GetConnectedPeers { response_sender })
+        .await
+    {
+        error!(
+            "Failed to send GetConnectedPeers command to P2P server: {}",
+            e
+        );
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // Wait for response from P2P server
+    match response_receiver.await {
+        Ok(peers) => {
+            info!("Retrieved {} connected peers", peers.len());
+            Ok(Json(peers))
+        }
+        Err(e) => {
+            error!("Failed to receive connected peers response: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 // --- Unit Tests ---
@@ -1092,6 +1098,7 @@ mod tests {
             api_address: "127.0.0.1:0".to_string(),
             peers: vec![],
             genesis_validator: genesis_validator_addr.clone(),
+            contract_address: "5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818".to_string(),
             target_block_time: 60,
             difficulty: 1, // This is a placeholder and is dynamically managed by the DAG now.
             max_amount: 10_000_000_000,

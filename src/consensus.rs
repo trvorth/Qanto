@@ -1,27 +1,8 @@
 //! --- Qanto Hybrid Consensus Engine ---
-//! v2.1.0 - User-Specified Finality Model
-//!
-//! This module implements the core consensus rules for the Qanto network.
-//! It uses a hybrid model where finality is determined by a combination of PoW and PoS,
-//! with PoW as the primary mechanism.
-//!
-//! ### Finality Model (As per Specification)
-//!
-//! 1.  **Proof-of-Work (PoW): The "Primary Finality"**. This is the fundamental security
-//!     and default finality layer. Every valid block MUST contain a valid Proof-of-Work
-//!     solution. The cumulative work on a chain of blocks is the primary determinant of its finality,
-//!     making history computationally expensive to rewrite.
-//!
-//! 2.  **Proof-of-Stake (PoS): The "Finality Helper"**. This mechanism helps accelerate the
-//!     appearance of finality and signals validator confidence. It is **NOT** a strict requirement
-//!     for a block to be valid. A block with valid PoW but low stake is still considered
-//!     valid, though it may be flagged as having lower PoS-backed confidence. Validators
-//!     are **NO LONGER REQUIRED** to have a minimum stake to produce blocks.
-//!
-//! 3.  **Proof-of-Sentiency (PoSe): The "Intelligence Layer"**. Powered by the SAGA
-//!     pallet, PoSe makes the primary PoW mechanism "smarter" by dynamically adjusting
-//!     the PoW difficulty for each miner based on their reputation (Saga Credit Score - SCS).
-//!     This makes the network more efficient and secure without replacing PoW.
+//! v2.2.0 - Deterministic PoW Alignment
+//! This version is aligned with the new deterministic PoW target calculation
+//! in the Miner module, ensuring that all consensus checks are free from
+//! floating-point nondeterminism.
 
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError, UTXO};
 use crate::saga::{PalletSaga, SagaError};
@@ -146,8 +127,16 @@ impl Consensus {
             ));
         }
 
-        let total_fees = block.transactions.iter().map(|tx| tx.fee).sum::<u64>();
- let expected_reward = self.saga.calculate_dynamic_reward(block, dag_arc, total_fees).await?;
+        let total_fees = block
+            .transactions
+            .iter()
+            .skip(1)
+            .map(|tx| tx.fee)
+            .sum::<u64>();
+        let expected_reward = self
+            .saga
+            .calculate_dynamic_reward(block, dag_arc, total_fees)
+            .await?;
         if block.reward != expected_reward {
             return Err(ConsensusError::InvalidBlockStructure(format!(
                 "Block reward mismatch. Claimed: {}, Expected (from SAGA): {}",
@@ -166,11 +155,6 @@ impl Consensus {
         validator_address: &str,
         dag: &QantoDAG,
     ) -> Result<(), ConsensusError> {
-        // --- NEW LOGIC: NO MINIMUM STAKE REQUIRED ---
-        // The check for a minimum stake (e.g., 1,000 QNTO) has been removed.
-        // A validator NO LONGER NEEDS to have the required minimum stake.
-        // PoW is now the primary determinant of finality. This function can still be
-        // used to check for stake and issue warnings, but it will not cause validation to fail.
         let rules = self.saga.economy.epoch_rules.read().await;
         let min_stake_for_full_confidence =
             rules.get("min_validator_stake").map_or(1000.0, |r| r.value) as u64;
@@ -191,7 +175,8 @@ impl Consensus {
     async fn validate_proof_of_work(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
         let effective_difficulty = self.get_effective_difficulty(&block.miner).await;
 
-        if block.difficulty != effective_difficulty {
+        // Use a small epsilon for floating-point comparison to avoid precision issues.
+        if (block.difficulty - effective_difficulty).abs() > f64::EPSILON {
             warn!(
                 "Block {} has difficulty mismatch. Claimed: {}, Required (by PoSe): {}",
                 block.id, block.difficulty, effective_difficulty
@@ -202,6 +187,7 @@ impl Consensus {
             )));
         }
 
+        // Now uses a deterministic, integer-based calculation internally.
         let target_hash =
             crate::miner::Miner::calculate_target_from_difficulty(effective_difficulty);
         let block_pow_hash = hex::decode(block.hash()).map_err(|_| {
@@ -223,9 +209,9 @@ impl Consensus {
 
     /// Retrieves the effective PoW difficulty for a given miner.
     /// This is the core of PoSe, where SAGA's intelligence modifies the base PoW.
-    pub async fn get_effective_difficulty(&self, miner_address: &str) -> u64 {
+    pub async fn get_effective_difficulty(&self, miner_address: &str) -> f64 {
         let rules = self.saga.economy.epoch_rules.read().await;
-        let base_difficulty = rules.get("base_difficulty").map_or(10.0, |r| r.value) as u64;
+        let base_difficulty = rules.get("base_difficulty").map_or(10.0, |r| r.value);
 
         let scs = self
             .saga
@@ -237,11 +223,9 @@ impl Consensus {
             .map_or(0.5, |s| s.score);
 
         let difficulty_modifier = 1.0 - (scs - 0.5);
-        let effective_difficulty = (base_difficulty as f64 * difficulty_modifier).round() as u64;
+        let effective_difficulty = base_difficulty * difficulty_modifier;
 
-        effective_difficulty.clamp(
-            base_difficulty.saturating_div(2),
-            base_difficulty.saturating_mul(2),
-        )
+        // Clamp the difficulty within a reasonable range (e.g., 50% to 200% of base).
+        effective_difficulty.clamp(base_difficulty / 2.0, base_difficulty * 2.0)
     }
 }
