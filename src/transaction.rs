@@ -27,15 +27,15 @@ const MAX_METADATA_KEY_LEN: usize = 64;
 const MAX_METADATA_VALUE_LEN: usize = 256;
 
 // --- New Dynamic Fee Structure ---
-// Represents the smallest unit of currency (e.g., satoshis, wei).
-// Assuming 1,000,000 units = $1 USD for this example.
-const FEE_TIER1_THRESHOLD: u64 = 1_000_000;
-const FEE_TIER2_THRESHOLD: u64 = 10_000_000;
-const FEE_TIER3_THRESHOLD: u64 = 100_000_000;
-const FEE_RATE_TIER1: f64 = 0.00; // 0%
-const FEE_RATE_TIER2: f64 = 0.01; // 1%
-const FEE_RATE_TIER3: f64 = 0.02; // 2%
-const FEE_RATE_TIER4: f64 = 0.03; // 3%
+// Thresholds in smallest units (1 QNTO = 1_000_000_000 units)
+pub const SMALLEST_UNITS_PER_QNTO: u64 = 1_000_000_000;
+pub const FEE_TIER1_THRESHOLD: u64 = 1_000_000 * SMALLEST_UNITS_PER_QNTO; // under 1,000,000 QNTO
+pub const FEE_TIER2_THRESHOLD: u64 = 10_000_000 * SMALLEST_UNITS_PER_QNTO; // 1M to 10M QNTO
+pub const FEE_TIER3_THRESHOLD: u64 = 100_000_000 * SMALLEST_UNITS_PER_QNTO; // 10M to 100M QNTO
+pub const FEE_RATE_TIER1: f64 = 0.00; // 0%
+pub const FEE_RATE_TIER2: f64 = 0.01; // 1%
+pub const FEE_RATE_TIER3: f64 = 0.02; // 2%
+pub const FEE_RATE_TIER4: f64 = 0.03; // 3%
 
 #[derive(Error, Debug)]
 pub enum TransactionError {
@@ -123,13 +123,13 @@ pub struct Transaction {
 /// Calculates the transaction fee based on the new tiered structure.
 pub fn calculate_dynamic_fee(amount: u64) -> u64 {
     let rate = if amount < FEE_TIER1_THRESHOLD {
-        FEE_RATE_TIER1 // 0% fee for amounts under $1
+        FEE_RATE_TIER1 // 0% fee for amounts under 1,000,000 QNTO
     } else if amount < FEE_TIER2_THRESHOLD {
-        FEE_RATE_TIER2 // 1% fee for amounts between $1 and $10
+        FEE_RATE_TIER2 // 1% fee for amounts between 1M and 10M QNTO
     } else if amount < FEE_TIER3_THRESHOLD {
-        FEE_RATE_TIER3 // 2% fee for amounts between $10 and $100
+        FEE_RATE_TIER3 // 2% fee for amounts between 10M and 100M QNTO
     } else {
-        FEE_RATE_TIER4 // 3% for amounts over $100
+        FEE_RATE_TIER4 // 3% for amounts over 100M QNTO
     };
     (amount as f64 * rate).round() as u64
 }

@@ -119,9 +119,12 @@ __pycache__/
 
 # Terraform state and modules
 terraform/.terraform/
-terraform/*.tfstate*
-terraform/*.tfplan
+terraform/**/*.tfstate*
+terraform/**/*.tfvars
+terraform/**/*.tfplan
 terraform/.terraform.lock.hcl
+terraform/**/.terraform/
+terraform/**/modules/
 
 # AWS and cloud provider files
 .aws/credentials

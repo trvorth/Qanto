@@ -394,7 +394,12 @@ impl CognitiveAnalyticsEngine {
         let avg_fee = total_fee as f64 / tx_count as f64;
         let tx_ratio = tx_count as f64 / MAX_TRANSACTIONS_PER_BLOCK as f64;
 
-        if tx_ratio > 0.9 && avg_fee < 1.0 {
+        // Adjusted for tiered fees: allow lower avg_fee if many small transactions
+        let small_tx_count = block.transactions.iter().filter(|tx| tx.amount < crate::transaction::FEE_TIER1_THRESHOLD).count() as f64;
+        let small_tx_ratio = small_tx_count / tx_count as f64;
+        let adjusted_fee_threshold = if small_tx_ratio > 0.5 { 0.5 } else { 1.0 };
+
+        if tx_ratio > 0.9 && avg_fee < adjusted_fee_threshold {
             return 0.2;
         }
         1.0
@@ -682,7 +687,8 @@ impl SecurityMonitor {
             .count();
 
         let zero_fee_ratio = zero_fee_txs as f64 / total_txs as f64;
-        let risk = zero_fee_ratio.powi(2);
+        // Adjusted for tiered fees: higher tolerance for zero-fee transactions
+        let risk = if zero_fee_ratio > 0.8 { (zero_fee_ratio - 0.8).powi(2) } else { 0.0 };
 
         debug!(
             "Transactional anomaly check complete. Zero-fee ratio: {zero_fee_ratio:.4}, Risk score: {risk:.4}",
