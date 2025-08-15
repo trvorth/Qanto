@@ -82,6 +82,11 @@ config.mainnet.toml
 config.production-client.toml
 config.production.toml
 
+# Remove these files from tracking as they should be in private deployment repos
+/config.mainnet.toml
+/config.production-client.toml
+/config.production.toml
+
 # --- Generated Project Files ---
 /header.tex
 /Qanto-whitepaper.tex
