@@ -191,7 +191,7 @@ env:
 serviceAccount:
   create: true
   annotations:
-    eks.amazonaws.com/role-arn: ""  # Will be set by deployment script
+    # No cloud-specific annotations needed for NameCheap hosting
   name: "qanto-api"
 
 # ============================================================================

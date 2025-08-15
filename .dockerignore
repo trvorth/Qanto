@@ -32,7 +32,7 @@ examples/
 terraform/
 helm/
 kubernetes/
-.aws/
+# Removed AWS directory reference for NameCheap hosting
 
 # Docker and deployment files (except current)
 Dockerfile*

@@ -1,6 +1,6 @@
 p2p_address = "/ip4/0.0.0.0/tcp/8001"
 api_address = "127.0.0.1:8082"
-peers = ["/ip4/52.5.135.12/tcp/30333"]
+peers = []
 local_full_p2p_address = "/ip4/0.0.0.0/tcp/8001/p2p/12D3KooWG4qmqTY9gQz9SQAYyLWNbq7JskuoxEnEEqCGzDgzfk7F"
 network_id = "qanto-local-testnet"
 genesis_validator = "74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41"

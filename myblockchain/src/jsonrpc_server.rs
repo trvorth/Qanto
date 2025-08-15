@@ -25,7 +25,11 @@ struct RpcRequest {
 /// - `blockchain` - Arc to your chain instance so we can read state.
 /// - `addr` - a string like "127.0.0.1:8545" or "0.0.0.0:8545" to bind to.
 /// - `chain_id` - decimal chain id (e.g. 13371337). Returned in hex for eth_chainId.
-pub fn run_server(blockchain: Arc<Blockchain>, addr: String, chain_id: u64) -> task::JoinHandle<()> {
+pub fn run_server(
+    blockchain: Arc<Blockchain>,
+    addr: String,
+    chain_id: u64,
+) -> task::JoinHandle<()> {
     task::spawn(async move {
         // parse socket address
         let socket: SocketAddr = match addr.parse() {
@@ -68,11 +72,12 @@ pub fn run_server(blockchain: Arc<Blockchain>, addr: String, chain_id: u64) -> t
                         // Minimal eth_getBlockByNumber supporting "latest"
                         "eth_getBlockByNumber" => {
                             let params = req.params;
-                            let which = if params.is_array() && !params.as_array().unwrap().is_empty() {
-                                params[0].clone()
-                            } else {
-                                json!("latest")
-                            };
+                            let which =
+                                if params.is_array() && !params.as_array().unwrap().is_empty() {
+                                    params[0].clone()
+                                } else {
+                                    json!("latest")
+                                };
 
                             if which == json!("latest") {
                                 let block = bc.get_last_block().await;

@@ -29,7 +29,7 @@ This document outlines the strategic phases for the development, launch, and exp
 
 ### **Key Milestones**:
 
--   **✅ Infrastructure Deployed for Public Access**: AWS-based production infrastructure with CloudFront CDN, auto-scaling, and global distribution
+-   **✅ Infrastructure Deployed for Public Access**: Production infrastructure migrated to NameCheap hosting with CDN and global distribution
 -   **🚧 MAINNET GENESIS EVENT**: Scheduled for Q4 2025 with comprehensive validator onboarding
 -   **🚧 COIN IS LIVE & Initial Distribution Complete**: QNTO token distribution via fair launch mechanism
 -   **✅ Public RPC Endpoints Operational**: Production RPC endpoints with 99.9% uptime SLA

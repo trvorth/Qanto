@@ -83,11 +83,11 @@ spec:
               key: password
 ```
 
-### AWS Secrets Manager Integration
+### Environment Variable Management
 
 ```bash
-# Retrieve password from AWS Secrets Manager
-export WALLET_PASSWORD=$(aws secretsmanager get-secret-value \
+# Set wallet password from secure environment variable
+export WALLET_PASSWORD=$(echo $SECURE_WALLET_PASSWORD |
   --secret-id qanto-wallet-password \
   --query SecretString --output text)
 

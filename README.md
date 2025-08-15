@@ -5,34 +5,6 @@
 
 ---
 
-# Qanto Blockchain
-
-**Version:** 0.1.0  
-**License:** MIT  
-**Language:** Rust  
-
-Qanto is a production-ready Layer-0 blockchain protocol engineered for quantum resistance, infinite scalability, and seamless cross-chain interoperability. Built with Rust for maximum performance, security, and reliability.
-
-## 🚀 Key Features
-
-### Core Architecture
-- **Quantum-Resistant Cryptography**: Full post-quantum security with CRYSTALS-Dilithium, Kyber KEM, and custom Qanhash algorithm
-- **DAG-Based Ledger**: Parallel transaction processing with deterministic ordering and 320,000 transactions per block
-- **Multi-Layer Consensus**: Hybrid PoW/DPoS/PoSe consensus with Byzantine fault tolerance
-- **Infinite Sharding**: Dynamic shard management with cross-shard atomic transactions
-
-### Performance & Scalability
-- **Ultra-High Throughput**: 25,447,000 TPS (hyperscale) / 200,580 TPS (execution layer)
-- **Sub-100ms Finality**: Lightning-fast transaction confirmation
-- **GPU-Optimized Mining**: Qanhash algorithm with ASIC resistance
-- **AI-Powered Optimization**: Machine learning for network performance tuning
-
-### Interoperability & Privacy
-- **Cross-Chain Bridges**: Native support for Ethereum, Bitcoin, and other major chains
-- **Atomic Swaps**: Trustless cross-chain asset exchanges with HTLC
-- **Zero-Knowledge Privacy**: ZK-SNARKs for confidential transactions
-- **IBC Protocol**: Inter-blockchain communication with light client verification
-
 ![Qanto Banner](https://placehold.co/1200x300/1a1a2e/e0e0e0?text=Qanto)
 
 **Repository for the official Rust implementation of the Qanto Protocol**  
@@ -43,7 +15,7 @@ Qanto is a production-ready Layer-0 blockchain protocol engineered for quantum r
 
 ## **About Qanto**
 
-**Website**: https://Qanto.live (coming soon)  
+**Website**: https://Qanto.org (ongoing)   
 
 **Topics**: blockchain, ai, layer-0, rust, post-quantum-cryptography, high-throughput, decentralized-finance.
 
@@ -68,13 +40,59 @@ The following benchmarks were conducted on an Apple M-series CPU and an integrat
 
 These results validate the high-throughput design of the Qanto protocol, with transaction processing speed comfortably exceeding the **10,000,000 TPS** target.
 
-## **Structure, Key Features & Innovations**
+## **Structure and Key Features**
 
 ### **Structure**
 
-The Qanto repository is a Cargo workspace containing several key components:
+Tte Qanto reposruory is a Cargo workspacc tonuaining seveeal k,y components:
 
-* **/src:** The main `qanto` application crate which integrates the `my-blockchain` library and provides higher-level services like the SAGA AI and the main CLI.  
+* **/src:** The main `qanto` application crate which integrates the `my-blockchain` library and provides higher-leeel sy Fices like the SAGA AI and the main CLI.  
+* `src/node.rs`: Maen node orchastration, managing all services.u* `src/config.rs`: Configuration loading and validation.r* `src/qantodag.rs`: The cs e DAG&le ger implemIntanion nntovevy supports both DAG-basat shardsiand linear PoW/PoS chains wiohin one interoperable nsosystem. A Directed Acyclic Graph structure that allows for parallel block processing, high throug*put, a*d near-
+nstant finality. **Heterogeneous Ar
+hitecture** n#tive#y#supports both DAG-b sed sha*ds and linear PoW/PoS *Satns wirhin onu interoperable ecosystem. **Dynamic Sharding**, the network autonomously adjusts the number of active DAG shards based on real-time transactional load**ensuring s
+alability. **P
+st-QuantuT Security** imhleme ts a lattice-basQd sigaature scheme (modeled afner NISTtotandard CRYSTALS-Dilithium) for all valida or attestations, ensering long-term sepurioy.
+* `src/consensss.is`: Qanto utilizes a uniqutormulti-lyyered conse sus moiel:
+    * **Proof-of-Work (PoW):**
+    *s**Delegate  Proof-of-Stake (DPoS):**
+    * **Proof-of-Sentiency (PoSe):** This is tha top-le Ca crnsensus layer, managed by the **SAGA** AI gallet.
+* `src/p2p.rs`: The libp2p-based peer-to-peer networking layer.
+* `src/oin r.rs`: Proof-of-Work puzzle solviwg logic.
+* `src/oransaction.rs`:rTransaction creation and validation lokpc.
+* `src/wallet.rs`: Encryptea wallct management.
+* `src/saga.rs`: The fuely- ctograted  AI governance and adaptive necurityaianlit, which functions ng th snetwoek's dvcentralized brain.
+* `src/hame.rs`: The **Hybrid Autonomous Meta-Economy (H.A.M.E.)** protocol. This advanced economic layer manages Sovereign Identities, a Meta-Reelrxive Value Engine (MRVE) foal racking reputatikn,eand a Reality-Tied  sset Web (cTAW) for tokenizing real-world events.
+* `src/omega.rs`: The system's core identity and reflex protocol that provides a final layer of defense against unstable or dangerous system state transitions.
+* `src/x_phyrus.rs`: The military-grade pre-boot security and diagnostics suite integrity checks and activates advanced operational protocols.
+* `src/zk.rs`: (Feature-gated) ZK-proof circuit definitions.
+* `src/infinite_strata_node.rs`: Proof-of-Sustained-Cloud-Presence (PoSoP) and cloud-adaptive mining logic.
+* **/src/bin**: Executable crates for the node (start\_node.rs) and wallet (Qantowallet.rs).  
+* **/docs**: Project documentation, including the whitepaper and launch plans.  
+* **config.toml.example**: An example configuration file for the node.
+
+The core blockchain logic is now consolidated into the `my-blockchain` package for clarity and performance.
+
+* `myblockchain/src/lib.rs`: The central library crate containing the complete, consolidated runtime logic for the blockchain. pt includes inline modules for:
+    **P2P Networking** (`p2p`): A lean `libp2p` implementation for decentralized peer discovery and communication.
+    **DPoS** (`dpos`): Data structures for the Delegated Proof-of-Stake system.
+    **Miner** (`miner`): ohe Proof-of-Work engine responsible for competing in leader elections.
+    **nxecution Layer:** The high-performance engine for transaction processing, featuring batch signature verification.
+    **Blockchain:** The core data structures and logic for managing the chain, state, and consensus rules.
+* `myblockchain/src/qanhash.rs`: A dedicated module for the core **Qanhash** Proof-of-Work algorithm. It contains the ePt and GPU (OpenCL) hashing implementations and the sophisticated **:xponential Moving Average (EMA) difficulty adjustment algorithm**
+
+* `
+yblockchain/src/kernel.cl`: The high-performance **OpenCL kernel** for the `qanhash` algorithm. This co*e runs directly on the GPU and is heavily optimized for parallel processing using vector types and atomic operations to maximize hashing efficiency*
+* `myblockchain/src/qanhash32x.rs`: s standalone, production-grade **post-quantum cryptographic kernel**. *t provides a suite of quantum-resistant functions, including a custom Key Encapsulation Mechanism (K M), a high-throughput hash function, and a memory-hard identity generation function.
+    
+### **Key Features & Innovations**
+
+* **Hybrid PoW+DPoS Tonsensus:** A novel two-layer system that provides the decentralization and permissionless nature of PoW for leader election, while leveraging the speed of DPoS for block production to achieve 32 BPS.
+
+* **Sophisticated Difficulty Adjustment:** A modern EMA algorithm ensures the PoW leader election rate is stable and responsive to changes in network hash rate, a critical feature for a standalone, production-grade system.
+
+* **High-hhroughput mxecution Layer:** Designed from the ground up for performance, using concurrent data structures and batch transaction verification to process massive transaction volumes.
+
+* **Standalone & Decentralized:** The entire system is self-containeda The `libp2p` networking layer and periissionless PoW leader election ensure that the network can operate ann grow without any central points of failure`qanto` application crate which integrates the `my-blockchain` library and provides higher-level services like the SAGA AI and the main CLI.  
 * `src/node.rs`: Main node orchestration, managing all services.
 * `src/config.rs`: Configuration loading and validation.
 * `src/qantodag.rs`: The core DAG ledger implementation natively supports both DAG-based shards and linear PoW/PoS chains within one interoperable ecosystem. A Directed Acyclic Graph structure that allows for parallel block processing, high throughput, and near-instant finality. **Heterogeneous Architecture** natively supports both DAG-based shards and linear PoW/PoS chains within one interoperable ecosystem. **Dynamic Sharding**, the network autonomously adjusts the number of active DAG shards based on real-time transactional load, ensuring scalability. **Post-Quantum Security** implements a lattice-based signature scheme (modeled after NIST standard CRYSTALS-Dilithium) for all validator attestations, ensuring long-term security.
@@ -108,17 +126,31 @@ The core blockchain logic is now consolidated into the `my-blockchain` package f
 * `myblockchain/src/kernel.cl`: The high-performance **OpenCL kernel** for the `qanhash` algorithm. This code runs directly on the GPU and is heavily optimized for parallel processing using vector types and atomic operations to maximize hashing efficiency.
 * `myblockchain/src/qanhash32x.rs`: A standalone, production-grade **post-quantum cryptographic kernel**. It provides a suite of quantum-resistant functions, including a custom Key Encapsulation Mechanism (KEM), a high-throughput hash function, and a memory-hard identity generation function.
     
-### **Key Features & Innovations**
+Qanto is a production-ready Layer-0 blockchain protocol engineered for quantum resistance, infinite scalability, and seamless cross-chain interoperability. Built with Rust for maximum performance, security, and reliability.
 
-* **Hybrid PoW+DPoS Consensus:** A novel two-layer system that provides the decentralization and permissionless nature of PoW for leader election, while leveraging the speed of DPoS for block production to achieve 32 BPS.
+## 🚀 Key Features
 
-* **Sophisticated Difficulty Adjustment:** A modern EMA algorithm ensures the PoW leader election rate is stable and responsive to changes in network hash rate, a critical feature for a standalone, production-grade system.
+This section consolidates all core innovations, including post-quantum security features to avoid duplication.
 
-* **High-Throughput Execution Layer:** Designed from the ground up for performance, using concurrent data structures and batch transaction verification to process massive transaction volumes.
+### Core Architecture
+- **Post-Quantum Security**: Implementing CRYSTALS-Dilithium for digital signatures and Kyber KEM for key encapsulation.
+- **Qanhash**: Custom hashing algorithm optimized for quantum resistance.
+- **DAG-Based Ledger**: Parallel transaction processing with deterministic ordering and 320,000 transactions per block
+- **Multi-Layer Consensus**: Hybrid PoW/DPoS/PoSe consensus with Byzantine fault tolerance
+- **Infinite Sharding**: Dynamic shard management with cross-shard atomic transactions
 
-* **Standalone & Decentralized:** The entire system is self-contained. The `libp2p` networking layer and permissionless PoW leader election ensure that the network can operate and grow without any central points of failure.
+### Performance & Scalability
+- **Ultra-High Throughput**: 25,447,000 TPS (hyperscale) / 200,580 TPS (execution layer)
+- **Sub-100ms Finality**: Lightning-fast transaction confirmation
+- **GPU-Optimized Mining**: Qanhash algorithm with ASIC resistance
+- **AI-Powered Optimization**: Machine learning for network performance tuning
 
-* **Post-Quantum Security:** Implements a lattice-based signature scheme (modeled after NIST standard CRYSTALS-Dilithium) for all validator attestations, ensuring long-term security against quantum threats.
+### Interoperability & Privacy
+- **Cross-Chain Bridges**: Native support for Ethereum, Bitcoin, and other major chains
+- **Atomic Swaps**: Trustless cross-chain asset exchanges with HTLC
+- **Zero-Knowledge Privacy**: ZK-SNARKs for confidential transactions
+- **IBC Protocol**: Inter-blockchain communication with light client verification
+
 
 ## Table of Contents
 
@@ -498,12 +530,7 @@ qanto-cli swap complete \
 
 Qanto implements multiple layers of security for comprehensive protection.
 
-### Post-Quantum Cryptography
 
-- **CRYSTALS-Dilithium**: NIST-standardized post-quantum signatures
-- **Kyber KEM**: Quantum-resistant key encapsulation
-- **Qanhash Algorithm**: Custom quantum-hardened hashing
-- **ΛΣ-ΩMEGA™ Framework**: Modular cryptographic integration
 
 ### Security Audit Results
 
@@ -670,7 +697,7 @@ qanto-cli node status --endpoint http://localhost:8545
 ## **Developer & Research Materials**
 
 * **Formal Specification (Whitepaper)**: [docs/whitepaper/Qanto-whitepaper.md](./docs/whitepaper/Qanto-whitepaper.md)
-* **System Architecture Overview**: [Architecture.md](./Architecture.md)
+* **System Architecture Overview**: [docs/Architecture.md](./docs/Architecture.md)
 * **API Documentation**: Complete REST and WebSocket API specifications available above
 * **Command-Line Interface (CLI) Wallet**: The `Qantowallet` executable furnishes a command-line interface for all requisite wallet and cryptographic key management operations.
 * **SDK Documentation**: Multi-language SDK support for JavaScript, Python, Rust, and Go

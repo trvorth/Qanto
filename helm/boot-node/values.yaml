@@ -22,8 +22,8 @@ service:
   type: LoadBalancer
   loadBalancerIP: ""  # Will be set to the reserved Elastic IP
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+    # Load balancer annotations for generic Kubernetes deployment
+    # Remove AWS-specific annotations for NameCheap hosting
   
   ports:
     p2p:

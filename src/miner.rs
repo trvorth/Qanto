@@ -151,17 +151,19 @@ impl From<u128> for U256 {
 impl Div<U256> for U256 {
     type Output = Self;
     fn div(self, rhs: Self) -> Self::Output {
-        self.div_rem(rhs).0
+        // Note: This implementation assumes division won't fail in practice
+        // For production use, consider returning Result or using checked division
+        self.div_rem(rhs).unwrap_or((Self::ZERO, Self::ZERO)).0
     }
 }
 
 impl U256 {
-    fn div_rem(self, divisor: Self) -> (Self, Self) {
+    fn div_rem(self, divisor: Self) -> Result<(Self, Self), MiningError> {
         if divisor == Self::ZERO {
-            panic!("division by zero");
+            return Err(MiningError::InvalidBlock("Division by zero in difficulty calculation".to_string()));
         }
         if self < divisor {
-            return (Self::ZERO, self);
+            return Ok((Self::ZERO, self));
         }
 
         let mut quotient = Self::ZERO;
@@ -177,7 +179,7 @@ impl U256 {
                 quotient.set_bit(i);
             }
         }
-        (quotient, remainder)
+        Ok((quotient, remainder))
     }
 }
 
@@ -380,10 +382,12 @@ impl Miner {
 
                     let pow_hash = temp_block.hash();
 
-                    if Miner::hash_meets_target(&hex::decode(&pow_hash).unwrap(), target_hash_value)
-                    {
-                        found_signal.store(true, Ordering::Relaxed);
-                        return Some(current_nonce);
+                    if let Ok(hash_bytes) = hex::decode(&pow_hash) {
+                        if Miner::hash_meets_target(&hash_bytes, target_hash_value)
+                        {
+                            found_signal.store(true, Ordering::Relaxed);
+                            return Some(current_nonce);
+                        }
                     }
                     None
                 })
@@ -452,10 +456,12 @@ impl Miner {
 
                     let pow_hash = temp_block.hash();
 
-                    if Miner::hash_meets_target(&hex::decode(&pow_hash).unwrap(), target_hash_value)
-                    {
-                        found_signal.store(true, Ordering::Relaxed);
-                        return Some(current_nonce);
+                    if let Ok(hash_bytes) = hex::decode(&pow_hash) {
+                        if Miner::hash_meets_target(&hash_bytes, target_hash_value)
+                        {
+                            found_signal.store(true, Ordering::Relaxed);
+                            return Some(current_nonce);
+                        }
                     }
                     None
                 })

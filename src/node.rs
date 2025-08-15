@@ -63,6 +63,10 @@ const ADDRESS_REGEX: &str = r"^[0-9a-fA-F]{64}$";
 const MAX_SYNC_AGE_SECONDS: u64 = 3600;
 const DEFAULT_MINING_INTERVAL_SECS: u64 = 5;
 
+lazy_static::lazy_static! {
+    static ref ADDRESS_REGEX_COMPILED: Regex = Regex::new(ADDRESS_REGEX).expect("Invalid address regex pattern");
+}
+
 /// Represents the primary error types that can occur within the node.
 #[derive(Error, Debug)]
 pub enum NodeError {
@@ -633,7 +637,10 @@ impl Node {
                 let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
                     NodeError::ServerExecution(format!("Failed to bind to API address {addr}: {e}"))
                 })?;
-                info!("API server listening on {}", listener.local_addr().unwrap());
+                match listener.local_addr() {
+            Ok(addr) => info!("API server listening on {}", addr),
+            Err(e) => warn!("Could not get listener address: {}", e),
+        }
 
                 // Start the Axum server.
                 if let Err(e) = axum::serve(listener, app.into_make_service()).await {
@@ -870,7 +877,15 @@ async fn publish_readiness_handler(
         is_ready,
         block_count: blocks_read_guard.len(),
         utxo_count: utxos_read_guard.len(),
-        peer_count: 0, // Placeholder, a real implementation would get this from the P2P layer.
+        peer_count: {
+            // Get actual peer count from P2P layer
+            let (response_sender, response_receiver) = oneshot::channel();
+            if let Ok(_) = state.p2p_command_sender.send(P2PCommand::GetConnectedPeers { response_sender }).await {
+                response_receiver.await.map(|peers| peers.len()).unwrap_or(0)
+            } else {
+                0
+            }
+        },
         mempool_size: mempool_read_guard.size().await,
         is_synced,
         issues,
@@ -882,7 +897,7 @@ async fn get_balance(
     State(state): State<AppState>,
     AxumPath(address): AxumPath<String>,
 ) -> Result<Json<u64>, ApiError> {
-    if !Regex::new(ADDRESS_REGEX).unwrap().is_match(&address) {
+    if !ADDRESS_REGEX_COMPILED.is_match(&address) {
         warn!("Invalid address format for balance check: {address}");
         return Err(ApiError {
             code: 400,
@@ -904,7 +919,7 @@ async fn get_utxos(
     State(state): State<AppState>,
     AxumPath(address): AxumPath<String>,
 ) -> Result<Json<HashMap<String, UTXO>>, ApiError> {
-    if !Regex::new(ADDRESS_REGEX).unwrap().is_match(&address) {
+    if !ADDRESS_REGEX_COMPILED.is_match(&address) {
         warn!("Invalid address format for UTXO fetch: {address}");
         return Err(ApiError {
             code: 400,
@@ -1084,7 +1099,7 @@ mod tests {
 
     #[tokio::test]
     #[serial]
-    async fn test_node_creation_and_config_save() {
+    async fn test_node_creation_and_config_save() -> Result<(), Box<dyn std::error::Error>> {
         // Setup paths for test artifacts.
         let db_path = "qantodag_db_test_node_creation";
         if std::path::Path::new(db_path).exists() {
@@ -1093,7 +1108,7 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         // Create a new wallet for the test.
-        let wallet = Wallet::new().expect("Failed to create new wallet for test");
+        let wallet = Wallet::new().map_err(|e| format!("Failed to create new wallet for test: {}", e))?;
         let wallet_arc = Arc::new(wallet);
         let genesis_validator_addr = wallet_arc.address();
 
@@ -1113,7 +1128,7 @@ mod tests {
             contract_address: "5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818"
                 .to_string(),
             target_block_time: 60,
-            difficulty: 1, // This is a placeholder and is dynamically managed by the DAG now.
+            difficulty: 10, // Default difficulty value that matches SAGA's base_difficulty default
             max_amount: 10_000_000_000,
             use_gpu: false,
             zk_enabled: false,
@@ -1128,7 +1143,7 @@ mod tests {
         };
         test_config
             .save(&temp_config_path)
-            .expect("Failed to save initial temp config for test");
+            .map_err(|e| format!("Failed to save initial temp config for test: {}", e))?;
 
         // Attempt to create a new node instance.
         let node_instance_result = Node::new(
@@ -1154,5 +1169,7 @@ mod tests {
             "Node::new failed: {:?}",
             node_instance_result.err()
         );
+        
+        Ok(())
     }
 }

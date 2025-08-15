@@ -90,7 +90,7 @@ async fn run_autonomous_simulation() -> Result<()> {
     let contract_address = qanto::qantodag::CONTRACT_ADDRESS.to_string();
     let genesis_utxo = UTXO {
         address: contract_address,
-        amount: 100_000_000_000, // 100 billion tokens
+        amount: 100_000_000_000_000_000, // 100 billion QNTO in smallest units with 6 decimals
         tx_id: "genesis".to_string(),
         output_index: 0,
         explorer_link: "".to_string(),

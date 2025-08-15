@@ -171,25 +171,20 @@ env:
     value: "https://explorer.qanto.org"
   - name: NEXT_PUBLIC_TESTNET_URL
     value: "https://testnet.qanto.org"
-  - name: S3_STATIC_BUCKET
-    valueFrom:
-      secretKeyRef:
-        name: qanto-s3-config
-        key: static-bucket
-  - name: CLOUDFRONT_DISTRIBUTION_ID
-    valueFrom:
-      secretKeyRef:
-        name: qanto-cloudfront-config
-        key: distribution-id
+  # Environment variables for NameCheap hosting
+  - name: HOSTING_PROVIDER
+    value: "namecheap"
+  - name: DEPLOYMENT_MODE
+    value: "static"
 
 # ============================================================================
-# Service Account with IAM Role for S3 Access
+# Service Account for general operations
 # ============================================================================
 
 serviceAccount:
   create: true
   annotations:
-    eks.amazonaws.com/role-arn: ""  # Will be set by deployment script
+    # No cloud-specific annotations needed for NameCheap hosting
   name: "qanto-website"
 
 # ============================================================================

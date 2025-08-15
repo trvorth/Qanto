@@ -619,6 +619,12 @@ impl QantoDAG {
 
         let ptr = Arc::as_ptr(&arc_dag) as *mut QantoDAG;
 
+        // SAFETY: This unsafe block is required to initialize the self_arc field after
+        // the QantoDAG has been wrapped in an Arc. This is safe because:
+        // 1. We have exclusive access to the newly created Arc<QantoDAG>
+        // 2. No other threads can access this instance yet
+        // 3. The pointer is valid as it comes directly from Arc::as_ptr
+        // 4. We're only writing to a single field (self_arc) that was initialized as Weak::new()
         unsafe {
             (*ptr).self_arc = weak_self;
         }
@@ -1148,10 +1154,11 @@ impl QantoDAG {
 
         let total_fees = selected_transactions.iter().map(|tx| tx.fee).sum::<u64>();
 
+        // Create temporary block with actual selected transactions for accurate reward calculation
         let temp_block_for_reward_calc = QantoBlock::new(QantoBlockCreationData {
             chain_id: chain_id_val,
             parents: parent_tips.clone(),
-            transactions: vec![], // Placeholder for reward calculation
+            transactions: selected_transactions.clone(),
             difficulty: current_difficulty,
             validator: validator_address.to_string(),
             miner: validator_address.to_string(),
@@ -1517,7 +1524,11 @@ impl QantoDAG {
             return Ok(());
         }
 
-        let initial_validator_placeholder = DEV_ADDRESS.to_string();
+        // Get the first available validator from the validators map, or use DEV_ADDRESS as fallback
+        let initial_validator = {
+            let validators_guard = self.validators.read().await;
+            validators_guard.keys().next().cloned().unwrap_or_else(|| DEV_ADDRESS.to_string())
+        };
         // FIX (E0425): Call keypair from the dilithium5 module directly.
         let (placeholder_pk, placeholder_sk) = dilithium5::keypair();
 
@@ -1552,8 +1563,8 @@ impl QantoDAG {
                 parents: vec![],
                 transactions: vec![],
                 difficulty: parent_difficulty,
-                validator: initial_validator_placeholder.clone(),
-                miner: initial_validator_placeholder.clone(),
+                validator: initial_validator.clone(),
+                miner: initial_validator.clone(),
                 qr_signing_key: &placeholder_sk,
                 qr_public_key: &placeholder_pk,
                 timestamp: new_genesis_timestamp,

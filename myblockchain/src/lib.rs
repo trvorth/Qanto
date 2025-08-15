@@ -22,7 +22,7 @@ pub mod qanhash;
 pub mod qanhash32x;
 
 // --- Re-exports for Crate Root ---
-pub use crate::qanhash::Difficulty;
+pub use crate::qanhash::{difficulty_to_target, is_solution_valid, Difficulty};
 pub use qanto_standalone::{
     collections::ConcurrentHashMap,
     db::KeyValueStore,
@@ -480,19 +480,16 @@ impl Blockchain {
         })
     }
 
-    async fn execute_block(&self, block: &Block) -> QantoHash {
-        let results: Vec<_> = block
-            .transaction_batches
-            .par_iter()
-            .enumerate()
-            .map(|(i, batch)| {
-                let shard_index = i % NUM_EXECUTION_SHARDS;
-                let mut shard = self.sharded_state[shard_index].blocking_lock();
-                shard.process_batch(batch)
-            })
-            .collect();
+    pub async fn execute_block(&self, block: &Block) -> QantoHash {
+        let mut results = Vec::with_capacity(block.transaction_batches.len());
+        for (i, batch) in block.transaction_batches.iter().enumerate() {
+            let shard_index = i % NUM_EXECUTION_SHARDS;
+            let mut shard = self.sharded_state[shard_index].lock().await;
+            let delta = shard.process_batch(batch);
+            results.push(delta);
+        }
 
-        let final_state_delta: HashMap<_, _> = results.into_par_iter().flatten().collect();
+        let final_state_delta: HashMap<_, _> = results.into_iter().flatten().collect();
         let mut state_data: Vec<_> = final_state_delta
             .into_iter()
             .flat_map(|(k, v)| {
@@ -501,7 +498,7 @@ impl Blockchain {
                 item
             })
             .collect();
-        state_data.par_sort_unstable();
+        state_data.sort_unstable();
 
         qanto_hash(&state_data)
     }

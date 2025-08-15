@@ -20,7 +20,8 @@ struct RelayerConfig {
     gas_price_multiplier: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 struct PacketEvent {
     sequence: u64,
     source_port: String,
@@ -32,7 +33,8 @@ struct PacketEvent {
     timeout_timestamp: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 struct ProofData {
     packet_commitment: Vec<u8>,
     proof_height: u64,
@@ -48,6 +50,7 @@ struct QantoRelayer {
 }
 
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
 struct RelayerMetrics {
     packets_relayed: u64,
     packets_failed: u64,
@@ -110,7 +113,7 @@ impl QantoRelayer {
 
         std::thread::spawn(move || {
             let mut signals =
-                Signals::new(&[SIGINT, SIGTERM]).expect("Failed to register signal handlers");
+                Signals::new([SIGINT, SIGTERM]).expect("Failed to register signal handlers");
             for sig in signals.forever() {
                 match sig {
                     SIGINT => {
@@ -153,14 +156,29 @@ impl QantoRelayer {
                 "💾 Saving {} pending packets for next run...",
                 pending.len()
             );
-            // TODO: Serialize and save to file
+            if let Ok(serialized) = serde_json::to_string_pretty(&*pending) {
+                if let Err(e) = tokio::fs::write("pending_packets.json", serialized).await {
+                    eprintln!("⚠️ Failed to save pending packets: {e}");
+                } else {
+                    println!("✅ Pending packets saved to pending_packets.json");
+                }
+            }
         }
 
         // Save processed sequences
         let processed = self.processed_sequences.read().await;
         if !processed.is_empty() {
-            println!("💾 Saving {} processed sequences...", processed.len());
-            // TODO: Serialize and save to file
+            println!(
+                "💾 Saving {len} processed sequences...",
+                len = processed.len()
+            );
+            if let Ok(serialized) = serde_json::to_string_pretty(&*processed) {
+                if let Err(e) = tokio::fs::write("processed_sequences.json", serialized).await {
+                    eprintln!("⚠️ Failed to save processed sequences: {e}");
+                } else {
+                    println!("✅ Processed sequences saved to processed_sequences.json");
+                }
+            }
         }
 
         // Print final metrics
@@ -196,7 +214,7 @@ impl QantoRelayer {
                         }
                     }
                     Err(e) => {
-                        eprintln!("❌ Error fetching events: {}", e);
+                        eprintln!("❌ Error fetching events: {e}");
                     }
                 }
 
@@ -233,7 +251,7 @@ impl QantoRelayer {
                         break;
                     }
 
-                    println!("⚡ Processing packet sequence {}", sequence);
+                    println!("⚡ Processing packet sequence {sequence}");
 
                     // Fetch proof from source chain
                     match Self::fetch_packet_proof(&config.source_rpc, sequence).await {
@@ -244,8 +262,7 @@ impl QantoRelayer {
                             {
                                 Ok(tx_hash) => {
                                     println!(
-                                        "✅ Packet {} relayed successfully: tx {}",
-                                        sequence, tx_hash
+                                        "✅ Packet {sequence} relayed successfully: tx {tx_hash}"
                                     );
 
                                     // Update state
@@ -259,13 +276,13 @@ impl QantoRelayer {
                                         Some(chrono::Utc::now().timestamp() as u64);
                                 }
                                 Err(e) => {
-                                    eprintln!("❌ Failed to submit packet {}: {}", sequence, e);
+                                    eprintln!("❌ Failed to submit packet {sequence}: {e}");
                                     metrics.write().await.packets_failed += 1;
                                 }
                             }
                         }
                         Err(e) => {
-                            eprintln!("❌ Failed to fetch proof for packet {}: {}", sequence, e);
+                            eprintln!("❌ Failed to fetch proof for packet {sequence}: {e}");
                         }
                     }
 
@@ -329,7 +346,7 @@ impl QantoRelayer {
     }
 
     async fn fetch_packet_events(
-        rpc_url: &str,
+        _rpc_url: &str,
         channel_id: &str,
     ) -> Result<Vec<PacketEvent>, Box<dyn std::error::Error + Send + Sync>> {
         // In production, this would query the actual blockchain RPC
@@ -351,8 +368,8 @@ impl QantoRelayer {
     }
 
     async fn fetch_packet_proof(
-        rpc_url: &str,
-        sequence: u64,
+        _rpc_url: &str,
+        _sequence: u64,
     ) -> Result<ProofData, Box<dyn std::error::Error + Send + Sync>> {
         // In production, fetch actual Merkle proof from blockchain
         sleep(Duration::from_millis(100)).await;
@@ -364,9 +381,9 @@ impl QantoRelayer {
     }
 
     async fn submit_packet(
-        rpc_url: &str,
-        packet: &PacketEvent,
-        proof: &ProofData,
+        _rpc_url: &str,
+        _packet: &PacketEvent,
+        _proof: &ProofData,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         // In production, submit actual transaction to destination chain
         sleep(Duration::from_millis(200)).await;

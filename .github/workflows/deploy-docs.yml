@@ -1,4 +1,4 @@
-name: Deploy Qanto Documentation
+name: Build Qanto Documentation
 
 on:
   push:
@@ -11,20 +11,10 @@ on:
     paths: 
       - 'qanto-docs/**'
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'staging'
-        type: choice
-        options:
-        - staging
-        - production
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+# Allow only one concurrent build
 concurrency:
-  group: "docs-deployment-${{ github.ref }}"
+  group: "docs-build-${{ github.ref }}"
   cancel-in-progress: false
 
 jobs:
@@ -88,49 +78,14 @@ jobs:
           path: qanto-docs/build/
           retention-days: 30
 
-  # Test deployment to staging
-  deploy-staging:
-    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+  # Comment on PR with build info
+  comment-pr:
+    if: github.event_name == 'pull_request'
     needs: build
     runs-on: ubuntu-latest
-    environment: staging
-    
-    permissions:
-      id-token: write
-      contents: read
     
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: docusaurus-build-${{ github.sha }}
-          path: ./build
-      
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_STAGING_ROLE_ARN }}
-          role-session-name: GitHubActions-DocsDeploy
-          aws-region: us-west-2
-      
-      - name: Deploy to staging S3
-        run: |
-          aws s3 sync ./build/ s3://${{ secrets.AWS_STAGING_BUCKET }}/ \
-            --delete \
-            --cache-control "public, max-age=3600" \
-            --metadata "deployed-by=github-actions,commit=${{ github.sha }}"
-      
-      - name: Invalidate staging CloudFront
-        run: |
-          aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.AWS_STAGING_DISTRIBUTION_ID }} \
-            --paths "/*"
-      
       - name: Comment on PR
-        if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
@@ -142,21 +97,19 @@ jobs:
             
             const botComment = comments.find(comment => 
               comment.user.type === 'Bot' && 
-              comment.body.includes('📝 Documentation Preview')
+              comment.body.includes('📝 Documentation Build')
             );
             
-            const body = `## 📝 Documentation Preview
+            const body = `## 📝 Documentation Build
             
-            Your documentation changes have been deployed to staging!
-            
-            🔗 **Preview URL**: https://staging-docs.qanto.org
+            Your documentation changes have been built successfully!
             
             📊 **Build Info**:
             - Commit: \`${{ github.sha }}\`
             - Build Time: \`$(date -u)\`
             - Workflow: [\`${{ github.run_id }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
             
-            This preview will be available for 7 days.`;
+            The build artifacts are ready for deployment to NameCheap hosting.`;
             
             if (botComment) {
               await github.rest.issues.updateComment({
@@ -174,94 +127,13 @@ jobs:
               });
             }
 
-  # Production deployment
-  deploy-production:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+  # Notify build completion
+  notify-build:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
-    environment: production
-    
-    permissions:
-      id-token: write
-      contents: read
     
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: docusaurus-build-${{ github.sha }}
-          path: ./build
-      
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_PRODUCTION_ROLE_ARN }}
-          role-session-name: GitHubActions-DocsDeploy-Prod
-          aws-region: us-west-2
-      
-      - name: Backup previous version
-        run: |
-          # Create backup of current production site
-          BACKUP_KEY="backups/$(date +%Y-%m-%d_%H-%M-%S)-${{ github.sha }}"
-          aws s3 sync s3://${{ secrets.AWS_PRODUCTION_BUCKET }}/ s3://${{ secrets.AWS_PRODUCTION_BUCKET }}/$BACKUP_KEY/ \
-            --exclude "backups/*" || echo "No existing content to backup"
-      
-      - name: Deploy to production S3
-        run: |
-          # Deploy with optimized cache headers
-          aws s3 sync ./build/ s3://${{ secrets.AWS_PRODUCTION_BUCKET }}/ \
-            --delete \
-            --exclude "backups/*" \
-            --metadata "deployed-by=github-actions,commit=${{ github.sha }},deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          
-          # Set cache headers for different file types
-          aws s3 cp s3://${{ secrets.AWS_PRODUCTION_BUCKET }}/ s3://${{ secrets.AWS_PRODUCTION_BUCKET }}/ \
-            --recursive \
-            --exclude "*" \
-            --include "*.html" \
-            --cache-control "public, max-age=0, s-maxage=3600, must-revalidate"
-          
-          aws s3 cp s3://${{ secrets.AWS_PRODUCTION_BUCKET }}/ s3://${{ secrets.AWS_PRODUCTION_BUCKET }}/ \
-            --recursive \
-            --exclude "*" \
-            --include "assets/*" \
-            --cache-control "public, max-age=31536000, immutable"
-      
-      - name: Invalidate production CloudFront
-        run: |
-          aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.AWS_PRODUCTION_DISTRIBUTION_ID }} \
-            --paths "/*"
-      
-      - name: Update search index
-        run: |
-          # Trigger Algolia search index update
-          curl -X POST "${{ secrets.ALGOLIA_WEBHOOK_URL }}" \
-            -H "Authorization: Bearer ${{ secrets.ALGOLIA_WEBHOOK_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "site_url": "https://docs.qanto.org",
-              "deployment_id": "${{ github.run_id }}",
-              "commit_sha": "${{ github.sha }}"
-            }'
-      
-      - name: Notify deployment success
-        uses: actions/github-script@v7
-        with:
-          script: |
-            // Create GitHub deployment status
-            await github.rest.repos.createDeploymentStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              deployment_id: context.payload.deployment?.id || 0,
-              state: 'success',
-              environment_url: 'https://docs.qanto.org',
-              description: 'Documentation deployed successfully'
-            });
-      
       - name: Send Slack notification
         if: always()
         uses: 8398a7/action-slack@v3
@@ -269,109 +141,13 @@ jobs:
           status: ${{ job.status }}
           channel: '#infrastructure'
           author_name: 'GitHub Actions'
-          title: 'Qanto Docs Deployment'
+          title: 'Qanto Docs Build'
           message: |
-            Documentation deployment to production ${{ job.status }}
+            Documentation build ${{ job.status }}
             
-            📍 URL: https://docs.qanto.org
             🔗 Commit: ${{ github.sha }}
             👤 Author: ${{ github.actor }}
+            📦 Build artifacts ready for NameCheap deployment
             
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-  # Lighthouse performance audit
-  lighthouse-audit:
-    needs: [deploy-production]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      
-      - name: Wait for deployment
-        run: sleep 60  # Wait for CloudFront invalidation to propagate
-      
-      - name: Run Lighthouse audit
-        uses: treosh/lighthouse-ci-action@v10
-        with:
-          urls: |
-            https://docs.qanto.org
-            https://docs.qanto.org/introduction/what-is-qanto
-            https://docs.qanto.org/api
-            https://docs.qanto.org/tutorials/beginner/wallet-setup
-          uploadArtifacts: true
-          temporaryPublicStorage: true
-      
-      - name: Save Lighthouse results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: lighthouse-report-${{ github.sha }}
-          path: .lighthouseci/
-          retention-days: 30
-
-  # Security scan
-  security-scan:
-    needs: [deploy-production]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      
-      - name: Security headers check
-        run: |
-          curl -I https://docs.qanto.org | grep -i "security\|x-\|content-security"
-          
-          # Check for common security headers
-          curl -s -I https://docs.qanto.org | grep -q "X-Frame-Options" || echo "❌ Missing X-Frame-Options header"
-          curl -s -I https://docs.qanto.org | grep -q "X-Content-Type-Options" || echo "❌ Missing X-Content-Type-Options header"
-          curl -s -I https://docs.qanto.org | grep -q "Referrer-Policy" || echo "❌ Missing Referrer-Policy header"
-      
-      - name: SSL/TLS check
-        run: |
-          # Check SSL certificate and configuration
-          curl -vI https://docs.qanto.org 2>&1 | grep -E "(SSL|TLS|Certificate)"
-          
-          # Test SSL Labs rating (if available)
-          echo "🔐 SSL certificate check completed"
-
-  # Accessibility audit
-  accessibility-audit:
-    needs: [deploy-production]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-      
-      - name: Install axe-cli
-        run: npm install -g @axe-core/cli
-      
-      - name: Run accessibility audit
-        run: |
-          axe https://docs.qanto.org --exit
-          axe https://docs.qanto.org/introduction/what-is-qanto --exit
-          axe https://docs.qanto.org/api --exit
-      
-      - name: Generate accessibility report
-        if: always()
-        run: |
-          axe https://docs.qanto.org --save accessibility-report.json --reporter json
-          
-      - name: Upload accessibility report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: accessibility-report-${{ github.sha }}
-          path: accessibility-report.json
-          retention-days: 30

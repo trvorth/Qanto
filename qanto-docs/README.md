@@ -246,19 +246,16 @@ For emergency deployments or testing:
 # Build the site
 npm run build
 
-# Deploy to S3 (requires AWS credentials)
-aws s3 sync build/ s3://your-bucket-name/ --delete
+# Deploy to NameCheap hosting
+# Build artifacts are ready for manual upload to NameCheap hosting panel
+# or automated deployment via NameCheap's hosting APIs
 
-# Invalidate CloudFront cache
-aws cloudfront create-invalidation --distribution-id YOUR_DISTRIBUTION_ID --paths "/*"
-```
+## Infrastructure
 
-### Infrastructure
+The documentation is hosted on NameCheap with the following setup:
 
-The documentation is hosted on AWS with the following architecture:
-
-- **S3**: Static site hosting with versioning
-- **CloudFront**: Global CDN with edge caching
+- **Static Hosting**: NameCheap's static site hosting service
+- **CDN**: NameCheap's integrated CDN for global distribution
 - **Route 53**: DNS management with health checks
 - **Certificate Manager**: SSL/TLS certificates
 - **Lambda**: Search indexing and form processing

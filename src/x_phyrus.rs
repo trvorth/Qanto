@@ -284,7 +284,7 @@ async fn init_extended_protocols(config: &Config) -> Result<()> {
 
 /// Automatically detects multi-node deployment manifests (hydra_manifest.toml) to activate specialized coordination and scaling logic.
 /// Sophistication: Reads a manifest for dynamic deployment, potentially integrating with
-/// cloud-native orchestration platforms (Kubernetes, AWS ECS) through a secure,
+/// cloud-native orchestration platforms (Kubernetes, generic container orchestration) through a secure,
 /// attested channel.
 async fn init_hydra_deploy() -> Result<()> {
     match fs::read_to_string("hydra_manifest.toml").await {
@@ -357,14 +357,14 @@ async fn init_quantum_shield(config: &Config) -> Result<()> {
     Ok(())
 }
 
-/// Detects cloud provider environments (AWS, GCP, Azure) to enable cloud-native elastic mining and scaling capabilities.
-/// Sophistication: Integrates with cloud provider APIs (AWS, GCP, Azure) to dynamically
+/// Detects cloud provider environments (GCP, Azure) to enable cloud-native elastic mining and scaling capabilities.
+/// Sophistication: Integrates with cloud provider APIs (GCP, Azure) to dynamically
 /// adjust node resources (CPU, RAM, network I/O) based on network demand, shard load,
 /// and economic incentives from SAGA. Supports auto-scaling and multi-region deployment.
 async fn init_cloud_anchor() -> Result<()> {
     let mut detected_cloud_env = None;
     let cloud_vars = [
-        ("AWS_EXECUTION_ENV", "AWS"),
+        // Removed AWS detection for NameCheap hosting migration
         ("GOOGLE_CLOUD_PROJECT", "Google Cloud Platform"),
         ("AZURE_FUNCTIONS_ENVIRONMENT", "Azure"),
         // Add more cloud providers

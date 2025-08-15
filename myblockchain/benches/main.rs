@@ -222,7 +222,12 @@ fn gpu_hashrate_benchmark(c: &mut Criterion) {
     let dag_len_mask = (dag.len() - 1) as cl_ulong;
     println!("Q-DAG generated. Creating GPU buffers...");
 
-    // All OpenCL calls are inherently unsafe.
+    // SAFETY: OpenCL buffer creation is safe because:
+    // 1. GPU context is valid and properly initialized
+    // 2. Buffer sizes are calculated correctly and match data lengths
+    // 3. Source pointers (header_hash, dag, target) are valid and live for buffer creation
+    // 4. CL_MEM_COPY_HOST_PTR ensures data is copied, not referenced
+    // 5. Error handling with unwrap() is acceptable in benchmark context
     unsafe {
         // Create buffers and copy data in one step using CL_MEM_COPY_HOST_PTR for setup.
         let header_buffer = Buffer::<u8>::create(

@@ -1,6 +1,6 @@
 [package]
 name = "qanto"
-version = "2.0.0"
+version = "0.1.0"
 edition = "2021"
 authors = ["Trevor <trvorth@gmail.com>"]
 description = "Layer-0 blockchain featuring a DAG with hybrid consensus, governed by its SAGA AI for dynamic network optimization and unprecedented scalability"
@@ -179,19 +179,7 @@ path = "src/bin/monitor.rs"
 
 [[bin]]
 name = "omega_test"
-path = "src/bin/omega_test.rs"
-
-[[bin]]
-name = "qantonode1"
-path = "node1/main.rs"
-
-[[bin]]
-name = "qantonode2"
-path = "node2/main.rs"
-
-[[bin]]
-name = "qantonode3"
-path = "node3/main.rs"
+path = "src/bin/omega_test.rs" 
 
 # --- Build Profiles ---
 [profile.release]

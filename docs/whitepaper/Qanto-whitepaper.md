@@ -294,12 +294,12 @@ The Qanto protocol is backed by a comprehensive production-ready implementation 
 The reference implementation is written in **Rust** programming language, leveraging high-performance libraries including tokio for asynchronous I/O, RocksDB for persistent state storage, rayon for parallel computation, and libp2p enhanced by the X-PHYRUS™ Protocol Stack for networking.
 
 #### **Cloud Infrastructure**
-Qanto operates on a robust AWS-based infrastructure:
-- **Global CDN**: CloudFront distribution for low-latency access
-- **Auto-Scaling**: Elastic Load Balancing with health checks
-- **Monitoring**: CloudWatch integration with custom metrics
+Qanto operates on a robust hosting infrastructure:
+- **Global CDN**: Integrated CDN for low-latency access
+- **Auto-Scaling**: Load balancing with health checks
+- **Monitoring**: Comprehensive monitoring with custom metrics
 - **Security**: WAF protection and DDoS mitigation
-- **Storage**: S3 backup systems with cross-region replication
+- **Storage**: Distributed backup systems with cross-region replication
 
 #### **Operational Excellence**
 - **99.9% Uptime**: Production-grade reliability metrics
