@@ -77,6 +77,11 @@ node*/*.txt
 !.env.example
 /deployment/*.local.toml
 
+# --- Production Configuration Files ---
+config.mainnet.toml
+config.production-client.toml
+config.production.toml
+
 # --- Generated Project Files ---
 /header.tex
 /Qanto-whitepaper.tex
@@ -86,11 +91,11 @@ node*/*.txt
 /mining_rig_config.toml
 /Dockerfile
 /docker-compose.yml
+/docker-compose.production.yml
+/docker-compose.*.yml
 /deploy.sh
 /deployment
-/node1
-/node2
-/node3
+
 /hydra_manifest.toml
 /traceforce_watchlist.csv
 
@@ -126,9 +131,8 @@ terraform/.terraform.lock.hcl
 terraform/**/.terraform/
 terraform/**/modules/
 
-# AWS and cloud provider files
-.aws/credentials
-.aws/config
+# Cloud provider files (generic)
+# Removed AWS-specific entries for NameCheap hosting
 *.pem
 *.ppk
 
@@ -314,6 +318,9 @@ cachegrind.out.*
 docker/*.env
 docker/*.local.env
 Dockerfile.local
+Dockerfile.*
+*.dockerfile
+docker-compose.local.yml
 
 # Security & SBOM scan outputs
 gitleaks-report.*
