@@ -44,112 +44,34 @@ These results validate the high-throughput design of the Qanto protocol, with tr
 
 ### **Structure**
 
-Tte Qanto reposruory is a Cargo workspacc tonuaining seveeal k,y components:
+The Qanto repository is a Cargo workspace containing several key components:
 
-* **/src:** The main `qanto` application crate which integrates the `my-blockchain` library and provides higher-leeel sy Fices like the SAGA AI and the main CLI.  
-* `src/node.rs`: Maen node orchastration, managing all services.u* `src/config.rs`: Configuration loading and validation.r* `src/qantodag.rs`: The cs e DAG&le ger implemIntanion nntovevy supports both DAG-basat shardsiand linear PoW/PoS chains wiohin one interoperable nsosystem. A Directed Acyclic Graph structure that allows for parallel block processing, high throug*put, a*d near-
-nstant finality. **Heterogeneous Ar
-hitecture** n#tive#y#supports both DAG-b sed sha*ds and linear PoW/PoS *Satns wirhin onu interoperable ecosystem. **Dynamic Sharding**, the network autonomously adjusts the number of active DAG shards based on real-time transactional load**ensuring s
-alability. **P
-st-QuantuT Security** imhleme ts a lattice-basQd sigaature scheme (modeled afner NISTtotandard CRYSTALS-Dilithium) for all valida or attestations, ensering long-term sepurioy.
-* `src/consensss.is`: Qanto utilizes a uniqutormulti-lyyered conse sus moiel:
-    * **Proof-of-Work (PoW):**
-    *s**Delegate  Proof-of-Stake (DPoS):**
-    * **Proof-of-Sentiency (PoSe):** This is tha top-le Ca crnsensus layer, managed by the **SAGA** AI gallet.
-* `src/p2p.rs`: The libp2p-based peer-to-peer networking layer.
-* `src/oin r.rs`: Proof-of-Work puzzle solviwg logic.
-* `src/oransaction.rs`:rTransaction creation and validation lokpc.
-* `src/wallet.rs`: Encryptea wallct management.
-* `src/saga.rs`: The fuely- ctograted  AI governance and adaptive necurityaianlit, which functions ng th snetwoek's dvcentralized brain.
-* `src/hame.rs`: The **Hybrid Autonomous Meta-Economy (H.A.M.E.)** protocol. This advanced economic layer manages Sovereign Identities, a Meta-Reelrxive Value Engine (MRVE) foal racking reputatikn,eand a Reality-Tied  sset Web (cTAW) for tokenizing real-world events.
-* `src/omega.rs`: The system's core identity and reflex protocol that provides a final layer of defense against unstable or dangerous system state transitions.
-* `src/x_phyrus.rs`: The military-grade pre-boot security and diagnostics suite integrity checks and activates advanced operational protocols.
-* `src/zk.rs`: (Feature-gated) ZK-proof circuit definitions.
-* `src/infinite_strata_node.rs`: Proof-of-Sustained-Cloud-Presence (PoSoP) and cloud-adaptive mining logic.
-* **/src/bin**: Executable crates for the node (start\_node.rs) and wallet (Qantowallet.rs).  
-* **/docs**: Project documentation, including the whitepaper and launch plans.  
-* **config.toml.example**: An example configuration file for the node.
+**Core Source (`/src`)**:
+* `node.rs`: Main node orchestration and service management
+* `config.rs`: Configuration loading and validation
+* `qantodag.rs`: DAG ledger with dynamic sharding and post-quantum security
+* `consensus.rs`: Multi-layered consensus (PoW, DPoS, PoSe with SAGA AI)
+* `p2p.rs`: libp2p-based networking layer
+* `miner.rs`: Proof-of-Work puzzle solving
+* `transaction.rs`: Transaction creation and validation
+* `wallet.rs`: Encrypted wallet management
+* `saga.rs`: AI governance and adaptive security pallet
+* `hame.rs`: Hybrid Autonomous Meta-Economy protocol
+* `omega.rs`: Core identity and reflex protocol
+* `x_phyrus.rs`: Military-grade pre-boot security suite
+* `zk.rs`: ZK-proof circuit definitions (feature-gated)
+* `infinite_strata_node.rs`: Cloud-adaptive mining logic
 
-The core blockchain logic is now consolidated into the `my-blockchain` package for clarity and performance.
+**Blockchain Core (`myblockchain/`)**:
+* `lib.rs`: Consolidated runtime with P2P, DPoS, mining, and execution modules
+* `qanhash.rs`: Core PoW algorithm with CPU/GPU implementations
+* `kernel.cl`: OpenCL GPU kernel for parallel hashing
+* `qanhash32x.rs`: Post-quantum cryptographic kernel
 
-* `myblockchain/src/lib.rs`: The central library crate containing the complete, consolidated runtime logic for the blockchain. pt includes inline modules for:
-    **P2P Networking** (`p2p`): A lean `libp2p` implementation for decentralized peer discovery and communication.
-    **DPoS** (`dpos`): Data structures for the Delegated Proof-of-Stake system.
-    **Miner** (`miner`): ohe Proof-of-Work engine responsible for competing in leader elections.
-    **nxecution Layer:** The high-performance engine for transaction processing, featuring batch signature verification.
-    **Blockchain:** The core data structures and logic for managing the chain, state, and consensus rules.
-* `myblockchain/src/qanhash.rs`: A dedicated module for the core **Qanhash** Proof-of-Work algorithm. It contains the ePt and GPU (OpenCL) hashing implementations and the sophisticated **:xponential Moving Average (EMA) difficulty adjustment algorithm**
-
-* `
-yblockchain/src/kernel.cl`: The high-performance **OpenCL kernel** for the `qanhash` algorithm. This co*e runs directly on the GPU and is heavily optimized for parallel processing using vector types and atomic operations to maximize hashing efficiency*
-* `myblockchain/src/qanhash32x.rs`: s standalone, production-grade **post-quantum cryptographic kernel**. *t provides a suite of quantum-resistant functions, including a custom Key Encapsulation Mechanism (K M), a high-throughput hash function, and a memory-hard identity generation function.
-    
-### **Key Features & Innovations**
-
-* **Hybrid PoW+DPoS Tonsensus:** A novel two-layer system that provides the decentralization and permissionless nature of PoW for leader election, while leveraging the speed of DPoS for block production to achieve 32 BPS.
-
-* **Sophisticated Difficulty Adjustment:** A modern EMA algorithm ensures the PoW leader election rate is stable and responsive to changes in network hash rate, a critical feature for a standalone, production-grade system.
-
-* **High-hhroughput mxecution Layer:** Designed from the ground up for performance, using concurrent data structures and batch transaction verification to process massive transaction volumes.
-
-* **Standalone & Decentralized:** The entire system is self-containeda The `libp2p` networking layer and periissionless PoW leader election ensure that the network can operate ann grow without any central points of failure`qanto` application crate which integrates the `my-blockchain` library and provides higher-level services like the SAGA AI and the main CLI.  
-* `src/node.rs`: Main node orchestration, managing all services.
-* `src/config.rs`: Configuration loading and validation.
-* `src/qantodag.rs`: The core DAG ledger implementation natively supports both DAG-based shards and linear PoW/PoS chains within one interoperable ecosystem. A Directed Acyclic Graph structure that allows for parallel block processing, high throughput, and near-instant finality. **Heterogeneous Architecture** natively supports both DAG-based shards and linear PoW/PoS chains within one interoperable ecosystem. **Dynamic Sharding**, the network autonomously adjusts the number of active DAG shards based on real-time transactional load, ensuring scalability. **Post-Quantum Security** implements a lattice-based signature scheme (modeled after NIST standard CRYSTALS-Dilithium) for all validator attestations, ensuring long-term security.
-* `src/consensus.rs`: Qanto utilizes a unique, multi-layered consensus model:
-    * **Proof-of-Work (PoW):**
-    * **Delegated Proof-of-Stake (DPoS):**
-    * **Proof-of-Sentiency (PoSe):** This is the top-level consensus layer, managed by the **SAGA** AI pallet.
-* `src/p2p.rs`: The libp2p-based peer-to-peer networking layer.
-* `src/miner.rs`: Proof-of-Work puzzle solving logic.
-* `src/transaction.rs`: Transaction creation and validation logic.
-* `src/wallet.rs`: Encrypted wallet management.
-* `src/saga.rs`: The fully-integrated  AI governance and adaptive security pallet, which functions as the network's decentralized brain.
-* `src/hame.rs`: The **Hybrid Autonomous Meta-Economy (H.A.M.E.)** protocol. This advanced economic layer manages Sovereign Identities, a Meta-Reflexive Value Engine (MRVE) for tracking reputation, and a Reality-Tied Asset Web (RTAW) for tokenizing real-world events.
-* `src/omega.rs`: The system's core identity and reflex protocol that provides a final layer of defense against unstable or dangerous system state transitions.
-* `src/x_phyrus.rs`: The military-grade pre-boot security and diagnostics suite integrity checks and activates advanced operational protocols.
-* `src/zk.rs`: (Feature-gated) ZK-proof circuit definitions.
-* `src/infinite_strata_node.rs`: Proof-of-Sustained-Cloud-Presence (PoSCP) and cloud-adaptive mining logic.
-* **/src/bin**: Executable crates for the node (start\_node.rs) and wallet (Qantowallet.rs).  
-* **/docs**: Project documentation, including the whitepaper and launch plans.  
-* **config.toml.example**: An example configuration file for the node.
-
-The core blockchain logic is now consolidated into the `my-blockchain` package for clarity and performance.
-
-* `myblockchain/src/lib.rs`: The central library crate containing the complete, consolidated runtime logic for the blockchain. It includes inline modules for:
-    **P2P Networking** (`p2p`): A lean `libp2p` implementation for decentralized peer discovery and communication.
-    **DPoS** (`dpos`): Data structures for the Delegated Proof-of-Stake system.
-    **Miner** (`miner`): The Proof-of-Work engine responsible for competing in leader elections.
-    **Execution Layer:** The high-performance engine for transaction processing, featuring batch signature verification.
-    **Blockchain:** The core data structures and logic for managing the chain, state, and consensus rules.
-* `myblockchain/src/qanhash.rs`: A dedicated module for the core **Qanhash** Proof-of-Work algorithm. It contains the CPU and GPU (OpenCL) hashing implementations and the sophisticated **Exponential Moving Average (EMA) difficulty adjustment algorithm**.
-* `myblockchain/src/kernel.cl`: The high-performance **OpenCL kernel** for the `qanhash` algorithm. This code runs directly on the GPU and is heavily optimized for parallel processing using vector types and atomic operations to maximize hashing efficiency.
-* `myblockchain/src/qanhash32x.rs`: A standalone, production-grade **post-quantum cryptographic kernel**. It provides a suite of quantum-resistant functions, including a custom Key Encapsulation Mechanism (KEM), a high-throughput hash function, and a memory-hard identity generation function.
-    
-Qanto is a production-ready Layer-0 blockchain protocol engineered for quantum resistance, infinite scalability, and seamless cross-chain interoperability. Built with Rust for maximum performance, security, and reliability.
-
-## 🚀 Key Features
-
-This section consolidates all core innovations, including post-quantum security features to avoid duplication.
-
-### Core Architecture
-- **Post-Quantum Security**: Implementing CRYSTALS-Dilithium for digital signatures and Kyber KEM for key encapsulation.
-- **Qanhash**: Custom hashing algorithm optimized for quantum resistance.
-- **DAG-Based Ledger**: Parallel transaction processing with deterministic ordering and 320,000 transactions per block
-- **Multi-Layer Consensus**: Hybrid PoW/DPoS/PoSe consensus with Byzantine fault tolerance
-- **Infinite Sharding**: Dynamic shard management with cross-shard atomic transactions
-
-### Performance & Scalability
-- **Ultra-High Throughput**: 25,447,000 TPS (hyperscale) / 200,580 TPS (execution layer)
-- **Sub-100ms Finality**: Lightning-fast transaction confirmation
-- **GPU-Optimized Mining**: Qanhash algorithm with ASIC resistance
-- **AI-Powered Optimization**: Machine learning for network performance tuning
-
-### Interoperability & Privacy
-- **Cross-Chain Bridges**: Native support for Ethereum, Bitcoin, and other major chains
-- **Atomic Swaps**: Trustless cross-chain asset exchanges with HTLC
-- **Zero-Knowledge Privacy**: ZK-SNARKs for confidential transactions
-- **IBC Protocol**: Inter-blockchain communication with light client verification
+**Additional Components**:
+* `/src/bin`: Node and wallet executables
+* `/docs`: Project documentation and whitepaper
+* `config.toml.example`: Example configuration file
 
 
 ## Table of Contents
@@ -180,40 +102,30 @@ This section consolidates all core innovations, including post-quantum security 
 
 ### Installation
 
-#### Option 1: From Source (Recommended)
+#### From Source (Recommended)
 ```bash
-# Clone the repository
+# Clone and build
 git clone https://github.com/qanto-org/qanto.git
 cd qanto
-
-# Install dependencies
-cargo fetch
-
-# Build optimized release
 cargo build --release
 
-# Run comprehensive tests
+# Run tests and start node
 cargo test --release
-
-# Start local development node
 cargo run --release --bin qanto-node
 ```
 
-#### Option 2: Docker Deployment
+#### Docker Deployment
 ```bash
-# Pull latest image
+# Pull and run
 docker pull qanto/node:latest
-
-# Run containerized node
 docker run -d --name qanto-node \
   -p 8545:8545 -p 30303:30303 \
-  -v qanto-data:/data \
-  qanto/node:latest
+  -v qanto-data:/data qanto/node:latest
 ```
 
-#### Option 3: Binary Release
+#### Binary Release
 ```bash
-# Download latest release
+# Download and run
 wget https://github.com/qanto-org/qanto/releases/latest/download/qanto-linux-x64.tar.gz
 tar -xzf qanto-linux-x64.tar.gz
 ./qanto-node --config mainnet.toml
@@ -221,75 +133,33 @@ tar -xzf qanto-linux-x64.tar.gz
 
 ## Configuration
 
-Qanto supports flexible configuration through TOML files and environment variables.
-
-### Network Configuration
+Basic `config.toml` setup:
 
 ```toml
 [network]
-# P2P networking
 port = 30303
-max_peers = 128
 bootstrap_nodes = [
-  "/ip4/seed1.qanto.network/tcp/30303/p2p/12D3KooW...",
-  "/ip4/seed2.qanto.network/tcp/30303/p2p/12D3KooW..."
+  "/ip4/seed1.qanto.network/tcp/30303/p2p/12D3KooW..."
 ]
 
-# RPC endpoints
 [rpc]
 http_port = 8545
 ws_port = 8546
-max_connections = 1000
-cors_origins = ["*"]
 
 [consensus]
-# Multi-layer consensus parameters
-block_time = 1000  # milliseconds
-max_block_size = 83886080  # 80MB
-max_transactions_per_block = 320000
+block_time = 1000
+max_block_size = 83886080
 validator_set_size = 101
 
-# Mining configuration
 [mining]
 enabled = true
 algorithm = "qanhash"
-threads = 0  # auto-detect CPU cores
+threads = 0
 gpu_enabled = true
-difficulty_adjustment = 2016  # blocks
 
-# Storage settings
 [storage]
 data_dir = "./qanto-data"
-max_db_size = "1TB"
 pruning_enabled = true
-archive_mode = false
-
-# Cross-chain bridges
-[bridges]
-ethereumRPC = "https://mainnet.infura.io/v3/YOUR_KEY"
-bitcoinRPC = "https://bitcoin-rpc.example.com"
-
-# Security settings
-[security]
-quantum_resistance = true
-zk_proofs_enabled = true
-encryption_at_rest = true
-```
-
-### Environment Variables
-
-```bash
-# Network settings
-export QANTO_NETWORK_PORT=30303
-export QANTO_RPC_PORT=8545
-
-# Security
-export QANTO_PRIVATE_KEY_PATH=/secure/path/validator.key
-export QANTO_ENCRYPTION_KEY=your-encryption-key
-
-# Performance
-export QANTO_CACHE_SIZE=8GB
-export QANTO_WORKER_THREADS=16
 ```
 
 ## API Documentation
@@ -298,158 +168,74 @@ Qanto provides comprehensive REST and WebSocket APIs for blockchain interaction.
 
 ### REST API Endpoints
 
-#### Blockchain Information
 ```bash
-# Get chain information
-GET /api/v1/chain/info
-
-# Get block by height
+# Blockchain queries
 GET /api/v1/blocks/{height}
-
-# Get block by hash
-GET /api/v1/blocks/hash/{hash}
-
-# Get transaction by hash
 GET /api/v1/transactions/{hash}
-
-# Get account balance
 GET /api/v1/accounts/{address}/balance
-```
 
-#### Transaction Operations
-```bash
 # Submit transaction
 POST /api/v1/transactions
-Content-Type: application/json
-
 {
-  "from": "qanto1abc...",
-  "to": "qanto1def...",
+  "from": "qanto1sender...",
+  "to": "qanto1recipient...",
   "amount": "1000000000",
   "fee": "1000",
   "signature": "0x..."
 }
 
-# Get transaction pool status
-GET /api/v1/mempool/status
-
-# Estimate transaction fee
-POST /api/v1/transactions/estimate-fee
-```
-
-#### Cross-Chain Operations
-```bash
-# Initiate cross-chain transfer
-POST /api/v1/bridge/transfer
-
-# Get bridge status
-GET /api/v1/bridge/status/{transfer_id}
-
-# List supported chains
-GET /api/v1/bridge/chains
+# Network information
+GET /api/v1/network/info
+GET /api/v1/validators
+GET /api/v1/bridge/status
 ```
 
 ### WebSocket API
 
-#### Real-time Subscriptions
+Real-time event streaming:
+
 ```javascript
-// Connect to WebSocket
 const ws = new WebSocket('ws://localhost:8546');
 
-// Subscribe to new blocks
+// Subscribe to events
 ws.send(JSON.stringify({
-  "id": 1,
   "method": "subscribe",
   "params": ["newBlocks"]
 }));
 
-// Subscribe to pending transactions
-ws.send(JSON.stringify({
-  "id": 2,
-  "method": "subscribe",
-  "params": ["pendingTransactions"]
-}));
-
-// Subscribe to account changes
-ws.send(JSON.stringify({
-  "id": 3,
-  "method": "subscribe",
-  "params": ["accountChanges", "qanto1abc..."]
-}));
+ws.onmessage = (event) => {
+  console.log('New block:', JSON.parse(event.data));
+};
 ```
 
 ### SDK Integration
 
-#### JavaScript/TypeScript
 ```javascript
+// JavaScript/TypeScript
 import { QuantoClient } from '@qanto/sdk';
 
 const client = new QuantoClient({
-  endpoint: 'https://mainnet.qanto.network',
-  apiKey: 'your-api-key'
+  endpoint: 'https://mainnet.qanto.network'
 });
 
-// Send transaction
 const tx = await client.sendTransaction({
   from: wallet.address,
   to: 'qanto1recipient...',
-  amount: '1000000000',
-  privateKey: wallet.privateKey
+  amount: '1000000000'
 });
-
-console.log('Transaction hash:', tx.hash);
 ```
 
-#### Python
 ```python
+# Python
 from qanto_sdk import QuantoClient
 
-client = QuantoClient(
-    endpoint='https://mainnet.qanto.network',
-    api_key='your-api-key'
-)
-
-# Get account balance
+client = QuantoClient('https://mainnet.qanto.network')
 balance = client.get_balance('qanto1address...')
-print(f'Balance: {balance} QANTO')
-
-# Submit transaction
-tx_hash = client.send_transaction(
-    from_address='qanto1sender...',
-    to_address='qanto1recipient...',
-    amount=1000000000,
-    private_key='your-private-key'
-)
 ```
 
-#### Rust
-```rust
-use qanto_sdk::QuantoClient;
+## Technical Architecture
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = QuantoClient::new("https://mainnet.qanto.network")?;
-    
-    // Get latest block
-    let block = client.get_latest_block().await?;
-    println!("Latest block height: {}", block.height);
-    
-    // Send transaction
-    let tx = client.send_transaction(
-        "qanto1sender...",
-        "qanto1recipient...",
-        1_000_000_000,
-        "private-key"
-    ).await?;
-    
-    println!("Transaction submitted: {}", tx.hash);
-    Ok(())
-}
-```
-
-## Architecture Overview
-
-Qanto implements a revolutionary Layer-0 blockchain architecture designed for production-grade performance:
+Qanto implements a revolutionary Layer-0 blockchain architecture:
 
 ### Core Components
 
@@ -479,8 +265,6 @@ Qanto implements a revolutionary Layer-0 blockchain architecture designed for pr
 
 ## Cross-Chain Interoperability
 
-Qanto's interoperability layer enables seamless interaction with major blockchain networks.
-
 ### Supported Networks
 
 | Network | Bridge Type | Status | Features |
@@ -494,43 +278,17 @@ Qanto's interoperability layer enables seamless interaction with major blockchai
 
 ### Bridge Operations
 
-#### Ethereum Bridge
 ```bash
-# Deposit ETH to Qanto
-qanto-cli bridge deposit \
-  --chain ethereum \
-  --amount 1.5 \
-  --token ETH \
-  --recipient qanto1abc...
+# Cross-chain transfers
+qanto-cli bridge deposit --chain ethereum --amount 1.5 --token ETH
+qanto-cli bridge withdraw --chain ethereum --amount 1000000000 --token QETH
 
-# Withdraw to Ethereum
-qanto-cli bridge withdraw \
-  --chain ethereum \
-  --amount 1000000000 \
-  --token QETH \
-  --recipient 0x742d35Cc6634C0532925a3b8D4C9db96590b5
-```
-
-#### Atomic Swaps
-```bash
-# Initiate atomic swap
-qanto-cli swap create \
-  --offer "1000 QANTO" \
-  --request "0.1 BTC" \
-  --counterparty bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh \
-  --timeout 24h
-
-# Complete atomic swap
-qanto-cli swap complete \
-  --swap-id 0x123... \
-  --secret-key your-secret
+# Atomic swaps
+qanto-cli swap create --offer "1000 QANTO" --request "0.1 BTC" --timeout 24h
+qanto-cli swap complete --swap-id 0x123... --secret-key your-secret
 ```
 
 ## Security Features
-
-Qanto implements multiple layers of security for comprehensive protection.
-
-
 
 ### Security Audit Results
 
@@ -550,8 +308,6 @@ Qanto implements multiple layers of security for comprehensive protection.
 
 ## Performance Benchmarks
 
-Qanto delivers industry-leading performance across all metrics.
-
 ### Throughput Benchmarks
 
 | Configuration | TPS | Finality | Block Size | Network Load |
@@ -561,20 +317,7 @@ Qanto delivers industry-leading performance across all metrics.
 | Development | 50,000 | 200ms | 10MB | 30% CPU |
 | Testnet | 10,000 | 500ms | 2MB | 15% CPU |
 
-### Latency Analysis
-
-```
-Transaction Confirmation Times:
-├── P2P Propagation: 10-50ms
-├── Mempool Inclusion: 50-100ms
-├── Block Creation: 100-200ms
-├── Consensus Finality: 200-500ms
-└── Cross-Shard Sync: 500-1000ms
-```
-
-### Resource Utilization
-
-#### Validator Node Requirements
+### Node Requirements
 
 | Node Type | CPU | RAM | Storage | Network |
 |-----------|-----|-----|---------|----------|
@@ -583,18 +326,11 @@ Transaction Confirmation Times:
 | Archive Node | 64 cores | 256GB | 10TB HDD | 1Gbps |
 | RPC Node | 24 cores | 96GB | 4TB SSD | 1Gbps |
 
-#### Mining Performance
+### Mining Performance
 
 ```bash
-# GPU Mining (RTX 4090)
-Hashrate: 2.5 GH/s
-Power: 450W
-Efficiency: 5.56 MH/W
-
-# CPU Mining (AMD 7950X)
-Hashrate: 150 MH/s
-Power: 170W
-Efficiency: 0.88 MH/W
+# GPU Mining (RTX 4090): 2.5 GH/s, 450W, 5.56 MH/W
+# CPU Mining (AMD 7950X): 150 MH/s, 170W, 0.88 MH/W
 ```
 
 ## Development
@@ -602,27 +338,16 @@ Efficiency: 0.88 MH/W
 ### Building from Source
 
 ```bash
-# Clone repository
+# Clone and setup
 git clone https://github.com/qanto-org/qanto.git
 cd qanto
-
-# Install Rust toolchain
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source ~/.cargo/env
 
-# Install dependencies
-cargo fetch
-
-# Build debug version
-cargo build
-
-# Build optimized release
+# Build and test
 cargo build --release
-
-# Run all tests
 cargo test --all
 
-# Run specific test suite
+# Run specific test suites
 cargo test consensus::
 cargo test interoperability::
 cargo test security::
@@ -634,33 +359,11 @@ cargo test security::
 # Start local development network
 cargo run --bin qanto-dev-network
 
-# Run with custom configuration
-cargo run --bin qanto-node -- --config dev-config.toml
-
-# Enable debug logging
+# Run with debug logging
 RUST_LOG=debug cargo run --bin qanto-node
 
-# Profile performance
+# Performance profiling
 cargo run --release --bin qanto-node --features profiling
-```
-
-### Testing
-
-```bash
-# Unit tests
-cargo test --lib
-
-# Integration tests
-cargo test --test integration
-
-# Benchmark tests
-cargo bench
-
-# Security tests
-cargo test --features security-tests
-
-# Cross-chain tests
-cargo test --features bridge-tests
 ```
 
 ## Deployment
@@ -668,101 +371,99 @@ cargo test --features bridge-tests
 ### Production Deployment
 
 ```bash
-# Deploy using Terraform
-cd infrastructure/terraform
-terraform init
-terraform plan -var-file="production.tfvars"
-terraform apply
+# Terraform
+cd infrastructure/terraform && terraform apply
 
-# Deploy using Kubernetes
+# Kubernetes
 kubectl apply -f k8s/production/
 
-# Deploy using Docker Compose
+# Docker Compose
 docker-compose -f docker-compose.prod.yml up -d
 ```
 
-### Monitoring and Observability
+### Monitoring
 
 ```bash
-# Prometheus metrics endpoint
-curl http://localhost:9090/metrics
-
-# Health check endpoint
+# Health checks
 curl http://localhost:8545/health
-
-# Node status
-qanto-cli node status --endpoint http://localhost:8545
+curl http://localhost:9090/metrics
+qanto-cli node status
 ```
 
-## **Developer & Research Materials**
+## Documentation & Resources
 
-* **Formal Specification (Whitepaper)**: [docs/whitepaper/Qanto-whitepaper.md](./docs/whitepaper/Qanto-whitepaper.md)
-* **System Architecture Overview**: [docs/Architecture.md](./docs/Architecture.md)
-* **API Documentation**: Complete REST and WebSocket API specifications available above
-* **Command-Line Interface (CLI) Wallet**: The `Qantowallet` executable furnishes a command-line interface for all requisite wallet and cryptographic key management operations.
-* **SDK Documentation**: Multi-language SDK support for JavaScript, Python, Rust, and Go
-* **Smart Contract Development**: Comprehensive guides for deploying dApps on Qanto
+- **[Whitepaper](./docs/whitepaper/Qanto-whitepaper.md)**: Formal specification and technical details
+- **[Architecture Guide](./docs/Architecture.md)**: System architecture overview
+- **[Wallet Guide](./docs/QANTOWALLET_GUIDE.md)**: CLI wallet operations
+- **API Documentation**: Complete REST and WebSocket specifications above
+- **SDK Support**: Multi-language SDKs for JavaScript, Python, Rust, and Go
 
-## **Testnet Participation**
+## Testnet Participation
 
-Qanto's testnet is currently operational and accessible for developer experimentation and community testing.
-
-### Testnet Information
+### Network Information
 
 - **Network ID**: qanto-testnet-1
 - **Chain ID**: 1001
-- **RPC Endpoint**: https://testnet-rpc.qanto.network
+- **RPC**: https://testnet-rpc.qanto.network
 - **WebSocket**: wss://testnet-ws.qanto.network
 - **Explorer**: https://testnet-explorer.qanto.network
 - **Faucet**: https://faucet.qanto.network
 
-### Getting Testnet Tokens
+### Quick Start
 
 ```bash
-# Request testnet tokens via faucet
+# Get testnet tokens
 curl -X POST https://faucet.qanto.network/request \
-  -H "Content-Type: application/json" \
   -d '{"address": "qanto1your-address..."}'
 
-# Check balance
+# Check balance and connect
 qanto-cli balance qanto1your-address... --network testnet
+qanto-cli connect --network testnet
 
-# Connect to testnet
-qanto-cli connect --network testnet --endpoint https://testnet-rpc.qanto.network
-```
-
-### Validator Setup
-
-```bash
-# Generate validator keys
+# Setup validator
 qanto-cli validator keygen --output validator-keys/
-
-# Create validator
-qanto-cli validator create \
-  --moniker "My Validator" \
-  --commission-rate 0.05 \
-  --min-self-delegation 1000000 \
-  --pubkey $(qanto-cli validator show-pubkey) \
-  --from validator-wallet
-
-# Start validator node
+qanto-cli validator create --moniker "My Validator"
 qanto-node --config testnet-validator.toml
 ```
 
-For detailed instructions on testnet participation, including hardware requirements, incentive programs, and bootnode addresses, please refer to:
-- [**Testnet Launch Plan**](./docs/testnet-plan.md)
-- [**Testnet Guide**](./docs/testnet-guide.md) 
-- [**Qantowallet Guidance**](./docs/QANTOWALLET_GUIDE.md)
+For detailed instructions, see:
+- [Testnet Launch Plan](./docs/testnet-plan.md)
+- [Testnet Guide](./docs/testnet-guide.md)
 
-## **Security**
+## Security
 
-The security of the network is our highest priority. We have a formal plan for a comprehensive third-party audit. For more details, please see our [**Security Audit Plan**](./docs/security-audit-plan.md).
+Report security vulnerabilities responsibly:
 
-## **Contribution Protocol**
+- **Email**: security@qanto.network
+- **PGP Key**: https://qanto.network/security/pgp
+- **Bug Bounty**: Up to $50,000 for critical vulnerabilities
+- **Response Time**: 24-48 hours
 
-We welcome contributions from the community\! This project thrives on collaboration and outside feedback. Please read our [**Contribution Guidelines**](./CONTRIBUTING.md) to get started.  
-All participants are expected to follow our [**Code of Conduct**](./CODE_OF_CONDUCT.md).
+## Contributing
 
-## **License**
+We welcome community contributions! Please read our [Contributing Guidelines](CONTRIBUTING.md).
 
-This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
+### Development Process
+
+1. Fork the repository
+2. Create a feature branch
+3. Make changes with tests
+4. Run `cargo test --all`, `cargo fmt`, `cargo clippy`
+5. Submit a Pull Request
+
+### Guidelines
+
+- Follow Rust standard formatting
+- Write comprehensive tests
+- Update documentation for API changes
+- Follow our [Code of Conduct](CODE_OF_CONDUCT.md)
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+---
+
+**Qanto** - Quantum-resistant Layer-0 blockchain with hyperscale performance.
+
+Visit [qanto.network](https://qanto.network) | Join [Discord](https://discord.gg/qanto)
