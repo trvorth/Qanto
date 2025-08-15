@@ -271,24 +271,28 @@ impl Node {
         let utxos = Arc::new(RwLock::new(HashMap::with_capacity(MAX_UTXOS)));
         let proposals = Arc::new(RwLock::new(Vec::with_capacity(MAX_PROPOSALS)));
 
-        // Create genesis UTXOs for each chain to bootstrap the system.
+        // Create genesis UTXO with the entire 100 billion QNTO supply allocated to contract address
+        // Clear any existing UTXOs first to ensure clean state
         {
             let mut utxos_lock = utxos.write().await;
-            for chain_id_val in 0..config.num_chains {
-                let genesis_id_convention =
-                    format!("genesis_placeholder_tx_id_for_chain_{chain_id_val}");
-                let utxo_id = format!("genesis_utxo_for_chain_{chain_id_val}");
-                utxos_lock.insert(
-                    utxo_id.clone(),
-                    UTXO {
-                        address: config.contract_address.clone(),
-                        amount: 100, // A nominal amount for genesis.
-                        tx_id: genesis_id_convention,
-                        output_index: 0,
-                        explorer_link: format!("https://qantoblockexplorer.org/utxo/{utxo_id}"),
-                    },
-                );
-            }
+            utxos_lock.clear(); // Reset UTXO state completely
+
+            let genesis_utxo_id = "genesis_utxo_total_supply".to_string();
+            utxos_lock.insert(
+                genesis_utxo_id.clone(),
+                UTXO {
+                    address: config.contract_address.clone(),
+                    amount: 100_000_000_000_000_000, // Entire 100 billion QNTO supply in smallest units with 6 decimals
+                    tx_id: "genesis_total_supply_tx".to_string(),
+                    output_index: 0,
+                    explorer_link: format!("https://qantoblockexplorer.org/utxo/{genesis_utxo_id}"),
+                },
+            );
+            info!(
+                "Genesis UTXO created with 100 billion QNTO allocated to contract address: {}",
+                config.contract_address
+            );
+            info!("UTXO state reset - only contract address has balance now");
         }
 
         // BUILD FIX (E0560): Remove `difficulty_hex` and `num_chains` from MinerConfig.
@@ -611,6 +615,7 @@ impl Node {
                     .route("/transaction", post(submit_transaction))
                     .route("/block/:id", get(get_block))
                     .route("/dag", get(get_dag))
+                    .route("/blocks", get(get_block_ids))
                     .route("/health", get(health_check))
                     .route("/mempool", get(mempool_handler))
                     .route("/publish-readiness", get(publish_readiness_handler))
@@ -1023,6 +1028,13 @@ async fn get_dag(State(state): State<AppState>) -> Result<Json<DagInfo>, StatusC
     }))
 }
 
+/// Get all block IDs in the DAG
+async fn get_block_ids(State(state): State<AppState>) -> Result<Json<Vec<String>>, StatusCode> {
+    let blocks_read_guard = state.dag.blocks.read().await;
+    let block_ids: Vec<String> = blocks_read_guard.keys().cloned().collect();
+    Ok(Json(block_ids))
+}
+
 /// A simple health check endpoint.
 async fn health_check() -> Result<Json<serde_json::Value>, StatusCode> {
     Ok(Json(serde_json::json!({ "status": "healthy" })))
@@ -1098,7 +1110,8 @@ mod tests {
             api_address: "127.0.0.1:0".to_string(),
             peers: vec![],
             genesis_validator: genesis_validator_addr.clone(),
-            contract_address: "5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818".to_string(),
+            contract_address: "5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818"
+                .to_string(),
             target_block_time: 60,
             difficulty: 1, // This is a placeholder and is dynamically managed by the DAG now.
             max_amount: 10_000_000_000,

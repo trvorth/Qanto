@@ -47,7 +47,8 @@ pub const MAX_BLOCK_SIZE: usize = 80_000_000; // 80 MB
 
 // --- Network & Economic Constants ---
 pub const DEV_ADDRESS: &str = "74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41";
-pub const CONTRACT_ADDRESS: &str = "5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818";
+pub const CONTRACT_ADDRESS: &str =
+    "5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818";
 pub const INITIAL_BLOCK_REWARD: u64 = 50_000_000_000; // In smallest units (assuming 10^9 per QNTO)
 const SMALLEST_UNITS_PER_QNTO: u64 = 1_000_000_000;
 const FINALIZATION_DEPTH: u64 = 8;
@@ -687,7 +688,8 @@ impl QantoDAG {
             // Yield to allow other tasks to run
             tokio::task::yield_now().await;
 
-            let miner_address = wallet.address();
+            // Force mining rewards to go to genesis validator address only
+            let miner_address = DEV_ADDRESS.to_string();
             let (signing_key, public_key) = match wallet.get_keypair() {
                 Ok(pair) => pair,
                 Err(e) => {
@@ -702,8 +704,8 @@ impl QantoDAG {
             let chain_id_to_mine: u32 = 0;
 
             info!(
-                "SOLO MINER: Creating candidate block for chain {}",
-                chain_id_to_mine
+                "SOLO MINER: Creating candidate block for chain {} (rewards to genesis validator: {})",
+                chain_id_to_mine, miner_address
             );
             let candidate_creation_start = std::time::Instant::now();
 
