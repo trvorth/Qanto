@@ -78,11 +78,6 @@ node*/*.txt
 /deployment/*.local.toml
 
 # --- Production Configuration Files ---
-config.mainnet.toml
-config.production-client.toml
-config.production.toml
-
-# Remove these files from tracking as they should be in private deployment repos
 /config.mainnet.toml
 /config.production-client.toml
 /config.production.toml
@@ -99,6 +94,7 @@ config.production.toml
 /docker-compose.production.yml
 /docker-compose.*.yml
 /deploy.sh
+/deploy-*.sh
 /deployment
 
 /hydra_manifest.toml
@@ -128,6 +124,7 @@ __pycache__/
 *.tgz
 
 # Terraform state and modules
+terraform/
 terraform/.terraform/
 terraform/**/*.tfstate*
 terraform/**/*.tfvars
