@@ -12,12 +12,13 @@
 use crate::config::P2pConfig;
 use crate::mempool::Mempool;
 use crate::node::PeerCache;
-use crate::qantodag::{QantoBlock, QantoDAG, QuantumResistantSignature, UTXO};
+use crate::qantodag::{QantoBlock, QantoDAG};
 use crate::saga::CarbonOffsetCredential;
 use crate::transaction::Transaction;
+use crate::types::{QuantumResistantSignature, UTXO};
 use futures::stream::StreamExt;
 use governor::{clock::DefaultClock, state::keyed::DashMapStateStore, Quota, RateLimiter};
-use hmac::{Hmac, Mac};
+// Removed HMAC import - using custom implementation with qanto_hash
 use libp2p::{
     gossipsub::{self, IdentTopic, MessageAuthenticity, ValidationMode},
     identity,
@@ -28,11 +29,12 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent},
     yamux, Multiaddr, PeerId, Swarm, SwarmBuilder,
 };
+use my_blockchain::qanto_hash;
+use hex;
 use nonzero_ext::nonzero;
 use pqcrypto_mldsa::mldsa65 as dilithium5;
 use prometheus::{register_int_counter, IntCounter};
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::env;
@@ -175,10 +177,13 @@ impl NetworkMessage {
     }
 
     fn compute_hmac(data: &[u8], secret: &str) -> Result<Vec<u8>, P2PError> {
-        let mut hmac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
-            .map_err(|_| P2PError::HmacKeyLength)?;
-        hmac.update(data);
-        Ok(hmac.finalize().into_bytes().to_vec())
+        // Custom HMAC implementation using qanto_hash
+        let secret_bytes = secret.as_bytes();
+        let mut combined_data = Vec::new();
+        combined_data.extend_from_slice(secret_bytes);
+        combined_data.extend_from_slice(data);
+        let hash = qanto_hash(&combined_data);
+        Ok(hash.as_bytes().to_vec())
     }
 }
 
@@ -249,7 +254,7 @@ impl P2PServer {
         config: P2PConfig<'_>,
         p2p_command_sender: mpsc::Sender<P2PCommand>,
     ) -> Result<Self, P2PError> {
-        let local_peer_id = PeerId::from(config.local_keypair.public());
+        let local_peer_id = PeerId::from_public_key(&config.local_keypair.public());
         info!("P2PServer using Local P2P Peer ID: {}", local_peer_id);
 
         let store = MemoryStore::new(local_peer_id);
@@ -271,8 +276,13 @@ impl P2PServer {
 
         let gossipsub_behaviour =
             Self::build_gossipsub_behaviour(config.local_keypair.clone(), &config.p2p_settings)?;
-        let mdns_behaviour = MdnsTokioBehaviour::new(Default::default(), local_peer_id)
-            .map_err(|e| P2PError::Mdns(format!("Failed to create mDNS behaviour: {e}")))?;
+        let mdns_behaviour =
+            MdnsTokioBehaviour::new(Default::default(), local_peer_id).map_err(|e| {
+                let mut error_msg = String::with_capacity(35 + e.to_string().len());
+                error_msg.push_str("Failed to create mDNS behaviour: ");
+                error_msg.push_str(&e.to_string());
+                P2PError::Mdns(error_msg)
+            })?;
 
         let behaviour = NodeBehaviour {
             gossipsub: gossipsub_behaviour,
@@ -288,7 +298,13 @@ impl P2PServer {
                 yamux::Config::default,
             )?
             .with_behaviour(|_key| Ok(behaviour))
-            .map_err(|e| P2PError::SwarmBuild(format!("Behaviour setup error: {e:?}")))?
+            .map_err(|e| {
+                let e_str = format!("{e:?}");
+                let mut error_msg = String::with_capacity(23 + e_str.len());
+                error_msg.push_str("Behaviour setup error: ");
+                error_msg.push_str(&e_str);
+                P2PError::SwarmBuild(error_msg)
+            })?
             .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
             .build();
 
@@ -322,12 +338,12 @@ impl P2PServer {
         p2p_config: &P2pConfig,
     ) -> Result<gossipsub::Behaviour, P2PError> {
         let message_id_fn = |message: &gossipsub::Message| {
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            message.data.hash(&mut hasher);
-            if let Some(s) = message.source.as_ref() {
-                s.hash(&mut hasher)
+            let mut data_to_hash = message.data.clone();
+            if let Some(source) = message.source.as_ref() {
+                data_to_hash.extend_from_slice(&source.to_bytes());
             }
-            gossipsub::MessageId::from(std::hash::Hasher::finish(&hasher).to_string())
+            let hash_result = qanto_hash(&data_to_hash);
+            gossipsub::MessageId::from(hex::encode(hash_result.as_bytes()))
         };
 
         let gossipsub_config = gossipsub::ConfigBuilder::default()
@@ -341,12 +357,19 @@ impl P2PServer {
             .message_id_fn(message_id_fn)
             .build()
             .map_err(|e_str| {
-                P2PError::GossipsubConfig(format!("Error building Gossipsub config: {e_str}"))
+                let error_string = format!("{e_str}");
+                let mut error_msg = String::with_capacity(33 + error_string.len());
+                error_msg.push_str("Error building Gossipsub config: ");
+                error_msg.push_str(&error_string);
+                P2PError::GossipsubConfig(error_msg)
             })?;
 
         gossipsub::Behaviour::new(MessageAuthenticity::Signed(local_key), gossipsub_config).map_err(
             |e_str| {
-                P2PError::GossipsubConfig(format!("Error creating Gossipsub behaviour: {e_str}"))
+                let mut error_msg = String::with_capacity(35 + e_str.len());
+                error_msg.push_str("Error creating Gossipsub behaviour: ");
+                error_msg.push_str(e_str);
+                P2PError::GossipsubConfig(error_msg)
             },
         )
     }
@@ -355,11 +378,31 @@ impl P2PServer {
         topic_prefix: &str,
         gossipsub: &mut gossipsub::Behaviour,
     ) -> Result<Vec<IdentTopic>, P2PError> {
+        let mut blocks_topic = String::with_capacity(15 + topic_prefix.len());
+        blocks_topic.push_str("/qanto/");
+        blocks_topic.push_str(topic_prefix);
+        blocks_topic.push_str("/blocks");
+
+        let mut transactions_topic = String::with_capacity(21 + topic_prefix.len());
+        transactions_topic.push_str("/qanto/");
+        transactions_topic.push_str(topic_prefix);
+        transactions_topic.push_str("/transactions");
+
+        let mut state_updates_topic = String::with_capacity(22 + topic_prefix.len());
+        state_updates_topic.push_str("/qanto/");
+        state_updates_topic.push_str(topic_prefix);
+        state_updates_topic.push_str("/state_updates");
+
+        let mut carbon_credentials_topic = String::with_capacity(27 + topic_prefix.len());
+        carbon_credentials_topic.push_str("/qanto/");
+        carbon_credentials_topic.push_str(topic_prefix);
+        carbon_credentials_topic.push_str("/carbon_credentials");
+
         let topics_str = [
-            format!("/qanto/{topic_prefix}/blocks"),
-            format!("/qanto/{topic_prefix}/transactions"),
-            format!("/qanto/{topic_prefix}/state_updates"),
-            format!("/qanto/{topic_prefix}/carbon_credentials"),
+            blocks_topic,
+            transactions_topic,
+            state_updates_topic,
+            carbon_credentials_topic,
         ];
         let mut topics = Vec::new();
         for topic_s in topics_str.iter() {
@@ -484,20 +527,18 @@ impl P2PServer {
     async fn process_internal_command(&mut self, command: P2PCommand) -> Result<(), P2PError> {
         match command {
             P2PCommand::BroadcastBlock(block) => {
-                self.broadcast_message(
-                    NetworkMessageData::Block(block.clone()),
-                    0,
-                    &format!("block {}", block.id),
-                )
-                .await
+                let mut log_msg = String::with_capacity(6 + block.id.len());
+                log_msg.push_str("block ");
+                log_msg.push_str(&block.id);
+                self.broadcast_message(NetworkMessageData::Block(block.clone()), 0, &log_msg)
+                    .await
             }
             P2PCommand::BroadcastTransaction(tx) => {
-                self.broadcast_message(
-                    NetworkMessageData::Transaction(tx.clone()),
-                    1,
-                    &format!("transaction {}", tx.id),
-                )
-                .await
+                let mut log_msg = String::with_capacity(12 + tx.id.len());
+                log_msg.push_str("transaction ");
+                log_msg.push_str(&tx.id);
+                self.broadcast_message(NetworkMessageData::Transaction(tx.clone()), 1, &log_msg)
+                    .await
             }
             P2PCommand::RequestState => {
                 self.broadcast_message(NetworkMessageData::StateRequest, 2, "state request")
@@ -508,10 +549,13 @@ impl P2PServer {
                     .await
             }
             P2PCommand::BroadcastCarbonCredential(cred) => {
+                let mut log_msg = String::with_capacity(18 + cred.id.len());
+                log_msg.push_str("carbon credential ");
+                log_msg.push_str(&cred.id);
                 self.broadcast_message(
                     NetworkMessageData::CarbonOffsetCredential(cred.clone()),
                     3,
-                    &format!("carbon credential {}", cred.id),
+                    &log_msg,
                 )
                 .await
             }
@@ -614,7 +658,12 @@ impl P2PServer {
             .publish(topic.clone(), msg_bytes)
             .map(|msg_id| {
                 MESSAGES_SENT.inc();
-                info!("Broadcasted {log_info}: {msg_id}");
+                let mut log_msg = String::with_capacity(log_info.len() + 50);
+                log_msg.push_str("Broadcasted ");
+                log_msg.push_str(log_info);
+                log_msg.push_str(": ");
+                log_msg.push_str(&msg_id.to_string());
+                info!("{}", log_msg);
             })
             .map_err(P2PError::Broadcast)
     }

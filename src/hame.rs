@@ -14,8 +14,8 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 
 // --- Cryptographic Primitives ---
+use my_blockchain::qanto_hash;
 use p256::ecdsa::{signature::Signer, signature::Verifier, Signature, SigningKey, VerifyingKey};
-use sha3::{Digest, Sha3_256};
 
 // ---
 // SECTION 0: CORE TYPES & ROBUST ERROR HANDLING
@@ -59,9 +59,12 @@ pub struct SovereignIdentity {
 impl SovereignIdentity {
     /// Creates a new Sovereign Identity from a public verification key and a set of laws.
     pub fn new(verifying_key: &VerifyingKey, laws: Vec<ContractRule>) -> Self {
-        let id_hash = Sha3_256::digest(verifying_key.to_sec1_bytes());
+        let id_hash = qanto_hash(&verifying_key.to_sec1_bytes());
+        let id_bytes = id_hash.as_bytes();
+        let mut id_array = [0u8; 32];
+        id_array.copy_from_slice(id_bytes);
         Self {
-            id: id_hash.into(),
+            id: id_array,
             programmable_laws: laws,
         }
     }
@@ -214,14 +217,14 @@ impl Transaction {
         amount: Amount,
         signing_key: &SigningKey,
     ) -> Self {
-        let mut hasher = Sha3_256::new();
-        hasher.update(from.id);
-        hasher.update(to.id);
-        hasher.update(amount.to_le_bytes());
-        let digest = hasher.finalize();
+        let mut combined = Vec::new();
+        combined.extend_from_slice(&from.id);
+        combined.extend_from_slice(&to.id);
+        combined.extend_from_slice(&amount.to_le_bytes());
+        let digest = qanto_hash(&combined);
 
         // The private key signs the hash of the transaction data.
-        let signature: Signature = signing_key.sign(&digest);
+        let signature: Signature = signing_key.sign(digest.as_bytes());
 
         Self {
             from_id: from.id,
@@ -239,14 +242,14 @@ impl Transaction {
             .get(&self.from_id)
             .ok_or_else(|| HameError::IdentityNotFound(hex::encode(self.from_id)))?;
 
-        let mut hasher = Sha3_256::new();
-        hasher.update(self.from_id);
-        hasher.update(self.to_id);
-        hasher.update(self.amount.to_le_bytes());
-        let digest = hasher.finalize();
+        let mut combined = Vec::new();
+        combined.extend_from_slice(&self.from_id);
+        combined.extend_from_slice(&self.to_id);
+        combined.extend_from_slice(&self.amount.to_le_bytes());
+        let digest = qanto_hash(&combined);
 
         from_key
-            .verify(&digest, &self.signature)
+            .verify(digest.as_bytes(), &self.signature)
             .map_err(|e| HameError::SignatureError(e.to_string()))
     }
 }
@@ -331,17 +334,22 @@ pub struct RtawToken {
 impl RtawToken {
     /// Creates a new, verifiable RTAW token from a real-world event.
     fn new(event: &RealWorldEvent) -> Result<Self, HameError> {
-        let mut hasher = Sha3_256::new();
-        hasher.update(event.owner_id);
-        hasher.update(event.event_type.as_bytes());
-        hasher.update(event.energy_expended.to_le_bytes());
+        let mut combined = Vec::new();
+        combined.extend_from_slice(&event.owner_id);
+        combined.extend_from_slice(event.event_type.as_bytes());
+        combined.extend_from_slice(&event.energy_expended.to_le_bytes());
         for (k, v) in &event.metadata {
-            hasher.update(k.as_bytes());
-            hasher.update(v.as_bytes());
+            combined.extend_from_slice(k.as_bytes());
+            combined.extend_from_slice(v.as_bytes());
         }
 
+        let hash_result = qanto_hash(&combined);
+        let hash_bytes = hash_result.as_bytes();
+        let mut hash_array = [0u8; 32];
+        hash_array.copy_from_slice(hash_bytes);
+
         Ok(Self {
-            hash: hasher.finalize().into(),
+            hash: hash_array,
             owner_id: event.owner_id,
             event_type: event.event_type.clone(),
             metadata: event.metadata.clone(),

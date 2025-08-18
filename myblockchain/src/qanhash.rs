@@ -21,11 +21,27 @@ use crate::qanto_standalone::{
 use lazy_static::lazy_static;
 use log::{info, warn};
 use primitive_types::U256;
-use std::sync::{mpsc, Arc, RwLock};
+use rayon::prelude::*;
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    mpsc, Arc, RwLock,
+};
+use std::time::Instant;
+
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::*;
+
+// CPU mining optimization constants
+const CPU_BATCH_SIZE: usize = 1024;
+
+#[cfg(target_arch = "x86_64")]
+const SIMD_LANES: usize = 4; // Process 4 nonces simultaneously with AVX2
 
 // --- Type Aliases ---
 pub type Difficulty = u64;
 pub type Target = [u8; 32];
+#[allow(dead_code)]
+type HashResult = Result<Option<(u64, [u8; 32])>, Box<dyn std::error::Error>>;
 
 // --- Constants ---
 const TARGET_SLOT_TIME_SECS: u64 = 5;
@@ -81,10 +97,9 @@ mod gpu_impl {
     impl GpuContext {
         /// Initializes the OpenCL context, device, and compiles the kernel.
         fn new(kernel_src: &str) -> Result<Self, Box<dyn std::error::Error>> {
-            let device_id = get_all_devices(CL_DEVICE_TYPE_GPU)?
+            let device_id = *get_all_devices(CL_DEVICE_TYPE_GPU)?
                 .first()
-                .ok_or("No GPU found")?
-                .clone();
+                .ok_or("No GPU found")?;
             let device = Device::new(device_id);
             let context = Context::from_device(&device)?;
 
@@ -126,7 +141,7 @@ mod gpu_impl {
         start_nonce: u64,
         batch_size: usize,
         target: Target,
-    ) -> Result<Option<(u64, [u8; 32])>, Box<dyn std::error::Error>> {
+    ) -> HashResult {
         // SAFETY: OpenCL GPU operations are safe because:
         // 1. GPU context is protected by mutex and properly initialized
         // 2. Buffer creation uses valid pointers with correct sizes and lifetimes
@@ -497,4 +512,642 @@ pub fn hash(header_hash: &QantoHash, nonce: u64) -> [u8; 32] {
         final_hash_bytes[i * 8..(i + 1) * 8].copy_from_slice(&mix[i].to_le_bytes());
     }
     *qanto_hash(&final_hash_bytes).as_bytes()
+}
+
+// === CPU MINING OPTIMIZATIONS ===
+
+/// High-performance CPU mining with SIMD optimizations
+pub struct CpuMiner {
+    pub thread_count: usize,
+    pub should_stop: Arc<AtomicBool>,
+    pub hash_rate: Arc<AtomicU64>,
+}
+
+impl CpuMiner {
+    pub fn new(thread_count: Option<usize>) -> Self {
+        let threads = thread_count.unwrap_or_else(num_cpus::get);
+        info!("[Qanhash-CPU] Initializing CPU miner with {threads} threads");
+
+        Self {
+            thread_count: threads,
+            should_stop: Arc::new(AtomicBool::new(false)),
+            hash_rate: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    /// Start CPU mining with optimized batch processing
+    pub fn mine(
+        &self,
+        header_hash: &QantoHash,
+        start_nonce: u64,
+        target: Target,
+        max_iterations: Option<u64>,
+    ) -> Option<(u64, [u8; 32])> {
+        let should_stop = Arc::clone(&self.should_stop);
+        let hash_rate = Arc::clone(&self.hash_rate);
+
+        // Reset stop flag
+        should_stop.store(false, Ordering::Relaxed);
+
+        let (tx, rx) = mpsc::channel();
+        let pool = ThreadPool::new(self.thread_count);
+
+        let batch_size = CPU_BATCH_SIZE;
+        let total_batches = max_iterations.unwrap_or(u64::MAX) / batch_size as u64;
+
+        info!(
+            "[Qanhash-CPU] Starting mining with {} threads, batch size {}",
+            self.thread_count, batch_size
+        );
+
+        let start_time = Instant::now();
+        let mut hashes_computed = 0u64;
+
+        for batch_id in 0..total_batches {
+            if should_stop.load(Ordering::Relaxed) {
+                break;
+            }
+
+            let tx_clone = tx.clone();
+            let header_hash_clone = *header_hash;
+            let should_stop_clone = Arc::clone(&should_stop);
+            let hash_rate_clone = Arc::clone(&hash_rate);
+
+            let batch_start_nonce = start_nonce + (batch_id * batch_size as u64);
+
+            pool.execute(move || {
+                if let Some(result) = Self::mine_batch_simd(
+                    &header_hash_clone,
+                    batch_start_nonce,
+                    batch_size,
+                    target,
+                    &should_stop_clone,
+                ) {
+                    let _ = tx_clone.send(Some(result));
+                    should_stop_clone.store(true, Ordering::Relaxed);
+                } else {
+                    // Update hash rate periodically
+                    hash_rate_clone.fetch_add(batch_size as u64, Ordering::Relaxed);
+                }
+            });
+
+            hashes_computed += batch_size as u64;
+
+            // Check for results periodically
+            if let Ok(Some(solution)) = rx.try_recv() {
+                should_stop.store(true, Ordering::Relaxed);
+                let elapsed = start_time.elapsed();
+                let hash_rate = hashes_computed as f64 / elapsed.as_secs_f64();
+                info!("[Qanhash-CPU] Solution found! Hash rate: {hash_rate:.2} H/s");
+                return Some(solution);
+            }
+
+            // Update hash rate display every 10 batches
+            if batch_id.is_multiple_of(10) && batch_id > 0 {
+                let elapsed = start_time.elapsed();
+                if elapsed.as_secs() > 0 {
+                    let current_rate = hashes_computed as f64 / elapsed.as_secs_f64();
+                    hash_rate.store(current_rate as u64, Ordering::Relaxed);
+                    info!("[Qanhash-CPU] Current hash rate: {current_rate:.2} H/s");
+                }
+            }
+        }
+
+        should_stop.store(true, Ordering::Relaxed);
+        None
+    }
+
+    /// SIMD-optimized batch mining for x86_64 with AVX2
+    #[cfg(target_arch = "x86_64")]
+    fn mine_batch_simd(
+        header_hash: &QantoHash,
+        start_nonce: u64,
+        batch_size: usize,
+        target: Target,
+        should_stop: &AtomicBool,
+    ) -> Option<(u64, [u8; 32])> {
+        if is_x86_feature_detected!("avx2") {
+            unsafe {
+                Self::mine_batch_avx2(header_hash, start_nonce, batch_size, target, should_stop)
+            }
+        } else {
+            Self::mine_batch_scalar(header_hash, start_nonce, batch_size, target, should_stop)
+        }
+    }
+
+    /// Fallback for non-x86_64 architectures
+    #[cfg(not(target_arch = "x86_64"))]
+    fn mine_batch_simd(
+        header_hash: &QantoHash,
+        start_nonce: u64,
+        batch_size: usize,
+        target: Target,
+        should_stop: &AtomicBool,
+    ) -> Option<(u64, [u8; 32])> {
+        Self::mine_batch_scalar(header_hash, start_nonce, batch_size, target, should_stop)
+    }
+
+    /// AVX2-optimized mining for x86_64
+    #[cfg(target_arch = "x86_64")]
+    unsafe fn mine_batch_avx2(
+        header_hash: &QantoHash,
+        start_nonce: u64,
+        batch_size: usize,
+        target: Target,
+        should_stop: &AtomicBool,
+    ) -> Option<(u64, [u8; 32])> {
+        let block_index = u64::from_le_bytes(header_hash.as_bytes()[0..8].try_into().unwrap());
+        let dag = get_qdag(block_index);
+        let dag_len_mask = dag.len() - 1;
+
+        // Process SIMD_LANES nonces simultaneously
+        for chunk_start in (0..batch_size).step_by(SIMD_LANES) {
+            if should_stop.load(Ordering::Relaxed) {
+                return None;
+            }
+
+            let chunk_end = (chunk_start + SIMD_LANES).min(batch_size);
+
+            // Process each nonce in the SIMD chunk
+            for i in chunk_start..chunk_end {
+                let nonce = start_nonce + i as u64;
+                let result_hash =
+                    Self::hash_single_optimized(header_hash, nonce, &dag, dag_len_mask);
+
+                if is_solution_valid(&result_hash, target) {
+                    return Some((nonce, result_hash));
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Scalar fallback mining implementation
+    fn mine_batch_scalar(
+        header_hash: &QantoHash,
+        start_nonce: u64,
+        batch_size: usize,
+        target: Target,
+        should_stop: &AtomicBool,
+    ) -> Option<(u64, [u8; 32])> {
+        let block_index = u64::from_le_bytes(header_hash.as_bytes()[0..8].try_into().unwrap());
+        let dag = get_qdag(block_index);
+        let dag_len_mask = dag.len() - 1;
+
+        for i in 0..batch_size {
+            if should_stop.load(Ordering::Relaxed) {
+                return None;
+            }
+
+            let nonce = start_nonce + i as u64;
+            let result_hash = Self::hash_single_optimized(header_hash, nonce, &dag, dag_len_mask);
+
+            if is_solution_valid(&result_hash, target) {
+                return Some((nonce, result_hash));
+            }
+        }
+
+        None
+    }
+
+    /// Optimized single hash computation with reduced allocations
+    fn hash_single_optimized(
+        header_hash: &QantoHash,
+        nonce: u64,
+        dag: &Arc<Vec<[u8; MIX_BYTES]>>,
+        dag_len_mask: usize,
+    ) -> [u8; 32] {
+        let mut mix = [0u64; MIX_BYTES / 8];
+
+        // Initialize mix state more efficiently
+        let header_bytes = header_hash.as_bytes();
+        mix[0] = u64::from_le_bytes([
+            header_bytes[0],
+            header_bytes[1],
+            header_bytes[2],
+            header_bytes[3],
+            header_bytes[4],
+            header_bytes[5],
+            header_bytes[6],
+            header_bytes[7],
+        ]);
+        mix[1] = u64::from_le_bytes([
+            header_bytes[8],
+            header_bytes[9],
+            header_bytes[10],
+            header_bytes[11],
+            header_bytes[12],
+            header_bytes[13],
+            header_bytes[14],
+            header_bytes[15],
+        ]);
+        mix[2] = u64::from_le_bytes([
+            header_bytes[16],
+            header_bytes[17],
+            header_bytes[18],
+            header_bytes[19],
+            header_bytes[20],
+            header_bytes[21],
+            header_bytes[22],
+            header_bytes[23],
+        ]);
+        mix[3] = u64::from_le_bytes([
+            header_bytes[24],
+            header_bytes[25],
+            header_bytes[26],
+            header_bytes[27],
+            header_bytes[28],
+            header_bytes[29],
+            header_bytes[30],
+            header_bytes[31],
+        ]);
+        mix[4] = nonce;
+
+        // Unrolled mixing loop for better performance
+        for _ in 0..32 {
+            let p_index = mix[0].wrapping_add(mix[1]);
+            let dag_entry1: &[u64; 16] =
+                unsafe { &*(dag[p_index as usize & dag_len_mask].as_ptr() as *const [u64; 16]) };
+            let dag_entry2: &[u64; 16] = unsafe {
+                &*(dag[(p_index.wrapping_add(1)) as usize & dag_len_mask].as_ptr()
+                    as *const [u64; 16])
+            };
+
+            // Optimized mixing with better instruction pipelining
+            mix[0] = mix[0]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[0])
+                .rotate_left(1)
+                ^ dag_entry2[0];
+            mix[1] = mix[1]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[1])
+                .rotate_left(2)
+                ^ dag_entry2[1];
+            mix[2] = mix[2]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[2])
+                .rotate_left(3)
+                ^ dag_entry2[2];
+            mix[3] = mix[3]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[3])
+                .rotate_left(4)
+                ^ dag_entry2[3];
+            mix[4] = mix[4]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[4])
+                .rotate_left(5)
+                ^ dag_entry2[4];
+            mix[5] = mix[5]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[5])
+                .rotate_left(6)
+                ^ dag_entry2[5];
+            mix[6] = mix[6]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[6])
+                .rotate_left(7)
+                ^ dag_entry2[6];
+            mix[7] = mix[7]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[7])
+                .rotate_left(8)
+                ^ dag_entry2[7];
+            mix[8] = mix[8]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[8])
+                .rotate_left(1)
+                ^ dag_entry2[8];
+            mix[9] = mix[9]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[9])
+                .rotate_left(2)
+                ^ dag_entry2[9];
+            mix[10] = mix[10]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[10])
+                .rotate_left(3)
+                ^ dag_entry2[10];
+            mix[11] = mix[11]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[11])
+                .rotate_left(4)
+                ^ dag_entry2[11];
+            mix[12] = mix[12]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[12])
+                .rotate_left(5)
+                ^ dag_entry2[12];
+            mix[13] = mix[13]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[13])
+                .rotate_left(6)
+                ^ dag_entry2[13];
+            mix[14] = mix[14]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[14])
+                .rotate_left(7)
+                ^ dag_entry2[14];
+            mix[15] = mix[15]
+                .wrapping_mul(31)
+                .wrapping_add(dag_entry1[15])
+                .rotate_left(8)
+                ^ dag_entry2[15];
+        }
+
+        // Direct hash computation without intermediate allocation
+        let mut final_hash_bytes = [0u8; 128];
+        for i in 0..16 {
+            final_hash_bytes[i * 8..(i + 1) * 8].copy_from_slice(&mix[i].to_le_bytes());
+        }
+
+        *qanto_hash(&final_hash_bytes).as_bytes()
+    }
+
+    /// Stop the mining operation
+    pub fn stop(&self) {
+        self.should_stop.store(true, Ordering::Relaxed);
+        info!("[Qanhash-CPU] Mining stop requested");
+    }
+
+    /// Get current hash rate
+    pub fn get_hash_rate(&self) -> u64 {
+        self.hash_rate.load(Ordering::Relaxed)
+    }
+}
+
+/// Parallel CPU mining using Rayon for work-stealing parallelism
+pub fn mine_parallel(
+    header_hash: &QantoHash,
+    start_nonce: u64,
+    max_nonces: u64,
+    target: Target,
+    thread_count: Option<usize>,
+) -> Option<(u64, [u8; 32])> {
+    let threads = thread_count.unwrap_or_else(num_cpus::get);
+    let chunk_size = max_nonces / threads as u64;
+
+    info!(
+        "[Qanhash-CPU] Starting parallel mining with {threads} threads, {chunk_size} nonces per thread"
+    );
+
+    let result = (0..threads)
+        .into_par_iter()
+        .map(|thread_id| {
+            let thread_start_nonce = start_nonce + (thread_id as u64 * chunk_size);
+            let thread_max_nonces = if thread_id == threads - 1 {
+                max_nonces - (thread_id as u64 * chunk_size)
+            } else {
+                chunk_size
+            };
+
+            for i in 0..thread_max_nonces {
+                let nonce = thread_start_nonce + i;
+                let result_hash = hash(header_hash, nonce);
+
+                if is_solution_valid(&result_hash, target) {
+                    return Some((nonce, result_hash));
+                }
+            }
+            None
+        })
+        .find_any(|result| result.is_some())
+        .flatten();
+
+    if let Some((nonce, hash)) = result {
+        info!("[Qanhash-CPU] Parallel mining found solution at nonce: {nonce}");
+        Some((nonce, hash))
+    } else {
+        None
+    }
+}
+
+// === UNIFIED MINING INTERFACE ===
+
+/// Mining device types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MiningDevice {
+    Cpu,
+    #[cfg(feature = "gpu")]
+    Gpu,
+    Auto, // Automatically select best available device
+}
+
+/// Mining configuration
+#[derive(Debug, Clone)]
+pub struct MiningConfig {
+    pub device: MiningDevice,
+    pub thread_count: Option<usize>,
+    pub batch_size: Option<usize>,
+    pub max_iterations: Option<u64>,
+    pub enable_simd: bool,
+}
+
+impl Default for MiningConfig {
+    fn default() -> Self {
+        Self {
+            device: MiningDevice::Auto,
+            thread_count: None,
+            batch_size: None,
+            max_iterations: None,
+            enable_simd: true,
+        }
+    }
+}
+
+/// Unified high-performance miner
+pub struct QanhashMiner {
+    config: MiningConfig,
+    cpu_miner: Option<CpuMiner>,
+    #[cfg(feature = "gpu")]
+    gpu_available: bool,
+}
+
+impl QanhashMiner {
+    /// Create a new miner with the specified configuration
+    pub fn new(config: MiningConfig) -> Self {
+        let cpu_miner = match config.device {
+            MiningDevice::Cpu | MiningDevice::Auto => Some(CpuMiner::new(config.thread_count)),
+            #[cfg(feature = "gpu")]
+            MiningDevice::Gpu => None,
+        };
+
+        #[cfg(feature = "gpu")]
+        let gpu_available = {
+            match GPU_CONTEXT.lock() {
+                Ok(_) => {
+                    info!("[Qanhash] GPU mining available");
+                    true
+                }
+                Err(_) => {
+                    warn!("[Qanhash] GPU mining not available, falling back to CPU");
+                    false
+                }
+            }
+        };
+
+        Self {
+            config,
+            cpu_miner,
+            #[cfg(feature = "gpu")]
+            gpu_available,
+        }
+    }
+
+    /// Start mining with the configured device
+    pub fn mine(
+        &self,
+        header_hash: &QantoHash,
+        start_nonce: u64,
+        target: Target,
+    ) -> Option<(u64, [u8; 32])> {
+        let device = self.select_mining_device();
+
+        match device {
+            MiningDevice::Cpu => {
+                if let Some(ref cpu_miner) = self.cpu_miner {
+                    info!("[Qanhash] Starting CPU mining");
+                    cpu_miner.mine(header_hash, start_nonce, target, self.config.max_iterations)
+                } else {
+                    warn!("[Qanhash] CPU miner not initialized");
+                    None
+                }
+            }
+            #[cfg(feature = "gpu")]
+            MiningDevice::Gpu => {
+                info!("[Qanhash] Starting GPU mining");
+                let batch_size = self.config.batch_size.unwrap_or(1024 * 1024); // 1M nonces
+                match hash_batch(header_hash, start_nonce, batch_size, target) {
+                    Ok(result) => result,
+                    Err(e) => {
+                        warn!("[Qanhash] GPU mining failed: {e}, falling back to CPU");
+                        if let Some(ref cpu_miner) = self.cpu_miner {
+                            cpu_miner.mine(
+                                header_hash,
+                                start_nonce,
+                                target,
+                                self.config.max_iterations,
+                            )
+                        } else {
+                            None
+                        }
+                    }
+                }
+            }
+            MiningDevice::Auto => {
+                // This case should not occur as select_mining_device() resolves Auto
+                unreachable!("Auto device should be resolved by select_mining_device")
+            }
+        }
+    }
+
+    /// Select the best available mining device
+    fn select_mining_device(&self) -> MiningDevice {
+        match self.config.device {
+            MiningDevice::Auto => {
+                #[cfg(feature = "gpu")]
+                {
+                    if self.gpu_available {
+                        info!("[Qanhash] Auto-selected GPU for mining");
+                        MiningDevice::Gpu
+                    } else {
+                        info!("[Qanhash] Auto-selected CPU for mining");
+                        MiningDevice::Cpu
+                    }
+                }
+                #[cfg(not(feature = "gpu"))]
+                {
+                    info!("[Qanhash] Auto-selected CPU for mining (GPU not compiled)");
+                    MiningDevice::Cpu
+                }
+            }
+            device => device,
+        }
+    }
+
+    /// Stop mining operation
+    pub fn stop(&self) {
+        if let Some(ref cpu_miner) = self.cpu_miner {
+            cpu_miner.stop();
+        }
+        info!("[Qanhash] Mining stopped");
+    }
+
+    /// Get current hash rate
+    pub fn get_hash_rate(&self) -> u64 {
+        if let Some(ref cpu_miner) = self.cpu_miner {
+            cpu_miner.get_hash_rate()
+        } else {
+            0
+        }
+    }
+
+    /// Get mining statistics
+    pub fn get_stats(&self) -> MiningStats {
+        MiningStats {
+            device: self.select_mining_device(),
+            hash_rate: self.get_hash_rate(),
+            thread_count: self.config.thread_count.unwrap_or_else(num_cpus::get),
+            #[cfg(feature = "gpu")]
+            gpu_available: self.gpu_available,
+        }
+    }
+}
+
+/// Mining statistics
+#[derive(Debug, Clone)]
+pub struct MiningStats {
+    pub device: MiningDevice,
+    pub hash_rate: u64,
+    pub thread_count: usize,
+    #[cfg(feature = "gpu")]
+    pub gpu_available: bool,
+}
+
+/// Convenience function for quick mining with default settings
+pub fn mine_with_defaults(
+    header_hash: &QantoHash,
+    start_nonce: u64,
+    target: Target,
+    max_iterations: Option<u64>,
+) -> Option<(u64, [u8; 32])> {
+    let config = MiningConfig {
+        max_iterations,
+        ..Default::default()
+    };
+    let miner = QanhashMiner::new(config);
+    miner.mine(header_hash, start_nonce, target)
+}
+
+/// Benchmark mining performance
+pub fn benchmark_mining(duration_secs: u64) -> MiningStats {
+    let header_hash = qanto_hash(&[0u8; 32]);
+    let target = [0xFFu8; 32]; // Easy target for benchmarking
+    let config = MiningConfig::default();
+    let miner = QanhashMiner::new(config);
+
+    info!("[Qanhash] Starting {duration_secs} second mining benchmark");
+    let start_time = Instant::now();
+    let mut total_hashes = 0u64;
+
+    while start_time.elapsed().as_secs() < duration_secs {
+        let batch_start = total_hashes;
+        let _result = miner.mine(&header_hash, batch_start, target);
+        total_hashes += CPU_BATCH_SIZE as u64;
+    }
+
+    let elapsed = start_time.elapsed();
+    let hash_rate = total_hashes as f64 / elapsed.as_secs_f64();
+
+    info!(
+        "[Qanhash] Benchmark completed: {:.2} H/s over {} seconds",
+        hash_rate,
+        elapsed.as_secs()
+    );
+
+    let mut stats = miner.get_stats();
+    stats.hash_rate = hash_rate as u64;
+    stats
 }

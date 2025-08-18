@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  qanto-node:
+    build:
+      context: .
+      dockerfile: Dockerfile.freetier
+    container_name: qanto-freetier-node
+    restart: unless-stopped
+    ports:
+      - "8001:8001"  # P2P
+      - "8082:8082"  # API
+    volumes:
+      - qanto-data:/var/lib/qanto
+      - qanto-config:/opt/qanto/config
+      - qanto-logs:/opt/qanto/logs
+    environment:
+      - RUST_LOG=warn
+      - RUST_BACKTRACE=1
+    deploy:
+      resources:
+        limits:
+          memory: 800M
+          cpus: '0.8'
+        reservations:
+          memory: 400M
+          cpus: '0.4'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - qanto-network
+
+  qanto-explorer:
+    build:
+      context: ./explorer
+      dockerfile: Dockerfile.freetier
+    container_name: qanto-freetier-explorer
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - QANTO_RPC_URL=http://qanto-node:8082
+      - PORT=3000
+    depends_on:
+      qanto-node:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+          cpus: '0.2'
+        reservations:
+          memory: 100M
+          cpus: '0.1'
+    networks:
+      - qanto-network
+
+volumes:
+  qanto-data:
+    driver: local
+  qanto-config:
+    driver: local
+  qanto-logs:
+    driver: local
+
+networks:
+  qanto-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

@@ -4,7 +4,7 @@ use bellman::{Circuit, ConstraintSystem, LinearCombination, SynthesisError};
 use bls12_381::Scalar;
 
 #[cfg(feature = "zk")]
-use sha2::{Digest, Sha256};
+use my_blockchain::qanto_hash;
 #[cfg(feature = "zk")]
 use std::io;
 
@@ -55,7 +55,12 @@ impl Circuit<Scalar> for UtxoCircuit {
         for i in 0..64 {
             let bit_val = self.amount.map(|a| (a >> i) & 1);
             let bit_var = cs.alloc(
-                || format!("amount bit {i}"),
+                || {
+                    let mut label = String::with_capacity(15);
+                    label.push_str("amount bit ");
+                    label.push_str(&i.to_string());
+                    label
+                },
                 || {
                     bit_val
                         .map(Scalar::from)
@@ -69,7 +74,13 @@ impl Circuit<Scalar> for UtxoCircuit {
         let mut coeff = Scalar::one();
         for (i, bit_var) in amount_bits_vars.iter().enumerate() {
             cs.enforce(
-                || format!("bit {i} enforcement"),
+                || {
+                    let mut label = String::with_capacity(20);
+                    label.push_str("bit ");
+                    label.push_str(&i.to_string());
+                    label.push_str(" enforcement");
+                    label
+                },
                 |lc| lc + *bit_var,
                 |lc| lc + CS::one() - *bit_var,
                 |lc| lc,
@@ -90,9 +101,9 @@ impl Circuit<Scalar> for UtxoCircuit {
             || {
                 let address_hash = self
                     .address
-                    .map(Sha256::digest)
+                    .map(|addr| qanto_hash(&addr))
                     .ok_or(SynthesisError::AssignmentMissing)?;
-                let address_hash_slice: [u8; 32] = address_hash.into();
+                let address_hash_slice: [u8; 32] = *address_hash.as_bytes();
                 Scalar::from_bytes(&address_hash_slice)
                     .into_option()
                     .ok_or(SynthesisError::AssignmentMissing)

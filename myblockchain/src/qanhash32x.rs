@@ -22,11 +22,13 @@ pub type NodeID = [u8; 32];
 // --- Custom Post-Quantum KEM (qanto_kem) ---
 /// A simplified yet effective post-quantum key encapsulation mechanism.
 pub mod qanto_kem {
+    use super::qanhash32x;
+    
     // KEM implementation would go here. For this example, we'll use a placeholder.
     pub fn keypair(seed: [u8; 32]) -> ([u8; 32], [u8; 32]) {
-        let sk = crate::qanto_standalone::hash::qanto_hash(&seed);
-        let pk = crate::qanto_standalone::hash::qanto_hash(sk.as_bytes());
-        (*pk.as_bytes(), *sk.as_bytes())
+        let sk = qanhash32x(&seed);
+        let pk = qanhash32x(&sk);
+        (pk, sk)
     }
 }
 

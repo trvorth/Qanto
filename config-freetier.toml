@@ -1,0 +1,33 @@
+# Qanto Free-Tier Optimized Configuration
+# This configuration is designed for AWS Free Tier instances (t2.micro/t3.micro)
+# with minimal resource usage while maintaining core functionality
+
+p2p_address = "/ip4/0.0.0.0/tcp/8001"
+api_address = "127.0.0.1:8082"
+peers = []
+local_full_p2p_address = "/ip4/0.0.0.0/tcp/8001/p2p/12D3KooWG4qmqTY9gQz9SQAYyLWNbq7JskuoxEnEEqCGzDgzfk7F"
+network_id = "qanto-freetier-mainnet"
+genesis_validator = "74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41"
+contract_address = "5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818"
+
+# Performance optimized for free-tier
+target_block_time = 2000  # 2 seconds for stability on low-resource instances
+difficulty = 1            # Minimal difficulty to reduce CPU usage
+max_amount = 100000000000
+
+# Resource optimization
+use_gpu = false           # No GPU acceleration on free-tier
+zk_enabled = false        # Disable ZK proofs to save memory and CPU
+mining_threads = 1        # Single thread to minimize resource usage
+num_chains = 1            # Single chain for simplicity
+mining_chain_id = 0
+
+[logging]
+level = "warn"            # Reduced logging to save I/O and storage
+
+[p2p]
+heartbeat_interval = 15000  # Longer intervals to reduce network overhead
+mesh_n_low = 1             # Minimal peer connections
+mesh_n = 2                 # Conservative peer count
+mesh_n_high = 4            # Maximum peers for free-tier
+mesh_outbound_min = 1      # Minimal outbound connections

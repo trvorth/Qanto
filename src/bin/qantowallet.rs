@@ -2,8 +2,8 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use pqcrypto_traits::sign::{PublicKey, SecretKey};
 use qanto::{
-    qantodag::UTXO,
     transaction::{self, Input, Output, Transaction, TransactionConfig},
+    types::UTXO,
     wallet::{Wallet, WalletError},
 };
 use reqwest::Client;
@@ -196,13 +196,17 @@ async fn import_wallet(use_mnemonic: bool, use_private_key: bool) -> Result<()> 
 async fn get_balance(node_url: &str, address: String) -> Result<()> {
     println!("🌐 Instant-MeshSync™: Checking balance for {address}...");
     let client = Client::new();
-    let url = format!("{node_url}/balance/{address}");
+    let mut url = String::with_capacity(node_url.len() + address.len() + 9);
+    url.push_str(node_url);
+    url.push_str("/balance/");
+    url.push_str(&address);
 
-    let res = client
-        .get(&url)
-        .send()
-        .await
-        .context(format!("Failed to connect to node at {url}"))?;
+    let res = client.get(&url).send().await.context({
+        let mut msg = String::with_capacity(url.len() + 28);
+        msg.push_str("Failed to connect to node at ");
+        msg.push_str(&url);
+        msg
+    })?;
     if res.status().is_success() {
         let balance: u64 = res
             .json()
@@ -227,14 +231,21 @@ async fn send_transaction(
 ) -> Result<()> {
     println!("Preparing to send {amount} QNTO to address {to}");
     let password = prompt_for_password(false, "Enter password to unlock vault for sending:")?;
-    let wallet = Wallet::from_file(&wallet_path, &password).context(format!(
-        "Failed to load vault from '{}'",
-        wallet_path.display()
-    ))?;
+    let wallet = Wallet::from_file(&wallet_path, &password).context({
+        let display_path = wallet_path.display().to_string();
+        let mut msg = String::with_capacity(display_path.len() + 28);
+        msg.push_str("Failed to load vault from '");
+        msg.push_str(&display_path);
+        msg.push('\'');
+        msg
+    })?;
     let sender_address = wallet.address();
     let client = Client::new();
 
-    let utxo_url = format!("{node_url}/utxos/{sender_address}");
+    let mut utxo_url = String::with_capacity(node_url.len() + sender_address.len() + 7);
+    utxo_url.push_str(node_url);
+    utxo_url.push_str("/utxos/");
+    utxo_url.push_str(&sender_address);
     let res = client
         .get(&utxo_url)
         .send()
@@ -280,16 +291,13 @@ async fn send_transaction(
     let mut outputs = vec![Output {
         address: to.clone(),
         amount,
-        homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(
-            amount,
-            he_pub_key_material,
-        ),
+        homomorphic_encrypted: qanto::types::HomomorphicEncrypted::new(amount, he_pub_key_material),
     }];
     if dev_fee > 0 {
         outputs.push(Output {
             address: DEV_ADDRESS.to_string(),
             amount: dev_fee,
-            homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(
+            homomorphic_encrypted: qanto::types::HomomorphicEncrypted::new(
                 dev_fee,
                 he_pub_key_material,
             ),
@@ -300,7 +308,7 @@ async fn send_transaction(
         outputs.push(Output {
             address: sender_address.clone(),
             amount: change,
-            homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(
+            homomorphic_encrypted: qanto::types::HomomorphicEncrypted::new(
                 change,
                 he_pub_key_material,
             ),
@@ -333,7 +341,9 @@ async fn send_transaction(
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     println!("   Behavioral signature check passed.");
 
-    let tx_url = format!("{node_url}/transaction");
+    let mut tx_url = String::with_capacity(node_url.len() + 12);
+    tx_url.push_str(node_url);
+    tx_url.push_str("/transaction");
     println!("Broadcasting transaction to {tx_url}...");
     let res = client
         .post(&tx_url)
@@ -372,7 +382,9 @@ async fn receive_transactions(node_url: &str, wallet_path: PathBuf) -> Result<()
     println!("\n📡 Listening for incoming transactions to {my_address} (Press Ctrl+C to stop)...");
 
     loop {
-        let dag_info_url = format!("{node_url}/dag");
+        let mut dag_info_url = String::with_capacity(node_url.len() + 4);
+        dag_info_url.push_str(node_url);
+        dag_info_url.push_str("/dag");
         if let Ok(res) = client.get(&dag_info_url).send().await {
             if let Ok(dag_info) = res.json::<serde_json::Value>().await {
                 if let Some(tips) = dag_info.get("tips").and_then(|t| t.as_object()) {
@@ -380,7 +392,11 @@ async fn receive_transactions(node_url: &str, wallet_path: PathBuf) -> Result<()
                         if let Some(tip_ids_array) = tip_ids.as_array() {
                             for tip_id_val in tip_ids_array {
                                 if let Some(tip_id) = tip_id_val.as_str() {
-                                    let block_url = format!("{node_url}/block/{tip_id}");
+                                    let mut block_url =
+                                        String::with_capacity(node_url.len() + tip_id.len() + 7);
+                                    block_url.push_str(node_url);
+                                    block_url.push_str("/block/");
+                                    block_url.push_str(tip_id);
                                     if let Ok(block_res) = client.get(&block_url).send().await {
                                         if let Ok(block) =
                                             block_res.json::<qanto::qantodag::QantoBlock>().await

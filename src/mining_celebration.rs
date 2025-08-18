@@ -82,11 +82,12 @@ impl MiningStats {
 
         // Block details section
         println!("\n{}", "📊 Block Details:".bold().bright_white());
-        println!(
-            "  {} {}",
-            "Height:".bright_blue(),
-            format!("#{}", self.block_height).bright_yellow()
-        );
+        println!("  {} {}", "Height:".bright_blue(), {
+            let mut height_str = String::with_capacity(10);
+            height_str.push('#');
+            height_str.push_str(&self.block_height.to_string());
+            height_str.bright_yellow()
+        });
         println!(
             "  {} 0x{}",
             "Hash:".bright_blue(),
@@ -102,11 +103,11 @@ impl MiningStats {
             "Chain ID:".bright_blue(),
             self.chain_id.to_string().bright_magenta()
         );
-        println!(
-            "  {} {}",
-            "Difficulty:".bright_blue(),
-            format!("{:.6}", self.difficulty).bright_red()
-        );
+        println!("  {} {}", "Difficulty:".bright_blue(), {
+            let mut diff_str = String::with_capacity(12);
+            diff_str.push_str(&format!("{:.6}", self.difficulty)); // Keep format! for floating-point precision
+            diff_str.bright_red()
+        });
         println!(
             "  {} {}",
             "Timestamp:".bright_blue(),
@@ -145,7 +146,7 @@ impl MiningStats {
         println!(
             "  {} {} QANTO",
             "Reward:".bright_blue(),
-            format!("{reward_qanto:.6}").bright_yellow().bold()
+            format!("{reward_qanto:.6}").bright_yellow().bold() // Keep format! for floating-point precision
         );
 
         // Overall statistics
@@ -182,12 +183,14 @@ impl MiningStats {
     fn format_hash_colorful(&self) -> String {
         let hash = &self.block_hash;
         if hash.len() >= 16 {
-            format!(
-                "{}{}{}...",
-                hash[0..6].bright_red(),
-                hash[6..12].bright_green(),
-                hash[12..16].bright_blue()
-            )
+            {
+                let mut result = String::with_capacity(20);
+                result.push_str(&hash[0..6].bright_red().to_string());
+                result.push_str(&hash[6..12].bright_green().to_string());
+                result.push_str(&hash[12..16].bright_blue().to_string());
+                result.push_str("...");
+                result
+            }
         } else {
             hash.bright_white().to_string()
         }
@@ -202,39 +205,74 @@ impl MiningStats {
         let millis = self.mining_time.subsec_millis();
 
         if hours > 0 {
-            format!("{hours}h {minutes}m {seconds}s")
+            let mut duration_str = String::with_capacity(20);
+            duration_str.push_str(&hours.to_string());
+            duration_str.push('h');
+            duration_str.push(' ');
+            duration_str.push_str(&minutes.to_string());
+            duration_str.push_str("m ");
+            duration_str.push_str(&seconds.to_string());
+            duration_str.push('s');
+            duration_str
         } else if minutes > 0 {
-            format!("{minutes}m {seconds}.{millis}s")
+            let mut duration_str = String::with_capacity(15);
+            duration_str.push_str(&minutes.to_string());
+            duration_str.push_str("m ");
+            duration_str.push_str(&seconds.to_string());
+            duration_str.push('.');
+            duration_str.push_str(&millis.to_string());
+            duration_str.push('s');
+            duration_str
         } else {
-            format!("{seconds}.{millis}s")
+            let mut duration_str = String::with_capacity(10);
+            duration_str.push_str(&seconds.to_string());
+            duration_str.push('.');
+            duration_str.push_str(&millis.to_string());
+            duration_str.push('s');
+            duration_str
         }
     }
 
     /// Formats hash rate in a human-readable way
     fn format_hash_rate(&self) -> String {
         if self.hash_rate >= 1_000_000_000.0 {
-            format!("{:.2} GH", self.hash_rate / 1_000_000_000.0)
+            let mut rate_str = String::with_capacity(10);
+            rate_str.push_str(&format!("{:.2}", self.hash_rate / 1_000_000_000.0)); // Keep format! for floating-point precision
+            rate_str.push_str(" GH");
+            rate_str
         } else if self.hash_rate >= 1_000_000.0 {
-            format!("{:.2} MH", self.hash_rate / 1_000_000.0)
+            let mut rate_str = String::with_capacity(10);
+            rate_str.push_str(&format!("{:.2}", self.hash_rate / 1_000_000.0)); // Keep format! for floating-point precision
+            rate_str.push_str(" MH");
+            rate_str
         } else if self.hash_rate >= 1_000.0 {
-            format!("{:.2} KH", self.hash_rate / 1_000.0)
+            let mut rate_str = String::with_capacity(10);
+            rate_str.push_str(&format!("{:.2}", self.hash_rate / 1_000.0)); // Keep format! for floating-point precision
+            rate_str.push_str(" KH");
+            rate_str
         } else {
-            format!("{:.2}", self.hash_rate)
+            format!("{:.2}", self.hash_rate) // Keep format! for floating-point precision
         }
     }
 
     /// Formats large numbers with thousand separators
     fn format_number(&self, num: u64) -> String {
         let num_str = num.to_string();
-        let rev_chars: Vec<char> = num_str.chars().rev().collect();
-        let mut result = String::new();
-        for chunk in rev_chars.chunks(3) {
-            if !result.is_empty() {
+        let len = num_str.len();
+
+        // Pre-calculate result capacity: original length + commas
+        let comma_count = (len.saturating_sub(1)) / 3;
+        let mut result = String::with_capacity(len + comma_count);
+
+        // Insert commas from right to left without reversing
+        for (i, ch) in num_str.chars().enumerate() {
+            if i > 0 && (len - i).is_multiple_of(3) {
                 result.push(',');
             }
-            result.extend(chunk.iter().rev());
+            result.push(ch);
         }
-        result.chars().rev().collect()
+
+        result
     }
 
     /// Displays a compact one-line celebration

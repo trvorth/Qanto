@@ -1,0 +1,40 @@
+# HTTP client
+requests>=2.31.0
+aiohttp>=3.8.0
+
+# WebSocket client
+websockets>=11.0.0
+
+# GraphQL client
+gql>=3.4.0
+aiohttp>=3.8.0
+
+# Cryptography
+cryptography>=41.0.0
+ecdsa>=0.18.0
+
+# Data validation and serialization
+pydantic>=2.0.0
+
+# Async utilities
+aiofiles>=23.0.0
+
+# Utilities
+typing-extensions>=4.7.0
+python-dateutil>=2.8.0
+
+# Optional: CLI support
+click>=8.1.0
+rich>=13.0.0
+
+# Optional: Jupyter notebook support
+ipython>=8.0.0
+
+# Development dependencies (install with pip install -e ".[dev]")
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0
+# pytest-cov>=4.0.0
+# black>=23.0.0
+# flake8>=6.0.0
+# mypy>=1.0.0
+# isort>=5.12.0

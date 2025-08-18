@@ -35,8 +35,9 @@ pub use qanto_standalone::{
 
 // --- Standalone Qanto Utilities ---
 pub mod qanto_standalone {
-    // Custom, high-performance hash function using Blake3.
+    // Custom, high-performance hash function using internal QanHash algorithm.
     pub mod hash {
+        use crate::qanhash32x::qanhash32x;
         use serde::{Deserialize, Serialize};
         use std::fmt;
 
@@ -52,6 +53,12 @@ pub mod qanto_standalone {
             }
         }
 
+        impl AsRef<[u8]> for QantoHash {
+            fn as_ref(&self) -> &[u8] {
+                &self.0
+            }
+        }
+
         impl fmt::Debug for QantoHash {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "QantoHash({})", hex::encode(self.0))
@@ -59,7 +66,7 @@ pub mod qanto_standalone {
         }
 
         pub fn qanto_hash(data: &[u8]) -> QantoHash {
-            QantoHash(*blake3::hash(data).as_bytes())
+            QantoHash(qanhash32x(data))
         }
     }
 
@@ -196,6 +203,7 @@ pub mod qanto_standalone {
 
     // Custom serialization traits.
     pub mod serialization {
+        use bincode::Options;
         use serde::{de::DeserializeOwned, Serialize};
         use thiserror::Error;
 
@@ -207,13 +215,39 @@ pub mod qanto_standalone {
 
         pub trait QantoSerialize: Serialize {
             fn serialize(&self) -> Vec<u8> {
-                bincode::serialize(self).unwrap()
+                self.serialize_with_capacity(256)
+            }
+
+            fn serialize_with_capacity(&self, capacity: usize) -> Vec<u8> {
+                let mut buffer = Vec::with_capacity(capacity);
+
+                // Use optimized bincode configuration for better performance
+                let config = bincode::options()
+                    .with_limit(capacity as u64 * 2) // Set reasonable limit
+                    .with_little_endian()
+                    .with_fixint_encoding();
+
+                match config.serialize_into(&mut buffer, self) {
+                    Ok(_) => buffer,
+                    Err(_) => {
+                        // Fallback to default serialization if optimized fails
+                        bincode::serialize(self).unwrap_or_default()
+                    }
+                }
             }
         }
 
         pub trait QantoDeserialize: Sized + DeserializeOwned {
             fn deserialize(bytes: &[u8]) -> Result<Self, SerializationError> {
-                bincode::deserialize(bytes).map_err(SerializationError::Bincode)
+                // Use optimized bincode configuration for better performance
+                let config = bincode::options()
+                    .with_limit(bytes.len() as u64 * 2) // Set reasonable limit based on input size
+                    .with_little_endian()
+                    .with_fixint_encoding();
+
+                config
+                    .deserialize(bytes)
+                    .map_err(SerializationError::Bincode)
             }
         }
     }
@@ -439,11 +473,15 @@ pub struct Blockchain {
 impl Blockchain {
     pub fn start_jsonrpc(
         self: std::sync::Arc<Self>,
-        addr: String,
+        port: u16,
         chain_id: u64,
     ) -> tokio::task::JoinHandle<()> {
         // Use the jsonrpc_server module to run the HTTP server.
-        jsonrpc_server::run_server(self.clone(), addr, chain_id)
+        tokio::spawn(async move {
+            if let Err(e) = jsonrpc_server::run_server(port, chain_id).await {
+                eprintln!("JSON-RPC server error: {e}");
+            }
+        })
     }
     pub fn new(db_path: &str) -> anyhow::Result<Self> {
         let db = Arc::new(KeyValueStore::open(db_path)?);

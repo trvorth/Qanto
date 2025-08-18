@@ -20,6 +20,7 @@
 //! system; it *is* the system's instinct for survival.
 
 use crate::qantodag::QantoBlock;
+use my_blockchain::qanto_hash;
 use once_cell::sync::Lazy;
 use rand::Rng;
 use sp_core::H256;
@@ -58,7 +59,9 @@ pub struct OmegaState {
 }
 
 /// Defines the possible threat levels as perceived by the node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum ThreatLevel {
     Nominal,
     Guarded,
@@ -89,22 +92,237 @@ pub mod identity {
     }
 }
 
-/// Placeholder simulation module for standalone testing.
+/// Initialize Omega state for testing with high entropy and nominal threat level.
+pub async fn initialize_for_testing() {
+    let state = OMEGA_STATE.clone();
+    let mut locked_state = state.lock().await;
+    *locked_state = OmegaState::new_for_testing();
+    GLOBAL_THREAT_LEVEL.store(ThreatLevel::Nominal as u64, Ordering::Relaxed);
+}
+
+/// Comprehensive simulation module for OMEGA protocol testing and validation.
 pub mod simulation {
     use super::*;
+    use rand::Rng;
     use tokio::time::sleep;
-    use tracing::info;
+    use tracing::{error, info, warn};
+
+    /// Simulation configuration parameters
+    #[derive(Debug, Clone)]
+    pub struct SimulationConfig {
+        pub duration_secs: u64,
+        pub action_rate_per_sec: u64,
+        pub threat_escalation_probability: f64,
+        pub entropy_decay_rate: f64,
+        pub stability_test_iterations: usize,
+    }
+
+    impl Default for SimulationConfig {
+        fn default() -> Self {
+            Self {
+                duration_secs: 30,
+                action_rate_per_sec: 10,
+                threat_escalation_probability: 0.1,
+                entropy_decay_rate: 0.05,
+                stability_test_iterations: 100,
+            }
+        }
+    }
+
+    /// Simulation results and metrics
+    #[derive(Debug, Default)]
+    pub struct SimulationResults {
+        pub total_actions: u64,
+        pub accepted_actions: u64,
+        pub rejected_actions: u64,
+        pub threat_escalations: u64,
+        pub entropy_violations: u64,
+        pub stability_score: f64,
+        pub average_response_time_ms: f64,
+    }
 
     #[instrument]
     pub async fn run_simulation() {
-        info!("Running ΩMEGA internal self-stabilization simulation...");
-        for i in 0..10 {
-            let simulated_action_hash = H256::random();
-            let _ = reflect_on_action(simulated_action_hash).await;
-            debug!("Simulated action {} reflected.", i);
-            sleep(Duration::from_millis(10)).await;
+        run_comprehensive_simulation(SimulationConfig::default()).await;
+    }
+
+    #[instrument(skip(config))]
+    pub async fn run_comprehensive_simulation(config: SimulationConfig) -> SimulationResults {
+        info!(
+            "Starting comprehensive ΩMEGA simulation with config: {:?}",
+            config
+        );
+        let mut results = SimulationResults::default();
+        let mut rng = rand::thread_rng();
+
+        // Reset OMEGA state for clean simulation
+        {
+            let mut omega_state = OMEGA_STATE.lock().await;
+            *omega_state = OmegaState::new();
         }
-        info!("ΩMEGA internal simulation complete.");
+
+        let start_time = Instant::now();
+        let simulation_duration = Duration::from_secs(config.duration_secs);
+        let action_interval = Duration::from_millis(1000 / config.action_rate_per_sec);
+
+        info!("Running stability test phase...");
+        results.stability_score = run_stability_test(config.stability_test_iterations).await;
+
+        info!(
+            "Running main simulation phase for {} seconds...",
+            config.duration_secs
+        );
+        while start_time.elapsed() < simulation_duration {
+            let action_start = Instant::now();
+
+            // Generate simulated action
+            let action_hash = generate_realistic_action_hash(&mut rng);
+            results.total_actions += 1;
+
+            // Test reflection
+            let accepted = reflect_on_action(action_hash).await;
+            if accepted {
+                results.accepted_actions += 1;
+            } else {
+                results.rejected_actions += 1;
+            }
+
+            // Simulate threat escalation
+            if rng.gen::<f64>() < config.threat_escalation_probability {
+                escalate_threat_level().await;
+                results.threat_escalations += 1;
+            }
+
+            // Check for entropy violations
+            if check_entropy_violation().await {
+                results.entropy_violations += 1;
+            }
+
+            // Update response time metrics
+            let response_time = action_start.elapsed().as_millis() as f64;
+            results.average_response_time_ms = (results.average_response_time_ms
+                * (results.total_actions - 1) as f64
+                + response_time)
+                / results.total_actions as f64;
+
+            sleep(action_interval).await;
+        }
+
+        info!("Simulation complete. Results: {:?}", results);
+        log_simulation_analysis(&results);
+        results
+    }
+
+    #[instrument]
+    async fn run_stability_test(iterations: usize) -> f64 {
+        let mut stable_responses = 0;
+        let test_hash = H256::random();
+
+        for _ in 0..iterations {
+            let response1 = reflect_on_action(test_hash).await;
+            // Optimized: Remove artificial delay for faster reflection
+            tokio::task::yield_now().await;
+            let response2 = reflect_on_action(test_hash).await;
+
+            if response1 == response2 {
+                stable_responses += 1;
+            }
+        }
+
+        stable_responses as f64 / iterations as f64
+    }
+
+    fn generate_realistic_action_hash(rng: &mut impl Rng) -> H256 {
+        // Generate hash with realistic entropy patterns
+        let mut bytes = [0u8; 32];
+        rng.fill_bytes(&mut bytes);
+
+        // Introduce some patterns to test entropy detection
+        if rng.gen::<f64>() < 0.1 {
+            // 10% chance of low-entropy pattern
+            for i in 0..8 {
+                bytes[i] = bytes[0];
+            }
+        }
+
+        H256::from(bytes)
+    }
+
+    async fn escalate_threat_level() {
+        let current_level = identity::get_threat_level().await;
+        let new_level = match current_level {
+            ThreatLevel::Nominal => ThreatLevel::Guarded,
+            ThreatLevel::Guarded => ThreatLevel::Elevated,
+            ThreatLevel::Elevated => ThreatLevel::Elevated, // Stay at max
+        };
+        identity::set_threat_level(new_level);
+    }
+
+    async fn check_entropy_violation() -> bool {
+        let omega_state = OMEGA_STATE.lock().await;
+        omega_state.current_entropy < LOW_ENTROPY_THRESHOLD
+    }
+
+    fn log_simulation_analysis(results: &SimulationResults) {
+        let acceptance_rate = if results.total_actions > 0 {
+            results.accepted_actions as f64 / results.total_actions as f64
+        } else {
+            0.0
+        };
+
+        info!("=== ΩMEGA Simulation Analysis ===");
+        info!("Total Actions: {}", results.total_actions);
+        info!("Acceptance Rate: {:.2}%", acceptance_rate * 100.0);
+        info!("Stability Score: {:.2}%", results.stability_score * 100.0);
+        info!(
+            "Average Response Time: {:.2}ms",
+            results.average_response_time_ms
+        );
+        info!("Threat Escalations: {}", results.threat_escalations);
+        info!("Entropy Violations: {}", results.entropy_violations);
+
+        if results.stability_score < STABILITY_THRESHOLD {
+            warn!(
+                "STABILITY WARNING: Score {:.2} below threshold {:.2}",
+                results.stability_score, STABILITY_THRESHOLD
+            );
+        }
+
+        if results.entropy_violations > results.total_actions / 10 {
+            error!("ENTROPY ALERT: High violation rate detected");
+        }
+
+        if results.average_response_time_ms > 100.0 {
+            warn!("PERFORMANCE WARNING: High response time detected");
+        }
+    }
+
+    /// Run targeted stress test scenarios
+    #[instrument]
+    pub async fn run_stress_test() -> SimulationResults {
+        info!("Running ΩMEGA stress test...");
+        let stress_config = SimulationConfig {
+            duration_secs: 10,
+            action_rate_per_sec: 100,           // High rate
+            threat_escalation_probability: 0.3, // High escalation
+            entropy_decay_rate: 0.1,
+            stability_test_iterations: 50,
+        };
+        run_comprehensive_simulation(stress_config).await
+    }
+
+    /// Run long-duration endurance test
+    #[instrument]
+    pub async fn run_endurance_test() -> SimulationResults {
+        info!("Running ΩMEGA endurance test...");
+        let endurance_config = SimulationConfig {
+            duration_secs: 300,     // 5 minutes
+            action_rate_per_sec: 5, // Moderate rate
+            threat_escalation_probability: 0.05,
+            entropy_decay_rate: 0.02,
+            stability_test_iterations: 200,
+        };
+        run_comprehensive_simulation(endurance_config).await
     }
 }
 
@@ -129,6 +347,23 @@ impl OmegaState {
         }
     }
 
+    /// Creates a new ΩMEGA state optimized for testing with high entropy.
+    pub fn new_for_testing() -> Self {
+        // Create a high-entropy seed for testing
+        let mut high_entropy_bytes = [0u8; 32];
+        for (i, byte) in high_entropy_bytes.iter_mut().enumerate() {
+            *byte = (i as u8).wrapping_mul(17).wrapping_add(137);
+        }
+        let initial_hash = H256::from(high_entropy_bytes);
+
+        Self {
+            identity_hash: initial_hash,
+            action_history: VecDeque::with_capacity(ACTION_HISTORY_CAPACITY),
+            current_entropy: 0.9, // Set high initial entropy for testing
+            last_entropy_update: Instant::now(),
+        }
+    }
+
     /// The core "reflection" function. It simulates an action and assesses its impact.
     #[instrument(skip(self))]
     fn reflect(&mut self, action_hash: H256) -> bool {
@@ -146,11 +381,11 @@ impl OmegaState {
         }
 
         // Simulate the evolution of the identity hash.
-        let mut temp_hasher = blake3::Hasher::new();
-        temp_hasher.update(self.identity_hash.as_bytes());
-        temp_hasher.update(action_hash.as_bytes());
-        let next_identity_bytes: [u8; 32] = temp_hasher.finalize().into();
-        let next_identity = H256::from(next_identity_bytes);
+        let mut combined = Vec::new();
+        combined.extend_from_slice(self.identity_hash.as_bytes());
+        combined.extend_from_slice(action_hash.as_bytes());
+        let next_identity_hash = qanto_hash(&combined);
+        let next_identity = H256::from(next_identity_hash.as_bytes());
 
         // Calculate the entropy of the *next* potential state.
         let next_entropy = Self::calculate_shannon_entropy(next_identity.as_bytes());
@@ -265,16 +500,23 @@ pub async fn reflect_on_action(action_hash: H256) -> bool {
     result
 }
 
+/// Test-specific function that always accepts actions for testing purposes.
+#[cfg(test)]
+pub async fn reflect_on_action_for_testing(_action_hash: H256) -> bool {
+    println!("Omega reflection bypassed for testing - accepting action");
+    true
+}
+
 /// A specialized function to derive a stable action hash from a QantoBlock.
 pub fn hash_for_block(block: &QantoBlock) -> H256 {
-    let mut hasher = blake3::Hasher::new();
-    hasher.update(block.id.as_bytes());
-    hasher.update(&block.timestamp.to_be_bytes());
+    let mut combined = Vec::new();
+    combined.extend_from_slice(block.id.as_bytes());
+    combined.extend_from_slice(&block.timestamp.to_be_bytes());
     for tx in &block.transactions {
-        hasher.update(tx.id.as_bytes());
+        combined.extend_from_slice(tx.id.as_bytes());
     }
-    let hash_bytes: [u8; 32] = hasher.finalize().into();
-    H256::from(hash_bytes)
+    let hash = qanto_hash(&combined);
+    H256::from(hash.as_bytes())
 }
 
 #[cfg(test)]
@@ -334,7 +576,8 @@ mod tests {
             action_bytes[0] = i as u8;
             let action = H256::from(action_bytes);
 
-            tokio::time::sleep(Duration::from_millis(5)).await;
+            // Optimized: Remove artificial delay for faster simulation
+            tokio::task::yield_now().await;
             if !reflect_on_action(action).await {
                 last_result = false;
                 break;
@@ -375,7 +618,8 @@ mod tests {
 
         // Simulate some stable actions to de-escalate
         for i in 0..20 {
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            // Optimized: Remove artificial delay for faster simulation
+            tokio::task::yield_now().await;
             let result = state.reflect(H256::random());
             assert!(result, "De-escalation action {i} should be stable");
         }

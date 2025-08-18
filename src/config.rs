@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::net::SocketAddr;
 use std::path::Path;
+use sysinfo::System;
 use thiserror::Error;
 use tracing::instrument;
 
@@ -91,11 +92,11 @@ pub struct P2pConfig {
 impl Default for P2pConfig {
     fn default() -> Self {
         Self {
-            heartbeat_interval: 5000,
-            mesh_n_low: 4,
-            mesh_n: 8,
-            mesh_n_high: 16,
-            mesh_outbound_min: 4,
+            heartbeat_interval: 10000, // Increased to reduce CPU usage
+            mesh_n_low: 2,             // Reduced for lower resource usage
+            mesh_n: 4,                 // Reduced from 8 to 4
+            mesh_n_high: 8,            // Reduced from 16 to 8
+            mesh_outbound_min: 2,      // Reduced from 4 to 2
         }
     }
 }
@@ -118,7 +119,7 @@ impl Default for Config {
             max_amount: 100_000_000_000,
             use_gpu: false,
             zk_enabled: false,
-            mining_threads: num_cpus::get().max(1),
+            mining_threads: Self::get_optimized_thread_count(),
             num_chains: 1,
             mining_chain_id: 0,
             logging: LoggingConfig {
@@ -130,6 +131,67 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Get optimized thread count based on system resources and free-tier constraints
+    fn get_optimized_thread_count() -> usize {
+        let cpu_count = num_cpus::get();
+        let available_memory_gb = Self::get_available_memory_gb();
+
+        // For free-tier instances (t2.micro/t3.micro), limit threads aggressively
+        if available_memory_gb <= 1.0 {
+            // t2.micro/t3.micro: 1 GB RAM - use minimal threads
+            1.max(cpu_count / 4)
+        } else if available_memory_gb <= 2.0 {
+            // Small instances: 2 GB RAM - use conservative threading
+            2.max(cpu_count / 2)
+        } else if available_memory_gb <= 4.0 {
+            // Medium instances: 4 GB RAM - use moderate threading
+            4.max(cpu_count * 3 / 4)
+        } else {
+            // Larger instances: use most cores but leave some for system
+            cpu_count.max(1)
+        }
+    }
+
+    /// Get available system memory in GB
+    fn get_available_memory_gb() -> f64 {
+        let mut sys = System::new_all();
+        sys.refresh_memory();
+        sys.available_memory() as f64 / (1024.0 * 1024.0 * 1024.0)
+    }
+
+    /// Create a free-tier optimized configuration
+    pub fn free_tier_optimized() -> Self {
+        Self {
+            p2p_address: "/ip4/0.0.0.0/tcp/8001".to_string(),
+            api_address: "127.0.0.1:8082".to_string(),
+            peers: vec![],
+            local_full_p2p_address: None,
+            network_id: "qanto-freetier-mainnet".to_string(),
+            genesis_validator: "74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41"
+                .to_string(),
+            contract_address: "5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818"
+                .to_string(),
+            target_block_time: 2000, // 2 seconds for free-tier stability
+            difficulty: 1,           // Minimal difficulty for free-tier
+            max_amount: 100_000_000_000,
+            use_gpu: false,    // No GPU on free-tier
+            zk_enabled: false, // Disable ZK for resource savings
+            mining_threads: 1, // Single thread for free-tier
+            num_chains: 1,     // Single chain for simplicity
+            mining_chain_id: 0,
+            logging: LoggingConfig {
+                level: "warn".to_string(), // Reduced logging for performance
+            },
+            p2p: P2pConfig {
+                heartbeat_interval: 15000, // Longer intervals for free-tier
+                mesh_n_low: 1,
+                mesh_n: 2,
+                mesh_n_high: 4,
+                mesh_outbound_min: 1,
+            },
+        }
+    }
+
     #[instrument]
     pub fn load(path: &str) -> Result<Self, ConfigError> {
         if !Path::new(path).exists() {
@@ -179,40 +241,52 @@ impl Config {
 
     pub fn validate(&self) -> Result<(), ConfigError> {
         self.api_address.parse::<SocketAddr>().map_err(|_| {
-            ConfigError::Validation(format!(
-                "Invalid API address format: '{}'",
-                self.api_address
-            ))
+            let mut error_msg = String::with_capacity(32 + self.api_address.len());
+            error_msg.push_str("Invalid API address format: '");
+            error_msg.push_str(&self.api_address);
+            error_msg.push('\'');
+            ConfigError::Validation(error_msg)
         })?;
 
         if !(MIN_TARGET_BLOCK_TIME..=MAX_TARGET_BLOCK_TIME).contains(&self.target_block_time) {
-            return Err(ConfigError::Validation(format!(
-                "target_block_time (in ms) must be between {MIN_TARGET_BLOCK_TIME} and {MAX_TARGET_BLOCK_TIME}"
-            )));
+            let mut error_msg = String::with_capacity(64);
+            error_msg.push_str("target_block_time (in ms) must be between ");
+            error_msg.push_str(&MIN_TARGET_BLOCK_TIME.to_string());
+            error_msg.push_str(" and ");
+            error_msg.push_str(&MAX_TARGET_BLOCK_TIME.to_string());
+            return Err(ConfigError::Validation(error_msg));
         }
 
         if self.peers.len() > MAX_PEERS {
-            return Err(ConfigError::Validation(format!(
-                "Number of peers cannot exceed {MAX_PEERS}"
-            )));
+            let mut error_msg = String::with_capacity(48);
+            error_msg.push_str("Number of peers cannot exceed ");
+            error_msg.push_str(&MAX_PEERS.to_string());
+            return Err(ConfigError::Validation(error_msg));
         }
 
         if !(MIN_DIFFICULTY..=MAX_DIFFICULTY).contains(&self.difficulty) {
-            return Err(ConfigError::Validation(format!(
-                "Difficulty must be between {MIN_DIFFICULTY} and {MAX_DIFFICULTY}"
-            )));
+            let mut error_msg = String::with_capacity(64);
+            error_msg.push_str("Difficulty must be between ");
+            error_msg.push_str(&MIN_DIFFICULTY.to_string());
+            error_msg.push_str(" and ");
+            error_msg.push_str(&MAX_DIFFICULTY.to_string());
+            return Err(ConfigError::Validation(error_msg));
         }
 
         if self.mining_threads == 0 || self.mining_threads > MAX_MINING_THREADS {
-            return Err(ConfigError::Validation(format!(
-                "mining_threads must be between 1 and {MAX_MINING_THREADS}"
-            )));
+            let mut error_msg = String::with_capacity(48);
+            error_msg.push_str("mining_threads must be between 1 and ");
+            error_msg.push_str(&MAX_MINING_THREADS.to_string());
+            return Err(ConfigError::Validation(error_msg));
         }
 
         if !(MIN_CHAINS..=MAX_CHAINS).contains(&self.num_chains) {
-            return Err(ConfigError::Validation(format!(
-                "num_chains must be between {MIN_CHAINS} and {MAX_CHAINS}"
-            )));
+            let mut error_msg = String::with_capacity(48);
+            error_msg.push_str("num_chains must be between ");
+            error_msg.push_str(&MIN_CHAINS.to_string());
+            error_msg.push_str(" and ");
+            error_msg.push_str(&MAX_CHAINS.to_string());
+            return Err(ConfigError::Validation(error_msg));
         }
 
         if self.mining_chain_id >= self.num_chains {

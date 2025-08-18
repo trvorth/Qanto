@@ -12,6 +12,8 @@
 use crate::qantodag::{QantoBlock, QantoDAG};
 use anyhow::Result;
 use hex;
+use my_blockchain::qanhash::{MiningConfig, MiningDevice, QanhashMiner};
+use my_blockchain::QantoHash;
 use rand::Rng;
 use rayon::prelude::*;
 use regex::Regex;
@@ -69,14 +71,14 @@ pub struct MinerConfig {
     pub zk_enabled: bool,
     pub threads: usize,
 }
-#[derive(Clone, Debug)]
 pub struct Miner {
     _address: String,
-    _dag: Arc<QantoDAG>,
+    _dag: QantoDAG,
     target_block_time: u64,
     _use_gpu: bool,
     _zk_enabled: bool,
     threads: usize,
+    qanhash_miner: QanhashMiner,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -119,9 +121,9 @@ impl U256 {
 
     fn shl_1(mut self) -> Self {
         let mut carry = 0;
-        for i in 0..4 {
-            let next_carry = self.0[i] >> 63;
-            self.0[i] = (self.0[i] << 1) | carry;
+        for item in &mut self.0 {
+            let next_carry = *item >> 63;
+            *item = (*item << 1) | carry;
             carry = next_carry;
         }
         self
@@ -160,7 +162,9 @@ impl Div<U256> for U256 {
 impl U256 {
     fn div_rem(self, divisor: Self) -> Result<(Self, Self), MiningError> {
         if divisor == Self::ZERO {
-            return Err(MiningError::InvalidBlock("Division by zero in difficulty calculation".to_string()));
+            return Err(MiningError::InvalidBlock(
+                "Division by zero in difficulty calculation".to_string(),
+            ));
         }
         if self < divisor {
             return Ok((Self::ZERO, self));
@@ -188,11 +192,10 @@ impl Miner {
     pub fn new(config: MinerConfig) -> Result<Self> {
         let address_regex = Regex::new(r"^[0-9a-fA-F]{64}$")?;
         if !address_regex.is_match(&config.address) {
-            return Err(MiningError::InvalidAddress(format!(
-                "Invalid miner address format: {}",
-                config.address
-            ))
-            .into());
+            let mut error_msg = String::with_capacity(32 + config.address.len());
+            error_msg.push_str("Invalid miner address format: ");
+            error_msg.push_str(&config.address);
+            return Err(MiningError::InvalidAddress(error_msg).into());
         }
 
         let effective_use_gpu = config.use_gpu && cfg!(feature = "gpu");
@@ -204,13 +207,38 @@ impl Miner {
             warn!("ZK proofs enabled in config but 'zk' feature is not compiled. Disabling ZK for this session.");
         }
 
+        // Configure QanHash miner with optimal settings for high throughput
+        let mining_device = if effective_use_gpu {
+            #[cfg(feature = "gpu")]
+            {
+                MiningDevice::Gpu
+            }
+            #[cfg(not(feature = "gpu"))]
+            {
+                MiningDevice::Cpu
+            }
+        } else {
+            MiningDevice::Cpu
+        };
+
+        let qanhash_config = MiningConfig {
+            device: mining_device,
+            thread_count: Some(config.threads.max(1)),
+            batch_size: Some(1024), // Optimized batch size for high throughput
+            max_iterations: None,   // No limit for continuous mining
+            enable_simd: true,      // Enable SIMD optimizations
+        };
+
+        let qanhash_miner = QanhashMiner::new(qanhash_config);
+
         Ok(Self {
             _address: config.address,
-            _dag: config.dag,
+            _dag: (*config.dag).clone(),
             target_block_time: config.target_block_time,
             _use_gpu: effective_use_gpu,
             _zk_enabled: effective_zk_enabled,
             threads: config.threads.max(1),
+            qanhash_miner,
         })
     }
 
@@ -219,47 +247,116 @@ impl Miner {
     /// It modifies the block in-place with the found nonce and effort.
     #[instrument(skip(self, block_template))]
     pub fn solve_pow(&self, block_template: &mut QantoBlock) -> Result<(), MiningError> {
+        self.log_mining_start(block_template);
+
+        let target_hash_bytes = Miner::calculate_target_from_difficulty(block_template.difficulty);
+        let (header_hash, target) = self.prepare_mining_data(block_template, &target_hash_bytes)?;
+        let mining_result = self.execute_mining(&header_hash, &target);
+
+        self.process_mining_result(block_template, mining_result)
+    }
+
+    /// Log the start of mining process
+    fn log_mining_start(&self, block_template: &QantoBlock) {
         debug!(
             "[DEBUG] solve_pow: Starting PoW for block {}",
             block_template.id
         );
-        let start_time = SystemTime::now();
-        let timeout_duration = Duration::from_secs(self.target_block_time);
         debug!(
-            "[DEBUG] solve_pow: Timeout duration set to {} seconds",
+            "[DEBUG] solve_pow: Target block time set to {} seconds",
             self.target_block_time
         );
+    }
 
-        // This now uses pure integer math for deterministic consensus.
-        let target_hash_bytes = Miner::calculate_target_from_difficulty(block_template.difficulty);
+    /// Prepare mining data including header hash and target arrays
+    fn prepare_mining_data(
+        &self,
+        block_template: &QantoBlock,
+        target_hash_bytes: &[u8],
+    ) -> Result<([u8; 32], [u8; 32]), MiningError> {
         debug!(
             "[DEBUG] solve_pow: Target hash calculated for difficulty {}",
             block_template.difficulty
         );
 
-        if self._use_gpu {
-            warn!("[GPU-MINE] GPU mining is enabled in config, but the implementation currently only supports CPU mining. Falling back to CPU.");
+        let header_hash_hex = block_template.hash();
+        let header_hash_bytes = hex::decode(&header_hash_hex).map_err(|e| {
+            let mut error_msg = String::with_capacity(20 + e.to_string().len());
+            error_msg.push_str("Invalid header hash: ");
+            error_msg.push_str(&e.to_string());
+            MiningError::InvalidBlock(error_msg)
+        })?;
+
+        let header_hash = self.convert_to_hash_array(&header_hash_bytes)?;
+        let target = self.convert_to_target_array(target_hash_bytes);
+
+        Ok((header_hash, target))
+    }
+
+    /// Convert header hash bytes to fixed-size array
+    fn convert_to_hash_array(&self, header_hash_bytes: &[u8]) -> Result<[u8; 32], MiningError> {
+        let mut header_hash = [0u8; 32];
+        if header_hash_bytes.len() >= 32 {
+            header_hash.copy_from_slice(&header_hash_bytes[0..32]);
+            Ok(header_hash)
+        } else {
+            Err(MiningError::InvalidBlock(
+                "Header hash too short".to_string(),
+            ))
         }
+    }
+
+    /// Convert target hash bytes to fixed-size array
+    fn convert_to_target_array(&self, target_hash_bytes: &[u8]) -> [u8; 32] {
+        let mut target = [0u8; 32];
+        if target_hash_bytes.len() >= 32 {
+            target.copy_from_slice(&target_hash_bytes[0..32]);
+        } else {
+            target[32 - target_hash_bytes.len()..].copy_from_slice(target_hash_bytes);
+        }
+        target
+    }
+
+    /// Execute the actual mining process
+    fn execute_mining(&self, header_hash: &[u8; 32], target: &[u8; 32]) -> Option<(u64, [u8; 32])> {
+        let start_nonce = rand::thread_rng().gen::<u64>();
+        let qanto_hash = QantoHash::new(*header_hash);
 
         debug!(
-            "[DEBUG] solve_pow: Calling mine_cpu with {} threads",
+            "[DEBUG] solve_pow: Using advanced QanHash mining with {} threads",
             self.threads
         );
-        let mining_result = self.mine_cpu(
-            block_template,
-            &target_hash_bytes,
-            start_time,
-            timeout_duration,
-        )?;
+
+        let mining_result = self.qanhash_miner.mine(&qanto_hash, start_nonce, *target);
+
         debug!(
-            "[DEBUG] solve_pow: mine_cpu returned {:?}",
+            "[DEBUG] solve_pow: QanHash mining returned {:?}",
             mining_result.is_some()
         );
 
-        if let Some((found_nonce, effort)) = mining_result {
-            block_template.nonce = found_nonce;
-            block_template.effort = effort;
+        mining_result
+    }
 
+    /// Process the mining result and update block template
+    fn process_mining_result(
+        &self,
+        block_template: &mut QantoBlock,
+        mining_result: Option<(u64, [u8; 32])>,
+    ) -> Result<(), MiningError> {
+        if let Some((found_nonce, final_hash)) = mining_result {
+            block_template.nonce = found_nonce;
+            // Convert hash to effort (u64) for compatibility
+            let effort = u64::from_be_bytes([
+                final_hash[0],
+                final_hash[1],
+                final_hash[2],
+                final_hash[3],
+                final_hash[4],
+                final_hash[5],
+                final_hash[6],
+                final_hash[7],
+            ]);
+            block_template.effort = effort;
             info!(
                 "PoW solved for block ID (pre-hash) {} with nonce {} and effort {}. Block is ready for finalization.",
                 block_template.id, found_nonce, effort
@@ -329,74 +426,6 @@ impl Miner {
         }
     }
 
-    fn mine_cpu(
-        &self,
-        block_template: &QantoBlock,
-        target_hash_value: &[u8],
-        start_time: SystemTime,
-        timeout_duration: Duration,
-    ) -> Result<Option<(u64, u64)>, MiningError> {
-        debug!(
-            "[DEBUG] mine_cpu: Building thread pool with {} threads",
-            self.threads
-        );
-        let thread_pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(self.threads)
-            .build()?;
-        let found_signal = Arc::new(AtomicBool::new(false));
-        let hashes_tried = Arc::new(AtomicU64::new(0));
-
-        debug!("[DEBUG] mine_cpu: Thread pool built, starting parallel mining");
-
-        let result = thread_pool.install(|| {
-            let nonce_start = rand::thread_rng().gen::<u64>();
-            debug!(
-                "[DEBUG] mine_cpu: Starting nonce range from {}",
-                nonce_start
-            );
-
-            (nonce_start..u64::MAX)
-                .into_par_iter()
-                .find_map_any(|current_nonce| {
-                    if found_signal.load(Ordering::Relaxed) {
-                        return None;
-                    }
-                    let count = hashes_tried.fetch_add(1, Ordering::Relaxed);
-
-                    if count.is_multiple_of(1_000_000) {
-                        debug!(
-                            "[DEBUG] mine_cpu: {} million hashes tried",
-                            count / 1_000_000
-                        );
-                        if let Ok(elapsed) = start_time.elapsed() {
-                            if elapsed > timeout_duration {
-                                debug!("[DEBUG] mine_cpu: Timeout reached after {:?}", elapsed);
-                                found_signal.store(true, Ordering::Relaxed);
-                                return None;
-                            }
-                        }
-                    }
-
-                    let mut temp_block = block_template.clone();
-                    temp_block.nonce = current_nonce;
-
-                    let pow_hash = temp_block.hash();
-
-                    if let Ok(hash_bytes) = hex::decode(&pow_hash) {
-                        if Miner::hash_meets_target(&hash_bytes, target_hash_value)
-                        {
-                            found_signal.store(true, Ordering::Relaxed);
-                            return Some(current_nonce);
-                        }
-                    }
-                    None
-                })
-        });
-
-        let final_hash_count = hashes_tried.load(Ordering::Relaxed);
-        Ok(result.map(|nonce| (nonce, final_hash_count)))
-    }
-
     fn mine_cpu_with_cancellation(
         &self,
         block_template: &QantoBlock,
@@ -409,8 +438,11 @@ impl Miner {
             "[DEBUG] mine_cpu_with_cancellation: Building thread pool with {} threads",
             self.threads
         );
-        let thread_pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(self.threads)
+        // Implement dynamic thread adjustment for CPU optimization
+let available_cores = num_cpus::get() as usize;
+let dynamic_threads = (available_cores as f64 * 0.75).ceil() as usize; // Use 75% of cores to reduce load
+let thread_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(dynamic_threads.min(self.threads))
             .build()?;
         let found_signal = Arc::new(AtomicBool::new(false));
         let hashes_tried = Arc::new(AtomicU64::new(0));
@@ -419,56 +451,136 @@ impl Miner {
 
         let result = thread_pool.install(|| {
             let nonce_start = rand::thread_rng().gen::<u64>();
-            debug!("[DEBUG] mine_cpu_with_cancellation: Starting nonce range from {}", nonce_start);
+            debug!(
+                "[DEBUG] mine_cpu_with_cancellation: Starting nonce range from {}",
+                nonce_start
+            );
 
             (nonce_start..u64::MAX)
                 .into_par_iter()
                 .find_map_any(|current_nonce| {
-                    // Check for cancellation
-                    if cancellation_token.is_cancelled() || found_signal.load(Ordering::Relaxed) {
-                        return None;
-                    }
-
-                    let count = hashes_tried.fetch_add(1, Ordering::Relaxed);
-
-                    if count.is_multiple_of(100_000) {
-                        // Check cancellation more frequently
-                        if cancellation_token.is_cancelled() {
-                            debug!("[DEBUG] mine_cpu_with_cancellation: Cancellation requested");
-                            found_signal.store(true, Ordering::Relaxed);
-                            return None;
-                        }
-                    }
-
-                    if count.is_multiple_of(1_000_000) {
-                        debug!("[DEBUG] mine_cpu_with_cancellation: {} million hashes tried", count / 1_000_000);
-                        if let Ok(elapsed) = start_time.elapsed() {
-                            if elapsed > timeout_duration {
-                                debug!("[DEBUG] mine_cpu_with_cancellation: Timeout reached after {:?}", elapsed);
-                                found_signal.store(true, Ordering::Relaxed);
-                                return None;
-                            }
-                        }
-                    }
-
-                    let mut temp_block = block_template.clone();
-                    temp_block.nonce = current_nonce;
-
-                    let pow_hash = temp_block.hash();
-
-                    if let Ok(hash_bytes) = hex::decode(&pow_hash) {
-                        if Miner::hash_meets_target(&hash_bytes, target_hash_value)
-                        {
-                            found_signal.store(true, Ordering::Relaxed);
-                            return Some(current_nonce);
-                        }
-                    }
-                    None
+                    self.try_nonce(
+                        current_nonce,
+                        block_template,
+                        target_hash_value,
+                        &cancellation_token,
+                        &found_signal,
+                        &hashes_tried,
+                        start_time,
+                        timeout_duration,
+                    )
                 })
         });
 
         let final_hash_count = hashes_tried.load(Ordering::Relaxed);
         Ok(result.map(|nonce| (nonce, final_hash_count)))
+    }
+
+    fn try_nonce(
+        &self,
+        current_nonce: u64,
+        block_template: &QantoBlock,
+        target_hash_value: &[u8],
+        cancellation_token: &tokio_util::sync::CancellationToken,
+        found_signal: &Arc<AtomicBool>,
+        hashes_tried: &Arc<AtomicU64>,
+        start_time: SystemTime,
+        timeout_duration: Duration,
+    ) -> Option<u64> {
+        // Check for cancellation
+        if self.should_stop_mining(cancellation_token, found_signal) {
+            return None;
+        }
+
+        let count = hashes_tried.fetch_add(1, Ordering::Relaxed);
+
+        // Periodic checks for cancellation and timeout
+        if self.should_check_cancellation(count)
+            && self.handle_cancellation_check(cancellation_token, found_signal) {
+                return None;
+            }
+
+        if self.should_check_timeout(count)
+            && self.handle_timeout_check(start_time, timeout_duration, found_signal, count) {
+                return None;
+            }
+
+        // Try the nonce
+        if self.test_nonce(current_nonce, block_template, target_hash_value) {
+            found_signal.store(true, Ordering::Relaxed);
+            return Some(current_nonce);
+        }
+
+        None
+    }
+
+    fn should_stop_mining(
+        &self,
+        cancellation_token: &tokio_util::sync::CancellationToken,
+        found_signal: &Arc<AtomicBool>,
+    ) -> bool {
+        cancellation_token.is_cancelled() || found_signal.load(Ordering::Relaxed)
+    }
+
+    fn should_check_cancellation(&self, count: u64) -> bool {
+        count.is_multiple_of(100_000)
+    }
+
+    fn handle_cancellation_check(
+        &self,
+        cancellation_token: &tokio_util::sync::CancellationToken,
+        found_signal: &Arc<AtomicBool>,
+    ) -> bool {
+        if cancellation_token.is_cancelled() {
+            debug!("[DEBUG] mine_cpu_with_cancellation: Cancellation requested");
+            found_signal.store(true, Ordering::Relaxed);
+            return true;
+        }
+        false
+    }
+
+    fn should_check_timeout(&self, count: u64) -> bool {
+        count.is_multiple_of(1_000_000)
+    }
+
+    fn handle_timeout_check(
+        &self,
+        start_time: SystemTime,
+        timeout_duration: Duration,
+        found_signal: &Arc<AtomicBool>,
+        count: u64,
+    ) -> bool {
+        debug!(
+            "[DEBUG] mine_cpu_with_cancellation: {} million hashes tried",
+            count / 1_000_000
+        );
+        if let Ok(elapsed) = start_time.elapsed() {
+            if elapsed > timeout_duration {
+                debug!(
+                    "[DEBUG] mine_cpu_with_cancellation: Timeout reached after {:?}",
+                    elapsed
+                );
+                found_signal.store(true, Ordering::Relaxed);
+                return true;
+            }
+        }
+        false
+    }
+
+    fn test_nonce(
+        &self,
+        current_nonce: u64,
+        block_template: &QantoBlock,
+        target_hash_value: &[u8],
+    ) -> bool {
+        let mut temp_block = block_template.clone();
+        temp_block.nonce = current_nonce;
+        let pow_hash = temp_block.hash();
+
+        if let Ok(hash_bytes) = hex::decode(&pow_hash) {
+            return Miner::hash_meets_target(&hash_bytes, target_hash_value);
+        }
+        false
     }
 
     /// Calculates the PoW target from a floating-point difficulty value using

@@ -1,8 +1,11 @@
 // The primary modules that define the Qanto node and its behavior.
 pub mod advanced_features;
+pub mod analytics_dashboard;
 pub mod config;
 pub mod consensus;
+pub mod decentralization;
 pub mod emission;
+pub mod graphql_server;
 pub mod hame;
 pub mod interoperability;
 pub mod keygen;
@@ -11,12 +14,23 @@ pub mod miner;
 pub mod mining_celebration;
 pub mod node;
 pub mod omega;
+pub mod omega_enhanced;
 pub mod p2p;
+pub mod performance_optimizations;
+pub mod performance_validation;
+pub mod poseidon;
+pub mod post_quantum_crypto;
+pub mod privacy;
+pub mod qanto_ai_metrics;
+pub mod qanto_net;
 pub mod qantodag;
 pub mod saga;
 pub mod transaction;
+pub mod types;
 pub mod wallet;
+pub mod websocket_server;
 pub mod x_phyrus;
+pub mod zkp;
 
 // Conditionally compiled modules for extended features.
 #[cfg(feature = "infinite-strata")]

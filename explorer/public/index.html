@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qanto Block Explorer - Free Tier</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+        
+        .stat-card h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .stat-card .value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .blocks-section {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .section-title {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: #667eea;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+        
+        .block-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.2s;
+        }
+        
+        .block-item:hover {
+            background-color: #f8f9ff;
+        }
+        
+        .block-item:last-child {
+            border-bottom: none;
+        }
+        
+        .block-hash {
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: #667eea;
+            cursor: pointer;
+        }
+        
+        .block-hash:hover {
+            text-decoration: underline;
+        }
+        
+        .block-time {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #c33;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-online {
+            background-color: #4CAF50;
+        }
+        
+        .status-offline {
+            background-color: #f44336;
+        }
+        
+        .refresh-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.2s;
+        }
+        
+        .refresh-btn:hover {
+            background: #5a6fd8;
+        }
+        
+        .refresh-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .block-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔗 Qanto Block Explorer</h1>
+            <p>Free Tier Edition - Real-time Blockchain Data</p>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Node Status</h3>
+                <div class="value" id="nodeStatus">
+                    <span class="status-indicator" id="statusIndicator"></span>
+                    <span id="statusText">Loading...</span>
+                </div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Latest Block</h3>
+                <div class="value" id="latestBlock">Loading...</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Network</h3>
+                <div class="value" id="networkId">Loading...</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>Last Updated</h3>
+                <div class="value" id="lastUpdated">Never</div>
+            </div>
+        </div>
+        
+        <div class="blocks-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 class="section-title" style="margin-bottom: 0;">Recent Blocks</h2>
+                <button class="refresh-btn" onclick="refreshData()" id="refreshBtn">Refresh</button>
+            </div>
+            
+            <div id="blocksContainer">
+                <div class="loading">Loading blocks...</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let isLoading = false;
+        
+        async function fetchData(endpoint) {
+            try {
+                const response = await fetch(`/api/${endpoint}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error(`Error fetching ${endpoint}:`, error);
+                throw error;
+            }
+        }
+        
+        function formatTime(timestamp) {
+            if (!timestamp) return 'Unknown';
+            const date = new Date(timestamp);
+            return date.toLocaleString();
+        }
+        
+        function formatHash(hash) {
+            if (!hash) return 'N/A';
+            return hash.length > 16 ? `${hash.substring(0, 8)}...${hash.substring(hash.length - 8)}` : hash;
+        }
+        
+        function updateNodeStatus(status) {
+            const indicator = document.getElementById('statusIndicator');
+            const text = document.getElementById('statusText');
+            
+            if (status && status.connected) {
+                indicator.className = 'status-indicator status-online';
+                text.textContent = 'Online';
+            } else {
+                indicator.className = 'status-indicator status-offline';
+                text.textContent = 'Offline';
+            }
+        }
+        
+        function updateStats(stats) {
+            if (stats.node_status) {
+                updateNodeStatus(stats.node_status);
+                document.getElementById('networkId').textContent = stats.node_status.network_id || 'Unknown';
+            }
+            
+            if (stats.latest_block) {
+                document.getElementById('latestBlock').textContent = `#${stats.latest_block.height || 'N/A'}`;
+            }
+            
+            document.getElementById('lastUpdated').textContent = formatTime(new Date());
+        }
+        
+        function updateBlocks(blocks) {
+            const container = document.getElementById('blocksContainer');
+            
+            if (!blocks || blocks.length === 0) {
+                container.innerHTML = '<div class="loading">No blocks available</div>';
+                return;
+            }
+            
+            const blocksHtml = blocks.map(block => `
+                <div class="block-item">
+                    <div>
+                        <div class="block-hash" onclick="showBlockDetails('${block.hash}')">
+                            Block #${block.height || 'N/A'}: ${formatHash(block.hash)}
+                        </div>
+                        <div style="font-size: 0.8rem; color: #666; margin-top: 5px;">
+                            Transactions: ${block.transaction_count || 0}
+                        </div>
+                    </div>
+                    <div class="block-time">
+                        ${formatTime(block.timestamp)}
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = blocksHtml;
+        }
+        
+        function showError(message) {
+            const container = document.getElementById('blocksContainer');
+            container.innerHTML = `<div class="error">Error: ${message}</div>`;
+        }
+        
+        function showBlockDetails(hash) {
+            alert(`Block details for ${hash} would be shown here.\nThis is a simplified free-tier version.`);
+        }
+        
+        async function refreshData() {
+            if (isLoading) return;
+            
+            isLoading = true;
+            const refreshBtn = document.getElementById('refreshBtn');
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = 'Loading...';
+            
+            try {
+                const [stats, blocks] = await Promise.all([
+                    fetchData('stats'),
+                    fetchData('blocks?limit=10')
+                ]);
+                
+                updateStats(stats);
+                updateBlocks(blocks);
+            } catch (error) {
+                showError(error.message);
+                updateNodeStatus(null);
+            } finally {
+                isLoading = false;
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = 'Refresh';
+            }
+        }
+        
+        // Auto-refresh every 30 seconds (free-tier friendly)
+        setInterval(refreshData, 30000);
+        
+        // Initial load
+        refreshData();
+    </script>
+</body>
+</html>

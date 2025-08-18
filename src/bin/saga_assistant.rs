@@ -16,9 +16,10 @@ use qanto::{
     consensus::Consensus,
     mempool::Mempool,
     miner::Miner,
-    qantodag::{QantoDAG, QantoDagConfig, UTXO},
+    qantodag::{QantoDAG, QantoDagConfig},
     saga::PalletSaga,
     transaction::{Input, Output, Transaction, TransactionConfig},
+    types::UTXO,
     wallet::Wallet,
 };
 use rocksdb::{Options, DB};
@@ -115,7 +116,7 @@ async fn run_autonomous_simulation() -> Result<()> {
             Output {
                 address: receiver_address,
                 amount: 100,
-                homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(
+                homomorphic_encrypted: qanto::types::HomomorphicEncrypted::new(
                     100,
                     public_key.as_bytes(),
                 ),
@@ -123,7 +124,7 @@ async fn run_autonomous_simulation() -> Result<()> {
             Output {
                 address: validator_address.clone(),
                 amount: 1_000_000 - 100 - fee,
-                homomorphic_encrypted: qanto::qantodag::HomomorphicEncrypted::new(
+                homomorphic_encrypted: qanto::types::HomomorphicEncrypted::new(
                     1_000_000 - 100 - fee,
                     public_key.as_bytes(),
                 ),

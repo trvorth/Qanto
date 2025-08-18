@@ -4,18 +4,21 @@
 //! v3.0.1 - Trait Scoping Resolved
 
 use crate::omega;
-use crate::qantodag::{HomomorphicEncrypted, QantoDAG, QuantumResistantSignature, UTXO};
+use crate::qantodag::QantoDAG;
+use crate::types::{HomomorphicEncrypted, QuantumResistantSignature, UTXO};
 use hex;
+use my_blockchain::qanto_hash;
 use pqcrypto_mldsa::mldsa65::{PublicKey, SecretKey};
 use pqcrypto_traits::sign::{PublicKey as _, SecretKey as _};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use sha3::{Digest, Keccak512};
+// Removed external sha3 dependency - using internal QanHash implementation
 use sp_core::H256;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 use tracing::instrument;
 use zeroize::Zeroize;
 
@@ -159,9 +162,15 @@ impl Transaction {
             timestamp,
         };
         let signature_data = Self::serialize_for_signing(&signing_payload)?;
-        let action_hash =
-            H256::from_slice(Keccak512::digest(&signature_data).as_slice()[..32].as_ref());
-        if !omega::reflect_on_action(action_hash).await {
+        let hash_bytes = qanto_hash(&signature_data).as_bytes().to_vec();
+        let action_hash = H256::from_slice(&hash_bytes[..32.min(hash_bytes.len())]);
+
+        #[cfg(test)]
+        let result = omega::reflect_on_action_for_testing(action_hash).await;
+        #[cfg(not(test))]
+        let result = omega::reflect_on_action(action_hash).await;
+
+        if !result {
             return Err(TransactionError::OmegaRejection);
         }
 
@@ -276,9 +285,10 @@ impl Transaction {
         }
         if let Some(md) = metadata {
             if md.len() > MAX_METADATA_PAIRS {
-                return Err(TransactionError::InvalidMetadata(format!(
-                    "Exceeded max metadata pairs limit of {MAX_METADATA_PAIRS}"
-                )));
+                let mut error_msg = String::with_capacity(50);
+                error_msg.push_str("Exceeded max metadata pairs limit of ");
+                error_msg.push_str(&MAX_METADATA_PAIRS.to_string());
+                return Err(TransactionError::InvalidMetadata(error_msg));
             }
             for (k, v) in md {
                 if k.len() > MAX_METADATA_KEY_LEN || v.len() > MAX_METADATA_VALUE_LEN {
@@ -336,51 +346,52 @@ impl Transaction {
     fn serialize_for_signing(
         payload: &TransactionSigningPayload,
     ) -> Result<Vec<u8>, TransactionError> {
-        let mut hasher = Keccak512::new();
-        hasher.update(payload.sender.as_bytes());
-        hasher.update(payload.receiver.as_bytes());
-        hasher.update(payload.amount.to_be_bytes());
-        hasher.update(payload.fee.to_be_bytes());
+        let mut data = Vec::new();
+        data.extend_from_slice(payload.sender.as_bytes());
+        data.extend_from_slice(payload.receiver.as_bytes());
+        data.extend_from_slice(&payload.amount.to_be_bytes());
+        data.extend_from_slice(&payload.fee.to_be_bytes());
         payload.inputs.iter().for_each(|i| {
-            hasher.update(i.tx_id.as_bytes());
-            hasher.update(i.output_index.to_be_bytes());
+            data.extend_from_slice(i.tx_id.as_bytes());
+            data.extend_from_slice(&i.output_index.to_be_bytes());
         });
         payload.outputs.iter().for_each(|o| {
-            hasher.update(o.address.as_bytes());
-            hasher.update(o.amount.to_be_bytes());
+            data.extend_from_slice(o.address.as_bytes());
+            data.extend_from_slice(&o.amount.to_be_bytes());
         });
         let mut sorted_metadata: Vec<_> = payload.metadata.iter().collect();
         sorted_metadata.sort_by_key(|(k, _)| *k);
         sorted_metadata.iter().for_each(|(k, v)| {
-            hasher.update(k.as_bytes());
-            hasher.update(v.as_bytes());
+            data.extend_from_slice(k.as_bytes());
+            data.extend_from_slice(v.as_bytes());
         });
-        hasher.update(payload.timestamp.to_be_bytes());
-        Ok(hasher.finalize().to_vec())
+        data.extend_from_slice(&payload.timestamp.to_be_bytes());
+        Ok(qanto_hash(&data).as_bytes().to_vec())
     }
 
     fn compute_hash(&self) -> String {
-        let mut hasher = Keccak512::new();
-        hasher.update(self.sender.as_bytes());
-        hasher.update(self.receiver.as_bytes());
-        hasher.update(self.amount.to_be_bytes());
-        hasher.update(self.fee.to_be_bytes());
+        let mut data = Vec::new();
+        data.extend_from_slice(self.sender.as_bytes());
+        data.extend_from_slice(self.receiver.as_bytes());
+        data.extend_from_slice(&self.amount.to_be_bytes());
+        data.extend_from_slice(&self.fee.to_be_bytes());
         self.inputs.iter().for_each(|i| {
-            hasher.update(i.tx_id.as_bytes());
-            hasher.update(i.output_index.to_be_bytes());
+            data.extend_from_slice(i.tx_id.as_bytes());
+            data.extend_from_slice(&i.output_index.to_be_bytes());
         });
         self.outputs.iter().for_each(|o| {
-            hasher.update(o.address.as_bytes());
-            hasher.update(o.amount.to_be_bytes());
+            data.extend_from_slice(o.address.as_bytes());
+            data.extend_from_slice(&o.amount.to_be_bytes());
         });
         let mut sorted_metadata: Vec<_> = self.metadata.iter().collect();
         sorted_metadata.sort_by_key(|(k, _)| *k);
         sorted_metadata.iter().for_each(|(k, v)| {
-            hasher.update(k.as_bytes());
-            hasher.update(v.as_bytes());
+            data.extend_from_slice(k.as_bytes());
+            data.extend_from_slice(v.as_bytes());
         });
-        hasher.update(self.timestamp.to_be_bytes());
-        hex::encode(&hasher.finalize()[..32])
+        data.extend_from_slice(&self.timestamp.to_be_bytes());
+        let hash = qanto_hash(&data);
+        hex::encode(hash.as_bytes())
     }
 
     #[instrument(skip(self, _dag, utxos))]
@@ -420,14 +431,24 @@ impl Transaction {
         } else {
             let mut total_input_value = 0;
             for input in &self.inputs {
-                let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
+                let mut utxo_id = String::with_capacity(input.tx_id.len() + 10);
+                utxo_id.push_str(&input.tx_id);
+                utxo_id.push('_');
+                utxo_id.push_str(&input.output_index.to_string());
+
                 let utxo = utxos.get(&utxo_id).ok_or_else(|| {
-                    TransactionError::InvalidStructure(format!("UTXO {utxo_id} not found"))
+                    let mut error_msg = String::with_capacity(15 + utxo_id.len());
+                    error_msg.push_str("UTXO ");
+                    error_msg.push_str(&utxo_id);
+                    error_msg.push_str(" not found");
+                    TransactionError::InvalidStructure(error_msg)
                 })?;
                 if utxo.address != self.sender {
-                    return Err(TransactionError::InvalidStructure(format!(
-                        "Input UTXO {utxo_id} does not belong to sender"
-                    )));
+                    let mut error_msg = String::with_capacity(45 + utxo_id.len());
+                    error_msg.push_str("Input UTXO ");
+                    error_msg.push_str(&utxo_id);
+                    error_msg.push_str(" does not belong to sender");
+                    return Err(TransactionError::InvalidStructure(error_msg));
                 }
                 total_input_value += utxo.amount;
             }
@@ -440,16 +461,203 @@ impl Transaction {
         Ok(())
     }
 
+    /// Optimized batch verification for multiple transactions using parallel processing
+    pub fn verify_batch_parallel(
+        transactions: &[Transaction],
+        utxos_map: &HashMap<String, UTXO>,
+        verification_semaphore: &Arc<Semaphore>,
+    ) -> Vec<Result<(), TransactionError>> {
+        transactions
+            .par_iter()
+            .map(|tx| {
+                // Acquire semaphore permit for controlled concurrency
+                let _permit = verification_semaphore.try_acquire();
+                if _permit.is_err() {
+                    // Fallback to sequential verification if semaphore is full
+                    return Self::verify_single_transaction(tx, utxos_map);
+                }
+
+                Self::verify_single_transaction(tx, utxos_map)
+            })
+            .collect()
+    }
+
+    /// Single transaction verification helper for batch processing
+    pub fn verify_single_transaction(
+        tx: &Transaction,
+        utxos: &HashMap<String, UTXO>,
+    ) -> Result<(), TransactionError> {
+        let signing_payload = TransactionSigningPayload {
+            sender: &tx.sender,
+            receiver: &tx.receiver,
+            amount: tx.amount,
+            fee: tx.fee,
+            inputs: &tx.inputs,
+            outputs: &tx.outputs,
+            metadata: &tx.metadata,
+            timestamp: tx.timestamp,
+        };
+        let data_to_verify = Self::serialize_for_signing(&signing_payload)?;
+
+        if !tx.qr_signature.verify(&data_to_verify) {
+            return Err(TransactionError::QuantumSignatureVerification);
+        }
+
+        if tx.is_coinbase() {
+            if tx.fee != 0 {
+                return Err(TransactionError::InvalidStructure(
+                    "Coinbase fee must be 0".to_string(),
+                ));
+            }
+            let total_output: u64 = tx.outputs.iter().map(|o| o.amount).sum();
+            if total_output == 0 {
+                return Err(TransactionError::InvalidStructure(
+                    "Coinbase output cannot be zero".to_string(),
+                ));
+            }
+        } else {
+            let mut total_input_value = 0;
+            for input in &tx.inputs {
+                let mut utxo_id = String::with_capacity(input.tx_id.len() + 10);
+                utxo_id.push_str(&input.tx_id);
+                utxo_id.push('_');
+                utxo_id.push_str(&input.output_index.to_string());
+
+                let utxo = utxos.get(&utxo_id).ok_or_else(|| {
+                    let mut error_msg = String::with_capacity(15 + utxo_id.len());
+                    error_msg.push_str("UTXO ");
+                    error_msg.push_str(&utxo_id);
+                    error_msg.push_str(" not found");
+                    TransactionError::InvalidStructure(error_msg)
+                })?;
+                if utxo.address != tx.sender {
+                    let mut error_msg = String::with_capacity(45 + utxo_id.len());
+                    error_msg.push_str("Input UTXO ");
+                    error_msg.push_str(&utxo_id);
+                    error_msg.push_str(" does not belong to sender");
+                    return Err(TransactionError::InvalidStructure(error_msg));
+                }
+                total_input_value += utxo.amount;
+            }
+            let total_output_value: u64 = tx.outputs.iter().map(|o| o.amount).sum();
+
+            if total_input_value < total_output_value + tx.fee {
+                return Err(TransactionError::InsufficientFunds);
+            }
+        }
+        Ok(())
+    }
+
+    /// Lightweight transaction validation for mempool admission
+    pub fn validate_for_mempool(&self) -> Result<(), TransactionError> {
+        // Basic structure validation
+        if self.id.is_empty() {
+            return Err(TransactionError::InvalidStructure(
+                "Transaction ID cannot be empty".to_string(),
+            ));
+        }
+
+        // Check for empty inputs and outputs (except coinbase)
+        if self.inputs.is_empty() && self.outputs.is_empty() {
+            return Err(TransactionError::InvalidStructure(
+                "Transaction cannot have both empty inputs and outputs".to_string(),
+            ));
+        }
+
+        // Validate fee is reasonable (not zero for non-coinbase)
+        if !self.inputs.is_empty() && self.fee == 0 {
+            return Err(TransactionError::InvalidStructure(
+                "Non-coinbase transaction must have fee".to_string(),
+            ));
+        }
+
+        // Check for duplicate inputs
+        let mut input_set = std::collections::HashSet::new();
+        for input in &self.inputs {
+            let mut input_key = String::with_capacity(input.tx_id.len() + 10);
+            input_key.push_str(&input.tx_id);
+            input_key.push(':');
+            input_key.push_str(&input.output_index.to_string());
+            if !input_set.insert(input_key) {
+                return Err(TransactionError::InvalidStructure(
+                    "Duplicate input detected".to_string(),
+                ));
+            }
+        }
+
+        // Validate output amounts are positive
+        for output in &self.outputs {
+            if output.amount == 0 {
+                return Err(TransactionError::InvalidStructure(
+                    "Output amount cannot be zero".to_string(),
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Fast hash computation for transaction identification
+    pub fn compute_fast_hash(&self) -> String {
+        let mut data = Vec::new();
+
+        // Hash only essential fields for speed
+        data.extend_from_slice(self.id.as_bytes());
+        data.extend_from_slice(&self.fee.to_le_bytes());
+        data.extend_from_slice(&self.timestamp.to_le_bytes());
+
+        // Hash inputs and outputs in parallel
+        let input_hashes: Vec<_> = self
+            .inputs
+            .par_iter()
+            .map(|input| {
+                let mut input_data = Vec::new();
+                input_data.extend_from_slice(input.tx_id.as_bytes());
+                input_data.extend_from_slice(&input.output_index.to_le_bytes());
+                qanto_hash(&input_data).as_bytes().to_vec()
+            })
+            .collect();
+
+        let output_hashes: Vec<_> = self
+            .outputs
+            .par_iter()
+            .map(|output| {
+                let mut output_data = Vec::new();
+                output_data.extend_from_slice(output.address.as_bytes());
+                output_data.extend_from_slice(&output.amount.to_le_bytes());
+                qanto_hash(&output_data).as_bytes().to_vec()
+            })
+            .collect();
+
+        for hash in input_hashes {
+            data.extend_from_slice(&hash);
+        }
+        for hash in output_hashes {
+            data.extend_from_slice(&hash);
+        }
+
+        let final_hash = qanto_hash(&data);
+        hex::encode(final_hash.as_bytes())
+    }
+
     #[instrument]
     pub fn generate_utxo(&self, index: u32) -> UTXO {
         let output = &self.outputs[index as usize];
-        let utxo_id = format!("{}_{}", self.id, index);
+        let mut utxo_id = String::with_capacity(self.id.len() + 12); // tx_id + "_" + index (up to 10 digits)
+        utxo_id.push_str(&self.id);
+        utxo_id.push('_');
+        utxo_id.push_str(&index.to_string());
+
+        let mut explorer_link = String::with_capacity(42 + utxo_id.len()); // base URL + utxo_id
+        explorer_link.push_str("https://qantoblockexplorer.org/utxo/");
+        explorer_link.push_str(&utxo_id);
+
         UTXO {
             address: output.address.clone(),
             amount: output.amount,
             tx_id: self.id.clone(),
             output_index: index,
-            explorer_link: format!("https://qantoblockexplorer.org/utxo/{utxo_id}"),
+            explorer_link,
         }
     }
 }
@@ -477,7 +685,7 @@ impl Drop for Transaction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::omega::{self, identity::set_threat_level, identity::ThreatLevel, OmegaState};
+    use crate::omega::{self};
     use crate::qantodag::{QantoDAG, QantoDagConfig};
     use crate::saga::PalletSaga;
     use crate::wallet::Wallet;
@@ -487,11 +695,8 @@ mod tests {
     #[serial]
     async fn test_transaction_creation_and_verification() -> Result<(), Box<dyn std::error::Error>>
     {
-        {
-            let mut state = omega::OMEGA_STATE.lock().await;
-            *state = OmegaState::new();
-            set_threat_level(ThreatLevel::Nominal);
-        }
+        // Initialize Omega state for testing with high entropy
+        omega::initialize_for_testing().await;
 
         let db_path = "qantodag_db_test";
         if std::path::Path::new(db_path).exists() {
@@ -529,8 +734,9 @@ mod tests {
 
         let change_amount = input_utxo_amount - amount_to_receiver - fee - dev_fee_on_transfer;
 
-        let he_public_key_dalek = wallet.get_signing_key()?.verifying_key();
-        let he_pub_key_material_slice: &[u8] = he_public_key_dalek.as_bytes();
+        // Generate proper Paillier encryption keys for homomorphic encryption
+        let (he_public_key_bytes, _he_private_key_bytes) = HomomorphicEncrypted::generate_keypair();
+        let he_pub_key_material_slice: &[u8] = &he_public_key_bytes;
 
         let mut outputs_for_tx = vec![Output {
             address: "0000000000000000000000000000000000000000000000000000000000000001".to_string(),

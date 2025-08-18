@@ -49,7 +49,7 @@ rocksdb = { version = "0.22.0", default-features = false, features = ["multi-thr
 
 # Parallelism & Concurrency
 crossbeam-channel = "0.5.13"
-crossbeam-utils = "0.8.20"
+crossbeam-utils = "0.8.21"
 dashmap = "6.0.1"
 rayon = "1.10.0"
 

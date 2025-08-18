@@ -4,14 +4,18 @@
 //! mempool's logic for continuous, high-throughput operation by activating
 //! the transaction pruning mechanism.
 
-use crate::qantodag::{QantoDAG, UTXO};
+use crate::qantodag::QantoDAG;
 use crate::transaction::{Transaction, TransactionError};
-use std::collections::{BTreeMap, HashMap};
+use crate::types::UTXO;
+use dashmap::DashMap;
+// use rayon::prelude::*; // Removed unused import
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BinaryHeap, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tracing::{info, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 #[derive(Error, Debug)]
 pub enum MempoolError {
@@ -52,6 +56,254 @@ pub struct Mempool {
     max_age: Duration,
     max_size_bytes: usize,
     current_size_bytes: Arc<RwLock<usize>>,
+}
+
+/// Optimized mempool implementation using DashMap and BinaryHeap for high performance
+#[derive(Debug)]
+pub struct OptimizedMempool {
+    transactions: DashMap<String, PrioritizedTransaction>,
+    priority_queue: Arc<RwLock<BinaryHeap<Reverse<PrioritizedTransaction>>>>,
+    max_age: Duration,
+    max_size_bytes: usize,
+    current_size_bytes: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct PriorityEntry {
+    fee_per_byte: u64,
+    timestamp: u64,
+    tx_id: String,
+}
+
+impl OptimizedMempool {
+    pub fn new(max_age: Duration, max_size_bytes: usize) -> Self {
+        Self {
+            transactions: DashMap::new(),
+            priority_queue: Arc::new(RwLock::new(BinaryHeap::new())),
+            max_age,
+            max_size_bytes,
+            current_size_bytes: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        }
+    }
+
+    pub fn size(&self) -> usize {
+        self.transactions.len()
+    }
+
+    #[instrument(skip(self))]
+    pub async fn prune_old_transactions(&self) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let old_txs: Vec<String> = self
+            .transactions
+            .iter()
+            .filter_map(|entry| {
+                let (tx_id, prioritized_tx) = entry.pair();
+                if now.saturating_sub(prioritized_tx.timestamp) > self.max_age.as_secs() {
+                    Some(tx_id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Remove old transactions
+        for tx_id in old_txs {
+            if let Some((_, prioritized_tx)) = self.transactions.remove(&tx_id) {
+                let tx_size = serde_json::to_vec(&prioritized_tx.tx)
+                    .map(|data| data.len())
+                    .unwrap_or(0);
+                self.current_size_bytes
+                    .fetch_sub(tx_size, std::sync::atomic::Ordering::Relaxed);
+                info!("Pruned old transaction: {}", tx_id);
+            }
+        }
+
+        // Rebuild priority queue after pruning
+        self.rebuild_priority_queue().await;
+    }
+
+    async fn rebuild_priority_queue(&self) {
+        let mut queue = self.priority_queue.write().await;
+        queue.clear();
+
+        for entry in self.transactions.iter() {
+            let (_, prioritized_tx) = entry.pair();
+            queue.push(Reverse(prioritized_tx.clone()));
+        }
+    }
+
+    #[instrument(skip(self, transaction))]
+    pub async fn add_transaction(&self, transaction: Transaction) -> Result<(), MempoolError> {
+        let tx_id = transaction.id.clone();
+
+        // Check if transaction already exists
+        if self.transactions.contains_key(&tx_id) {
+            return Ok(());
+        }
+
+        let tx_size = serde_json::to_vec(&transaction).unwrap_or_default().len();
+
+        let fee_per_byte = if tx_size > 0 {
+            (transaction.fee * 100)
+                .checked_div(tx_size as u64)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let prioritized_tx = PrioritizedTransaction {
+            tx: transaction,
+            fee_per_byte,
+            timestamp,
+        };
+
+        // Check if mempool is full and evict if necessary
+        while self
+            .current_size_bytes
+            .load(std::sync::atomic::Ordering::Relaxed)
+            + tx_size
+            > self.max_size_bytes
+        {
+            if !self.evict_lowest_fee_transaction().await {
+                return Err(MempoolError::MempoolFull);
+            }
+        }
+
+        // Add transaction
+        self.transactions
+            .insert(tx_id.clone(), prioritized_tx.clone());
+        self.current_size_bytes
+            .fetch_add(tx_size, std::sync::atomic::Ordering::Relaxed);
+
+        // Add to priority queue
+        let mut queue = self.priority_queue.write().await;
+        queue.push(Reverse(prioritized_tx));
+
+        info!(
+            "Added transaction {} with fee_per_byte: {}",
+            tx_id, fee_per_byte
+        );
+        Ok(())
+    }
+
+    async fn evict_lowest_fee_transaction(&self) -> bool {
+        let mut queue = self.priority_queue.write().await;
+
+        while let Some(Reverse(lowest_priority_tx)) = queue.pop() {
+            let tx_id = lowest_priority_tx.tx.id.clone();
+
+            // Check if transaction still exists (might have been removed)
+            if let Some((_, removed_tx)) = self.transactions.remove(&tx_id) {
+                let tx_size = serde_json::to_vec(&removed_tx.tx)
+                    .map(|data| data.len())
+                    .unwrap_or(0);
+                self.current_size_bytes
+                    .fetch_sub(tx_size, std::sync::atomic::Ordering::Relaxed);
+
+                warn!(
+                    "Evicted transaction {} with fee_per_byte: {}",
+                    tx_id, removed_tx.fee_per_byte
+                );
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub fn get_transactions(&self) -> Vec<Transaction> {
+        let mut transactions = Vec::with_capacity(self.transactions.len());
+        for entry in self.transactions.iter() {
+            transactions.push(entry.value().tx.clone());
+        }
+        transactions
+    }
+
+    #[instrument(skip(self))]
+    pub async fn select_transactions(&self, max_count: usize) -> Vec<Transaction> {
+        let mut queue = self.priority_queue.write().await;
+        let mut selected = Vec::with_capacity(max_count.min(queue.len()));
+
+        // OPTIMIZATION: Use heap's natural ordering instead of sorting
+        // BinaryHeap with Reverse gives us highest fee first
+        let mut temp_heap = BinaryHeap::new();
+
+        // Extract up to max_count highest priority transactions
+        for _ in 0..max_count {
+            if let Some(Reverse(prioritized_tx)) = queue.pop() {
+                selected.push(prioritized_tx.tx.clone());
+                temp_heap.push(Reverse(prioritized_tx));
+            } else {
+                break;
+            }
+        }
+
+        // Restore the extracted transactions back to the queue
+        while let Some(tx) = temp_heap.pop() {
+            queue.push(tx);
+        }
+
+        debug!(
+            "Selected {} transactions for block creation",
+            selected.len()
+        );
+        selected
+    }
+
+    #[instrument(skip(self, transaction_ids))]
+    pub async fn remove_transactions(&self, transaction_ids: &[String]) {
+        for tx_id in transaction_ids {
+            if let Some((_, removed_tx)) = self.transactions.remove(tx_id) {
+                let tx_size = serde_json::to_vec(&removed_tx.tx)
+                    .map(|data| data.len())
+                    .unwrap_or(0);
+                self.current_size_bytes
+                    .fetch_sub(tx_size, std::sync::atomic::Ordering::Relaxed);
+                info!("Removed transaction: {}", tx_id);
+            }
+        }
+
+        // Rebuild priority queue after removals
+        self.rebuild_priority_queue().await;
+    }
+
+    pub fn get_current_size_bytes(&self) -> usize {
+        self.current_size_bytes
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn get_transaction_count(&self) -> usize {
+        self.transactions.len()
+    }
+
+    pub async fn get_performance_metrics(&self) -> (usize, usize, f64) {
+        let tx_count = self.transactions.len();
+        let size_bytes = self
+            .current_size_bytes
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let avg_fee_per_byte = if tx_count > 0 {
+            let total_fee_per_byte: u64 = self
+                .transactions
+                .iter()
+                .map(|entry| entry.value().fee_per_byte)
+                .sum();
+            total_fee_per_byte as f64 / tx_count as f64
+        } else {
+            0.0
+        };
+
+        (tx_count, size_bytes, avg_fee_per_byte)
+    }
 }
 
 impl Mempool {
@@ -186,29 +438,25 @@ impl Mempool {
 
     pub async fn get_transactions(&self) -> HashMap<String, Transaction> {
         let transactions = self.transactions.read().await;
-        transactions
-            .iter()
-            .map(|(id, p_tx)| (id.clone(), p_tx.tx.clone()))
-            .collect()
+        let mut result = HashMap::with_capacity(transactions.len());
+        for (id, p_tx) in transactions.iter() {
+            result.insert(id.clone(), p_tx.tx.clone());
+        }
+        result
     }
 
     pub async fn select_transactions(&self, max_txs: usize) -> Vec<Transaction> {
         let transactions = self.transactions.read().await;
-        let priority_queue = self.priority_queue.read().await;
-        let mut selected = Vec::with_capacity(max_txs);
+        let mut tx_vec: Vec<_> = transactions.values().collect();
 
-        // Iterate from highest fee to lowest
-        for ids in priority_queue.values().rev() {
-            for id in ids {
-                if selected.len() >= max_txs {
-                    return selected;
-                }
-                if let Some(ptx) = transactions.get(id) {
-                    selected.push(ptx.tx.clone());
-                }
-            }
+        // Sort by fee per byte in descending order (highest first)
+        tx_vec.sort_unstable_by(|a, b| b.fee_per_byte.cmp(&a.fee_per_byte));
+
+        let mut result = Vec::with_capacity(max_txs.min(tx_vec.len()));
+        for ptx in tx_vec.into_iter().take(max_txs) {
+            result.push(ptx.tx.clone());
         }
-        selected
+        result
     }
 
     #[instrument(skip(self, txs_to_remove))]
@@ -223,9 +471,8 @@ impl Mempool {
 
         for tx in txs_to_remove {
             if let Some(removed_ptx) = transactions.remove(&tx.id) {
-                let tx_size = serde_json::to_vec(&removed_ptx.tx)
-                    .unwrap_or_default()
-                    .len();
+                // OPTIMIZATION: Estimate transaction size instead of expensive serialization
+                let tx_size = Self::estimate_transaction_size(&removed_ptx.tx);
                 *current_size = current_size.saturating_sub(tx_size);
 
                 if let Some(ids) = priority_queue.get_mut(&removed_ptx.fee_per_byte) {
@@ -237,5 +484,44 @@ impl Mempool {
             }
         }
         info!("Removed {} transactions from mempool.", txs_to_remove.len());
+    }
+
+    /// Get the number of transactions in the mempool
+    pub async fn len(&self) -> usize {
+        self.transactions.read().await.len()
+    }
+
+    pub async fn is_empty(&self) -> bool {
+        self.transactions.read().await.is_empty()
+    }
+
+    /// Get the total fees of all transactions in the mempool
+    pub async fn get_total_fees(&self) -> u64 {
+        let transactions = self.transactions.read().await;
+        transactions.values().map(|ptx| ptx.tx.fee).sum()
+    }
+
+    /// Get all pending transactions
+    pub async fn get_pending_transactions(&self) -> Vec<Transaction> {
+        let transactions = self.transactions.read().await;
+        let mut pending = Vec::with_capacity(transactions.len());
+        for ptx in transactions.values() {
+            pending.push(ptx.tx.clone());
+        }
+        pending
+    }
+
+    /// Fast transaction size estimation without serialization
+    fn estimate_transaction_size(tx: &Transaction) -> usize {
+        // Base transaction overhead
+        let mut size = 64; // Fixed fields: id, fee, timestamp, etc.
+
+        // Estimate input sizes
+        size += tx.inputs.len() * 80; // Each input: tx_id (32) + output_index (4) + signature (44)
+
+        // Estimate output sizes
+        size += tx.outputs.len() * 40; // Each output: amount (8) + address (32)
+
+        size
     }
 }

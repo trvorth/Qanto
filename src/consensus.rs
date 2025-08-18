@@ -4,9 +4,10 @@
 //! in the Miner module, ensuring that all consensus checks are free from
 //! floating-point nondeterminism.
 
-use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError, UTXO};
+use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError};
 use crate::saga::{PalletSaga, SagaError};
 use crate::transaction::TransactionError;
+use crate::types::UTXO;
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
@@ -37,6 +38,7 @@ pub enum ConsensusError {
 
 /// The main consensus engine for Qanto. It orchestrates the various validation
 /// mechanisms to ensure network integrity.
+#[derive(Debug)]
 pub struct Consensus {
     saga: Arc<PalletSaga>,
 }
@@ -63,14 +65,29 @@ impl Consensus {
         // This is the most critical check. A block is fundamentally invalid without correct PoW.
         self.validate_proof_of_work(block).await?;
 
-        // --- Rule 3: Transaction Validity ---
-        // Ensures every transaction in the block is valid.
+        // --- Rule 3: Transaction Validity (OPTIMIZED: Parallel Processing) ---
+        // Ensures every transaction in the block is valid using parallel verification
         let utxos_guard = utxos.read().await;
-        for tx in block.transactions.iter().skip(1) {
-            // Skip coinbase
-            tx.verify(dag_arc, &utxos_guard).await?;
-        }
+        let utxos_clone = utxos_guard.clone();
         drop(utxos_guard);
+
+        // OPTIMIZATION: Use parallel processing for transaction verification
+        use rayon::prelude::*;
+        let verification_results: Result<Vec<_>, _> = block
+            .transactions
+            .par_iter()
+            .skip(1) // Skip coinbase
+            .map(|tx| {
+                // Create a blocking task for async verification in parallel context
+                tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current()
+                        .block_on(async { tx.verify(dag_arc, &utxos_clone).await })
+                })
+            })
+            .collect();
+
+        // Check if any verification failed
+        verification_results?;
 
         // --- Rule 4: Proof-of-Stake (PoS) - The "Finality Helper" ---
         // This check is now supplementary. A failure here logs a warning but does NOT
@@ -95,6 +112,16 @@ impl Consensus {
         block: &QantoBlock,
         dag_arc: &Arc<QantoDAG>,
     ) -> Result<(), ConsensusError> {
+        self.validate_core_fields(block)?;
+        self.validate_block_signature(block)?;
+        self.validate_merkle_root(block)?;
+        self.validate_coinbase_transaction(block)?;
+        self.validate_block_reward(block, dag_arc).await?;
+        Ok(())
+    }
+
+    /// Validates that core block fields are not empty
+    fn validate_core_fields(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
         if block.id.is_empty() || block.merkle_root.is_empty() || block.validator.is_empty() {
             return Err(ConsensusError::InvalidBlockStructure(
                 "Core fields (ID, Merkle Root, Validator) cannot be empty".to_string(),
@@ -105,13 +132,21 @@ impl Consensus {
                 "Block must have at least one transaction (coinbase)".to_string(),
             ));
         }
+        Ok(())
+    }
 
+    /// Validates the block's cryptographic signature
+    fn validate_block_signature(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
         if !block.verify_signature()? {
             return Err(ConsensusError::InvalidBlockStructure(
                 "Block signature verification failed".to_string(),
             ));
         }
+        Ok(())
+    }
 
+    /// Validates the block's Merkle root against its transactions
+    fn validate_merkle_root(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
         let expected_merkle_root = QantoBlock::compute_merkle_root(&block.transactions)
             .map_err(|e| ConsensusError::InvalidBlockStructure(e.to_string()))?;
         if block.merkle_root != expected_merkle_root {
@@ -119,14 +154,26 @@ impl Consensus {
                 "Merkle root mismatch".to_string(),
             ));
         }
+        Ok(())
+    }
 
+    /// Validates that the first transaction is a valid coinbase transaction
+    fn validate_coinbase_transaction(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
         let coinbase = &block.transactions[0];
         if !coinbase.is_coinbase() {
             return Err(ConsensusError::InvalidBlockStructure(
                 "First transaction must be coinbase".to_string(),
             ));
         }
+        Ok(())
+    }
 
+    /// Validates the block reward against the expected reward from SAGA
+    async fn validate_block_reward(
+        &self,
+        block: &QantoBlock,
+        dag_arc: &Arc<QantoDAG>,
+    ) -> Result<(), ConsensusError> {
         let total_fees = block
             .transactions
             .iter()
@@ -138,12 +185,13 @@ impl Consensus {
             .calculate_dynamic_reward(block, dag_arc, total_fees)
             .await?;
         if block.reward != expected_reward {
-            return Err(ConsensusError::InvalidBlockStructure(format!(
-                "Block reward mismatch. Claimed: {}, Expected (from SAGA): {}",
-                block.reward, expected_reward
-            )));
+            let mut msg = String::with_capacity(64);
+            msg.push_str("Block reward mismatch. Claimed: ");
+            msg.push_str(&block.reward.to_string());
+            msg.push_str(", Expected (from SAGA): ");
+            msg.push_str(&expected_reward.to_string());
+            return Err(ConsensusError::InvalidBlockStructure(msg));
         }
-
         Ok(())
     }
 
@@ -159,14 +207,17 @@ impl Consensus {
         let min_stake_for_full_confidence =
             rules.get("min_validator_stake").map_or(1000.0, |r| r.value) as u64;
 
-        let validators = dag.validators.read().await;
-        let validator_stake = validators.get(validator_address).copied().unwrap_or(0);
+        let validators = &dag.validators;
+        let validator_stake = validators.get(validator_address).map(|v| *v).unwrap_or(0);
 
         if validator_stake < min_stake_for_full_confidence {
             // This error will be caught and logged as a warning in `validate_block`.
-            return Err(ConsensusError::ProofOfStakeFailed(format!(
-                "Low PoS confidence. Stake of {validator_stake} is below the nominal threshold of {min_stake_for_full_confidence}"
-            )));
+            let mut msg = String::with_capacity(128);
+            msg.push_str("Low PoS confidence. Stake of ");
+            msg.push_str(&validator_stake.to_string());
+            msg.push_str(" is below the nominal threshold of ");
+            msg.push_str(&min_stake_for_full_confidence.to_string());
+            return Err(ConsensusError::ProofOfStakeFailed(msg));
         }
         Ok(())
     }
@@ -181,10 +232,12 @@ impl Consensus {
                 "Block {} has difficulty mismatch. Claimed: {}, Required (by PoSe): {}",
                 block.id, block.difficulty, effective_difficulty
             );
-            return Err(ConsensusError::ProofOfWorkFailed(format!(
-                "Difficulty mismatch. Claimed: {}, Required by PoSe: {}",
-                block.difficulty, effective_difficulty
-            )));
+            let mut msg = String::with_capacity(64);
+            msg.push_str("Difficulty mismatch. Claimed: ");
+            msg.push_str(&block.difficulty.to_string());
+            msg.push_str(", Required by PoSe: ");
+            msg.push_str(&effective_difficulty.to_string());
+            return Err(ConsensusError::ProofOfWorkFailed(msg));
         }
 
         // Now uses a deterministic, integer-based calculation internally.

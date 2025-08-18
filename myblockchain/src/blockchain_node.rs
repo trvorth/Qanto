@@ -27,9 +27,7 @@ fn main() {
         let blockchain = Arc::new(Blockchain::new("qanto_db").unwrap());
 
         // Start JSON-RPC server in background
-        let _rpc_handle = blockchain
-            .clone()
-            .start_jsonrpc("127.0.0.1:3030".to_string(), 1);
+        let _rpc_handle = blockchain.clone().start_jsonrpc(3030, 1);
 
         loop {
             let last_block = blockchain.get_last_block().await;

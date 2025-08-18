@@ -16,10 +16,13 @@
 //! - CONFIGURABILITY: Node configuration is expanded for fine-tuning in production.
 
 use anyhow::{anyhow, Result};
+use my_blockchain::qanto_hash;
+use num_bigint::BigUint;
+use num_traits::One;
 use pqcrypto_mldsa::mldsa65 as dilithium5;
 use pqcrypto_traits::sign::{PublicKey, SecretKey, SignedMessage};
+use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
-use sha3::{Digest, Sha3_512};
 use std::{
     collections::HashMap,
     sync::{
@@ -77,9 +80,7 @@ pub struct QuantumResistantKeyManager {
 impl QuantumResistantKeyManager {
     pub fn new(pk: dilithium5::PublicKey, sk: dilithium5::SecretKey) -> Self {
         // Generate master seed hash for deterministic key derivation
-        let mut hasher = Sha3_512::new();
-        hasher.update(sk.as_bytes());
-        let master_seed = hasher.finalize().to_vec();
+        let master_seed = qanto_hash(sk.as_bytes()).as_bytes().to_vec();
 
         Self {
             current_keypair: (pk, sk),
@@ -214,68 +215,188 @@ pub struct InfiniteStrataNode {
     pub zero_knowledge_proofs: Arc<RwLock<Vec<ZKProof>>>,
 }
 
-/// Verifiable Delay Function for time-locked cryptography
+/// Enhanced Merkle Tree for proper root generation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MerkleTree {
+    pub leaves: Vec<Vec<u8>>,
+    pub tree: Vec<Vec<Vec<u8>>>,
+    pub root: Vec<u8>,
+}
+
+impl MerkleTree {
+    pub fn new(leaves: Vec<Vec<u8>>) -> Self {
+        let mut tree = vec![leaves.clone()];
+        let mut current_level = leaves.clone();
+
+        // Build tree bottom-up
+        while current_level.len() > 1 {
+            let mut next_level = Vec::new();
+
+            for chunk in current_level.chunks(2) {
+                let mut hash_data = Vec::new();
+                hash_data.extend_from_slice(&chunk[0]);
+                if chunk.len() > 1 {
+                    hash_data.extend_from_slice(&chunk[1]);
+                } else {
+                    // Duplicate last node if odd number
+                    hash_data.extend_from_slice(&chunk[0]);
+                }
+                next_level.push(qanto_hash(&hash_data).as_bytes().to_vec());
+            }
+
+            tree.push(next_level.clone());
+            current_level = next_level;
+        }
+
+        let root = current_level.first().unwrap_or(&vec![]).clone();
+
+        Self { leaves, tree, root }
+    }
+
+    pub fn get_proof(&self, leaf_index: usize) -> Vec<Vec<u8>> {
+        let mut proof = Vec::new();
+        let mut index = leaf_index;
+
+        for level in &self.tree[..self.tree.len() - 1] {
+            let sibling_index = if index % 2 == 0 { index + 1 } else { index - 1 };
+            if sibling_index < level.len() {
+                proof.push(level[sibling_index].clone());
+            }
+            index /= 2;
+        }
+
+        proof
+    }
+
+    pub fn verify_proof(leaf: &[u8], proof: &[Vec<u8>], root: &[u8], leaf_index: usize) -> bool {
+        let mut current_hash = leaf.to_vec();
+        let mut index = leaf_index;
+
+        for sibling in proof {
+            let mut hash_data = Vec::new();
+            if index % 2 == 0 {
+                hash_data.extend_from_slice(&current_hash);
+                hash_data.extend_from_slice(sibling);
+            } else {
+                hash_data.extend_from_slice(sibling);
+                hash_data.extend_from_slice(&current_hash);
+            }
+            current_hash = qanto_hash(&hash_data).as_bytes().to_vec();
+            index /= 2;
+        }
+
+        current_hash == root
+    }
+}
+
+/// Enhanced Verifiable Delay Function with Wesolowski proofs
 #[derive(Debug, Clone)]
 pub struct VDFState {
     pub current_output: Vec<u8>,
     pub iterations: u64,
     pub proof: Vec<u8>,
     pub difficulty_factor: u64,
+    pub modulus: BigUint,
+    pub generator: BigUint,
 }
 
 impl Default for VDFState {
     fn default() -> Self {
+        // Generate a safe RSA modulus for VDF (simplified for demo)
+        let modulus = BigUint::from(2047u32).pow(11) - BigUint::one(); // Mersenne prime approximation
+        let generator = BigUint::from(2u32);
+
         Self {
             current_output: Vec::new(),
             iterations: 0,
             proof: Vec::new(),
-            difficulty_factor: 1, // Start with normal difficulty
+            difficulty_factor: 1,
+            modulus,
+            generator,
         }
     }
 }
 
 impl VDFState {
-    /// Compute VDF for time-locked consensus
+    /// Compute VDF with Wesolowski proof for time-locked consensus
     pub fn compute(&mut self, input: &[u8], time_parameter: u64) -> Vec<u8> {
-        // Apply the difficulty factor to increase computational work
         let adjusted_time = time_parameter.saturating_mul(self.difficulty_factor.max(1));
 
-        let mut hasher = Sha3_512::new();
-        hasher.update(input);
-        let mut current = hasher.finalize().to_vec();
+        // Convert input to BigUint for modular exponentiation
+        let input_hash = qanto_hash(input);
+        let x = BigUint::from_bytes_be(input_hash.as_bytes()) % &self.modulus;
 
-        // Sequential hashing for time delay
-        for i in 0..adjusted_time {
-            let mut hasher = Sha3_512::new();
-            hasher.update(&current);
-            hasher.update(i.to_le_bytes());
-            current = hasher.finalize().to_vec();
+        // Compute y = x^(2^T) mod N (sequential squaring)
+        let mut y = x.clone();
+        for _ in 0..adjusted_time {
+            y = (&y * &y) % &self.modulus;
         }
 
-        self.current_output = current[..32].to_vec();
+        self.current_output = y.to_bytes_be();
         self.iterations = adjusted_time;
 
-        // Generate proof (simplified - real implementation would use Wesolowski or Pietrzak)
-        let mut proof_hasher = Sha3_512::new();
-        proof_hasher.update(&self.current_output);
-        proof_hasher.update(adjusted_time.to_le_bytes());
-        self.proof = proof_hasher.finalize().to_vec();
+        // Generate Wesolowski proof
+        self.proof = self.generate_wesolowski_proof(&x, &y, adjusted_time);
 
         self.current_output.clone()
     }
 
-    /// Verify VDF proof
-    pub fn verify(&self, _input: &[u8], time_parameter: u64) -> bool {
-        // Apply the difficulty factor to the time parameter
+    /// Generate Wesolowski proof for VDF computation
+    fn generate_wesolowski_proof(&self, x: &BigUint, y: &BigUint, t: u64) -> Vec<u8> {
+        // Simplified Wesolowski proof generation
+        // In production, this would use proper Fiat-Shamir heuristic
+
+        // Generate challenge l (prime)
+        let mut challenge_data = Vec::new();
+        challenge_data.extend_from_slice(&x.to_bytes_be());
+        challenge_data.extend_from_slice(&y.to_bytes_be());
+        challenge_data.extend_from_slice(&t.to_le_bytes());
+        let challenge_hash = qanto_hash(&challenge_data);
+        let challenge_bytes = challenge_hash.as_bytes();
+        let l = BigUint::from_bytes_be(&challenge_bytes[..16]) | BigUint::one(); // Ensure odd
+
+        // Compute quotient q and remainder r such that 2^t = q*l + r
+        let two_pow_t = BigUint::from(2u32).pow(t as u32);
+        let q = &two_pow_t / &l;
+        let r = &two_pow_t % &l;
+
+        // Compute proof π = x^q mod N
+        let pi = x.modpow(&q, &self.modulus);
+
+        // Serialize proof components
+        let mut proof = Vec::new();
+        let l_bytes = l.to_bytes_be();
+        let pi_bytes = pi.to_bytes_be();
+        let r_bytes = r.to_bytes_be();
+
+        proof.extend_from_slice(&(l_bytes.len() as u32).to_be_bytes());
+        proof.extend_from_slice(&l_bytes);
+        proof.extend_from_slice(&(pi_bytes.len() as u32).to_be_bytes());
+        proof.extend_from_slice(&pi_bytes);
+        proof.extend_from_slice(&(r_bytes.len() as u32).to_be_bytes());
+        proof.extend_from_slice(&r_bytes);
+
+        proof
+    }
+
+    /// Verify Wesolowski VDF proof
+    pub fn verify(&self, input: &[u8], time_parameter: u64) -> bool {
         let adjusted_time = time_parameter.saturating_mul(self.difficulty_factor.max(1));
 
-        // Simplified verification - real implementation would verify the proof
-        let mut hasher = Sha3_512::new();
-        hasher.update(&self.current_output);
-        hasher.update(adjusted_time.to_le_bytes());
-        let expected_proof = hasher.finalize().to_vec();
+        if self.iterations != adjusted_time {
+            warn!("VDF verification failed: iteration mismatch");
+            return false;
+        }
 
-        let result = self.proof == expected_proof && self.iterations == adjusted_time;
+        // Reconstruct x from input
+        let input_hash = qanto_hash(input);
+        let x = BigUint::from_bytes_be(input_hash.as_bytes()) % &self.modulus;
+
+        // Reconstruct y from current_output
+        let y = BigUint::from_bytes_be(&self.current_output);
+
+        // Verify Wesolowski proof
+        let result = self.verify_wesolowski_proof(&x, &y, adjusted_time);
 
         if result {
             debug!(
@@ -290,6 +411,83 @@ impl VDFState {
         }
 
         result
+    }
+
+    /// Verify Wesolowski proof components
+    fn verify_wesolowski_proof(&self, x: &BigUint, y: &BigUint, t: u64) -> bool {
+        if self.proof.len() < 12 {
+            // Minimum size for 3 length prefixes
+            return false;
+        }
+
+        let mut offset = 0;
+
+        // Parse l
+        let l_len = u32::from_be_bytes([
+            self.proof[offset],
+            self.proof[offset + 1],
+            self.proof[offset + 2],
+            self.proof[offset + 3],
+        ]) as usize;
+        offset += 4;
+
+        if offset + l_len > self.proof.len() {
+            return false;
+        }
+
+        let l = BigUint::from_bytes_be(&self.proof[offset..offset + l_len]);
+        offset += l_len;
+
+        // Parse π
+        let pi_len = u32::from_be_bytes([
+            self.proof[offset],
+            self.proof[offset + 1],
+            self.proof[offset + 2],
+            self.proof[offset + 3],
+        ]) as usize;
+        offset += 4;
+
+        if offset + pi_len > self.proof.len() {
+            return false;
+        }
+
+        let pi = BigUint::from_bytes_be(&self.proof[offset..offset + pi_len]);
+        offset += pi_len;
+
+        // Parse r
+        let r_len = u32::from_be_bytes([
+            self.proof[offset],
+            self.proof[offset + 1],
+            self.proof[offset + 2],
+            self.proof[offset + 3],
+        ]) as usize;
+        offset += 4;
+
+        if offset + r_len > self.proof.len() {
+            return false;
+        }
+
+        let r = BigUint::from_bytes_be(&self.proof[offset..offset + r_len]);
+
+        // Verify challenge l matches Fiat-Shamir
+        let mut challenge_data = Vec::new();
+        challenge_data.extend_from_slice(&x.to_bytes_be());
+        challenge_data.extend_from_slice(&y.to_bytes_be());
+        challenge_data.extend_from_slice(&t.to_le_bytes());
+        let challenge_hash = qanto_hash(&challenge_data);
+        let challenge_bytes = challenge_hash.as_bytes();
+        let expected_l = BigUint::from_bytes_be(&challenge_bytes[..16]) | BigUint::one();
+
+        if l != expected_l {
+            return false;
+        }
+
+        // Verify proof equation: π^l * x^r ≡ y (mod N)
+        let pi_l = pi.modpow(&l, &self.modulus);
+        let x_r = x.modpow(&r, &self.modulus);
+        let left_side = (&pi_l * &x_r) % &self.modulus;
+
+        left_side == *y
     }
 }
 
@@ -395,9 +593,7 @@ impl InfiniteStrataNode {
 
         // Generate public key hash for verification
         let pk_bytes = self.public_key.as_bytes();
-        let mut hasher = Sha3_512::new();
-        hasher.update(pk_bytes);
-        let pk_hash = hasher.finalize().to_vec();
+        let pk_hash = qanto_hash(pk_bytes).as_bytes().to_vec();
 
         let mut heartbeat = Heartbeat {
             node_id: self.node_id.clone(),
@@ -446,7 +642,11 @@ impl InfiniteStrataNode {
 
         // Step 1: Generate time-locked challenge using VDF
         let mut vdf = self.verifiable_delay_function.write().await;
-        let challenge_seed = format!("{}-{}", self.node_id, epoch).into_bytes();
+        let mut challenge_seed = String::with_capacity(self.node_id.len() + 20);
+        challenge_seed.push_str(&self.node_id);
+        challenge_seed.push('-');
+        challenge_seed.push_str(&epoch.to_string());
+        let challenge_seed = challenge_seed.into_bytes();
         let time_parameter = 1000 + (epoch % 1000); // Variable difficulty based on epoch
         let vdf_output = vdf.compute(&challenge_seed, time_parameter);
         info!("VDF challenge generated with {} iterations", time_parameter);
@@ -457,11 +657,21 @@ impl InfiniteStrataNode {
         let signature = dilithium5::sign(&vdf_output, &self.signing_key);
         let signature_bytes = signature.as_bytes().to_vec();
 
-        // Create Merkle tree root (simplified)
-        let mut hasher = Sha3_512::new();
-        hasher.update(&signature_bytes);
-        hasher.update(self.node_id.as_bytes());
-        let merkle_root = hasher.finalize().to_vec();
+        // Create proper Merkle tree with multiple data points
+        let mut merkle_data = Vec::new();
+        merkle_data.push(signature_bytes.clone());
+        merkle_data.push(self.node_id.as_bytes().to_vec());
+        merkle_data.push(vdf_output.clone());
+        merkle_data.push(challenge_seed.clone());
+        merkle_data.push(epoch.to_le_bytes().to_vec());
+
+        let merkle_tree = MerkleTree::new(merkle_data);
+        let merkle_root = merkle_tree.root.clone();
+        info!(
+            "Merkle tree constructed with {} leaves, root: {} bytes",
+            merkle_tree.leaves.len(),
+            merkle_root.len()
+        );
 
         // Create multi-signature proof
         let multi_sig_proof = MultiSignatureProof {
@@ -495,39 +705,54 @@ impl InfiniteStrataNode {
         Ok(multi_sig_proof)
     }
 
-    /// Generates a zero-knowledge proof for the QSV protocol
+    /// Generates a zero-knowledge proof for the QSV protocol using Schnorr-like construction
     async fn generate_zk_proof(
         &self,
         vdf_output: &[u8],
         multi_sig_proof: &MultiSignatureProof,
     ) -> Result<ZKProof> {
-        // Create commitment (Pedersen commitment simulation)
-        let mut hasher = Sha3_512::new();
-        hasher.update(vdf_output);
-        hasher.update(&multi_sig_proof.aggregate_signature);
-        let commitment = hasher.finalize().to_vec();
+        // Generate random nonce for commitment
+        let mut rng = thread_rng();
+        let nonce: [u8; 32] = rng.gen();
 
-        // Create challenge
-        let mut challenge_hasher = Sha3_512::new();
-        challenge_hasher.update(&commitment);
-        challenge_hasher.update(self.node_id.as_bytes());
-        let challenge = challenge_hasher.finalize().to_vec();
+        // Create commitment using the nonce and public parameters
+        let mut commitment_data = Vec::new();
+        commitment_data.extend_from_slice(&nonce);
+        commitment_data.extend_from_slice(vdf_output);
+        commitment_data.extend_from_slice(&multi_sig_proof.merkle_root);
+        let commitment = qanto_hash(&commitment_data);
 
-        // Create response (simplified ZK proof)
-        let mut response_hasher = Sha3_512::new();
-        response_hasher.update(&challenge);
-        response_hasher.update(self.public_key.as_bytes());
-        let response = response_hasher.finalize().to_vec();
+        // Generate challenge using Fiat-Shamir heuristic
+        let mut challenge_data = Vec::new();
+        challenge_data.extend_from_slice(commitment.as_bytes());
+        challenge_data.extend_from_slice(self.public_key.as_bytes());
+        challenge_data.extend_from_slice(self.node_id.as_bytes());
+        challenge_data.extend_from_slice(&multi_sig_proof.aggregate_signature);
+        let challenge_hash = qanto_hash(&challenge_data);
+        let challenge = challenge_hash.clone();
+
+        // Convert challenge to BigUint for arithmetic
+        let challenge_big = BigUint::from_bytes_be(challenge_hash.as_bytes());
+        let nonce_big = BigUint::from_bytes_be(&nonce);
+
+        // Create secret from signing key hash (simplified)
+        let secret_hash = qanto_hash(self.signing_key.as_bytes());
+        let secret_big = BigUint::from_bytes_be(secret_hash.as_bytes());
+
+        // Compute response: r = nonce + challenge * secret (mod 2^256)
+        let modulus = BigUint::from(2u32).pow(256);
+        let response_big = (&nonce_big + (&challenge_big * &secret_big)) % &modulus;
+        let response = response_big.to_bytes_be();
 
         // Create the ZK proof
         let zk_proof = ZKProof {
-            commitment,
-            challenge,
+            commitment: commitment.as_bytes().to_vec(),
+            challenge: challenge.as_bytes().to_vec(),
             response,
             proof_type: ZKProofType::ComputationProof,
         };
 
-        info!("Generated zero-knowledge proof for VDF computation");
+        info!("Generated enhanced zero-knowledge proof using Schnorr-like construction");
         Ok(zk_proof)
     }
 
@@ -730,10 +955,10 @@ impl InfiniteStrataNode {
             }
 
             // Check for Merkle root manipulation
-            let mut hasher = Sha3_512::new();
-            hasher.update(&proof.aggregate_signature);
-            hasher.update(node_id.as_bytes());
-            let calculated_merkle_root = hasher.finalize().to_vec();
+            let mut data = Vec::new();
+            data.extend_from_slice(&proof.aggregate_signature);
+            data.extend_from_slice(node_id.as_bytes());
+            let calculated_merkle_root = qanto_hash(&data).as_bytes().to_vec();
 
             if calculated_merkle_root != proof.merkle_root {
                 warn!(
@@ -749,7 +974,7 @@ impl InfiniteStrataNode {
         if !zk_proofs.is_empty() {
             // Analyze the distribution of ZK proof challenges
             // In a healthy network, these should have a uniform distribution
-            let mut challenge_bytes_sum = [0u8; 64]; // For SHA3-512 output
+            let mut challenge_bytes_sum = [0u8; 64]; // For QantoHash output
 
             for proof in zk_proofs.iter() {
                 for (i, byte) in proof.challenge.iter().enumerate().take(64) {
@@ -819,20 +1044,18 @@ impl InfiniteStrataNode {
         let challenge_seed = format!("{}-{}-threat-response", self.node_id, epoch).into_bytes();
 
         // Create a more complex ZK proof (simplified implementation)
-        let mut hasher = Sha3_512::new();
-        hasher.update(&challenge_seed);
-        let commitment = hasher.finalize().to_vec();
+        let commitment = qanto_hash(&challenge_seed).as_bytes().to_vec();
 
-        let mut challenge_hasher = Sha3_512::new();
-        challenge_hasher.update(&commitment);
-        challenge_hasher.update(self.node_id.as_bytes());
-        let challenge = challenge_hasher.finalize().to_vec();
+        let mut challenge_data = Vec::new();
+        challenge_data.extend_from_slice(&commitment);
+        challenge_data.extend_from_slice(self.node_id.as_bytes());
+        let challenge = qanto_hash(&challenge_data).as_bytes().to_vec();
 
-        let mut response_hasher = Sha3_512::new();
-        response_hasher.update(&challenge);
-        response_hasher.update(self.public_key.as_bytes());
-        response_hasher.update(epoch.to_be_bytes()); // Add entropy
-        let response = response_hasher.finalize().to_vec();
+        let mut response_data = Vec::new();
+        response_data.extend_from_slice(&challenge);
+        response_data.extend_from_slice(self.public_key.as_bytes());
+        response_data.extend_from_slice(&epoch.to_be_bytes()); // Add entropy
+        let response = qanto_hash(&response_data).as_bytes().to_vec();
 
         let emergency_zk_proof = ZKProof {
             commitment,
@@ -887,10 +1110,10 @@ impl InfiniteStrataNode {
         }
 
         // Step 3: Verify the Merkle root (simplified)
-        let mut hasher = Sha3_512::new();
-        hasher.update(&proof.aggregate_signature);
-        hasher.update(node_id.as_bytes());
-        let calculated_merkle_root = hasher.finalize().to_vec();
+        let mut data = Vec::new();
+        data.extend_from_slice(&proof.aggregate_signature);
+        data.extend_from_slice(node_id.as_bytes());
+        let calculated_merkle_root = qanto_hash(&data).as_bytes().to_vec();
 
         if calculated_merkle_root != proof.merkle_root {
             warn!("Merkle root verification failed for node {}", node_id);
@@ -901,19 +1124,19 @@ impl InfiniteStrataNode {
         // Find the corresponding ZK proof for this epoch
         let zk_proofs = self.zero_knowledge_proofs.read().await;
         let zk_proof = zk_proofs.iter().find(|p| {
-            let mut hasher = Sha3_512::new();
-            hasher.update(&p.commitment);
-            hasher.update(node_id.as_bytes());
-            let challenge = hasher.finalize().to_vec();
+            let mut challenge_data = Vec::new();
+            challenge_data.extend_from_slice(&p.commitment);
+            challenge_data.extend_from_slice(node_id.as_bytes());
+            let challenge = qanto_hash(&challenge_data).as_bytes().to_vec();
             challenge == p.challenge
         });
 
         if let Some(zk_proof) = zk_proof {
             // Verify the ZK proof response
-            let mut response_hasher = Sha3_512::new();
-            response_hasher.update(&zk_proof.challenge);
-            response_hasher.update(public_key.as_bytes());
-            let expected_response = response_hasher.finalize().to_vec();
+            let mut response_data = Vec::new();
+            response_data.extend_from_slice(&zk_proof.challenge);
+            response_data.extend_from_slice(public_key.as_bytes());
+            let expected_response = qanto_hash(&response_data).as_bytes().to_vec();
 
             if expected_response != zk_proof.response {
                 warn!(
