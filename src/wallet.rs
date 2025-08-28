@@ -189,8 +189,8 @@ impl Wallet {
         let pq_seed: &[u8; 32] = seed.as_ref()[32..]
             .try_into()
             .map_err(|_| WalletError::InvalidKeyLength)?;
-        let (pk, sk) =
-            generate_pq_keypair(Some(*pq_seed)).map_err(|e| WalletError::PqCrypto(e.to_string()))?;
+        let (pk, sk) = generate_pq_keypair(Some(*pq_seed))
+            .map_err(|e| WalletError::PqCrypto(e.to_string()))?;
 
         Ok(Self {
             data: WalletData {
@@ -384,9 +384,9 @@ impl Wallet {
         let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
         let cipher = Aes256Gcm::new(key);
 
-        let plaintext = cipher
-            .decrypt(nonce, ciphertext)
-            .map_err(|_| WalletError::Encryption("Decryption failed. Check password.".to_string()))?;
+        let plaintext = cipher.decrypt(nonce, ciphertext).map_err(|_| {
+            WalletError::Encryption("Decryption failed. Check password.".to_string())
+        })?;
 
         let data: WalletData = bincode::deserialize(&plaintext)?;
         Ok(Self { data })

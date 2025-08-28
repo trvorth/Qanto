@@ -2154,8 +2154,6 @@ mod tests {
     async fn test_channel_creation() {
         // Create test wallet for keys
 
-
-
         // Create SAGA pallet
         #[cfg(feature = "infinite-strata")]
         let saga_pallet = Arc::new(PalletSaga::new(None));
@@ -2219,7 +2217,6 @@ mod tests {
         // Create test wallet for keys
         let _wallet = Wallet::new().unwrap();
 
-
         // Create SAGA pallet
         #[cfg(feature = "infinite-strata")]
         let saga_pallet = Arc::new(PalletSaga::new(None));
@@ -2246,7 +2243,6 @@ mod tests {
             initial_validator: "test".to_string(),
             target_block_time: 30,
             num_chains: 1,
-
         };
 
         // Create QantoDAG with new signature
@@ -2281,7 +2277,7 @@ mod tests {
             proof_type: ProofType::SignatureProof,
             data: vec![0u8; 64], // Mock proof data
             validators: vec![hex::encode(validator_pk.as_bytes())], // Use the valid, hex-encoded public key
-            signatures: vec![valid_signature.as_bytes().to_vec()], // Use the valid signature
+            signatures: vec![valid_signature.as_bytes().to_vec()],  // Use the valid signature
         };
 
         // Override the verify function for this test to use the predictable bridge_id
@@ -2316,7 +2312,6 @@ mod tests {
         // Create test wallet for keys
         let _wallet = Wallet::new().unwrap();
 
-
         // Create SAGA pallet
         #[cfg(feature = "infinite-strata")]
         let saga_pallet = Arc::new(PalletSaga::new(None));
@@ -2343,7 +2338,6 @@ mod tests {
             initial_validator: "test".to_string(),
             target_block_time: 30,
             num_chains: 1,
-
         };
 
         // Create QantoDAG with new signature

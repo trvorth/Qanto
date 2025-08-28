@@ -472,7 +472,8 @@ impl QantoPQPrivateKey {
             } else {
                 32
             };
-            public_key_data[start_idx..start_idx + chunk_len].copy_from_slice(&hash.as_bytes()[..chunk_len]);
+            public_key_data[start_idx..start_idx + chunk_len]
+                .copy_from_slice(&hash.as_bytes()[..chunk_len]);
         }
 
         QantoPQPublicKey(public_key_data)
@@ -487,7 +488,8 @@ impl QantoPQPrivateKey {
 
         // Generate a random R value
         let mut r_value = [0u8; 32];
-        getrandom::getrandom(&mut r_value).map_err(|_| QantoNativeCryptoError::RandomGenerationFailed)?;
+        getrandom::getrandom(&mut r_value)
+            .map_err(|_| QantoNativeCryptoError::RandomGenerationFailed)?;
 
         // Calculate the base 'S' hash
         let mut s_input = Vec::with_capacity(32 + public_key.0.len() + 32);

@@ -36,7 +36,7 @@ from .utils import (
 
 __version__ = "1.0.0"
 __author__ = "Qanto Network"
-__email__ = "dev@qanto.network"
+__email__ = "dev@qanto.org"
 __license__ = "MIT"
 
 __all__ = [

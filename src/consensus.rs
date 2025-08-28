@@ -135,8 +135,6 @@ impl Consensus {
         Ok(())
     }
 
-
-
     /// Validates the block's Merkle root against its transactions
     fn validate_merkle_root(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
         let expected_merkle_root = QantoBlock::compute_merkle_root(&block.transactions)

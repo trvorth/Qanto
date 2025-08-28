@@ -1,5 +1,5 @@
 //! --- Qanto QantoDAG Ledger ---
-//! v2.4.2 - Block Reward Calculation Fix
+//! v0.1.0 - Initial Version
 //! This version corrects the block reward calculation by ensuring that transaction
 //! fees are properly calculated and included in the final reward amount.
 //!
@@ -8,7 +8,6 @@
 //!   ensuring the final reward includes both the base amount and fees.
 
 use crate::emission::Emission;
-use crate::types::QuantumResistantSignature;
 use crate::mempool::Mempool;
 use crate::metrics::QantoMetrics;
 use crate::miner::Miner;
@@ -16,11 +15,14 @@ use crate::mining_celebration::{celebrate_mining_success, MiningCelebrationParam
 use crate::saga::{
     CarbonOffsetCredential, GovernanceProposal, PalletSaga, ProposalStatus, ProposalType,
 };
+use crate::types::QuantumResistantSignature;
 use my_blockchain::{qanhash, qanto_hash};
 
 // This import is required for the `#[from]` attribute in QantoDAGError.
 // The compiler may incorrectly flag it as unused, but it is necessary.
-use crate::post_quantum_crypto::{PQError, QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature, pq_verify, pq_sign};
+use crate::post_quantum_crypto::{
+    pq_sign, pq_verify, PQError, QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature,
+};
 use crate::qanto_storage::{QantoStorage, QantoStorageError, StorageConfig};
 use crate::transaction::{Output, Transaction};
 use crate::types::{HomomorphicEncrypted, UTXO};
@@ -372,8 +374,6 @@ impl QantoBlock {
         let pre_signature_data_for_id = Self::serialize_for_signing(&signing_data)?;
         let id = hex::encode(qanto_hash(&pre_signature_data_for_id));
 
-
-
         let (public_key, _) = HomomorphicEncrypted::generate_keypair();
         let homomorphic_encrypted_data = data
             .transactions
@@ -382,9 +382,10 @@ impl QantoBlock {
             .collect();
 
         let signer_public_key = data.validator_private_key.public_key().as_bytes().to_vec();
-        let signature = pq_sign(&data.validator_private_key, &pre_signature_data_for_id)
-            .map_err(|_e| QantoDAGError::QuantumSignature(crate::post_quantum_crypto::PQError::SigningError))?;
-
+        let signature =
+            pq_sign(&data.validator_private_key, &pre_signature_data_for_id).map_err(|_e| {
+                QantoDAGError::QuantumSignature(crate::post_quantum_crypto::PQError::SigningError)
+            })?;
 
         Ok(Self {
             chain_id: data.chain_id,
@@ -475,10 +476,12 @@ impl QantoBlock {
 
         let data_to_verify = Self::serialize_for_signing(&signing_data)?;
 
-        let pk = QantoPQPublicKey::from_bytes(&self.signature.signer_public_key)
-            .map_err(|_e| QantoDAGError::QuantumSignature(crate::post_quantum_crypto::PQError::VerificationError))?;
-        let sig = QantoPQSignature::from_bytes(&self.signature.signature)
-            .map_err(|_e| QantoDAGError::QuantumSignature(crate::post_quantum_crypto::PQError::VerificationError))?;
+        let pk = QantoPQPublicKey::from_bytes(&self.signature.signer_public_key).map_err(|_e| {
+            QantoDAGError::QuantumSignature(crate::post_quantum_crypto::PQError::VerificationError)
+        })?;
+        let sig = QantoPQSignature::from_bytes(&self.signature.signature).map_err(|_e| {
+            QantoDAGError::QuantumSignature(crate::post_quantum_crypto::PQError::VerificationError)
+        })?;
 
         Ok(pq_verify(&pk, &data_to_verify, &sig).unwrap_or(false))
     }
@@ -507,8 +510,6 @@ impl QantoBlock {
         let qanhash_result = qanhash::hash(&header_hash, self.nonce);
         hex::encode(qanhash_result)
     }
-
-
 }
 
 // Use unified metrics system
@@ -519,7 +520,6 @@ pub struct QantoDagConfig {
     pub initial_validator: String,
     pub target_block_time: u64,
     pub num_chains: u32,
-
 }
 
 #[derive(Debug)]
@@ -543,7 +543,6 @@ pub struct QantoDAG {
     pub saga: Arc<PalletSaga>,
     pub self_arc: Weak<QantoDAG>,
     pub current_epoch: Arc<AtomicU64>,
-    
 
     // High-performance optimization fields - Enhanced for 32 BPS / 10M+ TPS
     pub block_processing_semaphore: Arc<Semaphore>,
@@ -606,9 +605,6 @@ impl QantoDAG {
             finalized_blocks: Arc::new(DashMap::new()),
             chain_loads: Arc::new(DashMap::new()),
 
-            
-
-
             difficulty_history: Arc::new(ParkingRwLock::new(Vec::new())),
             block_creation_timestamps: Arc::new(DashMap::new()),
             anomaly_history: Arc::new(DashMap::new()),
@@ -621,7 +617,6 @@ impl QantoDAG {
             saga,
             self_arc: Weak::new(),
             current_epoch: Arc::new(AtomicU64::new(0)),
-
 
             // High-performance optimization fields
             block_processing_semaphore: Arc::new(Semaphore::new(BLOCK_PROCESSING_WORKERS)),
@@ -729,7 +724,8 @@ impl QantoDAG {
         );
         let mut mining_state = MiningState::new();
 
-        let mut mining_interval = tokio::time::interval(tokio::time::Duration::from_secs(mining_interval_secs));
+        let mut mining_interval =
+            tokio::time::interval(tokio::time::Duration::from_secs(mining_interval_secs));
         mining_interval.tick().await;
 
         // Clone necessary Arcs for the dummy transaction task
@@ -785,94 +781,94 @@ impl QantoDAG {
 
         loop {
             tokio::select! {
-                biased;
-                _ = shutdown_token.cancelled() => {
-                    info!("SOLO MINER: Received shutdown signal, stopping mining loop. (DEBUG: Shutdown triggered)");
-                    // Add a log to indicate if the token was explicitly cancelled
-                    if shutdown_token.is_cancelled() {
-                        info!("SOLO MINER: Shutdown token explicitly cancelled.");
-                    } else {
-                        info!("SOLO MINER: Shutdown token not explicitly cancelled, but signal received.");
-                    }
-                    break;
-                }
-                _ = mining_interval.tick() => {
-                    info!("SOLO MINER: Mining interval elapsed ({}s), starting mining cycle", mining_interval_secs);
-                    info!("SOLO MINER: (DEBUG) Mining loop continuing.");
-
-                    mining_state.cycles += 1;
-                    info!("SOLO MINER: Starting mining cycle #{}", mining_state.cycles);
-                    
-                    self.log_heartbeat_if_needed(&mut mining_state, mining_interval_secs);
-
-                    let emission = self.emission.read().await;
-                    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-                    let estimated_reward = emission.calculate_reward(now).unwrap_or(0);
-                    let current_difficulty = self.get_current_difficulty().await;
-                    info!(
-                        "Mining Status: Cycle {}, Difficulty: {:.4}, Estimated Reward: {} QANTO",
-                        mining_state.cycles, current_difficulty, estimated_reward
-                    );
-                    
-                    tokio::task::yield_now().await;
-
-                    if !self.validate_wallet_keypair(&wallet).await {
-                        continue;
-                    }
-
-                    info!("SOLO MINER: Preparing to create candidate block");
-                    let mut candidate_block = match self.create_mining_candidate(&wallet, &mempool, &utxos).await {
-                        Ok(block) => {
-                            info!("SOLO MINER: Candidate block created successfully");
-                            block
+                    biased;
+                    _ = shutdown_token.cancelled() => {
+                        info!("SOLO MINER: Received shutdown signal, stopping mining loop. (DEBUG: Shutdown triggered)");
+                        // Add a log to indicate if the token was explicitly cancelled
+                        if shutdown_token.is_cancelled() {
+                            info!("SOLO MINER: Shutdown token explicitly cancelled.");
+                        } else {
+                            info!("SOLO MINER: Shutdown token not explicitly cancelled, but signal received.");
                         }
-                        Err(e) => {
-                            warn!("SOLO MINER: Failed to create candidate block: {}. Retrying next cycle.", e);
+                        break;
+                    }
+                    _ = mining_interval.tick() => {
+                        info!("SOLO MINER: Mining interval elapsed ({}s), starting mining cycle", mining_interval_secs);
+                        info!("SOLO MINER: (DEBUG) Mining loop continuing.");
+
+                        mining_state.cycles += 1;
+                        info!("SOLO MINER: Starting mining cycle #{}", mining_state.cycles);
+
+                        self.log_heartbeat_if_needed(&mut mining_state, mining_interval_secs);
+
+                        let emission = self.emission.read().await;
+                        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+                        let estimated_reward = emission.calculate_reward(now).unwrap_or(0);
+                        let current_difficulty = self.get_current_difficulty().await;
+                        info!(
+                            "Mining Status: Cycle {}, Difficulty: {:.4}, Estimated Reward: {} QANTO",
+                            mining_state.cycles, current_difficulty, estimated_reward
+                        );
+
+                        tokio::task::yield_now().await;
+
+                        if !self.validate_wallet_keypair(&wallet).await {
                             continue;
                         }
-                    };
 
-                    let (mined_block, mining_duration) = match self.execute_mining_pow(&miner, &mut candidate_block, &shutdown_token).await {
-                        Ok((block, duration)) => (block, duration),
-                        Err(should_break) => {
-                            if should_break { break; } // Propagate shutdown signal
-                            continue;
-                        }
-                    };
+                        info!("SOLO MINER: Preparing to create candidate block");
+                        let mut candidate_block = match self.create_mining_candidate(&wallet, &mempool, &utxos).await {
+                            Ok(block) => {
+                                info!("SOLO MINER: Candidate block created successfully");
+                                block
+                            }
+                            Err(e) => {
+                                warn!("SOLO MINER: Failed to create candidate block: {}. Retrying next cycle.", e);
+                                continue;
+                            }
+                        };
 
-                    mining_state.blocks_mined += 1;
-            
-            // FIX: Replaced the previous error handling with a more robust `match` statement.
-            // This ensures that any failure during block processing is explicitly logged,
-            // preventing the miner from stalling silently.
-            let process_result = self.process_mined_block(
-                    mined_block,
-                    &mempool,
-                    &utxos,
-                    mining_state.blocks_mined,
-                    mining_duration,
-                ).await;
+                        let (mined_block, mining_duration) = match self.execute_mining_pow(&miner, &mut candidate_block, &shutdown_token).await {
+                            Ok((block, duration)) => (block, duration),
+                            Err(should_break) => {
+                                if should_break { break; } // Propagate shutdown signal
+                                continue;
+                            }
+                        };
 
-            match process_result {
-                Ok(_) => {
-                    info!(
-                        "SOLO MINER: Successfully processed and added mined block. Cycle #{} complete.",
-                        mining_state.cycles
-                    );
-                }
-                Err(e) => {
-                    warn!(
-                        "SOLO MINER: Failed to process mined block: {}. Continuing to next cycle.",
-                        e
-                    );
-                }
+                        mining_state.blocks_mined += 1;
+
+                // FIX: Replaced the previous error handling with a more robust `match` statement.
+                // This ensures that any failure during block processing is explicitly logged,
+                // preventing the miner from stalling silently.
+                let process_result = self.process_mined_block(
+                        mined_block,
+                        &mempool,
+                        &utxos,
+                        mining_state.blocks_mined,
+                        mining_duration,
+                    ).await;
+
+                match process_result {
+                    Ok(_) => {
+                        info!(
+                            "SOLO MINER: Successfully processed and added mined block. Cycle #{} complete.",
+                            mining_state.cycles
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "SOLO MINER: Failed to process mined block: {}. Continuing to next cycle.",
+                            e
+                        );
+                    }
+                    }
                 }
             }
         }
+        info!("SOLO MINER: Mining loop has stopped.");
+        Ok(())
     }
-    info!("SOLO MINER: Mining loop has stopped.");
-    Ok(())
-}
 
     /// Log heartbeat if enough time has elapsed
     fn log_heartbeat_if_needed(&self, mining_state: &mut MiningState, mining_interval_secs: u64) {
@@ -1387,9 +1383,9 @@ impl QantoDAG {
         &self,
 
         _qr_signing_key: &QantoPQPrivateKey,
-         _qr_public_key: &QantoPQPublicKey,
-         validator_address: &str,
-         mempool_arc: &Arc<RwLock<Mempool>>,
+        _qr_public_key: &QantoPQPublicKey,
+        validator_address: &str,
+        mempool_arc: &Arc<RwLock<Mempool>>,
         _utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
         chain_id_val: u32,
     ) -> Result<QantoBlock, QantoDAGError> {
@@ -1504,12 +1500,8 @@ impl QantoDAG {
             homomorphic_encrypted: HomomorphicEncrypted::new(reward, &public_key_material),
         }];
 
-        let reward_tx = Transaction::new_coinbase(
-            validator_address.to_string(),
-            reward,
-
-            coinbase_outputs,
-        )?;
+        let reward_tx =
+            Transaction::new_coinbase(validator_address.to_string(), reward, coinbase_outputs)?;
 
         let mut transactions_for_block = vec![reward_tx];
         transactions_for_block.extend(selected_transactions);
@@ -1588,9 +1580,7 @@ impl QantoDAG {
             return Err(QantoDAGError::MerkleRootMismatch);
         }
         if !block.verify_signature()? {
-            return Err(QantoDAGError::QuantumSignature(
-                PQError::VerificationError
-            ));
+            return Err(QantoDAGError::QuantumSignature(PQError::VerificationError));
         }
 
         let target_hash_bytes = Miner::calculate_target_from_difficulty(block.difficulty);
@@ -1875,8 +1865,6 @@ impl QantoDAG {
             .map(|entry| entry.key().clone())
             .unwrap_or_else(|| DEV_ADDRESS.to_string());
         // Generate proper quantum-resistant keypair using PostQuantumCrypto infrastructure
-
-
 
         let epoch = self.current_epoch.load(Ordering::SeqCst);
 
@@ -2673,18 +2661,11 @@ impl QantoDAGOptimizations for QantoDAG {
     ) -> Result<QantoBlock, TransactionError> {
         // Use the existing optimized block creation method
 
-
-
         let validator = self.select_validator().await.unwrap_or_default();
         let chain_id = *self.num_chains.read().await;
 
         match self
-            .create_optimized_block(
-
-                &validator,
-                transactions,
-                chain_id,
-            )
+            .create_optimized_block(&validator, transactions, chain_id)
             .await
         {
             Ok(block) => Ok(block),

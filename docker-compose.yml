@@ -1,0 +1,134 @@
+version: '3.8'
+
+services:
+  qanto-node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: qanto/node:latest
+    container_name: qanto-node
+    restart: unless-stopped
+    
+    # Network configuration with correct ports
+    ports:
+      - "26656:26656"  # P2P
+      - "26657:26657"  # RPC
+      - "9944:9944"    # WebSocket
+      - "1317:1317"    # API
+      - "9090:9090"    # gRPC
+      - "9615:9615"    # Metrics
+    
+    # Volume mounts
+    volumes:
+      - qanto_data:/data
+      - qanto_config:/config
+      - qanto_secrets:/secrets
+      - ./config.toml:/config/config.toml:ro
+      - ./config-freetier.toml:/config/config-freetier.toml:ro
+    
+    # Environment variables
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      - RUST_BACKTRACE=${RUST_BACKTRACE:-1}
+      - CHAIN_ID=${CHAIN_ID:-qanto-mainnet}
+      - MONIKER=${MONIKER:-qanto-node}
+      - NODE_KEY_PATH=/secrets/node_key.json
+      - GENESIS_FILE_PATH=/config/genesis.json
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1317/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    
+    # User namespace
+    user: "1000:1000"
+    
+    # Read-only root filesystem (with exceptions)
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+    
+    # Capabilities
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    
+    networks:
+      - qanto-network
+
+  qanto-website:
+    image: qanto-website:production
+    container_name: qanto-website
+    ports:
+      - "80:80"
+    depends_on:
+      - qanto-node
+    restart: unless-stopped
+    networks:
+      - qanto-network
+  qanto-explorer:
+    build:
+      context: ./explorer
+      dockerfile: Dockerfile
+    container_name: qanto-explorer
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - QANTO_RPC_URL=http://qanto-node:1317
+      - QANTO_WS_URL=ws://qanto-node:9944
+      - PORT=3000
+    depends_on:
+      qanto-node:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.1'
+        reservations:
+          memory: 64M
+          cpus: '0.05'
+    networks:
+      - qanto-network
+
+volumes:
+  qanto_data:
+    driver: local
+  qanto_config:
+    driver: local
+  qanto_secrets:
+    driver: local
+
+networks:
+  qanto-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

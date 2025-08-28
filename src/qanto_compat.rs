@@ -1,4 +1,5 @@
 //! Qanto Compatibility Layer
+//! v0.1.0 - Initial Version
 //!
 //! This module provides compatibility interfaces that match external cryptographic
 //! libraries but use qanto-native implementations underneath. This allows for

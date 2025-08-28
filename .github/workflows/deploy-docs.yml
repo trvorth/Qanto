@@ -1,31 +1,31 @@
-name: Build Qanto Documentation
+# .github/workflows/deploy-docs.yml
+
+name: Build and Test Qanto Documentation
 
 on:
   push:
     branches: [ main ]
-    paths: 
+    paths:
       - 'qanto-docs/**'
       - '.github/workflows/deploy-docs.yml'
   pull_request:
     branches: [ main ]
-    paths: 
+    paths:
       - 'qanto-docs/**'
   workflow_dispatch:
 
-# Allow only one concurrent build
+# Allow only one concurrent build for the same branch/PR
 concurrency:
   group: "docs-build-${{ github.ref }}"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  # Build job
   build:
+    name: Build and Test Docs
     runs-on: ubuntu-latest
-    outputs:
-      build-artifact: ${{ steps.upload.outputs.artifact-id }}
     
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # Needed for git history for lastmod dates
@@ -37,48 +37,41 @@ jobs:
           cache: 'npm'
           cache-dependency-path: qanto-docs/package-lock.json
       
-      - name: Install dependencies
+      - name: Install documentation dependencies
         working-directory: ./qanto-docs
         run: npm ci
       
       - name: Build Docusaurus site
         working-directory: ./qanto-docs
+        run: npm run build
+      
+      - name: Install HTML Proofer
         run: |
-          npm run build
+          sudo apt-get update
+          sudo apt-get install -y ruby-full
+          sudo gem install html-proofer
           
-          # Add version information
-          echo "Built on $(date)" > build/BUILD_INFO.txt
-          echo "Git commit: ${{ github.sha }}" >> build/BUILD_INFO.txt
-          echo "Git ref: ${{ github.ref }}" >> build/BUILD_INFO.txt
-          echo "Workflow: ${{ github.workflow }}" >> build/BUILD_INFO.txt
-          
-      - name: Run tests
+      - name: Validate build output
         working-directory: ./qanto-docs
         run: |
           # Test that critical pages exist
           test -f build/index.html
-          test -f build/introduction/what-is-qanto/index.html
-          test -f build/api/introduction/index.html
+          test -f build/docs/introduction/what-is-qanto/index.html
           
           # Test that assets are properly generated
           test -d build/assets
           
-          # Validate HTML structure (basic checks)
-          if command -v htmlproofer &> /dev/null; then
-            htmlproofer build --disable-external --check-html --check-img-http
-          else
-            echo "Skipping HTML validation (htmlproofer not available)"
-          fi
+          # Validate internal links and HTML structure
+          htmlproofer build --disable-external --check-html --check-img-http
       
-      - name: Upload build artifacts
-        id: upload
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: docusaurus-build-${{ github.sha }}
           path: qanto-docs/build/
-          retention-days: 30
+          retention-days: 7
 
-  # Comment on PR with build info
+  # This job comments on the PR with build info
   comment-pr:
     if: github.event_name == 'pull_request'
     needs: build
@@ -104,12 +97,10 @@ jobs:
             
             Your documentation changes have been built successfully!
             
-            📊 **Build Info**:
-            - Commit: \`${{ github.sha }}\`
-            - Build Time: \`$(date -u)\`
-            - Workflow: [\`${{ github.run_id }}\`](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            - **Commit**: \`${{ github.sha }}\`
+            - **Workflow Run**: [View Action](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
             
-            The build artifacts are ready for deployment to NameCheap hosting.`;
+            The build artifact is ready for review and deployment.`;
             
             if (botComment) {
               await github.rest.issues.updateComment({
@@ -127,27 +118,24 @@ jobs:
               });
             }
 
-  # Notify build completion
+  # This job sends a notification on a successful build to main
   notify-build:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: success() && github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: build
     runs-on: ubuntu-latest
     
     steps:
       - name: Send Slack notification
-        if: always()
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
           channel: '#infrastructure'
           author_name: 'GitHub Actions'
-          title: 'Qanto Docs Build'
+          title: 'Qanto Docs Build Succeeded'
           message: |
-            Documentation build ${{ job.status }}
-            
-            🔗 Commit: ${{ github.sha }}
-            👤 Author: ${{ github.actor }}
-            📦 Build artifacts ready for NameCheap deployment
-            
+            Documentation build for the \`main\` branch completed successfully.
+            - **Commit**: <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha.slice(0,7) }}>
+            - **Author**: ${{ github.actor }}
+            The build artifacts are ready for deployment.
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

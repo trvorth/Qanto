@@ -11,16 +11,16 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 setup(
     name="qanto-sdk",
     version="1.0.0",
-    author="Qanto Network",
-    author_email="dev@qanto.network",
-    description="Python SDK for Qanto Network blockchain",
+    author="Qanto Org",
+    author_email="dev@qanto.org",
+    description="Python SDK for Qanto Org blockchain",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/qanto-network/qanto",
+    url='https://qanto.org',
     project_urls={
-        "Bug Tracker": "https://github.com/qanto-network/qanto/issues",
-        "Documentation": "https://docs.qanto.network",
-        "Source Code": "https://github.com/qanto-network/qanto",
+        "Bug Tracker": "https://github.com/qanto-org/qanto/issues",
+        "Documentation": "https://docs.qanto.org",
+        "Source Code": "https://github.com/qanto-org/qanto",
     },
     packages=find_packages(where="src"),
     package_dir={"": "src"},
@@ -65,4 +65,4 @@ setup(
     },
     include_package_data=True,
     zip_safe=False,
-}
+)

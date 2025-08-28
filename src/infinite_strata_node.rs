@@ -258,11 +258,7 @@ impl MerkleTree {
         let mut index = leaf_index;
 
         for level in &self.tree[..self.tree.len() - 1] {
-            let sibling_index = if index % 2 == 0 {
-                index + 1
-            } else {
-                index - 1
-            };
+            let sibling_index = if index % 2 == 0 { index + 1 } else { index - 1 };
             if sibling_index < level.len() {
                 proof.push(level[sibling_index].clone());
             }
@@ -343,7 +339,7 @@ impl VDFState {
 
         (output, adjusted_time, proof)
     }
-    
+
     /// A static version of the proof generation for use in a blocking context.
     fn generate_wesolowski_proof_static(
         x: &BigUint,
@@ -384,7 +380,7 @@ impl VDFState {
 
         proof
     }
-    
+
     /// Compute VDF with Wesolowski proof for time-locked consensus
     pub fn compute(&mut self, input: &[u8], time_parameter: u64) -> Vec<u8> {
         let (output, iterations, proof) = Self::run_computation_blocking(
@@ -510,7 +506,6 @@ impl VDFState {
         left_side == *y
     }
 }
-
 
 /// Zero-Knowledge Proof for privacy-preserving validation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -658,7 +653,7 @@ impl InfiniteStrataNode {
             let vdf = self.verifiable_delay_function.read().await;
             (vdf.difficulty_factor, vdf.modulus.clone())
         };
-        
+
         let mut challenge_seed_str = String::with_capacity(self.node_id.len() + 20);
         challenge_seed_str.push_str(&self.node_id);
         challenge_seed_str.push('-');
@@ -674,13 +669,13 @@ impl InfiniteStrataNode {
             VDFState::run_computation_blocking(
                 &challenge_seed_for_move,
                 time_parameter,
-                vdf_params.0, // difficulty_factor
+                vdf_params.0,  // difficulty_factor
                 &vdf_params.1, // modulus
             )
         })
         .await
         .map_err(|e| anyhow!("VDF computation task failed: {}", e))?;
-        
+
         // Step 3: Update the shared VDF state with the results under a write lock.
         {
             let mut vdf = self.verifiable_delay_function.write().await;
@@ -688,7 +683,7 @@ impl InfiniteStrataNode {
             vdf.iterations = iterations;
             vdf.proof = proof;
         }
-        
+
         info!("VDF challenge generated with {} iterations", time_parameter);
 
         // Step 2: Create threshold signature proof
@@ -745,7 +740,6 @@ impl InfiniteStrataNode {
         );
         Ok(multi_sig_proof)
     }
-
 
     /// Generates a zero-knowledge proof for the QSV protocol using Schnorr-like construction
     async fn generate_zk_proof(

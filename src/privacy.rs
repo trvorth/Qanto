@@ -1,7 +1,7 @@
 // src/privacy.rs
 
 //! --- Qanto Privacy & Untraceability Engine ---
-//! v1.0.0 - Advanced Privacy Implementation
+//! v0.1.0 - Initial Version
 //!
 //! This module implements comprehensive untraceability features including:
 //! - Ring signatures for transaction anonymity

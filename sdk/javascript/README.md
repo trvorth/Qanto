@@ -31,9 +31,9 @@ import { QantoClient, NETWORKS } from '@qanto/sdk';
 const client = new QantoClient({
   network: NETWORKS.MAINNET,
   // Optional: custom endpoints
-  httpEndpoint: 'https://api.qanto.network',
-  wsEndpoint: 'wss://ws.qanto.network',
-  graphqlEndpoint: 'https://graphql.qanto.network'
+  httpEndpoint: 'https://api.qanto.org',
+  wsEndpoint: 'wss://ws.qanto.org',
+  graphqlEndpoint: 'https://graphql.qanto.org'
 });
 
 // Get blockchain info
@@ -267,7 +267,7 @@ MIT License - see [LICENSE](../../LICENSE) file for details.
 
 ## Support
 
-- Documentation: [https://docs.qanto.network](https://docs.qanto.network)
+- Documentation: [https://docs.qanto.org](https://docs.qanto.org)
 - GitHub Issues: [https://github.com/qanto-network/qanto/issues](https://github.com/qanto-network/qanto/issues)
 - Discord: [https://discord.gg/qanto](https://discord.gg/qanto)
 - Twitter: [@QantoNetwork](https://twitter.com/QantoNetwork)

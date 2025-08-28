@@ -1,4 +1,5 @@
 //! Enhanced OMEGA: Orchestrated Multi-dimensional Execution & Governance Architecture
+//! v0.1.0 - Initial Version
 //!
 //! This module extends the core OMEGA system for Qanto, providing:
 //! - Multi-dimensional transaction execution
@@ -13,7 +14,6 @@ use crate::qantodag::QantoDAG;
 
 use anyhow::{Context, Result};
 use my_blockchain::qanto_hash;
-
 
 use crate::qanto_compat::sp_core::H256;
 use rand::Rng;
@@ -1107,12 +1107,10 @@ pub mod enhanced_simulation {
         use crate::qantodag::QantoDagConfig;
         use crate::saga::PalletSaga;
 
-
         let mock_config = QantoDagConfig {
             num_chains: 1,
             initial_validator: "mock_validator".to_string(),
             target_block_time: 10000, // 10 seconds in milliseconds
-
         };
         let mock_saga = Arc::new(PalletSaga::new(
             #[cfg(feature = "infinite-strata")]

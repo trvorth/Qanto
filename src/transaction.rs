@@ -151,9 +151,15 @@ impl Transaction {
             outputs: vec![Output {
                 address: "dummy_miner_address".to_string(),
                 amount: 50_000_000_000, // Example mining reward (50 QNTO)
-                homomorphic_encrypted: HomomorphicEncrypted { ciphertext: vec![], public_key: vec![] },
+                homomorphic_encrypted: HomomorphicEncrypted {
+                    ciphertext: vec![],
+                    public_key: vec![],
+                },
             }],
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
             metadata: HashMap::new(),
             signature: QuantumResistantSignature {
                 signer_public_key: vec![],
@@ -171,7 +177,10 @@ impl Transaction {
         let dummy_id: [u8; 32] = rng.gen();
         let dummy_sender: [u8; 32] = rng.gen();
         let dummy_receiver: [u8; 32] = rng.gen();
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
 
         let sender_str = hex::encode(dummy_sender);
         let receiver_str = hex::encode(dummy_receiver);
@@ -202,7 +211,10 @@ impl Transaction {
             outputs: vec![Output {
                 address: "dummy_miner_address".to_string(),
                 amount: 50_000_000_000, // Example mining reward (50 QNTO)
-                homomorphic_encrypted: HomomorphicEncrypted { ciphertext: vec![], public_key: vec![] },
+                homomorphic_encrypted: HomomorphicEncrypted {
+                    ciphertext: vec![],
+                    public_key: vec![],
+                },
             }],
 
             timestamp,
@@ -228,10 +240,7 @@ impl Transaction {
 
         let signature_data = Self::serialize_for_signing(&signing_payload)?;
 
-        let is_valid = QuantumResistantSignature::verify(
-             &self.signature,
-             &signature_data,
-        );
+        let is_valid = QuantumResistantSignature::verify(&self.signature, &signature_data);
 
         if !is_valid {
             return Err(TransactionError::QuantumSignatureVerification);
@@ -239,7 +248,10 @@ impl Transaction {
         Ok(())
     }
 
-    pub async fn new(config: TransactionConfig, signing_key: &crate::qanto_native_crypto::QantoPQPrivateKey) -> Result<Self, TransactionError> {
+    pub async fn new(
+        config: TransactionConfig,
+        signing_key: &crate::qanto_native_crypto::QantoPQPrivateKey,
+    ) -> Result<Self, TransactionError> {
         Self::validate_structure_pre_creation(
             &config.sender,
             &config.receiver,
@@ -281,7 +293,6 @@ impl Transaction {
 
         // --- Corrected Key Creation ---
         // Now that the traits are in scope, these calls will compile correctly.
-
 
         let mut tx = Self {
             id: String::new(),
@@ -385,7 +396,7 @@ impl Transaction {
                 error_msg.push_str("Exceeded max metadata pairs limit of ");
                 error_msg.push_str(&MAX_METADATA_PAIRS.to_string());
                 return Err(TransactionError::InvalidMetadata(error_msg));
-        }
+            }
             for (k, v) in md {
                 if k.len() > MAX_METADATA_KEY_LEN || v.len() > MAX_METADATA_VALUE_LEN {
                     return Err(TransactionError::InvalidMetadata(
@@ -508,8 +519,6 @@ impl Transaction {
         };
         let _data_to_verify = Self::serialize_for_signing(&signing_payload)?;
 
-
-
         if self.is_coinbase() {
             if self.fee != 0 {
                 return Err(TransactionError::InvalidStructure(
@@ -575,8 +584,6 @@ impl Transaction {
             timestamp: self.timestamp,
         };
         let _data_to_verify = Self::serialize_for_signing(&signing_payload)?;
-
-
 
         if self.is_coinbase() {
             if self.fee != 0 {
@@ -662,8 +669,7 @@ impl Transaction {
         let _data_to_verify = Self::serialize_for_signing(&signing_payload)?;
 
         // Signature verification removed
-         // Original error handling for signature verification removed
-
+        // Original error handling for signature verification removed
 
         if tx.is_coinbase() {
             if tx.fee != 0 {
@@ -802,27 +808,25 @@ impl Transaction {
         hex::encode(final_hash.as_bytes())
     }
 
+    pub fn generate_utxo(&self, index: u32) -> UTXO {
+        let output = &self.outputs[index as usize];
+        let mut utxo_id = String::with_capacity(self.id.len() + 12); // tx_id + "_" + index (up to 10 digits)
+        utxo_id.push_str(&self.id);
+        utxo_id.push('_');
+        utxo_id.push_str(&index.to_string());
 
+        // Use local explorer instead of external service
+        let mut explorer_link = String::with_capacity(22 + utxo_id.len()); // base URL + utxo_id
+        explorer_link.push_str("/explorer/utxo/");
+        explorer_link.push_str(&utxo_id);
 
-     pub fn generate_utxo(&self, index: u32) -> UTXO {
-         let output = &self.outputs[index as usize];
-         let mut utxo_id = String::with_capacity(self.id.len() + 12); // tx_id + "_" + index (up to 10 digits)
-         utxo_id.push_str(&self.id);
-         utxo_id.push('_');
-         utxo_id.push_str(&index.to_string());
-
-         // Use local explorer instead of external service
-         let mut explorer_link = String::with_capacity(22 + utxo_id.len()); // base URL + utxo_id
-         explorer_link.push_str("/explorer/utxo/");
-         explorer_link.push_str(&utxo_id);
-
-         UTXO {
-             address: output.address.clone(),
-             amount: output.amount,
-             tx_id: self.id.clone(),
-             output_index: index,
-             explorer_link,
-         }
+        UTXO {
+            address: output.address.clone(),
+            amount: output.amount,
+            tx_id: self.id.clone(),
+            output_index: index,
+            explorer_link,
+        }
     }
 }
 
@@ -961,7 +965,6 @@ mod tests {
             initial_validator: sender_address.clone(),
             target_block_time: 60000,
             num_chains: 1,
-
         };
         let dag_arc = QantoDAG::new(
             dag_config,
@@ -993,6 +996,3 @@ mod tests {
         Ok(())
     }
 }
-
-
-

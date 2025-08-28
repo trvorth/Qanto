@@ -53,7 +53,7 @@ These results validate the high-throughput design of the Qanto protocol, with tr
 - **✅ Post-Quantum Cryptography**: Complete CRYSTALS-Dilithium, Kyber KEM, and SPHINCS+ implementation with HSM integration, key rotation, and quantum-resistant key management
 - **✅ Cross-Chain Interoperability**: Enhanced IBC-style protocols with light client verification, atomic swaps, trustless bridges, and persistent client state mapping
 - **✅ Infinite Strata Mining**: Advanced VDF proof system with quantum-resistant key management, Merkle tree validation, and comprehensive zero-knowledge proof integration
-- **✅ AI Governance (SAGA v9.1.1)**: Production-grade neural networks with real-time analytics dashboard, predictive economic modeling, and adaptive security classification
+- **✅ AI Governance (SAGA)**: Production-grade neural networks with real-time analytics dashboard, predictive economic modeling, and adaptive security classification
 - **✅ Analytics Dashboard**: Real-time network monitoring with AI insights, security analytics, environmental metrics, and comprehensive performance tracking
 - **✅ Performance Optimization**: Hyperscale execution achieving 25M+ TPS with parallel processing, memory optimization, and efficient data structures targeting 32 BPS
 - **✅ Memory Pool Enhancement**: Priority-based queuing with advanced transaction validation, resource management, and optimized fee estimation
@@ -204,7 +204,7 @@ Basic `config.toml` setup:
 [network]
 port = 30303
 bootstrap_nodes = [
-  "/ip4/seed1.qanto.network/tcp/30303/p2p/12D3KooW..."
+  "/ip4/seed1.qanto.org/tcp/30303/p2p/12D3KooW..."
 ]
 
 [rpc]
@@ -280,7 +280,7 @@ ws.onmessage = (event) => {
 import { QuantoClient } from '@qanto/sdk';
 
 const client = new QuantoClient({
-  endpoint: 'https://mainnet.qanto.network'
+  endpoint: 'https://mainnet.qanto.org'
 });
 
 const tx = await client.sendTransaction({
@@ -387,7 +387,7 @@ qanto-cli swap complete --swap-id 0x123... --secret-key your-secret
 | Node Type | CPU | RAM | Storage | Network |
 |-----------|-----|-----|---------|----------|
 | Full Validator | 8 cores | 8-16GB | 50GB NVMe | 100Mbps |
-| Light Validator | 4 cores | 8GB | 20GB SSD | 50Mbps |
+| Light Validator | 4 cores | 8GB | 25GB SSD | 50Mbps |
 | Archive Node | 32 cores | 32GB | 500GB HDD | 1Gbps |
 | RPC Node | 16 cores | 16-32GB | 100GB SSD | 500Mbps |
 
@@ -471,16 +471,16 @@ qanto-cli node status
 
 - **Network ID**: qanto-testnet-1
 - **Chain ID**: 1001
-- **RPC**: https://testnet-rpc.qanto.network
-- **WebSocket**: wss://testnet-ws.qanto.network
-- **Explorer**: https://testnet-explorer.qanto.network
-- **Faucet**: https://faucet.qanto.network
+- **RPC**: https://testnet-rpc.qanto.org
+- **WebSocket**: wss://testnet-ws.qanto.org
+- **Explorer**: https://testnet-explorer.qanto.org
+- **Faucet**: https://faucet.qanto.org
 
 ### Quick Start
 
 ```bash
 # Get testnet tokens
-curl -X POST https://faucet.qanto.network/request \
+curl -X POST https://faucet.qanto.org/request \
   -d '{"address": "qanto1your-address..."}'
 
 # Check balance and connect
@@ -501,8 +501,8 @@ For detailed instructions, see:
 
 Report security vulnerabilities responsibly:
 
-- **Email**: security@qanto.network
-- **PGP Key**: https://qanto.network/security/pgp
+- **Email**: security@qanto.org
+- **PGP Key**: https://qanto.org/security/pgp
 - **Bug Bounty**: Up to $50,000 for critical vulnerabilities
 - **Response Time**: 24-48 hours
 
@@ -533,7 +533,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 **Qanto** - Quantum-resistant Layer-0 blockchain with hyperscale performance.
 
-Visit [qanto.network](https://qanto.network) | Join [Discord](https://discord.gg/curfp5FKWV)
+Visit [qanto.org](https://qanto.org) | Join [Discord](https://discord.gg/curfp5FKWV)
 
 ## Recent Updates
 - Fixed compilation errors in `src/bin/qantowallet.rs` by adding necessary imports, implementing HTTP fallback functions, resolving moved value issues with cloning, and correcting `QuantumResistantSignature` initialization.

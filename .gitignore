@@ -97,8 +97,6 @@ node*/*.txt
 /docs/whitepaper/assets
 /docs/Deployment_Strategy.md
 /mining_rig_config.toml
-/Dockerfile
-/docker-compose.yml
 /docker-compose.production.yml
 /docker-compose.*.yml
 /deploy.sh
@@ -111,9 +109,15 @@ node*/*.txt
 /wrangler.toml
 /config.toml
 /.cargo/config.toml
-
+/explorer
+/website
+/explorer/node_modules
+/website/node_modules
+/website/build
+/website/dist
 /hydra_manifest.toml
 /traceforce_watchlist.csv
+.github/workflows/rust.yml
 
 # --- Language & Framework Specific ---
 # Python

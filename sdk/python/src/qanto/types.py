@@ -30,14 +30,14 @@ class NetworkEndpoints(BaseModel):
 
 DEFAULT_ENDPOINTS = {
     Network.MAINNET: NetworkEndpoints(
-        http="https://api.qanto.network",
-        websocket="wss://ws.qanto.network",
-        graphql="https://graphql.qanto.network"
+        http="https://api.qanto.org",
+        websocket="wss://ws.qanto.org",
+        graphql="https://graphql.qanto.org"
     ),
     Network.TESTNET: NetworkEndpoints(
-        http="https://testnet-api.qanto.network",
-        websocket="wss://testnet-ws.qanto.network",
-        graphql="https://testnet-graphql.qanto.network"
+        http="https://testnet-api.qanto.org",
+        websocket="wss://testnet-ws.qanto.org",
+        graphql="https://testnet-graphql.qanto.org"
     ),
     Network.LOCAL: NetworkEndpoints(
         http="p2p://discovery",  # Use P2P discovery instead of hardcoded endpoint

@@ -1,7 +1,7 @@
 // src/decentralization.rs
 
 //! --- Qanto Decentralization Engine ---
-//! v1.0.0 - Full Decentralization Implementation
+//! v0.1.0 - Initial Version
 //!
 //! This module implements comprehensive decentralization features including:
 //! - Distributed consensus mechanisms
@@ -2240,10 +2240,10 @@ mod tests {
     use crate::saga::{GovernanceProposal, PalletSaga};
     use crate::zkp::ZKProofSystem;
     use std::collections::HashMap;
-    use std::sync::atomic::AtomicU64;
     use std::net::SocketAddr;
+    use std::sync::atomic::AtomicU64;
     use std::sync::Arc;
-        use tokio::sync::Mutex;
+    use tokio::sync::Mutex;
     use tokio::sync::RwLock;
     use uuid::Uuid;
 
@@ -2280,15 +2280,12 @@ mod tests {
             _ => panic!("Expected PostQuantum keypair"),
         };
 
-
-
         let listen_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
         // Create mock QantoDAG - in real implementation this would be properly initialized
         let dag_config = crate::qantodag::QantoDagConfig {
             num_chains: 4,
             initial_validator: "test_validator".to_string(),
             target_block_time: 10,
-
         };
         // Create test QantoStorage with unique path to avoid conflicts
         let unique_id = Uuid::new_v4();

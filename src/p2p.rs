@@ -1,13 +1,14 @@
 //! --- P2P Networking Layer ---
-//! v1.2.4 - Final Build Edition
-//! This version resolves all remaining build errors and warnings.
+//! v0.1.0 - Initial Version
 //!
-//! - COMPATIBILITY FIX: Replaced the final usage of `LatticeSignature` with
-//!   `QuantumResistantSignature`.
-//! - API CORRECTION: Updated key handling to use the correct constants and methods
-//!   from the `pqcrypto-dilithium` v0.5.0 library.
-//! - LINTING: Corrected `tracing` macro usage to skip non-debuggable keys,
-//!   resolving the `E0277` trait bound errors.
+//! This module implements the P2P networking layer for Qanto. It includes:
+//! - Peer discovery and management
+//! - Message routing and delivery
+//! - Network security and encryption
+//! - Mempool management
+//! - DAG synchronization
+//! - Peer-to-peer message exchange
+//! - Network event handling
 
 use crate::config::P2pConfig;
 use crate::mempool::Mempool;

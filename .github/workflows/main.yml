@@ -1,3 +1,5 @@
+# .github/workflows/main.yml
+
 name: Qanto CI/CD Pipeline
 
 on:
@@ -14,18 +16,13 @@ env:
 
 jobs:
   test:
+    name: Test & Lint Rust Code
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: 'package-lock.json'
-      
-      - name: Setup Rust
+      - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -35,18 +32,27 @@ jobs:
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           
-      - name: Run tests
-        run: cargo test --all-features
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy linter
+        run: cargo clippy --workspace -- -D warnings
         
-      - name: Run clippy
-        run: cargo clippy -- -D warnings
+      - name: Build project
+        run: cargo build --workspace --verbose
+        
+      - name: Run tests
+        run: cargo test --workspace --all-features
 
   build-and-push:
+    name: Build & Push Docker Images
     needs: test
     runs-on: ubuntu-latest
     permissions:
@@ -54,26 +60,20 @@ jobs:
       packages: write
       
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: 'package-lock.json'
+      - name: Checkout repository
+        uses: actions/checkout@v4
       
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         
-      - name: Log in to Container Registry
+      - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
           
-      - name: Extract metadata
+      - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -89,7 +89,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: Dockerfile.freetier
+          file: Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -99,16 +99,20 @@ jobs:
       - name: Build and push website image
         uses: docker/build-push-action@v5
         with:
-          context: ./qanto-website
+          context: ./website # Assuming the website Dockerfile is in this directory
           push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository }}-website:${{ github.sha }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-website:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           
       - name: Build and push docs image
         uses: docker/build-push-action@v5
         with:
-          context: ./qanto-docs
+          context: ./qanto-docs # Assuming the docs Dockerfile is in this directory
           push: true
-          tags: ${{ env.REGISTRY }}/${{ github.repository }}-docs:${{ github.sha }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-docs:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy-staging:
     if: github.ref == 'refs/heads/develop'
@@ -124,12 +128,12 @@ jobs:
         with:
           version: 'latest'
           
-      - name: Configure kubectl
+      - name: Configure kubectl for Staging
         run: |
           echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > kubeconfig
           export KUBECONFIG=kubeconfig
           
-      - name: Deploy to staging
+      - name: Deploy to Staging
         run: |
           helm upgrade --install qanto-staging helm/boot-node \
             --namespace qanto-staging \
@@ -152,12 +156,12 @@ jobs:
         with:
           version: 'latest'
           
-      - name: Configure kubectl
+      - name: Configure kubectl for Production
         run: |
           echo "${{ secrets.KUBE_CONFIG_PROD }}" | base64 -d > kubeconfig
           export KUBECONFIG=kubeconfig
           
-      - name: Deploy to production
+      - name: Deploy to Production
         run: |
           helm upgrade --install qanto-mainnet helm/boot-node \
             --namespace qanto-mainnet \

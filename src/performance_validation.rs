@@ -13,8 +13,8 @@ use tracing::info;
 
 use crate::performance_optimizations::OptimizedTransactionProcessor;
 
-use crate::qantodag::{QantoBlock, QantoDAG, QantoDagConfig};
 use crate::post_quantum_crypto::QantoPQPrivateKey;
+use crate::qantodag::{QantoBlock, QantoDAG, QantoDagConfig};
 use crate::saga::PalletSaga;
 use crate::transaction::Transaction;
 use crate::types::HomomorphicEncrypted;
@@ -162,7 +162,9 @@ impl PerformanceValidator {
 
             // Simulate high-throughput transaction processing
             let tx_batch = 500_000; // 500k transactions per block simulation
-            let transactions = self.generate_test_transactions(tx_batch as usize, signing_key, public_key).await;
+            let transactions = self
+                .generate_test_transactions(tx_batch as usize, signing_key, public_key)
+                .await;
             total_transactions += transactions.len() as u64;
             self.transactions_processed
                 .store(total_transactions, Ordering::Relaxed);
@@ -269,7 +271,6 @@ impl PerformanceValidator {
 
         for i in 0..count {
             let _wallet = &wallets[i % 10];
-    
 
             let mut sender = String::with_capacity(25);
             sender.push_str("shard_");
@@ -295,7 +296,12 @@ impl PerformanceValidator {
                 metadata: None,
             };
 
-            if let Ok(tx) = Transaction::new(tx_config, &crate::qanto_native_crypto::QantoPQPrivateKey::new_dummy()).await {
+            if let Ok(tx) = Transaction::new(
+                tx_config,
+                &crate::qanto_native_crypto::QantoPQPrivateKey::new_dummy(),
+            )
+            .await
+            {
                 transactions.push(tx);
             }
         }
@@ -322,7 +328,6 @@ impl PerformanceValidator {
 
         // Create a temporary wallet for test keys
         let _wallet = Wallet::new()?;
-
 
         let (paillier_pk, _) = HomomorphicEncrypted::generate_keypair();
         let creation_data = crate::qantodag::QantoBlockCreationData {
@@ -472,7 +477,6 @@ pub async fn validate_performance_targets(
         initial_validator: crate::qantodag::DEV_ADDRESS.to_string(),
         target_block_time: 30,
         num_chains: 4,
-
     };
 
     let dag_instance = QantoDAG::new(dag_config, saga_pallet, storage)?;
@@ -481,7 +485,9 @@ pub async fn validate_performance_targets(
     let validator = PerformanceValidator::new(dag);
     let (_paillier_pk, _) = HomomorphicEncrypted::generate_keypair();
 
-    let result = validator.run_comprehensive_validation(duration_secs, &signing_key, &public_key).await;
+    let result = validator
+        .run_comprehensive_validation(duration_secs, &signing_key, &public_key)
+        .await;
 
     // Clean up test storage
     // Note: QantoStorage handles cleanup automatically
@@ -496,8 +502,6 @@ mod tests {
     #[tokio::test]
     async fn test_bps_validation() {
         // Create test wallet for keys
-
-
 
         // Create SAGA pallet
         #[cfg(feature = "infinite-strata")]
@@ -524,7 +528,6 @@ mod tests {
             initial_validator: crate::qantodag::DEV_ADDRESS.to_string(),
             target_block_time: 30,
             num_chains: 4,
-
         };
 
         let dag_instance = QantoDAG::new(dag_config, saga_pallet, storage).unwrap();
@@ -542,8 +545,6 @@ mod tests {
     #[tokio::test]
     async fn test_tps_validation() {
         // Create test wallet for keys
-
-
 
         // Create SAGA pallet
         #[cfg(feature = "infinite-strata")]
@@ -571,7 +572,6 @@ mod tests {
             initial_validator: crate::qantodag::DEV_ADDRESS.to_string(),
             target_block_time: 30,
             num_chains: 4,
-
         };
 
         let dag_instance = QantoDAG::new(dag_config, saga_pallet, storage).unwrap();

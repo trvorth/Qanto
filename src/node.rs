@@ -290,7 +290,6 @@ impl Node {
             initial_validator,
             target_block_time: config.target_block_time,
             num_chains: config.num_chains,
-
         };
         info!("QantoDagConfig configured successfully");
 
@@ -403,11 +402,10 @@ impl Node {
                     if let Err(e) = isnm_service_clone.run_periodic_check().await {
                         warn!("[ISNM] Periodic check failed: {}", e);
                     }
-                    
+
                     // FIX: Removed the redundant, direct call to perform_quantum_state_verification.
                     // The `run_periodic_check` function already handles this internally. Calling it
                     // twice was causing unnecessary CPU load and stalling the miner.
-
                 }
                 #[allow(unreachable_code)]
                 Ok(())
@@ -626,7 +624,7 @@ impl Node {
                         miner_wallet_clone,
                         miner_mempool_clone,
                         miner_utxos_clone,
-                         miner_clone,
+                        miner_clone,
                         optimized_block_builder_clone,
                         DEFAULT_MINING_INTERVAL_SECS,
                         miner_shutdown_token,

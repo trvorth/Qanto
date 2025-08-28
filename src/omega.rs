@@ -1,23 +1,21 @@
 // src/omega.rs
 
 //! --- ΛΣ-ΩMEGA™ (Lambda Sigma Omega) Protocol ---
-//! v1.4.0 - Critical State Override & Finalized Tests
-//! This is the fundamental, reflexive security layer of a Qanto node. It is not
-//! an optional component; it is the core identity and stability protocol.
+//! v0.1.0 - Initial Version
 //!
-//! ΩMEGA ensures the node maintains a stable, high-entropy "sense of self."
-//! It does this by continuously evolving a cryptographic identity based on a stream
-//! of system entropy and its own operational history.
+//! ΩMEGA is the cornerstone of Qanto's security model. It ensures that no single
+//! point of failure can compromise the entire network. If a node's identity is
+//! corrupted, it can be quickly replaced with a new, secure identity.
 //!
-//! When a critical, state-altering action is requested (like accepting a new block
-//! or transaction), the node first "reflects" on the action. It simulates the
-//! action's impact on its own identity *before* committing to it.
+//! This module implements the ΩMEGA protocol, including:
+//! - Identity generation and evolution
+//! - Action reflection and simulation
+//! - Stability threshold enforcement
+//! - Entropy management and update
+//! - Global threat level tracking
 //!
-//! If the reflection results in a chaotic, low-entropy, or unstable identity state,
-//! ΩMEGA forces the node to reject the action at a fundamental level. This provides
-//! a powerful, last-line-of-defense against sophisticated network attacks, internal
-//! state corruption, and emergent consensus failures. It doesn't just protect the
-//! system; it *is* the system's instinct for survival.
+//! ΩMEGA is a critical component of Qanto's security architecture. It is not
+//! optional; it is the core of the system's security.
 
 use crate::qanto_compat::sp_core::H256;
 use crate::qantodag::QantoBlock;
