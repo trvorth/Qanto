@@ -6,9 +6,10 @@
 
 use anyhow::Result;
 use clap::{Arg, Command};
+use my_blockchain::qanto_hash;
+use qanto::qanto_compat::sp_core::H256;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use sp_core::H256;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -708,8 +709,9 @@ impl QantoRelayer {
 
     /// Calculate security hash for packet data
     fn calculate_security_hash(data: &[u8]) -> H256 {
-        let hash = blake3::hash(data);
-        H256::from_slice(hash.as_bytes())
+        let hash = qanto_hash(data);
+        let hash_bytes = hash.as_bytes();
+        H256::from_slice(hash_bytes)
     }
 
     /// Process a single packet
@@ -849,12 +851,11 @@ impl QantoRelayer {
         // Simulate OMEGA protocol integration
         // In production, this would integrate with the actual OMEGA system
 
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(packet.id.as_bytes());
-        hasher.update(&packet.data);
-        hasher.update(&packet.security_hash.0);
-
-        let action_hash = hasher.finalize();
+        let mut combined = Vec::new();
+        combined.extend_from_slice(packet.id.as_bytes());
+        combined.extend_from_slice(&packet.data);
+        combined.extend_from_slice(&packet.security_hash.0);
+        let action_hash = qanto_hash(&combined);
         let hash_sum: u32 = action_hash
             .as_bytes()
             .iter()

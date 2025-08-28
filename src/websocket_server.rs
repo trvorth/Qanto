@@ -79,7 +79,7 @@ pub enum WebSocketMessage {
         confirmations: u32,
     },
     AnalyticsUpdate {
-        data: AnalyticsDashboardData,
+        data: Box<AnalyticsDashboardData>,
         timestamp: u64,
     },
     AlertNotification {
@@ -200,7 +200,7 @@ impl WebSocketServerState {
     /// Broadcast analytics dashboard data to subscribed clients
     pub async fn broadcast_analytics_data(&self, data: &AnalyticsDashboardData) {
         let _message = WebSocketMessage::AnalyticsUpdate {
-            data: data.clone(),
+            data: Box::new(data.clone()),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -214,8 +214,10 @@ impl WebSocketServerState {
 
     /// Broadcast network health update to subscribed clients
     pub async fn broadcast_network_health(&self, health: NetworkHealth) {
-        if let Err(e) = self.network_health_sender.send(health) {
-            warn!("Failed to broadcast network health: {}", e);
+        if self.network_health_sender.receiver_count() > 0 {
+            if let Err(e) = self.network_health_sender.send(health) {
+                warn!("Failed to broadcast network health: {}", e);
+            }
         }
     }
 
@@ -377,7 +379,7 @@ async fn handle_websocket(socket: WebSocket, state: WebSocketServerState) {
             Ok(analytics_data) = analytics_rx.recv() => {
                 if client_has_subscription(&state, &client_id, &SubscriptionType::Analytics).await {
                     let message = WebSocketMessage::AnalyticsUpdate {
-                        data: analytics_data,
+                        data: Box::new(analytics_data),
                         timestamp: std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap()

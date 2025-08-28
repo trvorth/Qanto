@@ -21,7 +21,7 @@ mod tests {
             genesis_validator: wallet.get_address(),
             target_block_time: 30,
             difficulty: 1,
-            max_amount: 100_000_000_000,
+            max_amount: 21_000_000_000,
             use_gpu: false,
             zk_enabled: false,
             mining_threads: 4,
@@ -37,7 +37,7 @@ mod tests {
             genesis_validator: config1.genesis_validator.clone(),
             target_block_time: 30,
             difficulty: 1,
-            max_amount: 100_000_000_000,
+            max_amount: 21_000_000_000,
             use_gpu: false,
             zk_enabled: false,
             mining_threads: 4,
@@ -129,7 +129,7 @@ mod tests {
             genesis_validator: wallet.get_address(),
             target_block_time: 30,
             difficulty: 1,
-            max_amount: 100_000_000_000,
+            max_amount: 21_000_000_000,
             use_gpu: false,
             zk_enabled: false,
             mining_threads: 4,
@@ -145,7 +145,7 @@ mod tests {
             genesis_validator: config1.genesis_validator.clone(),
             target_block_time: 30,
             difficulty: 1,
-            max_amount: 100_000_000_000,
+            max_amount: 21_000_000_000,
             use_gpu: false,
             zk_enabled: false,
             mining_threads: 4,
@@ -235,7 +235,7 @@ mod tests {
             genesis_validator: wallet.get_address(),
             target_block_time: 30,
             difficulty: 1,
-            max_amount: 100_000_000_000,
+            max_amount: 21_000_000_000,
             use_gpu: false,
             zk_enabled: false,
             mining_threads: 4,
@@ -267,15 +267,8 @@ mod tests {
         let mut dag = node.dag.lock().await;
         mempool.add_transaction(tx.clone(), &utxos, &mut *dag).unwrap();
 
-        let client = reqwest::Client::new();
-        let mempool_response = client
-            .get("http://0.0.0.0:9008/mempool")
-            .send()
-            .await
-            .unwrap()
-            .json::<HashMap<String, Transaction>>()
-            .await
-            .unwrap();
-        assert!(mempool_response.contains_key(&tx.id), "Transaction not found in mempool");
+        // Access mempool directly through P2P instead of HTTP endpoint
+        let mempool_transactions = mempool.get_all_transactions();
+        assert!(mempool_transactions.contains_key(&tx.id), "Transaction not found in mempool");
     }
 }

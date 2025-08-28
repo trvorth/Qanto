@@ -1,0 +1,815 @@
+//! Unified metrics system for Qanto blockchain
+//! This module provides a centralized metrics collection and reporting system
+//! that eliminates duplication across the codebase.
+
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Comprehensive performance metrics for the entire Qanto system
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QantoMetrics {
+    // Core blockchain metrics
+    #[serde(with = "atomic_serde")]
+    pub blocks_processed: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub transactions_processed: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub validation_time_ms: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub block_creation_time_ms: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub cache_hits: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub cache_misses: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub concurrent_validations: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub queue_depth: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub last_block_time: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub throughput_bps: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub memory_usage_mb: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub cpu_utilization: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub disk_io_ops: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub network_bytes_sent: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub network_bytes_received: AtomicU64,
+
+    // Performance optimization metrics
+    pub simd_operations: AtomicU64,
+    pub lock_free_operations: AtomicU64,
+    pub pipeline_stages_completed: AtomicU64,
+    pub prefetch_hits: AtomicU64,
+    pub prefetch_misses: AtomicU64,
+    pub batch_processing_time_ns: AtomicU64,
+    pub memory_pool_allocations: AtomicU64,
+    pub zero_copy_operations: AtomicU64,
+    pub work_stealing_tasks: AtomicU64,
+    pub parallel_signature_verifications: AtomicU64,
+    pub utxo_cache_efficiency: AtomicU64,
+    pub transaction_throughput_tps: AtomicU64,
+    pub parallel_validations: AtomicU64,
+    pub batch_processing_ops: AtomicU64,
+    pub compression_ratio: AtomicU64, // stored as percentage * 100
+
+    // Network and consensus metrics
+    pub tps: AtomicU64,
+    pub finality_ms: AtomicU64,
+    pub validator_count: AtomicU64,
+    pub shard_count: AtomicU64,
+    pub cross_shard_tps: AtomicU64,
+    pub storage_efficiency: AtomicU64, // Stored as u64 * 1000 for precision
+    pub network_bandwidth: AtomicU64,
+    pub consensus_latency: AtomicU64,
+    pub transaction_volume: AtomicU64,
+    pub average_gas_usage: AtomicU64, // stored as integer * 1000
+    pub network_load: AtomicU64,      // stored as percentage * 10000
+
+    // SAGA-specific metrics
+    pub throughput: AtomicU64, // Stored as u64 * 1000 for precision
+    pub latency: AtomicU64,    // Stored as u64 * 1000 for precision
+    pub error_rate: AtomicU64, // Stored as u64 * 1000 for precision
+    pub resource_utilization: AtomicU64, // Stored as u64 * 1000 for precision
+    pub security_score: AtomicU64, // Stored as u64 * 1000 for precision
+    pub stability_index: AtomicU64, // Stored as u64 * 1000 for precision
+
+    // Validator metrics
+    pub blocks_produced: AtomicU64,
+    pub blocks_validated: AtomicU64,
+    pub uptime_percentage: AtomicU64, // stored as percentage * 10000
+    pub response_time_ms: AtomicU64,
+    pub byzantine_faults: AtomicU64,
+    pub governance_participation: AtomicU64, // stored as percentage * 10000
+
+    // Network metrics
+    pub latency_ms: AtomicU64,            // stored as integer * 1000
+    pub bandwidth_utilization: AtomicU64, // stored as percentage * 10000
+    pub packet_loss_rate: AtomicU64,      // stored as percentage * 10000
+    pub connection_stability: AtomicU64,  // stored as percentage * 10000
+    pub message_throughput: AtomicU64,    // stored as integer * 1000
+
+    // Network health metrics
+    pub tps_current: AtomicU64,    // stored as integer * 1000
+    pub tps_average_1h: AtomicU64, // stored as integer * 1000
+    pub tps_peak_24h: AtomicU64,   // stored as integer * 1000
+    pub finality_time_ms: AtomicU64,
+    pub network_congestion: AtomicU64, // stored as percentage * 10000
+    pub block_propagation_time: AtomicU64, // stored as integer * 1000
+    pub mempool_size: AtomicU64,
+
+    // Relayer metrics
+    pub relayer_success_rate: AtomicU64, // Stored as percentage * 100
+    pub relayer_average_latency: AtomicU64,
+    pub relayer_total_fees_earned: AtomicU64, // Stored as u64 (truncated from u128)
+    pub relayer_packets_relayed: AtomicU64,
+    pub relayer_last_active: AtomicU64,
+
+    // Interoperability metrics
+    pub total_channels: AtomicU64,
+    pub open_channels: AtomicU64,
+    pub total_bridges: AtomicU64,
+    pub active_bridges: AtomicU64,
+    pub total_swaps: AtomicU64,
+    pub completed_swaps: AtomicU64,
+    pub active_relayers: AtomicU64,
+    pub total_relayers: AtomicU64,
+
+    // Enhanced simulation metrics
+    pub omega_rejected_transactions: AtomicU64,
+    pub cross_chain_effects_generated: AtomicU64,
+    pub governance_proposals_created: AtomicU64,
+    pub governance_proposals_passed: AtomicU64,
+    pub governance_proposals_omega_rejected: AtomicU64,
+    pub quantum_proofs_generated: AtomicU64,
+    pub average_stability_score: AtomicU64, // Stored as percentage * 100
+    pub threat_level_escalations: AtomicU64,
+
+    // Timestamp for metrics collection
+    pub last_updated: AtomicU64,
+}
+
+impl Default for QantoMetrics {
+    fn default() -> Self {
+        Self {
+            // Core blockchain metrics
+            blocks_processed: AtomicU64::new(0),
+            transactions_processed: AtomicU64::new(0),
+            validation_time_ms: AtomicU64::new(0),
+            block_creation_time_ms: AtomicU64::new(0),
+            cache_hits: AtomicU64::new(0),
+            cache_misses: AtomicU64::new(0),
+            concurrent_validations: AtomicU64::new(0),
+            queue_depth: AtomicU64::new(0),
+            last_block_time: AtomicU64::new(0),
+            throughput_bps: AtomicU64::new(0),
+            memory_usage_mb: AtomicU64::new(0),
+            cpu_utilization: AtomicU64::new(0),
+            disk_io_ops: AtomicU64::new(0),
+            network_bytes_sent: AtomicU64::new(0),
+            network_bytes_received: AtomicU64::new(0),
+
+            // Performance optimization metrics
+            simd_operations: AtomicU64::new(0),
+            lock_free_operations: AtomicU64::new(0),
+            pipeline_stages_completed: AtomicU64::new(0),
+            prefetch_hits: AtomicU64::new(0),
+            prefetch_misses: AtomicU64::new(0),
+            batch_processing_time_ns: AtomicU64::new(0),
+            memory_pool_allocations: AtomicU64::new(0),
+            zero_copy_operations: AtomicU64::new(0),
+            work_stealing_tasks: AtomicU64::new(0),
+            parallel_signature_verifications: AtomicU64::new(0),
+            utxo_cache_efficiency: AtomicU64::new(0),
+            transaction_throughput_tps: AtomicU64::new(0),
+            parallel_validations: AtomicU64::new(0),
+            batch_processing_ops: AtomicU64::new(0),
+            compression_ratio: AtomicU64::new(0),
+
+            // Network and consensus metrics
+            tps: AtomicU64::new(0),
+            finality_ms: AtomicU64::new(0),
+            validator_count: AtomicU64::new(0),
+            shard_count: AtomicU64::new(0),
+            cross_shard_tps: AtomicU64::new(0),
+            storage_efficiency: AtomicU64::new(0),
+            network_bandwidth: AtomicU64::new(0),
+            consensus_latency: AtomicU64::new(0),
+            transaction_volume: AtomicU64::new(0),
+            average_gas_usage: AtomicU64::new(0),
+            network_load: AtomicU64::new(0),
+
+            // SAGA-specific metrics
+            throughput: AtomicU64::new(0),
+            latency: AtomicU64::new(0),
+            error_rate: AtomicU64::new(0),
+            resource_utilization: AtomicU64::new(0),
+            security_score: AtomicU64::new(0),
+            stability_index: AtomicU64::new(0),
+
+            // Validator metrics
+            blocks_produced: AtomicU64::new(0),
+            blocks_validated: AtomicU64::new(0),
+            uptime_percentage: AtomicU64::new(0),
+            response_time_ms: AtomicU64::new(0),
+            byzantine_faults: AtomicU64::new(0),
+            governance_participation: AtomicU64::new(0),
+
+            // Network metrics
+            latency_ms: AtomicU64::new(0),
+            bandwidth_utilization: AtomicU64::new(0),
+            packet_loss_rate: AtomicU64::new(0),
+            connection_stability: AtomicU64::new(0),
+            message_throughput: AtomicU64::new(0),
+
+            // Network health metrics
+            tps_current: AtomicU64::new(0),
+            tps_average_1h: AtomicU64::new(0),
+            tps_peak_24h: AtomicU64::new(0),
+            finality_time_ms: AtomicU64::new(0),
+            network_congestion: AtomicU64::new(0),
+            block_propagation_time: AtomicU64::new(0),
+            mempool_size: AtomicU64::new(0),
+
+            // Relayer metrics
+            relayer_success_rate: AtomicU64::new(0),
+            relayer_average_latency: AtomicU64::new(0),
+            relayer_total_fees_earned: AtomicU64::new(0),
+            relayer_packets_relayed: AtomicU64::new(0),
+            relayer_last_active: AtomicU64::new(0),
+
+            // Interoperability metrics
+            total_channels: AtomicU64::new(0),
+            open_channels: AtomicU64::new(0),
+            total_bridges: AtomicU64::new(0),
+            active_bridges: AtomicU64::new(0),
+            total_swaps: AtomicU64::new(0),
+            completed_swaps: AtomicU64::new(0),
+            active_relayers: AtomicU64::new(0),
+            total_relayers: AtomicU64::new(0),
+
+            // Enhanced simulation metrics
+            omega_rejected_transactions: AtomicU64::new(0),
+            cross_chain_effects_generated: AtomicU64::new(0),
+            governance_proposals_created: AtomicU64::new(0),
+            governance_proposals_passed: AtomicU64::new(0),
+            governance_proposals_omega_rejected: AtomicU64::new(0),
+            quantum_proofs_generated: AtomicU64::new(0),
+            average_stability_score: AtomicU64::new(0),
+            threat_level_escalations: AtomicU64::new(0),
+
+            // Timestamp for metrics collection
+            last_updated: AtomicU64::new(0),
+        }
+    }
+}
+
+impl Clone for QantoMetrics {
+    fn clone(&self) -> Self {
+        QantoMetrics {
+            blocks_processed: AtomicU64::new(self.blocks_processed.load(Ordering::Relaxed)),
+            transactions_processed: AtomicU64::new(
+                self.transactions_processed.load(Ordering::Relaxed),
+            ),
+            validation_time_ms: AtomicU64::new(self.validation_time_ms.load(Ordering::Relaxed)),
+            block_creation_time_ms: AtomicU64::new(
+                self.block_creation_time_ms.load(Ordering::Relaxed),
+            ),
+            cache_hits: AtomicU64::new(self.cache_hits.load(Ordering::Relaxed)),
+            cache_misses: AtomicU64::new(self.cache_misses.load(Ordering::Relaxed)),
+            concurrent_validations: AtomicU64::new(
+                self.concurrent_validations.load(Ordering::Relaxed),
+            ),
+            queue_depth: AtomicU64::new(self.queue_depth.load(Ordering::Relaxed)),
+            last_block_time: AtomicU64::new(self.last_block_time.load(Ordering::Relaxed)),
+            throughput_bps: AtomicU64::new(self.throughput_bps.load(Ordering::Relaxed)),
+            memory_usage_mb: AtomicU64::new(self.memory_usage_mb.load(Ordering::Relaxed)),
+            cpu_utilization: AtomicU64::new(self.cpu_utilization.load(Ordering::Relaxed)),
+            disk_io_ops: AtomicU64::new(self.disk_io_ops.load(Ordering::Relaxed)),
+            network_bytes_sent: AtomicU64::new(self.network_bytes_sent.load(Ordering::Relaxed)),
+            network_bytes_received: AtomicU64::new(
+                self.network_bytes_received.load(Ordering::Relaxed),
+            ),
+            simd_operations: AtomicU64::new(self.simd_operations.load(Ordering::Relaxed)),
+            lock_free_operations: AtomicU64::new(self.lock_free_operations.load(Ordering::Relaxed)),
+            pipeline_stages_completed: AtomicU64::new(
+                self.pipeline_stages_completed.load(Ordering::Relaxed),
+            ),
+            prefetch_hits: AtomicU64::new(self.prefetch_hits.load(Ordering::Relaxed)),
+            prefetch_misses: AtomicU64::new(self.prefetch_misses.load(Ordering::Relaxed)),
+            batch_processing_time_ns: AtomicU64::new(
+                self.batch_processing_time_ns.load(Ordering::Relaxed),
+            ),
+            memory_pool_allocations: AtomicU64::new(
+                self.memory_pool_allocations.load(Ordering::Relaxed),
+            ),
+            zero_copy_operations: AtomicU64::new(self.zero_copy_operations.load(Ordering::Relaxed)),
+            work_stealing_tasks: AtomicU64::new(self.work_stealing_tasks.load(Ordering::Relaxed)),
+            parallel_signature_verifications: AtomicU64::new(
+                self.parallel_signature_verifications
+                    .load(Ordering::Relaxed),
+            ),
+            utxo_cache_efficiency: AtomicU64::new(
+                self.utxo_cache_efficiency.load(Ordering::Relaxed),
+            ),
+            transaction_throughput_tps: AtomicU64::new(
+                self.transaction_throughput_tps.load(Ordering::Relaxed),
+            ),
+            parallel_validations: AtomicU64::new(self.parallel_validations.load(Ordering::Relaxed)),
+            batch_processing_ops: AtomicU64::new(self.batch_processing_ops.load(Ordering::Relaxed)),
+            compression_ratio: AtomicU64::new(self.compression_ratio.load(Ordering::Relaxed)),
+            tps: AtomicU64::new(self.tps.load(Ordering::Relaxed)),
+            finality_ms: AtomicU64::new(self.finality_ms.load(Ordering::Relaxed)),
+            validator_count: AtomicU64::new(self.validator_count.load(Ordering::Relaxed)),
+            shard_count: AtomicU64::new(self.shard_count.load(Ordering::Relaxed)),
+            cross_shard_tps: AtomicU64::new(self.cross_shard_tps.load(Ordering::Relaxed)),
+            storage_efficiency: AtomicU64::new(self.storage_efficiency.load(Ordering::Relaxed)),
+            network_bandwidth: AtomicU64::new(self.network_bandwidth.load(Ordering::Relaxed)),
+            consensus_latency: AtomicU64::new(self.consensus_latency.load(Ordering::Relaxed)),
+            transaction_volume: AtomicU64::new(self.transaction_volume.load(Ordering::Relaxed)),
+            average_gas_usage: AtomicU64::new(self.average_gas_usage.load(Ordering::Relaxed)),
+            network_load: AtomicU64::new(self.network_load.load(Ordering::Relaxed)),
+            throughput: AtomicU64::new(self.throughput.load(Ordering::Relaxed)),
+            latency: AtomicU64::new(self.latency.load(Ordering::Relaxed)),
+            error_rate: AtomicU64::new(self.error_rate.load(Ordering::Relaxed)),
+            resource_utilization: AtomicU64::new(self.resource_utilization.load(Ordering::Relaxed)),
+            security_score: AtomicU64::new(self.security_score.load(Ordering::Relaxed)),
+            stability_index: AtomicU64::new(self.stability_index.load(Ordering::Relaxed)),
+            blocks_produced: AtomicU64::new(self.blocks_produced.load(Ordering::Relaxed)),
+            blocks_validated: AtomicU64::new(self.blocks_validated.load(Ordering::Relaxed)),
+            uptime_percentage: AtomicU64::new(self.uptime_percentage.load(Ordering::Relaxed)),
+            response_time_ms: AtomicU64::new(self.response_time_ms.load(Ordering::Relaxed)),
+            byzantine_faults: AtomicU64::new(self.byzantine_faults.load(Ordering::Relaxed)),
+            governance_participation: AtomicU64::new(
+                self.governance_participation.load(Ordering::Relaxed),
+            ),
+            latency_ms: AtomicU64::new(self.latency_ms.load(Ordering::Relaxed)),
+            bandwidth_utilization: AtomicU64::new(
+                self.bandwidth_utilization.load(Ordering::Relaxed),
+            ),
+            packet_loss_rate: AtomicU64::new(self.packet_loss_rate.load(Ordering::Relaxed)),
+            connection_stability: AtomicU64::new(self.connection_stability.load(Ordering::Relaxed)),
+            message_throughput: AtomicU64::new(self.message_throughput.load(Ordering::Relaxed)),
+            tps_current: AtomicU64::new(self.tps_current.load(Ordering::Relaxed)),
+            tps_average_1h: AtomicU64::new(self.tps_average_1h.load(Ordering::Relaxed)),
+            tps_peak_24h: AtomicU64::new(self.tps_peak_24h.load(Ordering::Relaxed)),
+            finality_time_ms: AtomicU64::new(self.finality_time_ms.load(Ordering::Relaxed)),
+            network_congestion: AtomicU64::new(self.network_congestion.load(Ordering::Relaxed)),
+            block_propagation_time: AtomicU64::new(
+                self.block_propagation_time.load(Ordering::Relaxed),
+            ),
+            mempool_size: AtomicU64::new(self.mempool_size.load(Ordering::Relaxed)),
+            relayer_success_rate: AtomicU64::new(self.relayer_success_rate.load(Ordering::Relaxed)),
+            relayer_average_latency: AtomicU64::new(
+                self.relayer_average_latency.load(Ordering::Relaxed),
+            ),
+            relayer_total_fees_earned: AtomicU64::new(
+                self.relayer_total_fees_earned.load(Ordering::Relaxed),
+            ),
+            relayer_packets_relayed: AtomicU64::new(
+                self.relayer_packets_relayed.load(Ordering::Relaxed),
+            ),
+            relayer_last_active: AtomicU64::new(self.relayer_last_active.load(Ordering::Relaxed)),
+            total_channels: AtomicU64::new(self.total_channels.load(Ordering::Relaxed)),
+            open_channels: AtomicU64::new(self.open_channels.load(Ordering::Relaxed)),
+            total_bridges: AtomicU64::new(self.total_bridges.load(Ordering::Relaxed)),
+            active_bridges: AtomicU64::new(self.active_bridges.load(Ordering::Relaxed)),
+            total_swaps: AtomicU64::new(self.total_swaps.load(Ordering::Relaxed)),
+            completed_swaps: AtomicU64::new(self.completed_swaps.load(Ordering::Relaxed)),
+            active_relayers: AtomicU64::new(self.active_relayers.load(Ordering::Relaxed)),
+            total_relayers: AtomicU64::new(self.total_relayers.load(Ordering::Relaxed)),
+            omega_rejected_transactions: AtomicU64::new(
+                self.omega_rejected_transactions.load(Ordering::Relaxed),
+            ),
+            cross_chain_effects_generated: AtomicU64::new(
+                self.cross_chain_effects_generated.load(Ordering::Relaxed),
+            ),
+            governance_proposals_created: AtomicU64::new(
+                self.governance_proposals_created.load(Ordering::Relaxed),
+            ),
+            governance_proposals_passed: AtomicU64::new(
+                self.governance_proposals_passed.load(Ordering::Relaxed),
+            ),
+            governance_proposals_omega_rejected: AtomicU64::new(
+                self.governance_proposals_omega_rejected
+                    .load(Ordering::Relaxed),
+            ),
+            quantum_proofs_generated: AtomicU64::new(
+                self.quantum_proofs_generated.load(Ordering::Relaxed),
+            ),
+            average_stability_score: AtomicU64::new(
+                self.average_stability_score.load(Ordering::Relaxed),
+            ),
+            threat_level_escalations: AtomicU64::new(
+                self.threat_level_escalations.load(Ordering::Relaxed),
+            ),
+            last_updated: AtomicU64::new(self.last_updated.load(Ordering::Relaxed)),
+        }
+    }
+}
+
+impl QantoMetrics {
+    /// Create a new metrics instance
+    pub fn new() -> Self {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        Self {
+            last_updated: AtomicU64::new(now),
+            ..Default::default()
+        }
+    }
+
+    /// Update the last updated timestamp
+    pub fn touch(&self) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.last_updated.store(now, Ordering::Relaxed);
+    }
+
+    /// Get TPS as floating point
+    pub fn get_tps(&self) -> f64 {
+        self.tps.load(Ordering::Relaxed) as f64
+    }
+
+    /// Set TPS from floating point
+    pub fn set_tps(&self, value: f64) {
+        self.tps.store(value as u64, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Get finality time in milliseconds
+    pub fn get_finality_ms(&self) -> u64 {
+        self.finality_ms.load(Ordering::Relaxed)
+    }
+
+    /// Set finality time in milliseconds
+    pub fn set_finality_ms(&self, value: u64) {
+        self.finality_ms.store(value, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Get storage efficiency as floating point
+    pub fn get_storage_efficiency(&self) -> f64 {
+        self.storage_efficiency.load(Ordering::Relaxed) as f64 / 1000.0
+    }
+
+    /// Set storage efficiency from floating point
+    pub fn set_storage_efficiency(&self, value: f64) {
+        self.storage_efficiency
+            .store((value * 1000.0) as u64, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Get SAGA throughput as floating point
+    pub fn get_saga_throughput(&self) -> f64 {
+        self.throughput.load(Ordering::Relaxed) as f64 / 1000.0
+    }
+
+    /// Set SAGA throughput from floating point
+    pub fn set_saga_throughput(&self, value: f64) {
+        self.throughput
+            .store((value * 1000.0) as u64, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Get SAGA latency as floating point
+    pub fn get_saga_latency(&self) -> f64 {
+        self.latency.load(Ordering::Relaxed) as f64 / 1000.0
+    }
+
+    /// Set SAGA latency from floating point
+    pub fn set_saga_latency(&self, value: f64) {
+        self.latency
+            .store((value * 1000.0) as u64, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Get error rate as floating point
+    pub fn get_error_rate(&self) -> f64 {
+        self.error_rate.load(Ordering::Relaxed) as f64 / 1000.0
+    }
+
+    /// Set error rate from floating point
+    pub fn set_error_rate(&self, value: f64) {
+        self.error_rate
+            .store((value * 1000.0) as u64, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Get resource utilization as floating point
+    pub fn get_resource_utilization(&self) -> f64 {
+        self.resource_utilization.load(Ordering::Relaxed) as f64 / 1000.0
+    }
+
+    /// Set resource utilization from floating point
+    pub fn set_resource_utilization(&self, value: f64) {
+        self.resource_utilization
+            .store((value * 1000.0) as u64, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Get security score as floating point
+    pub fn get_security_score(&self) -> f64 {
+        self.security_score.load(Ordering::Relaxed) as f64 / 1000.0
+    }
+
+    /// Set security score from floating point
+    pub fn set_security_score(&self, value: f64) {
+        self.security_score
+            .store((value * 1000.0) as u64, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Get stability index as floating point
+    pub fn get_stability_index(&self) -> f64 {
+        self.stability_index.load(Ordering::Relaxed) as f64 / 1000.0
+    }
+
+    /// Set stability index from floating point
+    pub fn set_stability_index(&self, value: f64) {
+        self.stability_index
+            .store((value * 1000.0) as u64, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Increment blocks processed counter
+    pub fn increment_blocks_processed(&self) {
+        self.blocks_processed.fetch_add(1, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Increment transactions processed counter
+    pub fn increment_transactions_processed(&self, count: u64) {
+        self.transactions_processed
+            .fetch_add(count, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Record validation time
+    pub fn record_validation_time(&self, time_ms: u64) {
+        self.validation_time_ms.store(time_ms, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Record block creation time
+    pub fn record_block_creation_time(&self, time_ms: u64) {
+        self.block_creation_time_ms
+            .store(time_ms, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Increment cache hits
+    pub fn increment_cache_hits(&self) {
+        self.cache_hits.fetch_add(1, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Increment cache misses
+    pub fn increment_cache_misses(&self) {
+        self.cache_misses.fetch_add(1, Ordering::Relaxed);
+        self.touch();
+    }
+
+    /// Get cache hit ratio
+    pub fn get_cache_hit_ratio(&self) -> f64 {
+        let hits = self.cache_hits.load(Ordering::Relaxed) as f64;
+        let misses = self.cache_misses.load(Ordering::Relaxed) as f64;
+        let total = hits + misses;
+        if total > 0.0 {
+            hits / total
+        } else {
+            0.0
+        }
+    }
+
+    /// Export metrics as a HashMap for external systems
+    pub fn export_metrics(&self) -> HashMap<String, f64> {
+        let mut metrics = HashMap::new();
+
+        metrics.insert(
+            "blocks_processed".to_string(),
+            self.blocks_processed.load(Ordering::Relaxed) as f64,
+        );
+        metrics.insert(
+            "transactions_processed".to_string(),
+            self.transactions_processed.load(Ordering::Relaxed) as f64,
+        );
+        metrics.insert(
+            "validation_time_ms".to_string(),
+            self.validation_time_ms.load(Ordering::Relaxed) as f64,
+        );
+        metrics.insert(
+            "block_creation_time_ms".to_string(),
+            self.block_creation_time_ms.load(Ordering::Relaxed) as f64,
+        );
+        metrics.insert(
+            "cache_hits".to_string(),
+            self.cache_hits.load(Ordering::Relaxed) as f64,
+        );
+        metrics.insert(
+            "cache_misses".to_string(),
+            self.cache_misses.load(Ordering::Relaxed) as f64,
+        );
+        metrics.insert("cache_hit_ratio".to_string(), self.get_cache_hit_ratio());
+        metrics.insert("tps".to_string(), self.get_tps());
+        metrics.insert("finality_ms".to_string(), self.get_finality_ms() as f64);
+        metrics.insert(
+            "validator_count".to_string(),
+            self.validator_count.load(Ordering::Relaxed) as f64,
+        );
+        metrics.insert(
+            "storage_efficiency".to_string(),
+            self.get_storage_efficiency(),
+        );
+        metrics.insert("saga_throughput".to_string(), self.get_saga_throughput());
+        metrics.insert("saga_latency".to_string(), self.get_saga_latency());
+        metrics.insert("error_rate".to_string(), self.get_error_rate());
+        metrics.insert("security_score".to_string(), self.get_security_score());
+        metrics.insert("stability_index".to_string(), self.get_stability_index());
+
+        metrics
+    }
+
+    /// Reset all metrics to zero
+    pub fn reset(&self) {
+        self.blocks_processed.store(0, Ordering::Relaxed);
+        self.transactions_processed.store(0, Ordering::Relaxed);
+        self.validation_time_ms.store(0, Ordering::Relaxed);
+        self.block_creation_time_ms.store(0, Ordering::Relaxed);
+        self.cache_hits.store(0, Ordering::Relaxed);
+        self.cache_misses.store(0, Ordering::Relaxed);
+        self.concurrent_validations.store(0, Ordering::Relaxed);
+        self.queue_depth.store(0, Ordering::Relaxed);
+        self.last_block_time.store(0, Ordering::Relaxed);
+        self.throughput_bps.store(0, Ordering::Relaxed);
+        self.simd_operations.store(0, Ordering::Relaxed);
+        self.lock_free_operations.store(0, Ordering::Relaxed);
+        self.pipeline_stages_completed.store(0, Ordering::Relaxed);
+        self.prefetch_hits.store(0, Ordering::Relaxed);
+        self.prefetch_misses.store(0, Ordering::Relaxed);
+        self.batch_processing_time_ns.store(0, Ordering::Relaxed);
+        self.memory_pool_allocations.store(0, Ordering::Relaxed);
+        self.zero_copy_operations.store(0, Ordering::Relaxed);
+        self.work_stealing_tasks.store(0, Ordering::Relaxed);
+        self.parallel_signature_verifications
+            .store(0, Ordering::Relaxed);
+        self.utxo_cache_efficiency.store(0, Ordering::Relaxed);
+        self.transaction_throughput_tps.store(0, Ordering::Relaxed);
+        self.tps.store(0, Ordering::Relaxed);
+        self.finality_ms.store(0, Ordering::Relaxed);
+        self.validator_count.store(0, Ordering::Relaxed);
+        self.shard_count.store(0, Ordering::Relaxed);
+        self.cross_shard_tps.store(0, Ordering::Relaxed);
+        self.storage_efficiency.store(0, Ordering::Relaxed);
+        self.network_bandwidth.store(0, Ordering::Relaxed);
+        self.consensus_latency.store(0, Ordering::Relaxed);
+        self.throughput.store(0, Ordering::Relaxed);
+        self.latency.store(0, Ordering::Relaxed);
+        self.error_rate.store(0, Ordering::Relaxed);
+        self.resource_utilization.store(0, Ordering::Relaxed);
+        self.security_score.store(0, Ordering::Relaxed);
+        self.stability_index.store(0, Ordering::Relaxed);
+
+        // Reset relayer metrics
+        self.relayer_success_rate.store(0, Ordering::Relaxed);
+        self.relayer_average_latency.store(0, Ordering::Relaxed);
+        self.relayer_total_fees_earned.store(0, Ordering::Relaxed);
+        self.relayer_packets_relayed.store(0, Ordering::Relaxed);
+        self.relayer_last_active.store(0, Ordering::Relaxed);
+
+        // Reset interoperability metrics
+        self.total_channels.store(0, Ordering::Relaxed);
+        self.open_channels.store(0, Ordering::Relaxed);
+        self.total_bridges.store(0, Ordering::Relaxed);
+        self.active_bridges.store(0, Ordering::Relaxed);
+        self.total_swaps.store(0, Ordering::Relaxed);
+        self.completed_swaps.store(0, Ordering::Relaxed);
+        self.active_relayers.store(0, Ordering::Relaxed);
+        self.total_relayers.store(0, Ordering::Relaxed);
+
+        // Reset enhanced simulation metrics
+        self.omega_rejected_transactions.store(0, Ordering::Relaxed);
+        self.cross_chain_effects_generated
+            .store(0, Ordering::Relaxed);
+        self.governance_proposals_created
+            .store(0, Ordering::Relaxed);
+        self.governance_proposals_passed.store(0, Ordering::Relaxed);
+        self.governance_proposals_omega_rejected
+            .store(0, Ordering::Relaxed);
+        self.quantum_proofs_generated.store(0, Ordering::Relaxed);
+        self.average_stability_score.store(0, Ordering::Relaxed);
+        self.threat_level_escalations.store(0, Ordering::Relaxed);
+
+        self.touch();
+    }
+}
+
+/// Global metrics instance
+pub static GLOBAL_METRICS: once_cell::sync::Lazy<Arc<QantoMetrics>> =
+    once_cell::sync::Lazy::new(|| Arc::new(QantoMetrics::new()));
+
+/// Get a reference to the global metrics instance
+pub fn get_global_metrics() -> Arc<QantoMetrics> {
+    GLOBAL_METRICS.clone()
+}
+
+/// Convenience macro for incrementing metrics
+#[macro_export]
+macro_rules! increment_metric {
+    ($metric:ident) => {
+        $crate::metrics::get_global_metrics()
+            .$metric
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    };
+    ($metric:ident, $value:expr) => {
+        $crate::metrics::get_global_metrics()
+            .$metric
+            .fetch_add($value, std::sync::atomic::Ordering::Relaxed);
+    };
+}
+
+/// Convenience macro for setting metrics
+#[macro_export]
+macro_rules! set_metric {
+    ($metric:ident, $value:expr) => {
+        $crate::metrics::get_global_metrics()
+            .$metric
+            .store($value, std::sync::atomic::Ordering::Relaxed);
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_metrics_creation() {
+        let metrics = QantoMetrics::new();
+        assert_eq!(metrics.blocks_processed.load(Ordering::Relaxed), 0);
+        assert_eq!(metrics.get_tps(), 0.0);
+    }
+
+    #[test]
+    fn test_floating_point_conversion() {
+        let metrics = QantoMetrics::new();
+
+        metrics.set_tps(1000.5);
+        assert_eq!(metrics.get_tps(), 1000.0); // Truncated to u64
+
+        metrics.set_storage_efficiency(0.85);
+        assert_eq!(metrics.get_storage_efficiency(), 0.85);
+
+        metrics.set_saga_throughput(123.456);
+        assert_eq!(metrics.get_saga_throughput(), 123.456);
+    }
+
+    #[test]
+    fn test_cache_hit_ratio() {
+        let metrics = QantoMetrics::new();
+
+        // No hits or misses
+        assert_eq!(metrics.get_cache_hit_ratio(), 0.0);
+
+        // Add some hits and misses
+        metrics.increment_cache_hits();
+        metrics.increment_cache_hits();
+        metrics.increment_cache_misses();
+
+        assert_eq!(metrics.get_cache_hit_ratio(), 2.0 / 3.0);
+    }
+
+    #[test]
+    fn test_export_metrics() {
+        let metrics = QantoMetrics::new();
+        metrics.increment_blocks_processed();
+        metrics.set_tps(1000.0);
+
+        let exported = metrics.export_metrics();
+        assert_eq!(exported.get("blocks_processed"), Some(&1.0));
+        assert_eq!(exported.get("tps"), Some(&1000.0));
+    }
+
+    #[test]
+    fn test_reset() {
+        let metrics = QantoMetrics::new();
+        metrics.increment_blocks_processed();
+        metrics.set_tps(1000.0);
+
+        metrics.reset();
+
+        assert_eq!(metrics.blocks_processed.load(Ordering::Relaxed), 0);
+        assert_eq!(metrics.get_tps(), 0.0);
+    }
+}
+
+mod atomic_serde {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    pub fn serialize<S>(atomic: &AtomicU64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(atomic.load(Ordering::Relaxed))
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<AtomicU64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = <u64 as Deserialize>::deserialize(deserializer)?;
+        Ok(AtomicU64::new(value))
+    }
+}

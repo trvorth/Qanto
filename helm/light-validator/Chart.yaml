@@ -1,0 +1,13 @@
+apiVersion: v2
+name: qanto-boot-node
+description: Helm chart for Qanto blockchain boot node with 24/7 operation
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - qanto
+  - blockchain
+  - boot-node
+maintainers:
+  - name: Qanto Team
+    email: admin@qanto.io

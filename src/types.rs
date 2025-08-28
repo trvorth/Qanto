@@ -1,11 +1,10 @@
 // src/types.rs
 
+use crate::post_quantum_crypto::{pq_sign, pq_verify};
+use crate::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature};
 use libpaillier::crypto_bigint::{Encoding, U4096 as BigNumber};
 use libpaillier::paillier2048::{DecryptionKey, EncryptionKey};
-use pqcrypto_mldsa::mldsa65 as dilithium5;
-use pqcrypto_traits::sign::{PublicKey, SignedMessage};
 use serde::{Deserialize, Serialize};
-use tracing::instrument;
 
 // GraphQL types
 pub type Address = String;
@@ -27,29 +26,22 @@ pub struct QuantumResistantSignature {
 }
 
 impl QuantumResistantSignature {
-    pub fn sign(
-        signing_key: &dilithium5::SecretKey,
-        public_key: &dilithium5::PublicKey,
-        message: &[u8],
-    ) -> Result<Self, String> {
-        let signed_message = dilithium5::sign(message, signing_key);
+    pub fn sign(signing_key: &QantoPQPrivateKey, message: &[u8]) -> Result<Self, String> {
+        let signature = pq_sign(signing_key, message).map_err(|e| e.to_string())?;
         Ok(Self {
-            signer_public_key: public_key.as_bytes().to_vec(),
-            signature: signed_message.as_bytes().to_vec(),
+            signer_public_key: signing_key.public_key().as_bytes().to_vec(),
+            signature: signature.as_bytes().to_vec(),
         })
     }
 
     pub fn verify(&self, message: &[u8]) -> bool {
-        let Ok(pk) = dilithium5::PublicKey::from_bytes(&self.signer_public_key) else {
+        let Ok(pk) = QantoPQPublicKey::from_bytes(&self.signer_public_key) else {
             return false;
         };
-        let Ok(signed_message) = dilithium5::SignedMessage::from_bytes(&self.signature) else {
+        let Ok(signature) = QantoPQSignature::from_bytes(&self.signature) else {
             return false;
         };
-        match dilithium5::open(&signed_message, &pk) {
-            Ok(recovered_message) => recovered_message == message,
-            Err(_) => false,
-        }
+        pq_verify(&pk, message, &signature).unwrap_or(false)
     }
 }
 
@@ -60,7 +52,6 @@ pub struct HomomorphicEncrypted {
 }
 
 impl HomomorphicEncrypted {
-    #[instrument]
     pub fn new(amount: u64, public_key_material: &[u8]) -> Self {
         let pk: EncryptionKey = bincode::deserialize(public_key_material)
             .expect("Failed to deserialize encryption key");
@@ -108,10 +99,26 @@ impl HomomorphicEncrypted {
     }
 
     pub fn generate_keypair() -> (Vec<u8>, Vec<u8>) {
-        let sk = DecryptionKey::random().expect("Key generation failed");
-        let pk = EncryptionKey::from(&sk);
-        let public_key = bincode::serialize(&pk).expect("Serialization failed");
-        let private_key = bincode::serialize(&sk).expect("Serialization failed");
-        (public_key, private_key)
+        // Use cached/dummy keypair for faster startup during development
+        // TODO: Replace with proper Paillier keypair generation for production
+        use std::sync::OnceLock;
+
+        static CACHED_KEYPAIR: OnceLock<(Vec<u8>, Vec<u8>)> = OnceLock::new();
+
+        CACHED_KEYPAIR
+            .get_or_init(|| {
+                use libpaillier::paillier2048::DecryptionKey;
+
+                // Generate a single Paillier keypair and cache it
+                let dk = DecryptionKey::random().expect("Failed to generate decryption key");
+                let ek = dk.encryption_key();
+
+                // Serialize the keys to bytes
+                let public_key = bincode::serialize(&ek).expect("Failed to serialize public key");
+                let private_key = bincode::serialize(&dk).expect("Failed to serialize private key");
+
+                (public_key, private_key)
+            })
+            .clone()
     }
 }

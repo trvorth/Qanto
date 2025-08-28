@@ -14,8 +14,10 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 
 // --- Cryptographic Primitives ---
+use crate::qanto_compat::p256_compat::ecdsa::{
+    signature::Signer, signature::Verifier, Signature, SigningKey, VerifyingKey,
+};
 use my_blockchain::qanto_hash;
-use p256::ecdsa::{signature::Signer, signature::Verifier, Signature, SigningKey, VerifyingKey};
 
 // ---
 // SECTION 0: CORE TYPES & ROBUST ERROR HANDLING
@@ -59,7 +61,7 @@ pub struct SovereignIdentity {
 impl SovereignIdentity {
     /// Creates a new Sovereign Identity from a public verification key and a set of laws.
     pub fn new(verifying_key: &VerifyingKey, laws: Vec<ContractRule>) -> Self {
-        let id_hash = qanto_hash(&verifying_key.to_sec1_bytes());
+        let id_hash = qanto_hash(&verifying_key.to_bytes());
         let id_bytes = id_hash.as_bytes();
         let mut id_array = [0u8; 32];
         id_array.copy_from_slice(id_bytes);

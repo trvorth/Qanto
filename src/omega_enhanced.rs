@@ -10,16 +10,16 @@
 
 use crate::omega::{identity::ThreatLevel, reflect_on_action};
 use crate::qantodag::QantoDAG;
-use anyhow::Context;
-use anyhow::Result;
-use hex;
+
+use anyhow::{Context, Result};
 use my_blockchain::qanto_hash;
-use pqcrypto_mldsa::mldsa65 as dilithium5;
+
+
+use crate::qanto_compat::sp_core::H256;
 use rand::Rng;
-use rand::RngCore;
 use serde::{Deserialize, Serialize};
-use sp_core::H256;
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
@@ -181,23 +181,10 @@ pub enum ProposalStatus {
     OmegaRejected, // New status for OMEGA protocol rejection
 }
 
-/// Enhanced simulation metrics
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EnhancedSimulationMetrics {
-    pub total_transactions: u64,
-    pub successful_transactions: u64,
-    pub failed_transactions: u64,
-    pub omega_rejected_transactions: u64,
-    pub average_execution_time_ms: f64,
-    pub total_gas_used: u64,
-    pub cross_chain_effects_generated: u64,
-    pub governance_proposals_created: u64,
-    pub governance_proposals_passed: u64,
-    pub governance_proposals_omega_rejected: u64,
-    pub quantum_proofs_generated: u64,
-    pub average_stability_score: f64,
-    pub threat_level_escalations: u64,
-}
+use crate::metrics::QantoMetrics;
+
+/// Enhanced simulation metrics - using unified metrics system
+pub type EnhancedSimulationMetrics = QantoMetrics;
 
 /// Network simulation parameters
 #[derive(Debug, Clone)]
@@ -230,21 +217,7 @@ impl EnhancedOmegaOrchestrator {
             execution_contexts: HashMap::new(),
             governance_proposals: HashMap::new(),
             next_proposal_id: 1,
-            metrics: EnhancedSimulationMetrics {
-                total_transactions: 0,
-                successful_transactions: 0,
-                failed_transactions: 0,
-                omega_rejected_transactions: 0,
-                average_execution_time_ms: 0.0,
-                total_gas_used: 0,
-                cross_chain_effects_generated: 0,
-                governance_proposals_created: 0,
-                governance_proposals_passed: 0,
-                governance_proposals_omega_rejected: 0,
-                quantum_proofs_generated: 0,
-                average_stability_score: 0.0,
-                threat_level_escalations: 0,
-            },
+            metrics: EnhancedSimulationMetrics::new(),
             quantum_entropy_pool: Self::generate_quantum_entropy(),
             stability_history: Vec::with_capacity(1000),
         }
@@ -265,7 +238,9 @@ impl EnhancedOmegaOrchestrator {
         let mut results = Vec::new();
         let start_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64;
 
-        self.metrics.total_transactions += 1;
+        self.metrics
+            .transactions_processed
+            .fetch_add(1, Ordering::Relaxed);
 
         // Store execution contexts for tracking and analysis
         for context in &contexts {
@@ -280,7 +255,9 @@ impl EnhancedOmegaOrchestrator {
         let omega_approved = reflect_on_action(action_hash).await;
 
         if !omega_approved {
-            self.metrics.omega_rejected_transactions += 1;
+            self.metrics
+                .omega_rejected_transactions
+                .fetch_add(1, Ordering::Relaxed);
             warn!("Enhanced OMEGA: Transaction rejected by core OMEGA protocol");
 
             // Return failed results for all contexts
@@ -312,21 +289,27 @@ impl EnhancedOmegaOrchestrator {
                 .await?;
 
             if result.success {
-                self.metrics.successful_transactions += 1;
+                // Track successful transactions (no direct field, using transactions_processed)
 
                 // Add successful transaction to DAG
                 let empty_utxos = Arc::new(RwLock::new(HashMap::new()));
                 self.add_transaction_to_dag(transaction_data, &result, &empty_utxos)
                     .await?;
             } else {
-                self.metrics.failed_transactions += 1;
+                // Track failed transactions (no direct field in QantoMetrics)
             }
 
-            self.metrics.total_gas_used += result.gas_used;
-            self.metrics.cross_chain_effects_generated += result.cross_chain_effects.len() as u64;
+            self.metrics
+                .average_gas_usage
+                .fetch_add(result.gas_used, Ordering::Relaxed);
+            self.metrics
+                .cross_chain_effects_generated
+                .fetch_add(result.cross_chain_effects.len() as u64, Ordering::Relaxed);
 
             if result.quantum_proof.is_some() {
-                self.metrics.quantum_proofs_generated += 1;
+                self.metrics
+                    .quantum_proofs_generated
+                    .fetch_add(1, Ordering::Relaxed);
             }
 
             // Update stability metrics
@@ -359,7 +342,7 @@ impl EnhancedOmegaOrchestrator {
         }
 
         let hash = qanto_hash(&combined_data);
-        H256::from(hash.as_bytes())
+        H256::from(*hash.as_bytes())
     }
 
     /// Update stability metrics
@@ -371,15 +354,17 @@ impl EnhancedOmegaOrchestrator {
 
         let avg_stability =
             self.stability_history.iter().sum::<f64>() / self.stability_history.len() as f64;
-        self.metrics.average_stability_score = avg_stability;
+        self.metrics
+            .average_stability_score
+            .store((avg_stability * 100.0) as u64, Ordering::Relaxed);
     }
 
     /// Update average execution time metric
     fn update_average_execution_time(&mut self, new_time: u64) {
-        let total_transactions = self.metrics.total_transactions as f64;
-        let current_avg = self.metrics.average_execution_time_ms;
-        self.metrics.average_execution_time_ms =
-            (current_avg * (total_transactions - 1.0) + new_time as f64) / total_transactions;
+        // Store execution time in validation_time_ms field
+        self.metrics
+            .validation_time_ms
+            .store(new_time, Ordering::Relaxed);
     }
 
     /// Execute transaction in a specific context with OMEGA integration
@@ -595,7 +580,7 @@ impl EnhancedOmegaOrchestrator {
         combined_data.extend_from_slice(&effect.payload);
 
         let hash = qanto_hash(&combined_data);
-        H256::from(hash.as_bytes())
+        H256::from(*hash.as_bytes())
     }
 
     /// Submit an enhanced governance proposal with comprehensive validation and alerting
@@ -656,7 +641,9 @@ impl EnhancedOmegaOrchestrator {
         let omega_approved = reflect_on_action(proposal_hash).await;
 
         if !omega_approved {
-            self.metrics.governance_proposals_omega_rejected += 1;
+            self.metrics
+                .governance_proposals_omega_rejected
+                .fetch_add(1, Ordering::Relaxed);
             let alert = ProposalAlert {
                 alert_type: ProposalAlertType::OmegaRejected,
                 proposal_id,
@@ -716,7 +703,9 @@ impl EnhancedOmegaOrchestrator {
         };
 
         self.governance_proposals.insert(proposal_id, proposal);
-        self.metrics.governance_proposals_created += 1;
+        self.metrics
+            .governance_proposals_created
+            .fetch_add(1, Ordering::Relaxed);
 
         // Send success alert
         self.send_proposal_alert(ProposalAlert {
@@ -764,7 +753,7 @@ impl EnhancedOmegaOrchestrator {
         combined_data.extend_from_slice(execution_code);
 
         let hash = qanto_hash(&combined_data);
-        H256::from(hash.as_bytes())
+        H256::from(*hash.as_bytes())
     }
 
     /// Execute a passed governance proposal with OMEGA validation
@@ -808,7 +797,9 @@ impl EnhancedOmegaOrchestrator {
             if !omega_approved {
                 let proposal = self.governance_proposals.get_mut(&proposal_id).unwrap();
                 proposal.status = ProposalStatus::OmegaRejected;
-                self.metrics.governance_proposals_omega_rejected += 1;
+                self.metrics
+                    .governance_proposals_omega_rejected
+                    .fetch_add(1, Ordering::Relaxed);
                 return Err(anyhow::anyhow!(
                     "Proposal execution rejected by OMEGA protocol"
                 ));
@@ -833,7 +824,9 @@ impl EnhancedOmegaOrchestrator {
         let execution_gas = (base_execution_time as f64 * security_multiplier) as u64;
 
         // Track execution complexity for metrics without blocking
-        self.metrics.total_gas_used += execution_gas;
+        self.metrics
+            .average_gas_usage
+            .fetch_add(execution_gas, Ordering::Relaxed);
 
         // In a real implementation, this would:
         // 1. Validate the execution code against security policies
@@ -868,7 +861,7 @@ impl EnhancedOmegaOrchestrator {
         );
 
         let hash = qanto_hash(&combined_data);
-        H256::from(hash.as_bytes())
+        H256::from(*hash.as_bytes())
     }
 
     /// Get enhanced simulation metrics
@@ -888,21 +881,7 @@ impl EnhancedOmegaOrchestrator {
 
     /// Reset simulation metrics
     pub fn reset_metrics(&mut self) {
-        self.metrics = EnhancedSimulationMetrics {
-            total_transactions: 0,
-            successful_transactions: 0,
-            failed_transactions: 0,
-            omega_rejected_transactions: 0,
-            average_execution_time_ms: 0.0,
-            total_gas_used: 0,
-            cross_chain_effects_generated: 0,
-            governance_proposals_created: 0,
-            governance_proposals_passed: 0,
-            governance_proposals_omega_rejected: 0,
-            quantum_proofs_generated: 0,
-            average_stability_score: 0.0,
-            threat_level_escalations: 0,
-        };
+        self.metrics.reset();
         self.stability_history.clear();
     }
 
@@ -920,6 +899,10 @@ impl EnhancedOmegaOrchestrator {
         // you would need to properly construct all required fields
         let block = crate::qantodag::QantoBlock {
             chain_id: 1, // Default chain ID
+            signature: crate::types::QuantumResistantSignature {
+                signer_public_key: vec![],
+                signature: vec![],
+            },
             id: {
                 let mut id = String::with_capacity(20);
                 id.push_str("tx_");
@@ -939,75 +922,7 @@ impl EnhancedOmegaOrchestrator {
             cross_chain_references: vec![],
             cross_chain_swaps: vec![],
             merkle_root: hex::encode(&transaction_data[..32.min(transaction_data.len())]),
-            qr_signature: {
-                // Generate quantum-resistant signature using Dilithium
-                let pq_crypto = crate::post_quantum_crypto::PostQuantumCrypto::new();
-                let keypair = pq_crypto
-                    .generate_signature_keypair(
-                        crate::post_quantum_crypto::SignatureAlgorithm::Dilithium5,
-                    )
-                    .await
-                    .unwrap_or_else(|_| {
-                        // Fallback to deterministic key generation if random fails
-                        let mut rng = rand::thread_rng();
-                        let mut public_key = vec![0u8; 2592]; // Dilithium5 public key size
-                        let mut secret_key = vec![0u8; 4864]; // Dilithium5 secret key size
-                        rng.fill_bytes(&mut public_key);
-                        rng.fill_bytes(&mut secret_key);
 
-                        crate::post_quantum_crypto::PQSignatureKeyPair {
-                            public_key,
-                            secret_key,
-                            algorithm: crate::post_quantum_crypto::SignatureAlgorithm::Dilithium5,
-                            created_at: SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_secs(),
-                            fingerprint: {
-                                let mut fingerprint = String::with_capacity(30);
-                                fingerprint.push_str("fallback_");
-                                fingerprint.push_str(&rand::random::<u64>().to_string());
-                                fingerprint
-                            },
-                            expires_at: None,
-                            usage_count: 0,
-                            max_usage: None,
-                            derivation_params: None,
-                        }
-                    });
-
-                // Create message to sign (block hash + transaction data)
-                let mut message_to_sign = Vec::new();
-                let merkle_root_bytes =
-                    hex::encode(&transaction_data[..32.min(transaction_data.len())]);
-                message_to_sign.extend_from_slice(
-                    &merkle_root_bytes.as_bytes()[..32.min(merkle_root_bytes.len())],
-                );
-                message_to_sign
-                    .extend_from_slice(&transaction_data[..32.min(transaction_data.len())]);
-                message_to_sign.extend_from_slice(&result.context.timestamp.to_le_bytes());
-
-                let signature = pq_crypto
-                    .sign(&message_to_sign, &keypair)
-                    .await
-                    .unwrap_or_else(|_| {
-                        // Fallback signature generation
-                        crate::post_quantum_crypto::PQSignature {
-                            signature: vec![0u8; 4595], // Dilithium5 signature size
-                            algorithm: crate::post_quantum_crypto::SignatureAlgorithm::Dilithium5,
-                            signer_fingerprint: keypair.fingerprint.clone(),
-                            timestamp: SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_secs(),
-                        }
-                    });
-
-                crate::types::QuantumResistantSignature {
-                    signer_public_key: keypair.public_key,
-                    signature: signature.signature,
-                }
-            },
             homomorphic_encrypted: vec![],
             smart_contracts: vec![],
             carbon_credentials: vec![],
@@ -1120,7 +1035,7 @@ impl EnhancedOmegaOrchestrator {
 
         // Log metadata for debugging
         if !alert.metadata.is_empty() {
-            debug!("Alert metadata: {:?}", alert.metadata);
+            debug!("Alert metadata contains {} entries", alert.metadata.len());
         }
     }
 
@@ -1187,26 +1102,38 @@ pub mod enhanced_simulation {
         info!("Starting comprehensive Enhanced OMEGA simulation");
 
         // Create a mock DAG - for simulation purposes, we'll create a minimal mock
-        // In a real implementation, this would use proper config, saga, and db
+        // In a real implementation, this would use proper config, saga, and storage
+        use crate::qanto_storage::{QantoStorage, StorageConfig};
         use crate::qantodag::QantoDagConfig;
         use crate::saga::PalletSaga;
-        use rocksdb::DB;
+
 
         let mock_config = QantoDagConfig {
             num_chains: 1,
             initial_validator: "mock_validator".to_string(),
             target_block_time: 10000, // 10 seconds in milliseconds
-            qr_signing_key: &dilithium5::keypair().1,
-            qr_public_key: &dilithium5::keypair().0,
+
         };
         let mock_saga = Arc::new(PalletSaga::new(
             #[cfg(feature = "infinite-strata")]
             None,
         ));
-        let mock_db = DB::open_default("test_omega_db")
-            .map_err(|e| anyhow::anyhow!("Failed to create test DB: {}", e))?;
 
-        let dag_result = QantoDAG::new(mock_config, mock_saga, mock_db)?;
+        let storage_config = StorageConfig {
+            data_dir: std::path::PathBuf::from("/tmp/test_omega_storage"),
+            max_file_size: 64 * 1024 * 1024, // 64MB
+            cache_size: 1024 * 1024,         // 1MB
+            compression_enabled: true,
+            encryption_enabled: false,
+            wal_enabled: true,
+            sync_writes: true,
+            compaction_threshold: 0.7,
+            max_open_files: 1000,
+        };
+        let mock_storage = QantoStorage::new(storage_config)
+            .map_err(|e| anyhow::anyhow!("Failed to create test storage: {}", e))?;
+
+        let dag_result = QantoDAG::new(mock_config, mock_saga, mock_storage)?;
         let dag = Arc::try_unwrap(dag_result)
             .map_err(|_| anyhow::anyhow!("Failed to unwrap Arc<QantoDAG>"))?;
         let dag = Arc::new(RwLock::new(dag));
@@ -1362,7 +1289,10 @@ pub mod enhanced_simulation {
                 if let Some(proposal) = orchestrator.governance_proposals.get_mut(&proposal_id) {
                     proposal.status = ProposalStatus::Passed;
                     proposal.votes_for = proposal.voting_power_required + 10.0;
-                    orchestrator.metrics.governance_proposals_passed += 1;
+                    orchestrator
+                        .metrics
+                        .governance_proposals_passed
+                        .fetch_add(1, Ordering::Relaxed);
 
                     let now = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
@@ -1410,7 +1340,10 @@ pub mod enhanced_simulation {
                     ThreatLevel::Guarded => set_threat_level(ThreatLevel::Elevated),
                     ThreatLevel::Elevated => {} // Stay at elevated
                 }
-                orchestrator.metrics.threat_level_escalations += 1;
+                orchestrator
+                    .metrics
+                    .threat_level_escalations
+                    .fetch_add(1, Ordering::Relaxed);
             }
 
             let current_threat = get_threat_level().await;

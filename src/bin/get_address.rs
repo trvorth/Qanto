@@ -9,7 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let password = SecretString::new(pass);
-    let wallet = Wallet::from_file("wallet.key", &password)?;
+    let wallet = Wallet::from_file("test_wallet.key", &password)?;
     println!("Wallet address: {}", wallet.address());
     Ok(())
 }

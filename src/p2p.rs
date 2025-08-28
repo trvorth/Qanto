@@ -12,6 +12,7 @@
 use crate::config::P2pConfig;
 use crate::mempool::Mempool;
 use crate::node::PeerCache;
+use crate::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey};
 use crate::qantodag::{QantoBlock, QantoDAG};
 use crate::saga::CarbonOffsetCredential;
 use crate::transaction::Transaction;
@@ -19,6 +20,7 @@ use crate::types::{QuantumResistantSignature, UTXO};
 use futures::stream::StreamExt;
 use governor::{clock::DefaultClock, state::keyed::DashMapStateStore, Quota, RateLimiter};
 // Removed HMAC import - using custom implementation with qanto_hash
+use hex;
 use libp2p::{
     gossipsub::{self, IdentTopic, MessageAuthenticity, ValidationMode},
     identity,
@@ -30,9 +32,8 @@ use libp2p::{
     yamux, Multiaddr, PeerId, Swarm, SwarmBuilder,
 };
 use my_blockchain::qanto_hash;
-use hex;
 use nonzero_ext::nonzero;
-use pqcrypto_mldsa::mldsa65 as dilithium5;
+
 use prometheus::{register_int_counter, IntCounter};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -40,7 +41,7 @@ use std::convert::Infallible;
 use std::env;
 use std::error::Error as StdError;
 use std::fs;
-use std::hash::Hash;
+// (removed) use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
@@ -101,9 +102,9 @@ pub enum P2PError {
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "NodeBehaviourEvent")]
 pub struct NodeBehaviour {
-    pub gossipsub: gossipsub::Behaviour,
-    pub mdns: MdnsTokioBehaviour,
-    pub kademlia: KadBehaviour<MemoryStore>,
+    gossipsub: gossipsub::Behaviour,
+    mdns: MdnsTokioBehaviour,
+    kademlia: KadBehaviour<MemoryStore>,
 }
 
 #[derive(Debug)]
@@ -147,17 +148,13 @@ pub enum NetworkMessageData {
 
 impl NetworkMessage {
     // Corrected: Skipped non-debuggable keys in the instrument macro.
-    #[instrument(skip(signing_key, public_key))]
-    fn new(
-        data: NetworkMessageData,
-        signing_key: &dilithium5::SecretKey,
-        public_key: &dilithium5::PublicKey,
-    ) -> Result<Self, P2PError> {
+    #[instrument(skip(signing_key))]
+    fn new(data: NetworkMessageData, signing_key: &QantoPQPrivateKey) -> Result<Self, P2PError> {
         let hmac_secret = Self::get_hmac_secret();
         let serialized_data = serde_json::to_vec(&data)?;
         let hmac = Self::compute_hmac(&serialized_data, &hmac_secret)?;
 
-        let signature = QuantumResistantSignature::sign(signing_key, public_key, &serialized_data)
+        let signature = QuantumResistantSignature::sign(signing_key, &serialized_data)
             .map_err(|e| P2PError::QuantumSignature(e.to_string()))?;
 
         Ok(Self {
@@ -225,16 +222,15 @@ pub struct P2PConfig<'a> {
     pub proposals: Arc<RwLock<Vec<QantoBlock>>>,
     pub local_keypair: identity::Keypair,
     pub p2p_settings: P2pConfig,
-    pub node_qr_sk: &'a dilithium5::SecretKey,
-    pub node_qr_pk: &'a dilithium5::PublicKey,
+    pub node_qr_sk: &'a QantoPQPrivateKey,
+    pub node_qr_pk: &'a QantoPQPublicKey,
     pub peer_cache_path: String,
 }
 
 pub struct P2PServer {
     swarm: Swarm<NodeBehaviour>,
     topics: Vec<IdentTopic>,
-    node_qr_sk: dilithium5::SecretKey,
-    node_qr_pk: dilithium5::PublicKey,
+    node_qr_sk: QantoPQPrivateKey,
     initial_peers_config: Vec<String>,
     peer_cache_path: String,
     p2p_command_sender: mpsc::Sender<P2PCommand>,
@@ -249,7 +245,6 @@ struct GossipRateLimiters {
 }
 
 impl P2PServer {
-    #[instrument(skip(config, p2p_command_sender))]
     pub async fn new(
         config: P2PConfig<'_>,
         p2p_command_sender: mpsc::Sender<P2PCommand>,
@@ -325,8 +320,7 @@ impl P2PServer {
         Ok(Self {
             swarm,
             topics,
-            node_qr_sk: *config.node_qr_sk,
-            node_qr_pk: *config.node_qr_pk,
+            node_qr_sk: config.node_qr_sk.clone(),
             initial_peers_config: config.initial_peers,
             peer_cache_path: config.peer_cache_path,
             p2p_command_sender,
@@ -436,7 +430,6 @@ impl P2PServer {
         }
     }
 
-    #[instrument(skip(self, rx))]
     pub async fn run(&mut self, mut rx: mpsc::Receiver<P2PCommand>) -> Result<(), P2PError> {
         let mut mesh_check_ticker = interval(Duration::from_secs(60));
         let mut peer_cache_ticker = interval(Duration::from_secs(300));
@@ -523,7 +516,6 @@ impl P2PServer {
         Ok(())
     }
 
-    #[instrument(skip(self, command))]
     async fn process_internal_command(&mut self, command: P2PCommand) -> Result<(), P2PError> {
         match command {
             P2PCommand::BroadcastBlock(block) => {
@@ -636,7 +628,6 @@ impl P2PServer {
         }
     }
 
-    #[instrument(skip(self))]
     async fn reconnect_to_initial_peers(&mut self) {
         info!("Attempting to reconnect to initial peers from configuration.");
         Self::dial_initial_peers(&mut self.swarm, &self.initial_peers_config).await;
@@ -649,7 +640,7 @@ impl P2PServer {
         log_info: &str,
     ) -> Result<(), P2PError> {
         let topic = &self.topics[topic_index];
-        let net_msg = NetworkMessage::new(data, &self.node_qr_sk, &self.node_qr_pk)?;
+        let net_msg = NetworkMessage::new(data, &self.node_qr_sk)?;
         let msg_bytes = serde_json::to_vec(&net_msg)?;
 
         self.swarm

@@ -11,11 +11,12 @@ use dashmap::DashMap;
 // use rayon::prelude::*; // Removed unused import
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap, HashMap};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, info, warn};
 
 #[derive(Error, Debug)]
 pub enum MempoolError {
@@ -55,7 +56,7 @@ pub struct Mempool {
     priority_queue: Arc<RwLock<BTreeMap<u64, Vec<String>>>>,
     max_age: Duration,
     max_size_bytes: usize,
-    current_size_bytes: Arc<RwLock<usize>>,
+    current_size_bytes: Arc<AtomicUsize>,
 }
 
 /// Optimized mempool implementation using DashMap and BinaryHeap for high performance
@@ -79,11 +80,11 @@ struct PriorityEntry {
 impl OptimizedMempool {
     pub fn new(max_age: Duration, max_size_bytes: usize) -> Self {
         Self {
-            transactions: DashMap::new(),
-            priority_queue: Arc::new(RwLock::new(BinaryHeap::new())),
+            transactions: DashMap::with_capacity(max_size_bytes / 512), // Estimate avg tx size
+            priority_queue: Arc::new(RwLock::new(BinaryHeap::with_capacity(max_size_bytes / 512))),
             max_age,
             max_size_bytes,
-            current_size_bytes: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            current_size_bytes: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -91,7 +92,6 @@ impl OptimizedMempool {
         self.transactions.len()
     }
 
-    #[instrument(skip(self))]
     pub async fn prune_old_transactions(&self) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -137,7 +137,6 @@ impl OptimizedMempool {
         }
     }
 
-    #[instrument(skip(self, transaction))]
     pub async fn add_transaction(&self, transaction: Transaction) -> Result<(), MempoolError> {
         let tx_id = transaction.id.clone();
 
@@ -146,7 +145,13 @@ impl OptimizedMempool {
             return Ok(());
         }
 
-        let tx_size = serde_json::to_vec(&transaction).unwrap_or_default().len();
+        // Pre-calculate transaction size more efficiently
+        let tx_size = transaction.id.len()
+            + transaction.sender.len()
+            + transaction.receiver.len()
+            + transaction.inputs.len() * 64
+            + transaction.outputs.len() * 128
+            + 256; // Estimated overhead
 
         let fee_per_byte = if tx_size > 0 {
             (transaction.fee * 100)
@@ -168,24 +173,23 @@ impl OptimizedMempool {
         };
 
         // Check if mempool is full and evict if necessary
-        while self
-            .current_size_bytes
-            .load(std::sync::atomic::Ordering::Relaxed)
-            + tx_size
-            > self.max_size_bytes
-        {
+        while self.current_size_bytes.load(Ordering::Relaxed) + tx_size > self.max_size_bytes {
             if !self.evict_lowest_fee_transaction().await {
                 return Err(MempoolError::MempoolFull);
             }
         }
 
-        // Add transaction
-        self.transactions
-            .insert(tx_id.clone(), prioritized_tx.clone());
-        self.current_size_bytes
-            .fetch_add(tx_size, std::sync::atomic::Ordering::Relaxed);
+        // Add transaction and update size atomically
+        if self
+            .transactions
+            .insert(tx_id.clone(), prioritized_tx.clone())
+            .is_none()
+        {
+            self.current_size_bytes
+                .fetch_add(tx_size, Ordering::Relaxed);
+        }
 
-        // Add to priority queue
+        // Add to priority queue with reduced lock contention
         let mut queue = self.priority_queue.write().await;
         queue.push(Reverse(prioritized_tx));
 
@@ -229,7 +233,6 @@ impl OptimizedMempool {
         transactions
     }
 
-    #[instrument(skip(self))]
     pub async fn select_transactions(&self, max_count: usize) -> Vec<Transaction> {
         let mut queue = self.priority_queue.write().await;
         let mut selected = Vec::with_capacity(max_count.min(queue.len()));
@@ -260,7 +263,6 @@ impl OptimizedMempool {
         selected
     }
 
-    #[instrument(skip(self, transaction_ids))]
     pub async fn remove_transactions(&self, transaction_ids: &[String]) {
         for tx_id in transaction_ids {
             if let Some((_, removed_tx)) = self.transactions.remove(tx_id) {
@@ -278,8 +280,7 @@ impl OptimizedMempool {
     }
 
     pub fn get_current_size_bytes(&self) -> usize {
-        self.current_size_bytes
-            .load(std::sync::atomic::Ordering::Relaxed)
+        self.current_size_bytes.load(Ordering::Relaxed)
     }
 
     pub fn get_transaction_count(&self) -> usize {
@@ -307,14 +308,13 @@ impl OptimizedMempool {
 }
 
 impl Mempool {
-    #[instrument]
     pub fn new(max_age_secs: u64, max_size_bytes: usize, _max_transactions: usize) -> Self {
         Self {
             transactions: Arc::new(RwLock::new(HashMap::new())),
             priority_queue: Arc::new(RwLock::new(BTreeMap::new())),
             max_age: Duration::from_secs(max_age_secs),
             max_size_bytes,
-            current_size_bytes: Arc::new(RwLock::new(0)),
+            current_size_bytes: Arc::new(AtomicUsize::new(0)),
         }
     }
 
@@ -323,7 +323,6 @@ impl Mempool {
     }
 
     /// Prunes transactions that have exceeded their maximum age from the mempool.
-    #[instrument(skip(self))]
     pub async fn prune_old_transactions(&self) {
         let mut transactions = self.transactions.write().await;
         if transactions.is_empty() {
@@ -351,14 +350,14 @@ impl Mempool {
             ids_to_prune.len()
         );
         let mut priority_queue = self.priority_queue.write().await;
-        let mut current_size = self.current_size_bytes.write().await;
 
         for id in ids_to_prune {
             if let Some(removed_ptx) = transactions.remove(&id) {
                 let tx_size = serde_json::to_vec(&removed_ptx.tx)
                     .unwrap_or_default()
                     .len();
-                *current_size = current_size.saturating_sub(tx_size);
+                self.current_size_bytes
+                    .fetch_sub(tx_size, Ordering::Relaxed);
 
                 if let Some(ids_at_fee) = priority_queue.get_mut(&removed_ptx.fee_per_byte) {
                     ids_at_fee.retain(|tx_id| tx_id != &id);
@@ -370,7 +369,6 @@ impl Mempool {
         }
     }
 
-    #[instrument(skip(self, tx, utxos, dag))]
     pub async fn add_transaction(
         &self,
         tx: Transaction,
@@ -393,10 +391,9 @@ impl Mempool {
 
         let mut transactions = self.transactions.write().await;
         let mut priority_queue = self.priority_queue.write().await;
-        let mut current_size = self.current_size_bytes.write().await;
 
         // --- Eviction logic to make space for higher-fee transactions ---
-        while *current_size + tx_size > self.max_size_bytes {
+        while self.current_size_bytes.load(Ordering::Relaxed) + tx_size > self.max_size_bytes {
             if let Some((&lowest_fee, ids)) = priority_queue.iter_mut().next() {
                 if lowest_fee >= fee_per_byte {
                     return Err(MempoolError::MempoolFull);
@@ -405,7 +402,8 @@ impl Mempool {
                     if let Some(evicted_tx) = transactions.remove(&id_to_evict) {
                         let evicted_size =
                             serde_json::to_vec(&evicted_tx.tx).unwrap_or_default().len();
-                        *current_size = current_size.saturating_sub(evicted_size);
+                        self.current_size_bytes
+                            .fetch_sub(evicted_size, Ordering::Relaxed);
                         warn!(id=%id_to_evict, "Mempool full. Evicting transaction to make space.");
                     }
                 }
@@ -428,9 +426,11 @@ impl Mempool {
         };
 
         if transactions.insert(tx_id.clone(), prioritized_tx).is_none() {
-            *current_size += tx_size;
+            self.current_size_bytes
+                .fetch_add(tx_size, Ordering::Relaxed);
             // **FIX (E0382):** The info log is placed *before* `tx_id` is moved into the priority queue.
-            info!(id=%tx_id, "Added transaction to mempool. Current size: {} bytes", *current_size);
+            let current_size = self.current_size_bytes.load(Ordering::Relaxed);
+            info!(id=%tx_id, "Added transaction to mempool. Current size: {} bytes", current_size);
             priority_queue.entry(fee_per_byte).or_default().push(tx_id);
         }
         Ok(())
@@ -459,7 +459,6 @@ impl Mempool {
         result
     }
 
-    #[instrument(skip(self, txs_to_remove))]
     pub async fn remove_transactions(&self, txs_to_remove: &[Transaction]) {
         if txs_to_remove.is_empty() {
             return;
@@ -467,13 +466,13 @@ impl Mempool {
 
         let mut transactions = self.transactions.write().await;
         let mut priority_queue = self.priority_queue.write().await;
-        let mut current_size = self.current_size_bytes.write().await;
 
         for tx in txs_to_remove {
             if let Some(removed_ptx) = transactions.remove(&tx.id) {
                 // OPTIMIZATION: Estimate transaction size instead of expensive serialization
                 let tx_size = Self::estimate_transaction_size(&removed_ptx.tx);
-                *current_size = current_size.saturating_sub(tx_size);
+                self.current_size_bytes
+                    .fetch_sub(tx_size, Ordering::Relaxed);
 
                 if let Some(ids) = priority_queue.get_mut(&removed_ptx.fee_per_byte) {
                     ids.retain(|id| id != &tx.id);

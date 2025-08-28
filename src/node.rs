@@ -16,13 +16,14 @@ use crate::miner::{Miner, MinerConfig, MiningError};
 use crate::omega::reflect_on_action;
 use crate::p2p::{P2PCommand, P2PConfig, P2PError, P2PServer};
 use crate::performance_optimizations::{OptimizedBlockBuilder, OptimizedMempool};
+use crate::qanto_compat::sp_core::H256;
+use crate::qanto_storage::{QantoStorage, QantoStorageError, StorageConfig};
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError, QantoDagConfig};
 use crate::saga::PalletSaga;
 use crate::transaction::Transaction;
 use crate::types::UTXO;
 use crate::wallet::Wallet;
 use crate::websocket_server::{create_websocket_router, WebSocketServerState};
-use anyhow;
 use axum::{
     body::Body,
     extract::{Path as AxumPath, State, State as MiddlewareState},
@@ -35,13 +36,10 @@ use axum::{
 use governor::clock::QuantaClock;
 use governor::state::{InMemoryState, NotKeyed};
 use governor::{Quota, RateLimiter};
-use libp2p::identity;
-use libp2p::PeerId;
+use libp2p::{identity, PeerId};
 use nonzero_ext::nonzero;
 use regex::Regex;
-use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
-use sp_core::H256;
 use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::path::Path;
@@ -53,7 +51,7 @@ use tokio::signal;
 use tokio::sync::{mpsc, oneshot, RwLock};
 use tokio::task::{JoinError, JoinSet};
 use tokio::time::timeout;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, info, warn};
 
 #[cfg(feature = "infinite-strata")]
 use crate::infinite_strata_node::{
@@ -66,7 +64,7 @@ const MAX_UTXOS: usize = 1_000_000;
 const MAX_PROPOSALS: usize = 10_000;
 const ADDRESS_REGEX: &str = r"^[0-9a-fA-F]{64}$";
 const MAX_SYNC_AGE_SECONDS: u64 = 3600;
-const DEFAULT_MINING_INTERVAL_SECS: u64 = 5;
+const DEFAULT_MINING_INTERVAL_SECS: u64 = 300;
 
 lazy_static::lazy_static! {
     static ref ADDRESS_REGEX_COMPILED: Regex = Regex::new(ADDRESS_REGEX).expect("Invalid address regex pattern");
@@ -106,7 +104,7 @@ pub enum NodeError {
     #[error("Sync error: {0}")]
     SyncError(String),
     #[error("Database error: {0}")]
-    Database(#[from] rocksdb::Error),
+    Database(#[from] QantoStorageError),
     #[error("Node initialization error: {0}")]
     NodeInitialization(String),
 }
@@ -175,7 +173,6 @@ impl Node {
     /// Creates a new `Node` instance, initializing all sub-components.
     /// This function handles P2P identity loading/creation, DAG initialization from the database,
     /// and setting up the SAGA pallet and other services.
-    #[instrument(skip(config, wallet))]
     pub async fn new(
         mut config: Config,
         config_path: String,
@@ -183,8 +180,11 @@ impl Node {
         p2p_identity_path: &str,
         peer_cache_path: String,
     ) -> Result<Self, NodeError> {
+        info!("Validating configuration");
         config.validate()?;
+        info!("Configuration validated successfully");
 
+        info!("Loading or generating P2P identity keypair");
         // Load or generate the libp2p identity keypair.
         let local_keypair = match fs::read(p2p_identity_path).await {
             Ok(key_bytes) => {
@@ -214,7 +214,9 @@ impl Node {
         }?;
         let local_peer_id = PeerId::from_public_key(&local_keypair.public());
         info!("Node Local P2P Peer ID: {local_peer_id}");
+        info!("P2P identity keypair loaded/generated successfully");
 
+        info!("Updating config with full local P2P address");
         // Update config with the full P2P address if it's not already set.
         let full_local_p2p_address = format!("{}/p2p/{}", config.p2p_address, local_peer_id);
         if config.local_full_p2p_address.as_deref() != Some(&full_local_p2p_address) {
@@ -223,8 +225,10 @@ impl Node {
             );
             config.local_full_p2p_address = Some(full_local_p2p_address.clone());
             config.save(&config_path)?;
+            info!("Config updated and saved successfully");
         }
 
+        info!("Validating wallet address against genesis validator");
         // Validate that the wallet address matches the genesis validator specified in the config.
         let initial_validator = wallet.address().trim().to_lowercase();
         if initial_validator != config.genesis_validator.trim().to_lowercase() {
@@ -232,8 +236,11 @@ impl Node {
                 "Wallet address does not match genesis validator".to_string(),
             )));
         }
+        info!("Wallet address validated successfully");
 
-        let (node_signing_key, node_public_key) = wallet.get_keypair()?;
+        info!("Getting node keypair from wallet");
+
+        info!("Node keypair obtained successfully");
 
         info!("Initializing SAGA and dependent services...");
 
@@ -250,31 +257,46 @@ impl Node {
         let saga_pallet = {
             #[cfg(feature = "infinite-strata")]
             {
+                info!("Initializing PalletSaga with Infinite Strata service");
                 Arc::new(PalletSaga::new(Some(isnm_service.clone())))
             }
             #[cfg(not(feature = "infinite-strata"))]
             {
+                info!("Initializing PalletSaga without Infinite Strata");
                 Arc::new(PalletSaga::new())
             }
         };
+        info!("SAGA and dependent services initialized successfully");
 
         info!("Initializing QantoDAG (loading database)...");
-        let db = {
-            let mut opts = Options::default();
-            opts.create_if_missing(true);
-            // Using a distinct DB name for this version.
-            DB::open(&opts, "qantodag_db_evolved")?
+        info!("Opening Qanto native storage");
+        let storage_config = StorageConfig {
+            data_dir: "qantodag_db_evolved".into(),
+            cache_size: 1024 * 1024 * 100, // 100MB cache
+            compression_enabled: true,
+            encryption_enabled: true,
+            max_file_size: 1024 * 1024 * 50, // 50MB max file size
+            compaction_threshold: 0.7,
+            wal_enabled: true,
+            sync_writes: true,
+            max_open_files: 1000,
         };
+        let db = QantoStorage::new(storage_config)?;
+        info!("Qanto native storage opened successfully");
 
+        info!("Configuring QantoDagConfig");
         // Configure and create the core DAG structure.
         let dag_config = QantoDagConfig {
             initial_validator,
             target_block_time: config.target_block_time,
             num_chains: config.num_chains,
-            qr_signing_key: &node_signing_key,
-            qr_public_key: &node_public_key,
+
         };
+        info!("QantoDagConfig configured successfully");
+
+        info!("Creating QantoDAG instance");
         let dag_arc = QantoDAG::new(dag_config, saga_pallet.clone(), db)?;
+        info!("QantoDAG instance created successfully");
         info!("QantoDAG initialized.");
 
         // Initialize shared state components.
@@ -282,7 +304,7 @@ impl Node {
         let utxos = Arc::new(RwLock::new(HashMap::with_capacity(MAX_UTXOS)));
         let proposals = Arc::new(RwLock::new(Vec::with_capacity(MAX_PROPOSALS)));
 
-        // Create genesis UTXO with the entire 100 billion QNTO supply allocated to contract address
+        // Create genesis UTXO with the entire 21 billion QNTO supply allocated to contract address
         // Clear any existing UTXOs first to ensure clean state
         {
             let mut utxos_lock = utxos.write().await;
@@ -293,19 +315,20 @@ impl Node {
                 genesis_utxo_id.clone(),
                 UTXO {
                     address: config.contract_address.clone(),
-                    amount: 100_000_000_000_000_000, // Entire 100 billion QNTO supply in smallest units with 6 decimals
+                    amount: 21_000_000_000_000_000, // Entire 21 billion QNTO supply in smallest units with 6 decimals
                     tx_id: "genesis_total_supply_tx".to_string(),
                     output_index: 0,
                     explorer_link: {
-                        let mut link = String::with_capacity(42 + genesis_utxo_id.len());
-                        link.push_str("https://qantoblockexplorer.org/utxo/");
+                        // Use local explorer instead of external service
+                        let mut link = String::with_capacity(22 + genesis_utxo_id.len());
+                        link.push_str("/explorer/utxo/");
                         link.push_str(&genesis_utxo_id);
                         link
                     },
                 },
             );
             info!(
-                "Genesis UTXO created with 100 billion QNTO allocated to contract address: {}",
+                "Genesis UTXO created with 21 billion QNTO allocated to contract address: {}",
                 config.contract_address
             );
             info!("UTXO state reset - only contract address has balance now");
@@ -380,19 +403,11 @@ impl Node {
                     if let Err(e) = isnm_service_clone.run_periodic_check().await {
                         warn!("[ISNM] Periodic check failed: {}", e);
                     }
+                    
+                    // FIX: Removed the redundant, direct call to perform_quantum_state_verification.
+                    // The `run_periodic_check` function already handles this internally. Calling it
+                    // twice was causing unnecessary CPU load and stalling the miner.
 
-                    // Activate Quantum State Verification protocol
-                    debug!("[ISNM] Initiating Quantum State Verification protocol...");
-                    let epoch = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-                    match isnm_service_clone.perform_quantum_state_verification(epoch).await {
-                        Ok(proof) => {
-                            info!("[ISNM] Quantum State Verification completed successfully. Security factor: {}", 
-                                  isnm_service_clone.calculate_quantum_security_factor(Some(&proof)).await);
-                        },
-                        Err(e) => {
-                            warn!("[ISNM] Quantum State Verification failed: {}", e);
-                        }
-                    }
                 }
                 #[allow(unreachable_code)]
                 Ok(())
@@ -611,7 +626,7 @@ impl Node {
                         miner_wallet_clone,
                         miner_mempool_clone,
                         miner_utxos_clone,
-                        miner_clone,
+                         miner_clone,
                         optimized_block_builder_clone,
                         DEFAULT_MINING_INTERVAL_SECS,
                         miner_shutdown_token,
@@ -652,7 +667,9 @@ impl Node {
                     if current_block_count > last_block_count {
                         // Get the latest block(s)
                         if let Some(latest_block) = dag_clone.get_latest_block().await {
-                            ws_state.broadcast_block_notification(&latest_block).await;
+                            if ws_state.block_sender.receiver_count() > 0 {
+                                ws_state.broadcast_block_notification(&latest_block).await;
+                            }
                             // Also broadcast to GraphQL subscribers
                             crate::graphql_server::broadcast_new_block(&latest_block).await;
                         }
@@ -663,9 +680,11 @@ impl Node {
                     let mempool_reader = mempool_clone.read().await;
                     let current_mempool_size = mempool_reader.len().await;
                     if current_mempool_size != last_mempool_size {
-                        ws_state
-                            .broadcast_mempool_update(current_mempool_size)
-                            .await;
+                        if ws_state.mempool_sender.receiver_count() > 0 {
+                            ws_state
+                                .broadcast_mempool_update(current_mempool_size)
+                                .await;
+                        }
                         last_mempool_size = current_mempool_size;
                     }
                     drop(mempool_reader);
@@ -796,12 +815,21 @@ impl Node {
             biased;
             _ = signal::ctrl_c() => {
                 info!("Received Ctrl+C, initiating shutdown...");
+                warn!("Node shutdown initiated by Ctrl+C.");
             },
             Some(res) = join_set.join_next() => {
                 match res {
-                    Ok(Err(e)) => error!("A critical node task failed: {}", e),
-                    Err(e) => error!("A critical node task panicked: {}", e),
-                    _ => {}
+                    Ok(Err(e)) => {
+                        error!("A critical node task failed: {}", e);
+                        warn!("Node shutdown initiated by critical task failure.");
+                    }
+                    Err(e) => {
+                        error!("A critical node task panicked: {}", e);
+                        warn!("Node shutdown initiated by critical task panic.");
+                    }
+                    _ => {
+                        warn!("Node shutdown initiated by unknown task completion.");
+                    }
                 }
             },
         }
@@ -1253,16 +1281,7 @@ async fn analytics_dashboard_handler(
         .as_secs();
 
     // Network health metrics
-    let network_health = crate::saga::NetworkHealthMetrics {
-        tps_current: 32.0,
-        tps_average_1h: 28.5,
-        tps_peak_24h: 45.0,
-        finality_time_ms: 2500,
-        validator_count: 1,
-        network_congestion: 0.25,
-        block_propagation_time: 2.5,
-        mempool_size: mempool.get_transactions().await.len() as u64,
-    };
+    let network_health = crate::saga::NetworkHealthMetrics::default();
 
     // AI model performance metrics
     let ai_performance = crate::saga::AIModelPerformance {
@@ -1363,7 +1382,7 @@ mod tests {
             api_address: "127.0.0.1:0".to_string(),
             peers: vec![],
             genesis_validator: genesis_validator_addr.clone(),
-            contract_address: "5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818"
+            contract_address: "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"
                 .to_string(),
             target_block_time: 60,
             difficulty: 10, // Default difficulty value that matches SAGA's base_difficulty default

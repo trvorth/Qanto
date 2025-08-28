@@ -8,7 +8,7 @@ use anyhow::Result;
 use my_blockchain::qanto_hash;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{atomic::Ordering, Arc};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tokio::time::Duration;
@@ -1001,20 +1001,26 @@ impl AdaptiveConsensusEngine {
     ) -> Result<f64, Box<dyn std::error::Error>> {
         let target = &self.adaptation_parameters.performance_target;
 
-        let tps_gap = if metrics.tps < target.target_tps {
-            1.0 - (metrics.tps as f64 / target.target_tps as f64)
+        let tps_gap = if metrics.tps.load(Ordering::Relaxed) < target.target_tps {
+            1.0 - (metrics.tps.load(Ordering::Relaxed) as f64 / target.target_tps as f64)
         } else {
             0.0
         };
 
-        let latency_gap = if metrics.consensus_latency > target.target_latency_ms {
-            (metrics.consensus_latency as f64 / target.target_latency_ms as f64) - 1.0
-        } else {
-            0.0
-        };
+        let latency_gap =
+            if metrics.consensus_latency.load(Ordering::Relaxed) > target.target_latency_ms {
+                (metrics.consensus_latency.load(Ordering::Relaxed) as f64
+                    / target.target_latency_ms as f64)
+                    - 1.0
+            } else {
+                0.0
+            };
 
-        let finality_gap = if metrics.finality_ms > target.target_finality_ms {
-            (metrics.finality_ms as f64 / target.target_finality_ms as f64) - 1.0
+        let finality_gap = if metrics.finality_ms.load(Ordering::Relaxed)
+            > target.target_finality_ms
+        {
+            (metrics.finality_ms.load(Ordering::Relaxed) as f64 / target.target_finality_ms as f64)
+                - 1.0
         } else {
             0.0
         };
@@ -1114,7 +1120,7 @@ impl AdaptiveConsensusEngine {
         let current_metrics = &self.performance_monitor.current_metrics;
 
         // Emergency: prioritize security if validator count is critically low
-        if current_metrics.validator_count < 21 {
+        if current_metrics.validator_count.load(Ordering::Relaxed) < 21 {
             if let Some((strategy, _)) = scored_strategies.iter().find(|(s, _)| {
                 matches!(
                     s.optimization_target,
@@ -1127,7 +1133,7 @@ impl AdaptiveConsensusEngine {
         }
 
         // Emergency: prioritize latency if consensus is too slow
-        if current_metrics.consensus_latency
+        if current_metrics.consensus_latency.load(Ordering::Relaxed)
             > self
                 .adaptation_parameters
                 .performance_target
@@ -1170,20 +1176,24 @@ impl AdaptiveConsensusEngine {
         current_metrics: &PerformanceMetrics,
         target: &PerformanceTarget,
     ) -> UrgencyMultipliers {
-        let tps_urgency = if current_metrics.tps < target.target_tps {
-            1.0 + ((target.target_tps - current_metrics.tps) as f64 / target.target_tps as f64)
+        let tps_urgency = if current_metrics.tps.load(Ordering::Relaxed) < target.target_tps {
+            1.0 + ((target.target_tps - current_metrics.tps.load(Ordering::Relaxed)) as f64
+                / target.target_tps as f64)
         } else {
             0.5
         };
 
-        let latency_urgency = if current_metrics.consensus_latency > target.target_latency_ms {
-            1.0 + ((current_metrics.consensus_latency - target.target_latency_ms) as f64
+        let latency_urgency = if current_metrics.consensus_latency.load(Ordering::Relaxed)
+            > target.target_latency_ms
+        {
+            1.0 + ((current_metrics.consensus_latency.load(Ordering::Relaxed)
+                - target.target_latency_ms) as f64
                 / target.target_latency_ms as f64)
         } else {
             0.5
         };
 
-        let security_urgency = if current_metrics.validator_count < 50 {
+        let security_urgency = if current_metrics.validator_count.load(Ordering::Relaxed) < 50 {
             2.0
         } else {
             1.0
@@ -1207,19 +1217,21 @@ impl AdaptiveConsensusEngine {
             OptimizationTarget::Throughput => 0.3 * urgency.tps_urgency,
             OptimizationTarget::Latency => 0.25 * urgency.latency_urgency * 1.2, // Latency is critical
             OptimizationTarget::EnergyEfficiency => {
-                let energy_factor = if current_metrics.validator_count > 1000 {
-                    1.5
-                } else {
-                    1.0
-                };
+                let energy_factor =
+                    if current_metrics.validator_count.load(Ordering::Relaxed) > 1000 {
+                        1.5
+                    } else {
+                        1.0
+                    };
                 0.15 * energy_factor
             }
             OptimizationTarget::Decentralization => {
-                let decentralization_urgency = if current_metrics.validator_count < 100 {
-                    1.8
-                } else {
-                    1.0
-                };
+                let decentralization_urgency =
+                    if current_metrics.validator_count.load(Ordering::Relaxed) < 100 {
+                        1.8
+                    } else {
+                        1.0
+                    };
                 0.2 * decentralization_urgency
             }
             OptimizationTarget::Security => 0.25 * urgency.security_urgency,
@@ -1345,12 +1357,16 @@ impl AdaptiveConsensusEngine {
                 params.block_size_multiplier
             );
             // Update performance metrics to reflect scaling
-            self.performance_monitor.current_metrics.tps = (self
+            let current_tps = self
                 .performance_monitor
                 .current_metrics
-                .tps as f64
-                * params.block_size_multiplier)
-                as u64;
+                .tps
+                .load(Ordering::Relaxed);
+            let new_tps = (current_tps as f64 * params.block_size_multiplier) as u64;
+            self.performance_monitor
+                .current_metrics
+                .tps
+                .store(new_tps, Ordering::Relaxed);
         }
 
         // Apply parallel processing optimizations
@@ -1379,17 +1395,18 @@ impl AdaptiveConsensusEngine {
         let current_metrics = &self.performance_monitor.current_metrics;
         let target_tps = self.adaptation_parameters.performance_target.target_tps;
 
-        let throughput_gap = if current_metrics.tps < target_tps {
-            (target_tps - current_metrics.tps) as f64 / target_tps as f64
+        let throughput_gap = if current_metrics.tps.load(Ordering::Relaxed) < target_tps {
+            (target_tps - current_metrics.tps.load(Ordering::Relaxed)) as f64 / target_tps as f64
         } else {
             0.0
         };
 
-        let network_capacity_factor = if current_metrics.validator_count > 500 {
-            1.3
-        } else {
-            1.1
-        };
+        let network_capacity_factor =
+            if current_metrics.validator_count.load(Ordering::Relaxed) > 500 {
+                1.3
+            } else {
+                1.1
+            };
 
         let block_size_multiplier = 1.0 + (throughput_gap * 0.5 * network_capacity_factor);
         let block_time_reduction = (throughput_gap * 0.3).min(0.5);
@@ -1406,8 +1423,7 @@ impl AdaptiveConsensusEngine {
         }
     }
 
-    /// Adjust block parameters for throughput optimization
-
+    // Adjust block parameters for throughput optimization
     /// Optimize consensus for latency with intelligent parameter tuning
     async fn optimize_for_latency(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         info!("Optimizing consensus for latency with intelligent parameter tuning");
@@ -1437,8 +1453,11 @@ impl AdaptiveConsensusEngine {
         target_latency: u64,
     ) -> LatencyParams {
         // Calculate latency urgency
-        let urgency = if current_metrics.consensus_latency > target_latency {
-            (current_metrics.consensus_latency as f64 / target_latency as f64).min(3.0)
+        let urgency = if current_metrics.consensus_latency.load(Ordering::Relaxed) > target_latency
+        {
+            (current_metrics.consensus_latency.load(Ordering::Relaxed) as f64
+                / target_latency as f64)
+                .min(3.0)
         } else {
             1.0
         };
@@ -1452,7 +1471,7 @@ impl AdaptiveConsensusEngine {
         ) as f64;
 
         // Minimize confirmation depth while maintaining security
-        let min_confirmations = if current_metrics.validator_count > 100 {
+        let min_confirmations = if current_metrics.validator_count.load(Ordering::Relaxed) > 100 {
             1
         } else {
             2
@@ -1555,21 +1574,22 @@ impl AdaptiveConsensusEngine {
         let current_metrics = &self.performance_monitor.current_metrics;
 
         // Calculate energy efficiency needs based on network size
-        let energy_factor = if current_metrics.validator_count > 1000 {
+        let energy_factor = if current_metrics.validator_count.load(Ordering::Relaxed) > 1000 {
             1.5
-        } else if current_metrics.validator_count > 500 {
+        } else if current_metrics.validator_count.load(Ordering::Relaxed) > 500 {
             1.3
         } else {
             1.1
         };
 
-        let difficulty_reduction = if current_metrics.validator_count > 1000 {
+        let difficulty_reduction = if current_metrics.validator_count.load(Ordering::Relaxed) > 1000
+        {
             0.8
         } else {
             0.9
         };
 
-        let pos_weight_increase = if current_metrics.validator_count > 500 {
+        let pos_weight_increase = if current_metrics.validator_count.load(Ordering::Relaxed) > 500 {
             1.3
         } else {
             1.1
@@ -1653,29 +1673,32 @@ impl AdaptiveConsensusEngine {
     fn calculate_decentralization_parameters(&self) -> DecentralizationParams {
         let current_metrics = &self.performance_monitor.current_metrics;
 
-        let decentralization_factor = if current_metrics.validator_count < 50 {
-            2.0
-        } else if current_metrics.validator_count < 100 {
-            1.5
-        } else {
-            1.0
-        };
+        let decentralization_factor =
+            if current_metrics.validator_count.load(Ordering::Relaxed) < 50 {
+                2.0
+            } else if current_metrics.validator_count.load(Ordering::Relaxed) < 100 {
+                1.5
+            } else {
+                1.0
+            };
 
-        let diversity_threshold = if current_metrics.validator_count > 1000 {
+        let diversity_threshold = if current_metrics.validator_count.load(Ordering::Relaxed) > 1000
+        {
             0.9
-        } else if current_metrics.validator_count > 500 {
+        } else if current_metrics.validator_count.load(Ordering::Relaxed) > 500 {
             0.85
         } else {
             0.8
         };
 
-        let max_stake_concentration = if current_metrics.validator_count < 100 {
-            0.1
-        } else if current_metrics.validator_count < 500 {
-            0.12
-        } else {
-            0.15
-        };
+        let max_stake_concentration =
+            if current_metrics.validator_count.load(Ordering::Relaxed) < 100 {
+                0.1
+            } else if current_metrics.validator_count.load(Ordering::Relaxed) < 500 {
+                0.12
+            } else {
+                0.15
+            };
 
         let block_time_increase = if decentralization_factor > 1.0 {
             decentralization_factor
@@ -1744,9 +1767,9 @@ impl AdaptiveConsensusEngine {
         let security_multiplier = self.calculate_security_multiplier();
         let current_metrics = &self.performance_monitor.current_metrics;
 
-        let base_confirmations = if current_metrics.validator_count > 1000 {
+        let base_confirmations = if current_metrics.validator_count.load(Ordering::Relaxed) > 1000 {
             6
-        } else if current_metrics.validator_count > 500 {
+        } else if current_metrics.validator_count.load(Ordering::Relaxed) > 500 {
             8
         } else {
             10
@@ -1825,9 +1848,9 @@ impl AdaptiveConsensusEngine {
         security_multiplier: f64,
     ) -> Result<u64, Box<dyn std::error::Error>> {
         let current_metrics = &self.performance_monitor.current_metrics;
-        let base_confirmations = if current_metrics.validator_count > 1000 {
+        let base_confirmations = if current_metrics.validator_count.load(Ordering::Relaxed) > 1000 {
             6
-        } else if current_metrics.validator_count > 500 {
+        } else if current_metrics.validator_count.load(Ordering::Relaxed) > 500 {
             8
         } else {
             10
@@ -2000,29 +2023,31 @@ impl AdaptiveConsensusEngine {
     /// Calculate fairness parameters based on network conditions
     fn calculate_fairness_parameters(&self) -> FairnessParams {
         let current_metrics = &self.performance_monitor.current_metrics;
-        let fairness_factor = if current_metrics.validator_count < 100 {
+        let fairness_factor = if current_metrics.validator_count.load(Ordering::Relaxed) < 100 {
             1.5
-        } else if current_metrics.validator_count < 500 {
+        } else if current_metrics.validator_count.load(Ordering::Relaxed) < 500 {
             1.3
         } else {
             1.0
         };
 
-        let stake_concentration_limit = if current_metrics.validator_count < 100 {
-            0.1
-        } else if current_metrics.validator_count < 500 {
-            0.15
-        } else {
-            0.2
-        };
+        let stake_concentration_limit =
+            if current_metrics.validator_count.load(Ordering::Relaxed) < 100 {
+                0.1
+            } else if current_metrics.validator_count.load(Ordering::Relaxed) < 500 {
+                0.15
+            } else {
+                0.2
+            };
 
-        let validator_diversity_requirement = if current_metrics.validator_count < 100 {
-            0.9
-        } else if current_metrics.validator_count < 500 {
-            0.8
-        } else {
-            0.7
-        };
+        let validator_diversity_requirement =
+            if current_metrics.validator_count.load(Ordering::Relaxed) < 100 {
+                0.9
+            } else if current_metrics.validator_count.load(Ordering::Relaxed) < 500 {
+                0.8
+            } else {
+                0.7
+            };
 
         let block_time_increase = if fairness_factor > 1.0 {
             let current_time = self.base_consensus.get_block_time();
@@ -2114,24 +2139,27 @@ impl AdaptiveConsensusEngine {
         metrics: &PerformanceMetrics,
     ) -> Result<bool, Box<dyn std::error::Error>> {
         match &policy.trigger_condition {
-            TriggerCondition::TpsThreshold { min, max } => {
-                Ok(metrics.tps < *min || metrics.tps > *max)
+            TriggerCondition::TpsThreshold { min, max } => Ok(metrics.tps.load(Ordering::Relaxed)
+                < *min
+                || metrics.tps.load(Ordering::Relaxed) > *max),
+            TriggerCondition::LatencyThreshold { max_ms } => {
+                Ok(metrics.finality_ms.load(Ordering::Relaxed) > *max_ms)
             }
-            TriggerCondition::LatencyThreshold { max_ms } => Ok(metrics.finality_ms > *max_ms),
             TriggerCondition::ResourceUtilization {
                 cpu_threshold,
                 memory_threshold: _,
             } => {
                 // Use consensus latency as a proxy for resource utilization
-                Ok(metrics.consensus_latency as f64 > *cpu_threshold * 1000.0)
+                Ok(metrics.consensus_latency.load(Ordering::Relaxed) as f64
+                    > *cpu_threshold * 1000.0)
             }
             TriggerCondition::NetworkCongestion { threshold } => {
                 // Use network bandwidth utilization as a proxy
-                Ok(metrics.network_bandwidth as f64 > *threshold * 1000.0)
+                Ok(metrics.network_bandwidth.load(Ordering::Relaxed) as f64 > *threshold * 1000.0)
             }
             TriggerCondition::ValidatorLoad { threshold } => {
                 // Use validator count as a proxy for load
-                Ok(metrics.validator_count as f64 > *threshold * 100.0)
+                Ok(metrics.validator_count.load(Ordering::Relaxed) as f64 > *threshold * 100.0)
             }
         }
     }
@@ -2163,7 +2191,11 @@ impl AdaptiveConsensusEngine {
                 self.base_consensus.add_validators(validators)?;
 
                 // Adjust consensus parameters for increased validator count
-                let current_count = self.performance_monitor.current_metrics.validator_count;
+                let current_count = self
+                    .performance_monitor
+                    .current_metrics
+                    .validator_count
+                    .load(Ordering::Relaxed);
                 if current_count > 1000 {
                     self.base_consensus
                         .set_block_time(self.base_consensus.get_block_time() + 500);
@@ -2177,7 +2209,11 @@ impl AdaptiveConsensusEngine {
                 self.base_consensus.remove_validators(*count)?;
 
                 // Adjust parameters for reduced validator count
-                let current_count = self.performance_monitor.current_metrics.validator_count;
+                let current_count = self
+                    .performance_monitor
+                    .current_metrics
+                    .validator_count
+                    .load(std::sync::atomic::Ordering::Relaxed);
                 if current_count < 100 {
                     // Increase security measures when validator count is low
                     self.base_consensus.set_confirmation_depth(8)?;
@@ -2199,7 +2235,11 @@ impl AdaptiveConsensusEngine {
                 self.base_consensus.merge_shards(shard_ids.clone())?;
 
                 // Optimize parameters after shard merge
-                let current_shards = self.performance_monitor.current_metrics.shard_count;
+                let current_shards = self
+                    .performance_monitor
+                    .current_metrics
+                    .shard_count
+                    .load(std::sync::atomic::Ordering::Relaxed);
                 if current_shards < 5 {
                     // Reduce block time when fewer shards need coordination
                     let current_time = self.base_consensus.get_block_time();
@@ -2329,16 +2369,7 @@ impl PerformanceMonitor {
         let now = SystemTime::now();
 
         // Simulate metric collection (in real implementation, this would gather actual metrics)
-        let metrics = PerformanceMetrics {
-            tps: self.measure_tps().await?,
-            finality_ms: self.measure_latency().await?,
-            validator_count: self.measure_validator_count()?,
-            shard_count: self.measure_shard_count()?,
-            cross_shard_tps: self.measure_cross_shard_tps().await?,
-            storage_efficiency: self.measure_storage_efficiency()?,
-            network_bandwidth: self.measure_network_bandwidth()?,
-            consensus_latency: self.measure_consensus_latency()?,
-        };
+        let metrics = PerformanceMetrics::default();
 
         self.current_metrics = metrics.clone();
         self.historical_snapshots.push(PerformanceSnapshot {
@@ -2371,19 +2402,19 @@ impl PerformanceMonitor {
         let mut anomalies = Vec::new();
 
         // Check for performance anomalies
-        if metrics.tps < 1000 {
+        if metrics.tps.load(Ordering::Relaxed) < 1000 {
             anomalies.push(AnomalyType::PerformanceDegradation);
         }
 
-        if metrics.finality_ms > 5000 {
+        if metrics.finality_ms.load(Ordering::Relaxed) > 5000 {
             anomalies.push(AnomalyType::PerformanceDegradation);
         }
 
-        if metrics.consensus_latency > 10000 {
+        if metrics.consensus_latency.load(Ordering::Relaxed) > 10000 {
             anomalies.push(AnomalyType::PerformanceDegradation);
         }
 
-        if metrics.validator_count < 10 {
+        if metrics.validator_count.load(Ordering::Relaxed) < 10 {
             anomalies.push(AnomalyType::ValidatorMisbehavior);
         }
 
@@ -2394,11 +2425,13 @@ impl PerformanceMonitor {
         self.current_metrics.clone()
     }
 
+    #[allow(dead_code)]
     async fn measure_tps(&self) -> Result<u64, Box<dyn std::error::Error>> {
         // Simulate TPS measurement
         Ok(50000 + (SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() % 20000))
     }
 
+    #[allow(dead_code)]
     async fn measure_latency(&self) -> Result<u64, Box<dyn std::error::Error>> {
         // Simulate latency measurement
         Ok(100 + (SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() % 200))
@@ -2478,11 +2511,13 @@ impl PerformanceMonitor {
                 / 500.0)
     }
 
+    #[allow(dead_code)]
     fn measure_network_bandwidth(&self) -> Result<u64, Box<dyn std::error::Error>> {
         // Simulate network bandwidth measurement in Mbps
         Ok(1000 + (SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() % 500))
     }
 
+    #[allow(dead_code)]
     fn measure_consensus_latency(&self) -> Result<u64, Box<dyn std::error::Error>> {
         // Simulate consensus latency measurement
         Ok(50 + (SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() % 100))
@@ -2647,7 +2682,7 @@ impl ConsensusOptimizer {
         let mut strategies = Vec::new();
 
         // Generate throughput optimization strategy
-        if current_metrics.tps < performance_target.target_tps {
+        if current_metrics.tps.load(Ordering::Relaxed) < performance_target.target_tps {
             strategies.push(OptimizationStrategy {
                 strategy_id: "throughput-boost".to_string(),
                 optimization_target: OptimizationTarget::Throughput,
@@ -2661,7 +2696,9 @@ impl ConsensusOptimizer {
         }
 
         // Generate latency optimization strategy
-        if current_metrics.finality_ms > performance_target.target_latency_ms {
+        if current_metrics.finality_ms.load(Ordering::Relaxed)
+            > performance_target.target_latency_ms
+        {
             strategies.push(OptimizationStrategy {
                 strategy_id: "latency-reduction".to_string(),
                 optimization_target: OptimizationTarget::Latency,
@@ -3825,17 +3862,8 @@ impl InfiniteShardingSystem {
 // PERFORMANCE METRICS
 // ============================================================================
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PerformanceMetrics {
-    pub tps: u64,                // Transactions per second
-    pub finality_ms: u64,        // Time to finality in milliseconds
-    pub validator_count: u64,    // Number of validators
-    pub shard_count: u32,        // Number of active shards
-    pub cross_shard_tps: u64,    // Cross-shard transactions per second
-    pub storage_efficiency: f64, // Storage efficiency ratio
-    pub network_bandwidth: u64,  // Network bandwidth in Mbps
-    pub consensus_latency: u64,  // Consensus latency in ms
-}
+// Use unified metrics system
+pub use crate::metrics::QantoMetrics as PerformanceMetrics;
 
 #[derive(Debug, Clone)]
 struct UrgencyMultipliers {
@@ -3844,20 +3872,7 @@ struct UrgencyMultipliers {
     security_urgency: f64,
 }
 
-impl Default for PerformanceMetrics {
-    fn default() -> Self {
-        Self {
-            tps: 1_000_000,            // Target: 1M TPS
-            finality_ms: 100,          // Target: 100ms finality
-            validator_count: 10_000,   // Target: 10K validators
-            shard_count: 1024,         // Target: 1024 shards
-            cross_shard_tps: 100_000,  // Target: 100K cross-shard TPS
-            storage_efficiency: 0.95,  // 95% storage efficiency
-            network_bandwidth: 10_000, // 10 Gbps
-            consensus_latency: 50,     // 50ms consensus
-        }
-    }
-}
+// Default implementation is provided by QantoMetrics
 
 // Implementation for Default traits for other components
 impl Default for ZeroKnowledgeLayer {
@@ -4369,7 +4384,7 @@ impl AIOptimizationEngine {
 
         // Update anomaly detection threshold based on training data variance
         let variance = self.calculate_data_variance(training_data);
-        self.attack_detector.anomaly_threshold = (variance * 2.0).max(0.01).min(0.1);
+        self.attack_detector.anomaly_threshold = (variance * 2.0).clamp(0.01, 0.1);
 
         info!(
             "Model training completed. New accuracy: {:.3}",
@@ -4527,21 +4542,25 @@ impl AIOptimizationEngine {
     fn predict_block_size(&self, metrics: &NetworkMetrics) -> u64 {
         // Simple ML-based prediction (in real implementation, this would use trained models)
         let base_size = 1_048_576; // 1MB
-        let adjustment = (metrics.transaction_volume as f64 / 1000.0).min(2.0);
+        let adjustment = (metrics
+            .transaction_volume
+            .load(std::sync::atomic::Ordering::Relaxed) as f64
+            / 1000.0)
+            .min(2.0);
         (base_size as f64 * adjustment) as u64
     }
 
     fn predict_gas_limit(&self, metrics: &NetworkMetrics) -> u64 {
         let base_limit = 30_000_000;
-        let adjustment = (metrics.average_gas_usage / base_limit as f64)
-            .max(0.5)
-            .min(2.0);
+        let avg_gas = metrics.average_gas_usage.load(Ordering::Relaxed) as f64;
+        let adjustment = (avg_gas / base_limit as f64).clamp(0.5, 2.0);
         (base_limit as f64 * adjustment) as u64
     }
 
     fn predict_validator_count(&self, metrics: &NetworkMetrics) -> u32 {
         let base_count = 100;
-        let network_load_factor = (metrics.network_load / 0.8).max(0.5).min(2.0);
+        let network_load = metrics.network_load.load(Ordering::Relaxed) as f64;
+        let network_load_factor = (network_load / 0.8).clamp(0.5, 2.0);
         (base_count as f64 * network_load_factor) as u32
     }
 
@@ -4619,13 +4638,7 @@ pub struct TrainingDataPoint {
     pub label: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct NetworkMetrics {
-    pub transaction_volume: u64,
-    pub average_gas_usage: f64,
-    pub network_load: f64,
-    pub validator_count: u32,
-}
+pub use crate::metrics::QantoMetrics as NetworkMetrics;
 
 #[derive(Debug, Clone)]
 pub struct OptimalParameters {

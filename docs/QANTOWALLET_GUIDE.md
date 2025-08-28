@@ -41,7 +41,7 @@ cargo run --bin qantowallet -- generate
    Saved to: "wallet.key"
 
 🔒 Security Information:
-   Address: 74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41
+   Address: ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3
 
 ⚠️ CRITICAL: Please write down this mnemonic phrase and store it in a secure, offline location.
    This is the ONLY way to recover your wallet.
@@ -75,7 +75,7 @@ cargo run --release --bin qantowallet -- show-keys
 Enter password for wallet 'wallet.key':
 
 --- Qanto Wallet Information ---
-Address:          74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41
+Address:          ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3
 Wallet File:      "wallet.key"
 Is Encrypted:     true
 Private Key:      [Your secret private key will be displayed here]
@@ -110,7 +110,7 @@ Confirm password:
 
 ✅ Wallet imported and saved successfully!
    Saved to: "wallet.key"
-   Address:  74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41
+   Address:  ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3
 ```
 
 ---

@@ -15,6 +15,7 @@ use rand::rngs::OsRng;
 use rand::Rng;
 use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use ed25519_dalek::{Signer, SigningKey};
 
@@ -28,8 +29,10 @@ fn qanhash_op_benchmark(c: &mut Criterion) {
     let start_nonce = 1_000_000u64;
 
     let mut group = c.benchmark_group("Qanhash");
+    let quick = std::env::var("QANTO_QUICK_BENCH").is_ok();
     group.sampling_mode(criterion::SamplingMode::Flat);
-    group.sample_size(1000);
+    group.sample_size(if quick { 100 } else { 1000 });
+    group.measurement_time(Duration::from_secs(if quick { 5 } else { 15 }));
 
     group.bench_function("CPU Qanhash single operation", |b| {
         b.iter_with_large_drop(|| {
@@ -61,13 +64,12 @@ fn mine_cpu_benchmark(c: &mut Criterion) {
     rand::thread_rng().fill(&mut header_data);
     let header_hash = QantoHash::new(header_data);
     let mut nonce = 0u64;
-    let target = qanhash::difficulty_to_target(1_000_000);
+    qanhash::difficulty_to_target(1_000_000); // Calculate target but don't store unused result
 
     c.bench_function("Block Mining/CPU Hash Rate (1k Hashes)", |b| {
         b.iter(|| {
             for _ in 0..1000 {
-                let hash = qanhash::hash(&header_hash, nonce);
-                if qanhash::is_solution_valid(&hash, target) {}
+                black_box(qanhash::hash(&header_hash, nonce));
                 nonce = nonce.wrapping_add(1);
             }
         })
@@ -79,15 +81,16 @@ fn execution_layer_benchmark(c: &mut Criterion) {
     let mut csprng = OsRng;
     let exec_layer = Arc::new(ExecutionLayer::new());
 
-    const NUM_CONCURRENT_BATCHES: usize = 16;
-    const TXS_PER_BATCH: usize = 1_000;
-    const TOTAL_TXS: usize = NUM_CONCURRENT_BATCHES * TXS_PER_BATCH;
+    let quick = std::env::var("QANTO_QUICK_BENCH").is_ok();
+    let num_concurrent_batches: usize = if quick { 8 } else { 16 };
+    let txs_per_batch: usize = if quick { 500 } else { 1_000 };
+    let total_txs: usize = num_concurrent_batches * txs_per_batch;
 
     const TX_POOL_SIZE: usize = 1000;
     let tx_pool: Vec<Transaction> = (0..TX_POOL_SIZE)
         .map(|i| {
             let keypair = SigningKey::generate(&mut csprng);
-            let message = format!("Pooled Tx {}", i).into_bytes();
+            let message = format!("Pooled Tx {i}").into_bytes();
             let signature = keypair.sign(&message);
             Transaction {
                 id: qanto_hash(&message),
@@ -99,9 +102,9 @@ fn execution_layer_benchmark(c: &mut Criterion) {
         .collect();
 
     let all_batches: Arc<Vec<Vec<Transaction>>> = Arc::new(
-        (0..NUM_CONCURRENT_BATCHES)
+        (0..num_concurrent_batches)
             .map(|_| {
-                (0..TXS_PER_BATCH)
+                (0..txs_per_batch)
                     .map(|i| tx_pool[i % TX_POOL_SIZE].clone())
                     .collect()
             })
@@ -111,13 +114,10 @@ fn execution_layer_benchmark(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     let mut group = c.benchmark_group("Execution Layer");
-    group.throughput(criterion::Throughput::Elements(TOTAL_TXS as u64));
+    group.throughput(criterion::Throughput::Elements(total_txs as u64));
 
     group.bench_function(
-        &format!(
-            "Add {} Concurrent Batches ({} txs total)",
-            NUM_CONCURRENT_BATCHES, TOTAL_TXS
-        ),
+        format!("Add {num_concurrent_batches} Concurrent Batches ({total_txs} txs total)"),
         |b| {
             b.to_async(&rt).iter_batched(
                 || (Arc::clone(&all_batches), Arc::clone(&exec_layer)),
@@ -138,15 +138,16 @@ fn execution_layer_benchmark(c: &mut Criterion) {
 fn hyperscale_tps_benchmark(c: &mut Criterion) {
     let mut csprng = OsRng;
 
-    const NUM_SHARDS: usize = 16;
-    const TXS_PER_BATCH: usize = 100_000;
-    const TOTAL_TXS: usize = NUM_SHARDS * TXS_PER_BATCH;
+    let quick = std::env::var("QANTO_QUICK_BENCH").is_ok();
+    let num_shards: usize = if quick { 8 } else { 16 };
+    let txs_per_batch: usize = if quick { 10_000 } else { 100_000 };
+    let total_txs: usize = num_shards * txs_per_batch;
 
     const TX_POOL_SIZE: usize = 1000;
     let tx_pool: Vec<Transaction> = (0..TX_POOL_SIZE)
         .map(|i| {
             let keypair = SigningKey::generate(&mut csprng);
-            let message = format!("Pooled Tx {}", i).into_bytes();
+            let message = format!("Pooled Tx {i}").into_bytes();
             let signature = keypair.sign(&message);
             Transaction {
                 id: qanto_hash(&message),
@@ -158,9 +159,9 @@ fn hyperscale_tps_benchmark(c: &mut Criterion) {
         .collect();
 
     let all_batches: Arc<Vec<Vec<Transaction>>> = Arc::new(
-        (0..NUM_SHARDS)
+        (0..num_shards)
             .map(|_| {
-                (0..TXS_PER_BATCH)
+                (0..txs_per_batch)
                     .map(|i| tx_pool[i % TX_POOL_SIZE].clone())
                     .collect()
             })
@@ -168,16 +169,16 @@ fn hyperscale_tps_benchmark(c: &mut Criterion) {
     );
 
     let shards: Arc<Vec<_>> = Arc::new(
-        (0..NUM_SHARDS)
+        (0..num_shards)
             .map(|_| Mutex::new(ExecutionShard::new()))
             .collect(),
     );
 
     let mut group = c.benchmark_group("Hyperscale Execution");
-    group.throughput(criterion::Throughput::Elements(TOTAL_TXS as u64));
+    group.throughput(criterion::Throughput::Elements(total_txs as u64));
 
     group.bench_function(
-        &format!("Raw Sharded Execution ({} txs total)", TOTAL_TXS),
+        format!("Raw Sharded Execution ({total_txs} txs total)"),
         |b| {
             b.iter_batched(
                 || (Arc::clone(&shards), Arc::clone(&all_batches)),

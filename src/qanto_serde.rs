@@ -12,10 +12,7 @@
 //! - Compression integration
 //! - Quantum-resistant encoding
 
-use std::collections::{HashMap, BTreeMap, HashSet, BTreeSet, VecDeque};
-use std::fmt;
-use std::io::{self, Read, Write};
-use std::mem;
+use std::collections::HashMap;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -39,7 +36,8 @@ pub enum QantoSerdeError {
 /// Type tags for serialization
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TypeTag {
+pub enum TypeTag {
+    // Made public to fix private interface warnings
     // Primitives
     Bool = 0x01,
     U8 = 0x02,
@@ -54,7 +52,7 @@ enum TypeTag {
     I128 = 0x0B,
     F32 = 0x0C,
     F64 = 0x0D,
-    
+
     // Collections
     String = 0x10,
     Bytes = 0x11,
@@ -64,22 +62,22 @@ enum TypeTag {
     HashSet = 0x15,
     BTreeSet = 0x16,
     VecDeque = 0x17,
-    
+
     // Options and Results
     None = 0x20,
     Some = 0x21,
     Ok = 0x22,
     Err = 0x23,
-    
+
     // Tuples
     Tuple2 = 0x30,
     Tuple3 = 0x31,
     Tuple4 = 0x32,
-    
-    // Custom types
+
+    // Complex types
     Struct = 0x40,
     Enum = 0x41,
-    
+
     // Special
     Null = 0x00,
     Custom = 0xFF,
@@ -183,6 +181,12 @@ pub struct BinarySerializer {
     version: u8,
 }
 
+impl Default for BinarySerializer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BinarySerializer {
     pub fn new() -> Self {
         Self {
@@ -190,14 +194,14 @@ impl BinarySerializer {
             version: 1,
         }
     }
-    
+
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             buffer: Vec::with_capacity(capacity),
             version: 1,
         }
     }
-    
+
     pub fn finish(mut self) -> Vec<u8> {
         // Prepend version and magic number
         let mut result = Vec::with_capacity(self.buffer.len() + 8);
@@ -207,11 +211,11 @@ impl BinarySerializer {
         result.append(&mut self.buffer);
         result
     }
-    
+
     pub fn len(&self) -> usize {
         self.buffer.len()
     }
-    
+
     pub fn is_empty(&self) -> bool {
         self.buffer.is_empty()
     }
@@ -222,110 +226,111 @@ impl QantoSerializer for BinarySerializer {
         self.buffer.push(tag as u8);
         Ok(())
     }
-    
+
     fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), QantoSerdeError> {
         self.buffer.extend_from_slice(bytes);
         Ok(())
     }
-    
+
     fn write_u8(&mut self, value: u8) -> Result<(), QantoSerdeError> {
         self.write_type_tag(TypeTag::U8)?;
         self.buffer.push(value);
         Ok(())
     }
-    
+
     fn write_u16(&mut self, value: u16) -> Result<(), QantoSerdeError> {
         self.write_type_tag(TypeTag::U16)?;
         self.buffer.extend_from_slice(&value.to_le_bytes());
         Ok(())
     }
-    
+
     fn write_u32(&mut self, value: u32) -> Result<(), QantoSerdeError> {
         self.write_type_tag(TypeTag::U32)?;
         self.buffer.extend_from_slice(&value.to_le_bytes());
         Ok(())
     }
-    
+
     fn write_u64(&mut self, value: u64) -> Result<(), QantoSerdeError> {
         self.write_type_tag(TypeTag::U64)?;
         self.buffer.extend_from_slice(&value.to_le_bytes());
         Ok(())
     }
-    
+
     fn write_u128(&mut self, value: u128) -> Result<(), QantoSerdeError> {
         self.write_type_tag(TypeTag::U128)?;
         self.buffer.extend_from_slice(&value.to_le_bytes());
         Ok(())
     }
-    
+
     fn write_i8(&mut self, value: i8) -> Result<(), QantoSerdeError> {
         self.write_type_tag(TypeTag::I8)?;
         self.buffer.push(value as u8);
         Ok(())
     }
-    
+
     fn write_i16(&mut self, value: i16) -> Result<(), QantoSerdeError> {
         self.write_type_tag(TypeTag::I16)?;
         self.buffer.extend_from_slice(&value.to_le_bytes());
         Ok(())
     }
-    
+
     fn write_i32(&mut self, value: i32) -> Result<(), QantoSerdeError> {
         self.write_type_tag(TypeTag::I32)?;
         self.buffer.extend_from_slice(&value.to_le_bytes());
         Ok(())
     }
-    
+
     fn write_i64(&mut self, value: i64) -> Result<(), QantoSerdeError> {
         self.write_type_tag(TypeTag::I64)?;
         self.buffer.extend_from_slice(&value.to_le_bytes());
         Ok(())
     }
-    
+
     fn write_i128(&mut self, value: i128) -> Result<(), QantoSerdeError> {
         self.write_type_tag(TypeTag::I128)?;
         self.buffer.extend_from_slice(&value.to_le_bytes());
         Ok(())
     }
-    
+
     fn write_f32(&mut self, value: f32) -> Result<(), QantoSerdeError> {
         self.write_type_tag(TypeTag::F32)?;
         self.buffer.extend_from_slice(&value.to_le_bytes());
         Ok(())
     }
-    
+
     fn write_f64(&mut self, value: f64) -> Result<(), QantoSerdeError> {
         self.write_type_tag(TypeTag::F64)?;
         self.buffer.extend_from_slice(&value.to_le_bytes());
         Ok(())
     }
-    
+
     fn write_bool(&mut self, value: bool) -> Result<(), QantoSerdeError> {
         self.write_type_tag(TypeTag::Bool)?;
         self.buffer.push(if value { 1 } else { 0 });
         Ok(())
     }
-    
+
     fn write_string(&mut self, value: &str) -> Result<(), QantoSerdeError> {
         self.write_type_tag(TypeTag::String)?;
         self.write_length(value.len())?;
         self.buffer.extend_from_slice(value.as_bytes());
         Ok(())
     }
-    
+
     fn write_length(&mut self, length: usize) -> Result<(), QantoSerdeError> {
         // Variable-length encoding for efficiency
         if length < 0x80 {
             self.buffer.push(length as u8);
         } else if length < 0x4000 {
-            let bytes = ((length as u16) | 0x8000).to_le_bytes();
-            self.buffer.extend_from_slice(&bytes);
+            let value = (length as u16) | 0x8000;
+            self.buffer.extend_from_slice(&value.to_le_bytes());
         } else if length < 0x20000000 {
-            let bytes = ((length as u32) | 0xC0000000).to_le_bytes();
-            self.buffer.extend_from_slice(&bytes);
+            let value = (length as u32) | 0xC0000000;
+            self.buffer.extend_from_slice(&value.to_le_bytes());
         } else {
             self.buffer.push(0xFF);
-            self.buffer.extend_from_slice(&(length as u64).to_le_bytes());
+            self.buffer
+                .extend_from_slice(&(length as u64).to_le_bytes());
         }
         Ok(())
     }
@@ -335,7 +340,7 @@ impl QantoSerializer for BinarySerializer {
 pub struct BinaryDeserializer<'a> {
     data: &'a [u8],
     position: usize,
-    version: u8,
+    _version: u8, // Prefixed with underscore to indicate intentional non-use
 }
 
 impl<'a> BinaryDeserializer<'a> {
@@ -343,34 +348,41 @@ impl<'a> BinaryDeserializer<'a> {
         if data.len() < 8 {
             return Err(QantoSerdeError::InvalidFormat("Data too short".to_string()));
         }
-        
+
         // Check magic number
         if &data[0..4] != b"QSER" {
-            return Err(QantoSerdeError::InvalidFormat("Invalid magic number".to_string()));
+            return Err(QantoSerdeError::InvalidFormat(
+                "Invalid magic number".to_string(),
+            ));
         }
-        
+
         let version = data[4];
         if version != 1 {
-            return Err(QantoSerdeError::VersionMismatch { expected: 1, actual: version });
+            return Err(QantoSerdeError::VersionMismatch {
+                expected: 1,
+                actual: version,
+            });
         }
-        
+
         // Read length (24-bit)
         let length = u32::from_le_bytes([data[5], data[6], data[7], 0]) as usize;
         if data.len() != length + 8 {
-            return Err(QantoSerdeError::InvalidFormat("Length mismatch".to_string()));
+            return Err(QantoSerdeError::InvalidFormat(
+                "Length mismatch".to_string(),
+            ));
         }
-        
+
         Ok(Self {
             data: &data[8..],
             position: 0,
-            version,
+            _version: version,
         })
     }
-    
+
     pub fn remaining(&self) -> usize {
         self.data.len().saturating_sub(self.position)
     }
-    
+
     pub fn is_empty(&self) -> bool {
         self.position >= self.data.len()
     }
@@ -420,326 +432,349 @@ impl<'a> QantoDeserializer for BinaryDeserializer<'a> {
         if self.position >= self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let tag = TypeTag::from_u8(self.data[self.position])?;
         self.position += 1;
         Ok(tag)
     }
-    
+
     fn read_bytes(&mut self, len: usize) -> Result<Vec<u8>, QantoSerdeError> {
         if self.position + len > self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let bytes = self.data[self.position..self.position + len].to_vec();
         self.position += len;
         Ok(bytes)
     }
-    
+
     fn read_u8(&mut self) -> Result<u8, QantoSerdeError> {
         let tag = self.read_type_tag()?;
         if tag != TypeTag::U8 {
-            let tag_str = Self::tag_to_str(tag);
-             let mut error_msg = String::with_capacity(16 + tag_str.len());
-             error_msg.push_str("Expected U8, got ");
-             error_msg.push_str(tag_str);
+            let tag_str = BinaryDeserializer::tag_to_str(tag);
+            let mut error_msg = String::with_capacity(16 + tag_str.len());
+            error_msg.push_str("Expected U8, got ");
+            error_msg.push_str(tag_str);
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         if self.position >= self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let value = self.data[self.position];
         self.position += 1;
         Ok(value)
     }
-    
+
     fn read_u16(&mut self) -> Result<u16, QantoSerdeError> {
         let tag = self.read_type_tag()?;
         if tag != TypeTag::U16 {
-            let tag_str = Self::tag_to_str(tag);
-             let mut error_msg = String::with_capacity(17 + tag_str.len());
-             error_msg.push_str("Expected U16, got ");
-             error_msg.push_str(tag_str);
+            let tag_str = BinaryDeserializer::tag_to_str(tag);
+            let mut error_msg = String::with_capacity(17 + tag_str.len());
+            error_msg.push_str("Expected U16, got ");
+            error_msg.push_str(tag_str);
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         if self.position + 2 > self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let bytes = [self.data[self.position], self.data[self.position + 1]];
         self.position += 2;
         Ok(u16::from_le_bytes(bytes))
     }
-    
+
     fn read_u32(&mut self) -> Result<u32, QantoSerdeError> {
         let tag = self.read_type_tag()?;
         if tag != TypeTag::U32 {
-            let tag_str = Self::tag_to_str(tag);
-             let mut error_msg = String::with_capacity(17 + tag_str.len());
-             error_msg.push_str("Expected U32, got ");
-             error_msg.push_str(tag_str);
+            let tag_str = BinaryDeserializer::tag_to_str(tag);
+            let mut error_msg = String::with_capacity(17 + tag_str.len());
+            error_msg.push_str("Expected U32, got ");
+            error_msg.push_str(tag_str);
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         if self.position + 4 > self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let mut bytes = [0u8; 4];
         bytes.copy_from_slice(&self.data[self.position..self.position + 4]);
         self.position += 4;
         Ok(u32::from_le_bytes(bytes))
     }
-    
+
     fn read_u64(&mut self) -> Result<u64, QantoSerdeError> {
         let tag = self.read_type_tag()?;
         if tag != TypeTag::U64 {
-            let tag_str = Self::tag_to_str(tag);
+            let tag_str = BinaryDeserializer::tag_to_str(tag);
             let mut error_msg = String::with_capacity(17 + tag_str.len());
             error_msg.push_str("Expected U64, got ");
             error_msg.push_str(tag_str);
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         if self.position + 8 > self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let mut bytes = [0u8; 8];
         bytes.copy_from_slice(&self.data[self.position..self.position + 8]);
         self.position += 8;
         Ok(u64::from_le_bytes(bytes))
     }
-    
+
     fn read_u128(&mut self) -> Result<u128, QantoSerdeError> {
         let tag = self.read_type_tag()?;
         if tag != TypeTag::U128 {
-            let tag_str = Self::tag_to_str(tag);
+            let tag_str = BinaryDeserializer::tag_to_str(tag);
             let mut error_msg = String::with_capacity(18 + tag_str.len());
             error_msg.push_str("Expected U128, got ");
             error_msg.push_str(tag_str);
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         if self.position + 16 > self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let mut bytes = [0u8; 16];
         bytes.copy_from_slice(&self.data[self.position..self.position + 16]);
         self.position += 16;
         Ok(u128::from_le_bytes(bytes))
     }
-    
+
     fn read_i8(&mut self) -> Result<i8, QantoSerdeError> {
         let tag = self.read_type_tag()?;
         if tag != TypeTag::I8 {
-            let tag_str = Self::tag_to_str(tag);
+            let tag_str = BinaryDeserializer::tag_to_str(tag);
             let mut error_msg = String::with_capacity(16 + tag_str.len());
             error_msg.push_str("Expected I8, got ");
             error_msg.push_str(tag_str);
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         if self.position >= self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let value = self.data[self.position] as i8;
         self.position += 1;
         Ok(value)
     }
-    
+
     fn read_i16(&mut self) -> Result<i16, QantoSerdeError> {
         let tag = self.read_type_tag()?;
         if tag != TypeTag::I16 {
             let mut error_msg = String::with_capacity(20);
             error_msg.push_str("Expected I16, got ");
-            error_msg.push_str(Self::tag_to_str(tag));
+            error_msg.push_str(BinaryDeserializer::tag_to_str(tag));
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         if self.position + 2 > self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let bytes = [self.data[self.position], self.data[self.position + 1]];
         self.position += 2;
         Ok(i16::from_le_bytes(bytes))
     }
-    
+
     fn read_i32(&mut self) -> Result<i32, QantoSerdeError> {
         let tag = self.read_type_tag()?;
         if tag != TypeTag::I32 {
             let mut error_msg = String::with_capacity(20);
             error_msg.push_str("Expected I32, got ");
-            error_msg.push_str(Self::tag_to_str(tag));
+            error_msg.push_str(BinaryDeserializer::tag_to_str(tag));
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         if self.position + 4 > self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let mut bytes = [0u8; 4];
         bytes.copy_from_slice(&self.data[self.position..self.position + 4]);
         self.position += 4;
         Ok(i32::from_le_bytes(bytes))
     }
-    
+
     fn read_i64(&mut self) -> Result<i64, QantoSerdeError> {
         let tag = self.read_type_tag()?;
         if tag != TypeTag::I64 {
             let mut error_msg = String::with_capacity(20);
             error_msg.push_str("Expected I64, got ");
-            error_msg.push_str(Self::tag_to_str(tag));
+            error_msg.push_str(BinaryDeserializer::tag_to_str(tag));
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         if self.position + 8 > self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let mut bytes = [0u8; 8];
         bytes.copy_from_slice(&self.data[self.position..self.position + 8]);
         self.position += 8;
         Ok(i64::from_le_bytes(bytes))
     }
-    
+
     fn read_i128(&mut self) -> Result<i128, QantoSerdeError> {
         let tag = self.read_type_tag()?;
         if tag != TypeTag::I128 {
             let mut error_msg = String::with_capacity(21);
             error_msg.push_str("Expected I128, got ");
-            error_msg.push_str(Self::tag_to_str(tag));
+            error_msg.push_str(BinaryDeserializer::tag_to_str(tag));
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         if self.position + 16 > self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let mut bytes = [0u8; 16];
         bytes.copy_from_slice(&self.data[self.position..self.position + 16]);
         self.position += 16;
         Ok(i128::from_le_bytes(bytes))
     }
-    
+
     fn read_f32(&mut self) -> Result<f32, QantoSerdeError> {
         let tag = self.read_type_tag()?;
         if tag != TypeTag::F32 {
             let mut error_msg = String::with_capacity(20);
             error_msg.push_str("Expected F32, got ");
-            error_msg.push_str(Self::tag_to_str(tag));
+            error_msg.push_str(BinaryDeserializer::tag_to_str(tag));
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         if self.position + 4 > self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let mut bytes = [0u8; 4];
         bytes.copy_from_slice(&self.data[self.position..self.position + 4]);
         self.position += 4;
         Ok(f32::from_le_bytes(bytes))
     }
-    
+
     fn read_f64(&mut self) -> Result<f64, QantoSerdeError> {
         let tag = self.read_type_tag()?;
         if tag != TypeTag::F64 {
             let mut error_msg = String::with_capacity(20);
             error_msg.push_str("Expected F64, got ");
-            error_msg.push_str(Self::tag_to_str(tag));
+            error_msg.push_str(BinaryDeserializer::tag_to_str(tag));
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         if self.position + 8 > self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let mut bytes = [0u8; 8];
         bytes.copy_from_slice(&self.data[self.position..self.position + 8]);
         self.position += 8;
         Ok(f64::from_le_bytes(bytes))
     }
-    
+
     fn read_bool(&mut self) -> Result<bool, QantoSerdeError> {
         let tag = self.read_type_tag()?;
         if tag != TypeTag::Bool {
             let mut error_msg = String::with_capacity(21);
             error_msg.push_str("Expected Bool, got ");
-            error_msg.push_str(Self::tag_to_str(tag));
+            error_msg.push_str(BinaryDeserializer::tag_to_str(tag));
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         if self.position >= self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let value = self.data[self.position] != 0;
         self.position += 1;
         Ok(value)
     }
-    
+
     fn read_string(&mut self) -> Result<String, QantoSerdeError> {
         let tag = self.read_type_tag()?;
         if tag != TypeTag::String {
             let mut error_msg = String::with_capacity(23);
             error_msg.push_str("Expected String, got ");
-            error_msg.push_str(Self::tag_to_str(tag));
+            error_msg.push_str(BinaryDeserializer::tag_to_str(tag));
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         let length = self.read_length()?;
         let bytes = self.read_bytes(length)?;
-        
-        String::from_utf8(bytes)
-            .map_err(|e| {
-                let mut msg = String::with_capacity(14 + e.to_string().len());
-                msg.push_str("Invalid UTF-8: ");
-                msg.push_str(&e.to_string());
-                QantoSerdeError::InvalidFormat(msg)
-            })
+
+        String::from_utf8(bytes).map_err(|e| {
+            let mut msg = String::with_capacity(14 + e.to_string().len());
+            msg.push_str("Invalid UTF-8: ");
+            msg.push_str(&e.to_string());
+            QantoSerdeError::InvalidFormat(msg)
+        })
     }
-    
+
     fn read_length(&mut self) -> Result<usize, QantoSerdeError> {
         if self.position >= self.data.len() {
             return Err(QantoSerdeError::BufferOverflow);
         }
-        
+
         let first_byte = self.data[self.position];
-        self.position += 1;
-        
+
         if first_byte < 0x80 {
-            Ok(first_byte as usize)
-        } else if first_byte < 0xC0 {
-            if self.position >= self.data.len() {
-                return Err(QantoSerdeError::BufferOverflow);
-            }
-            let second_byte = self.data[self.position];
+            // Single byte encoding
             self.position += 1;
-            let value = u16::from_le_bytes([first_byte, second_byte]) & 0x3FFF;
-            Ok(value as usize)
-        } else if first_byte < 0xFF {
-            if self.position + 3 > self.data.len() {
-                return Err(QantoSerdeError::BufferOverflow);
-            }
-            let mut bytes = [first_byte, 0, 0, 0];
-            bytes[1..4].copy_from_slice(&self.data[self.position..self.position + 3]);
-            self.position += 3;
-            let value = u32::from_le_bytes(bytes) & 0x1FFFFFFF;
-            Ok(value as usize)
+            Ok(first_byte as usize)
         } else {
-            if self.position + 8 > self.data.len() {
+            // Multi-byte encoding - need to read enough bytes to determine type
+            if self.position + 2 > self.data.len() {
                 return Err(QantoSerdeError::BufferOverflow);
             }
-            let mut bytes = [0u8; 8];
-            bytes.copy_from_slice(&self.data[self.position..self.position + 8]);
-            self.position += 8;
-            Ok(u64::from_le_bytes(bytes) as usize)
+
+            // Read the first 2 bytes to determine encoding type
+            let two_byte_value =
+                u16::from_le_bytes([self.data[self.position], self.data[self.position + 1]]);
+
+            if (0x8000..=0xBFFF).contains(&two_byte_value) {
+                // 2-byte encoding: 0x8000-0xBFFF range
+                self.position += 2;
+                Ok((two_byte_value & 0x3FFF) as usize)
+            } else {
+                // Need to check if it's 4-byte or 9-byte encoding
+                if self.position + 4 > self.data.len() {
+                    return Err(QantoSerdeError::BufferOverflow);
+                }
+
+                // Read 4 bytes to check if it's in 4-byte range
+                let four_byte_value = u32::from_le_bytes([
+                    self.data[self.position],
+                    self.data[self.position + 1],
+                    self.data[self.position + 2],
+                    self.data[self.position + 3],
+                ]);
+
+                if (0xC0000000..=0xFEFFFFFF).contains(&four_byte_value) {
+                    // 4-byte encoding: 0xC0000000-0xFEFFFFFF range
+                    self.position += 4;
+                    Ok((four_byte_value & 0x1FFFFFFF) as usize)
+                } else if first_byte == 0xFF {
+                    // 9-byte encoding: 0xFF + 8 bytes
+                    if self.position + 9 > self.data.len() {
+                        return Err(QantoSerdeError::BufferOverflow);
+                    }
+                    self.position += 1;
+                    let mut bytes = [0u8; 8];
+                    bytes.copy_from_slice(&self.data[self.position..self.position + 8]);
+                    self.position += 8;
+                    Ok(u64::from_le_bytes(bytes) as usize)
+                } else {
+                    Err(QantoSerdeError::InvalidFormat(
+                        "Invalid encoding type".to_string(),
+                    ))
+                }
+            }
         }
     }
 }
@@ -761,13 +796,18 @@ impl QantoDeserialize for bool {
 macro_rules! impl_serialize_primitive {
     ($type:ty, $write_method:ident, $read_method:ident) => {
         impl QantoSerialize for $type {
-            fn serialize<W: QantoSerializer>(&self, serializer: &mut W) -> Result<(), QantoSerdeError> {
+            fn serialize<W: QantoSerializer>(
+                &self,
+                serializer: &mut W,
+            ) -> Result<(), QantoSerdeError> {
                 serializer.$write_method(*self)
             }
         }
-        
+
         impl QantoDeserialize for $type {
-            fn deserialize<R: QantoDeserializer>(deserializer: &mut R) -> Result<Self, QantoSerdeError> {
+            fn deserialize<R: QantoDeserializer>(
+                deserializer: &mut R,
+            ) -> Result<Self, QantoSerdeError> {
                 deserializer.$read_method()
             }
         }
@@ -799,32 +839,17 @@ impl QantoDeserialize for String {
     }
 }
 
-impl QantoSerialize for Vec<u8> {
+impl<T: QantoSerialize + 'static> QantoSerialize for Vec<T> {
     fn serialize<W: QantoSerializer>(&self, serializer: &mut W) -> Result<(), QantoSerdeError> {
-        serializer.write_type_tag(TypeTag::Bytes)?;
-        serializer.write_length(self.len())?;
-        serializer.write_bytes(self)
-    }
-}
-
-impl QantoDeserialize for Vec<u8> {
-    fn deserialize<R: QantoDeserializer>(deserializer: &mut R) -> Result<Self, QantoSerdeError> {
-        let tag = deserializer.read_type_tag()?;
-        if tag != TypeTag::Bytes {
-            let tag_str = Self::tag_to_str(tag);
-            let mut error_msg = String::with_capacity(19 + tag_str.len());
-            error_msg.push_str("Expected Bytes, got ");
-            error_msg.push_str(tag_str);
-            return Err(QantoSerdeError::InvalidFormat(error_msg));
+        // Special handling for Vec<u8> to use Bytes tag
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<u8>() {
+            serializer.write_type_tag(TypeTag::Bytes)?;
+            serializer.write_length(self.len())?;
+            // Safety: We know T is u8, so this cast is safe
+            let bytes: &[u8] = unsafe { std::mem::transmute(self.as_slice()) };
+            return serializer.write_bytes(bytes);
         }
-        
-        let length = deserializer.read_length()?;
-        deserializer.read_bytes(length)
-    }
-}
 
-impl<T: QantoSerialize> QantoSerialize for Vec<T> {
-    fn serialize<W: QantoSerializer>(&self, serializer: &mut W) -> Result<(), QantoSerdeError> {
         serializer.write_type_tag(TypeTag::Vec)?;
         serializer.write_length(self.len())?;
         for item in self {
@@ -834,17 +859,26 @@ impl<T: QantoSerialize> QantoSerialize for Vec<T> {
     }
 }
 
-impl<T: QantoDeserialize> QantoDeserialize for Vec<T> {
+impl<T: QantoDeserialize + 'static> QantoDeserialize for Vec<T> {
     fn deserialize<R: QantoDeserializer>(deserializer: &mut R) -> Result<Self, QantoSerdeError> {
         let tag = deserializer.read_type_tag()?;
+
+        // Handle both Vec and Bytes tags for Vec<u8> compatibility
+        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<u8>() && tag == TypeTag::Bytes {
+            let length = deserializer.read_length()?;
+            let bytes = deserializer.read_bytes(length)?;
+            // Safety: We know T is u8, so this cast is safe
+            return Ok(unsafe { std::mem::transmute::<Vec<u8>, Vec<T>>(bytes) });
+        }
+
         if tag != TypeTag::Vec {
-            let tag_str = Self::tag_to_str(tag);
+            let tag_str = BinaryDeserializer::tag_to_str(tag);
             let mut error_msg = String::with_capacity(17 + tag_str.len());
             error_msg.push_str("Expected Vec, got ");
             error_msg.push_str(tag_str);
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         let length = deserializer.read_length()?;
         let mut vec = Vec::with_capacity(length);
         for _ in 0..length {
@@ -873,7 +907,7 @@ impl<T: QantoDeserialize> QantoDeserialize for Option<T> {
             TypeTag::None => Ok(None),
             TypeTag::Some => Ok(Some(T::deserialize(deserializer)?)),
             _ => {
-                let tag_str = Self::tag_to_str(tag);
+                let tag_str = BinaryDeserializer::tag_to_str(tag);
                 let mut error_msg = String::with_capacity(20 + tag_str.len());
                 error_msg.push_str("Expected Option, got ");
                 error_msg.push_str(tag_str);
@@ -905,7 +939,7 @@ impl<T: QantoDeserialize, E: QantoDeserialize> QantoDeserialize for Result<T, E>
             TypeTag::Ok => Ok(Ok(T::deserialize(deserializer)?)),
             TypeTag::Err => Ok(Err(E::deserialize(deserializer)?)),
             _ => {
-                let tag_str = Self::tag_to_str(tag);
+                let tag_str = BinaryDeserializer::tag_to_str(tag);
                 let mut error_msg = String::with_capacity(20 + tag_str.len());
                 error_msg.push_str("Expected Result, got ");
                 error_msg.push_str(tag_str);
@@ -928,13 +962,13 @@ impl<A: QantoDeserialize, B: QantoDeserialize> QantoDeserialize for (A, B) {
     fn deserialize<R: QantoDeserializer>(deserializer: &mut R) -> Result<Self, QantoSerdeError> {
         let tag = deserializer.read_type_tag()?;
         if tag != TypeTag::Tuple2 {
-            let tag_str = Self::tag_to_str(tag);
+            let tag_str = BinaryDeserializer::tag_to_str(tag);
             let mut error_msg = String::with_capacity(19 + tag_str.len());
             error_msg.push_str("Expected Tuple2, got ");
             error_msg.push_str(tag_str);
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         let a = A::deserialize(deserializer)?;
         let b = B::deserialize(deserializer)?;
         Ok((a, b))
@@ -954,17 +988,19 @@ impl<K: QantoSerialize, V: QantoSerialize> QantoSerialize for HashMap<K, V> {
     }
 }
 
-impl<K: QantoDeserialize + std::hash::Hash + Eq, V: QantoDeserialize> QantoDeserialize for HashMap<K, V> {
+impl<K: QantoDeserialize + std::hash::Hash + Eq, V: QantoDeserialize> QantoDeserialize
+    for HashMap<K, V>
+{
     fn deserialize<R: QantoDeserializer>(deserializer: &mut R) -> Result<Self, QantoSerdeError> {
         let tag = deserializer.read_type_tag()?;
         if tag != TypeTag::HashMap {
-            let tag_str = Self::tag_to_str(tag);
+            let tag_str = BinaryDeserializer::tag_to_str(tag);
             let mut error_msg = String::with_capacity(20 + tag_str.len());
             error_msg.push_str("Expected HashMap, got ");
             error_msg.push_str(tag_str);
             return Err(QantoSerdeError::InvalidFormat(error_msg));
         }
-        
+
         let length = deserializer.read_length()?;
         let mut map = HashMap::with_capacity(length);
         for _ in 0..length {
@@ -995,7 +1031,7 @@ pub fn from_bytes<T: QantoDeserialize>(bytes: &[u8]) -> Result<T, QantoSerdeErro
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_primitive_serialization() {
         let value = 42u32;
@@ -1003,7 +1039,7 @@ mod tests {
         let deserialized: u32 = from_bytes(&bytes).unwrap();
         assert_eq!(value, deserialized);
     }
-    
+
     #[test]
     fn test_string_serialization() {
         let value = "Hello, Qanto!".to_string();
@@ -1011,7 +1047,7 @@ mod tests {
         let deserialized: String = from_bytes(&bytes).unwrap();
         assert_eq!(value, deserialized);
     }
-    
+
     #[test]
     fn test_vec_serialization() {
         let value = vec![1u32, 2, 3, 4, 5];
@@ -1019,34 +1055,34 @@ mod tests {
         let deserialized: Vec<u32> = from_bytes(&bytes).unwrap();
         assert_eq!(value, deserialized);
     }
-    
+
     #[test]
     fn test_option_serialization() {
         let some_value = Some(42u32);
         let none_value: Option<u32> = None;
-        
+
         let some_bytes = to_bytes(&some_value).unwrap();
         let none_bytes = to_bytes(&none_value).unwrap();
-        
+
         let some_deserialized: Option<u32> = from_bytes(&some_bytes).unwrap();
         let none_deserialized: Option<u32> = from_bytes(&none_bytes).unwrap();
-        
+
         assert_eq!(some_value, some_deserialized);
         assert_eq!(none_value, none_deserialized);
     }
-    
+
     #[test]
     fn test_hashmap_serialization() {
         let mut map = HashMap::new();
         map.insert("key1".to_string(), 42u32);
         map.insert("key2".to_string(), 84u32);
-        
+
         let bytes = to_bytes(&map).unwrap();
         let deserialized: HashMap<String, u32> = from_bytes(&bytes).unwrap();
-        
+
         assert_eq!(map, deserialized);
     }
-    
+
     #[test]
     fn test_tuple_serialization() {
         let value = ("hello".to_string(), 42u32);
@@ -1054,38 +1090,46 @@ mod tests {
         let deserialized: (String, u32) = from_bytes(&bytes).unwrap();
         assert_eq!(value, deserialized);
     }
-    
+
     #[test]
     fn test_result_serialization() {
         let ok_value: Result<u32, String> = Ok(42);
         let err_value: Result<u32, String> = Err("error".to_string());
-        
+
         let ok_bytes = to_bytes(&ok_value).unwrap();
         let err_bytes = to_bytes(&err_value).unwrap();
-        
+
         let ok_deserialized: Result<u32, String> = from_bytes(&ok_bytes).unwrap();
         let err_deserialized: Result<u32, String> = from_bytes(&err_bytes).unwrap();
-        
+
         assert_eq!(ok_value, ok_deserialized);
         assert_eq!(err_value, err_deserialized);
     }
-    
+
     #[test]
     fn test_variable_length_encoding() {
         let mut serializer = BinarySerializer::new();
-        
+
         // Test different length ranges
         serializer.write_length(0x7F).unwrap(); // 1 byte
         serializer.write_length(0x3FFF).unwrap(); // 2 bytes
         serializer.write_length(0x1FFFFFFF).unwrap(); // 4 bytes
         serializer.write_length(0x100000000).unwrap(); // 9 bytes
-        
+
         let bytes = serializer.finish();
+
         let mut deserializer = BinaryDeserializer::new(&bytes).unwrap();
-        
-        assert_eq!(deserializer.read_length().unwrap(), 0x7F);
-        assert_eq!(deserializer.read_length().unwrap(), 0x3FFF);
-        assert_eq!(deserializer.read_length().unwrap(), 0x1FFFFFFF);
-        assert_eq!(deserializer.read_length().unwrap(), 0x100000000);
+
+        let val1 = deserializer.read_length().unwrap();
+        assert_eq!(val1, 0x7F);
+
+        let val2 = deserializer.read_length().unwrap();
+        assert_eq!(val2, 0x3FFF);
+
+        let val3 = deserializer.read_length().unwrap();
+        assert_eq!(val3, 0x1FFFFFFF);
+
+        let val4 = deserializer.read_length().unwrap();
+        assert_eq!(val4, 0x100000000);
     }
 }

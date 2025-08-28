@@ -89,7 +89,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: deployment/docker/Dockerfile
+          file: Dockerfile.freetier
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -131,7 +131,7 @@ jobs:
           
       - name: Deploy to staging
         run: |
-          helm upgrade --install qanto-staging deployment/helm/qanto-node \
+          helm upgrade --install qanto-staging helm/boot-node \
             --namespace qanto-staging \
             --create-namespace \
             --set image.tag=${{ github.sha }} \
@@ -159,7 +159,7 @@ jobs:
           
       - name: Deploy to production
         run: |
-          helm upgrade --install qanto-mainnet deployment/helm/qanto-node \
+          helm upgrade --install qanto-mainnet helm/boot-node \
             --namespace qanto-mainnet \
             --create-namespace \
             --set image.tag=${{ github.sha }} \

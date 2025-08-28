@@ -19,17 +19,17 @@
 //! state corruption, and emergent consensus failures. It doesn't just protect the
 //! system; it *is* the system's instinct for survival.
 
+use crate::qanto_compat::sp_core::H256;
 use crate::qantodag::QantoBlock;
 use my_blockchain::qanto_hash;
 use once_cell::sync::Lazy;
 use rand::Rng;
-use sp_core::H256;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
-use tracing::{debug, instrument, warn};
+use tracing::{debug, warn};
 
 // --- Core ΩMEGA Constants ---
 const IDENTITY_STATE_SIZE: usize = 32;
@@ -141,12 +141,10 @@ pub mod simulation {
         pub average_response_time_ms: f64,
     }
 
-    #[instrument]
     pub async fn run_simulation() {
         run_comprehensive_simulation(SimulationConfig::default()).await;
     }
 
-    #[instrument(skip(config))]
     pub async fn run_comprehensive_simulation(config: SimulationConfig) -> SimulationResults {
         info!(
             "Starting comprehensive ΩMEGA simulation with config: {:?}",
@@ -213,7 +211,6 @@ pub mod simulation {
         results
     }
 
-    #[instrument]
     async fn run_stability_test(iterations: usize) -> f64 {
         let mut stable_responses = 0;
         let test_hash = H256::random();
@@ -298,7 +295,6 @@ pub mod simulation {
     }
 
     /// Run targeted stress test scenarios
-    #[instrument]
     pub async fn run_stress_test() -> SimulationResults {
         info!("Running ΩMEGA stress test...");
         let stress_config = SimulationConfig {
@@ -312,7 +308,6 @@ pub mod simulation {
     }
 
     /// Run long-duration endurance test
-    #[instrument]
     pub async fn run_endurance_test() -> SimulationResults {
         info!("Running ΩMEGA endurance test...");
         let endurance_config = SimulationConfig {
@@ -365,7 +360,6 @@ impl OmegaState {
     }
 
     /// The core "reflection" function. It simulates an action and assesses its impact.
-    #[instrument(skip(self))]
     fn reflect(&mut self, action_hash: H256) -> bool {
         self.update_entropy();
 
@@ -385,7 +379,7 @@ impl OmegaState {
         combined.extend_from_slice(self.identity_hash.as_bytes());
         combined.extend_from_slice(action_hash.as_bytes());
         let next_identity_hash = qanto_hash(&combined);
-        let next_identity = H256::from(next_identity_hash.as_bytes());
+        let next_identity = H256::from(*next_identity_hash.as_bytes());
 
         // Calculate the entropy of the *next* potential state.
         let next_entropy = Self::calculate_shannon_entropy(next_identity.as_bytes());
@@ -516,7 +510,7 @@ pub fn hash_for_block(block: &QantoBlock) -> H256 {
         combined.extend_from_slice(tx.id.as_bytes());
     }
     let hash = qanto_hash(&combined);
-    H256::from(hash.as_bytes())
+    H256::from(*hash.as_bytes())
 }
 
 #[cfg(test)]

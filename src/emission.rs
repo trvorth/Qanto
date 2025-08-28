@@ -2,13 +2,12 @@ use log::debug;
 use prometheus::{register_int_counter, IntCounter};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::instrument;
 
 // Made constants public
 pub const INITIAL_REWARD: u64 = 50_000_000_000; // Initial block reward (50 QNTO in smallest units)
-pub const TOTAL_SUPPLY: u64 = 100_000_000_000_000_000; // Total supply cap set to 100 Billion QNTO (in smallest units with 6 decimals)
-pub const HALVING_PERIOD: u64 = 7_884_000; // 3 months in seconds
-pub const HALVING_FACTOR: f64 = 0.97; // 3% reduction per halving
+pub const TOTAL_SUPPLY: u64 = 21_000_000_000_000_000; // Total supply cap set to 21 Billion QNTO (in smallest units with 6 decimals)units with 6 decimals)
+pub const HALVING_PERIOD: u64 = 7_776_000; // 3 months in seconds
+pub const HALVING_FACTOR: f64 = 0.875; // 12.5% reduction per halving
 pub const SCALE: u64 = 1_000_000; // Fixed-point scale for precision
 
 lazy_static::lazy_static! {
@@ -35,7 +34,6 @@ pub struct Emission {
 }
 
 impl Emission {
-    #[instrument]
     pub fn new(
         initial_reward: u64,
         total_supply: u64,
@@ -56,7 +54,6 @@ impl Emission {
         }
     }
 
-    #[instrument]
     pub fn default_with_timestamp(genesis_timestamp: u64, num_chains: u32) -> Self {
         Self::new(
             INITIAL_REWARD,
@@ -68,7 +65,6 @@ impl Emission {
         )
     }
 
-    #[instrument]
     pub fn calculate_reward(&self, timestamp: u64) -> Result<u64, String> {
         if timestamp < self.genesis_timestamp {
             return Err("Timestamp cannot be before genesis".into());
@@ -96,7 +92,6 @@ impl Emission {
         Ok(per_chain_reward)
     }
 
-    #[instrument]
     pub fn update_supply(&mut self, reward: u64) -> Result<(), String> {
         let new_supply = self.current_supply.saturating_add(reward);
 
@@ -114,17 +109,14 @@ impl Emission {
         Ok(())
     }
 
-    #[instrument]
     pub fn current_supply(&self) -> u64 {
         self.current_supply
     }
 
-    #[instrument]
     pub fn total_supply(&self) -> u64 {
         self.total_supply
     }
 
-    #[instrument]
     pub fn update_last_halving_period(&mut self, timestamp: u64) {
         if self.halving_period == 0 {
             return;
@@ -140,7 +132,6 @@ impl Emission {
         }
     }
 
-    #[instrument]
     pub fn quantum_resistant_adjustment(&self, entropy_seed: u64) -> u64 {
         let now_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)

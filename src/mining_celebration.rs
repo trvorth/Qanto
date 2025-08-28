@@ -142,7 +142,7 @@ impl MiningStats {
 
         // Block reward section
         println!("\n{}", "💰 Block Reward:".bold().bright_white());
-        let reward_qanto = self.block_reward as f64 / 1_000_000.0; // Convert from smallest units to QANTO
+        let reward_qanto = self.block_reward as f64 / 1_000_000_000.0; // Corrected denominator to 1e9
         println!(
             "  {} {} QANTO",
             "Reward:".bright_blue(),

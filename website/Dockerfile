@@ -1,70 +1,152 @@
-# Qanto Website Dockerfile - Static version
-FROM nginx:alpine
+# Multi-stage build for Qanto Website
+# Stage 1: Build and optimize assets
+FROM node:18-alpine AS builder
 
-# Copy static files
-COPY . /usr/share/nginx/html/
+# Set working directory
+WORKDIR /app
 
-# Create health check endpoint
-RUN mkdir -p /usr/share/nginx/html/api && \
-    echo '{"status":"healthy","service":"qanto-website"}' > /usr/share/nginx/html/api/health
+# Install build dependencies
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    imagemagick \
+    optipng \
+    jpegoptim
 
-# Configure nginx
-COPY <<EOF /etc/nginx/nginx.conf
-user nginx;
-worker_processes auto;
-error_log /var/log/nginx/error.log notice;
-pid /var/run/nginx.pid;
+# Copy package files
+COPY package*.json ./
 
-events {
-    worker_connections 1024;
-}
+# Install dependencies
+RUN npm ci --only=production
 
-http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
-    
-    log_format main '\$remote_addr - \$remote_user [\$time_local] "\$request" '
-                    '\$status \$body_bytes_sent "\$http_referer" '
-                    '"\$http_user_agent" "\$http_x_forwarded_for"';
-    
-    access_log /var/log/nginx/access.log main;
-    
-    sendfile on;
-    keepalive_timeout 65;
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
-    
-    server {
-        listen 3000;
-        server_name _;
-        root /usr/share/nginx/html;
-        index index.html;
-        
-        # Health check
-        location /api/health {
-            add_header Content-Type application/json;
-            return 200 '{"status":"healthy","service":"qanto-website","timestamp":"2024-01-01T00:00:00Z"}';
-        }
-        
-        # Main site
-        location / {
-            try_files \$uri \$uri/ /index.html;
-            add_header X-Content-Type-Options nosniff;
-            add_header X-Frame-Options SAMEORIGIN;
-        }
-        
-        # Static assets caching
-        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)\$ {
-            expires 1y;
-            add_header Cache-Control "public, immutable";
-        }
-    }
-}
-EOF
+# Install build tools globally
+RUN npm install -g \
+    terser \
+    clean-css-cli \
+    html-minifier-terser \
+    imagemin-cli \
+    @imagemin/pngquant \
+    @imagemin/mozjpeg \
+    @imagemin/svgo
 
-EXPOSE 3000
+# Copy source files
+COPY . .
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1
+# Build and optimize assets
+RUN echo "Building and optimizing assets..." && \
+    # Create optimized directory
+    mkdir -p /app/dist && \
+    cp -r . /app/dist/ && \
+    cd /app/dist && \
+    \
+    # Optimize HTML files
+    find . -name "*.html" -exec html-minifier-terser \
+        --collapse-whitespace \
+        --remove-comments \
+        --remove-optional-tags \
+        --remove-redundant-attributes \
+        --remove-script-type-attributes \
+        --remove-tag-whitespace \
+        --use-short-doctype \
+        --minify-css true \
+        --minify-js true \
+        --output {} {} \; && \
+    \
+    # Optimize CSS files
+    find assets/css -name "*.css" -exec cleancss -o {} {} \; && \
+    \
+    # Optimize JavaScript files
+    find assets/js -name "*.js" -exec terser {} -o {} --compress --mangle \; && \
+    \
+    # Optimize images if they exist
+    if [ -d "assets/images" ]; then \
+        find assets/images -name "*.png" -exec optipng -o7 {} \; ; \
+        find assets/images -name "*.jpg" -o -name "*.jpeg" -exec jpegoptim --max=85 --strip-all {} \; ; \
+        find assets/images -name "*.svg" -exec imagemin {} --out-dir=assets/images --plugin=@imagemin/svgo \; ; \
+    fi && \
+    \
+    # Generate cache manifest
+    echo "Generating cache manifest..." && \
+    echo '{"version":"'$(date +%s)'","timestamp":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","files":[]}' > cache-manifest.json && \
+    # Remove unnecessary files
+    rm -rf node_modules package*.json Dockerfile* .git* .env* && \
+    \
+    # Set proper permissions
+    find . -type f -exec chmod 644 {} \; && \
+    find . -type d -exec chmod 755 {} \;
 
-CMD ["nginx", "-g", "daemon off;"]
+# Stage 2: Production server
+FROM nginx:1.25-alpine AS production
+
+# Install additional tools
+RUN apk add --no-cache \
+    curl \
+    jq \
+    tzdata \
+    logrotate
+
+# Set timezone
+ENV TZ=UTC
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Create nginx user and directories
+RUN addgroup -g 1001 -S nginx-app && \
+    adduser -S -D -H -u 1001 -h /var/cache/nginx -s /sbin/nologin -G nginx-app -g nginx nginx-app
+
+# Create necessary directories
+RUN mkdir -p /var/www/qanto.network \
+             /var/log/nginx \
+             /var/cache/nginx \
+             /etc/nginx/conf.d \
+             /etc/ssl/certs \
+             /run/nginx
+
+# Copy optimized website files
+COPY --from=builder --chown=nginx-app:nginx-app /app/dist /var/www/qanto.network/
+
+# Copy nginx configuration
+COPY --chown=root:root nginx.conf /etc/nginx/nginx.conf
+COPY --chown=root:root nginx-site.conf /etc/nginx/conf.d/default.conf
+
+# Copy nginx site configuration
+COPY nginx-qanto.conf /etc/nginx/conf.d/qanto.conf
+
+# Copy custom error pages
+COPY 404.html /var/www/qanto.network/404.html
+COPY 50x.html /var/www/qanto.network/50x.html
+
+# Copy health check script
+COPY health-check.sh /usr/local/bin/health-check.sh
+RUN chmod +x /usr/local/bin/health-check.sh
+
+# Copy startup script
+COPY start.sh /usr/local/bin/start.sh
+RUN chmod +x /usr/local/bin/start.sh
+
+# Set proper ownership
+RUN chown -R nginx-app:nginx-app /var/www/qanto.network /var/cache/nginx /var/log/nginx
+
+# Expose port
+EXPOSE 80
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD /usr/local/bin/health-check.sh
+
+# Use non-root user
+USER nginx-app
+
+# Start the application
+CMD ["/usr/local/bin/start.sh"]
+
+# Labels for metadata
+LABEL maintainer="Qanto Team <dev@qanto.network>" \
+      version="1.0.0" \
+      description="Qanto Network Main Website" \
+      org.opencontainers.image.title="Qanto Website" \
+      org.opencontainers.image.description="Official Qanto Network website" \
+      org.opencontainers.image.vendor="Qanto Network" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.source="https://github.com/qanto-network/qanto" \
+      org.opencontainers.image.documentation="https://docs.qanto.network"

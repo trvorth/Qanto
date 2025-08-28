@@ -129,7 +129,7 @@ Watch the entire series on our **[YouTube Channel](https://youtube.com/@qantopro
 **What you'll learn:**
 - ✅ How Qanto's hybrid PoW/PoS consensus works
 - ✅ Staking rewards and the HAME economic model
-- ✅ Minimum staking requirements (1,000 QNTO)
+- ✅ Minimum staking requirements (100 QNTO)
 - ✅ Delegation vs. running your own validator
 - ✅ Risks and benefits of staking
 

@@ -18,16 +18,25 @@ fn main() -> Result<(), Box<dyn Error>> {
         Wallet::from_private_key(key_or_mnemonic)?
     };
     // Check for WALLET_PASSWORD environment variable first
-    let password = std::env::var("WALLET_PASSWORD").unwrap_or_else(|_| {
-        // Fallback to interactive prompt if no environment variable
-        rpassword::prompt_password("Create a password to encrypt the imported wallet: ")
-            .expect("Failed to read password")
-    });
-
-    // Validate that the password is not empty
-    if password.is_empty() {
-        return Err("Password cannot be empty.".into());
-    }
+    let password = if let Ok(env_pass) = std::env::var("WALLET_PASSWORD") {
+        if env_pass.is_empty() {
+            return Err("WALLET_PASSWORD is set but empty.".into());
+        }
+        env_pass
+    } else {
+        let pass1 =
+            rpassword::prompt_password("Create a password to encrypt the imported wallet: ")
+                .expect("Failed to read password");
+        if pass1.is_empty() {
+            return Err("Password cannot be empty.".into());
+        }
+        let pass2 =
+            rpassword::prompt_password("Confirm password: ").expect("Failed to read password");
+        if pass1 != pass2 {
+            return Err("Passwords do not match.".into());
+        }
+        pass1
+    };
 
     // Log when using environment variable
     if std::env::var("WALLET_PASSWORD").is_ok() {

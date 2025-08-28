@@ -93,11 +93,11 @@ autoscaling:
 
 resources:
   limits:
-    cpu: 1000m
-    memory: 1Gi
+    cpu: 16000m
+    memory: 32Gi
   requests:
-    cpu: 500m
-    memory: 512Mi
+    cpu: 8000m
+    memory: 16Gi
 
 # ============================================================================
 # Health Checks
@@ -201,3 +201,10 @@ serviceAccount:
 podDisruptionBudget:
   enabled: true
   minAvailable: 1
+
+persistence:
+  enabled: true
+  storageClass: "gp3"
+  accessMode: ReadWriteOnce
+  size: 100Gi
+  mountPath: /data

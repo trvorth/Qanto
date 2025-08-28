@@ -1,6 +1,6 @@
 // src/bin/omega_test.rs
 use qanto::omega;
-use sp_core::H256;
+use qanto::qanto_compat::sp_core::H256;
 
 #[tokio::main]
 async fn main() {

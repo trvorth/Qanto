@@ -30,9 +30,9 @@ use tokio::sync::{RwLock, Semaphore};
 use tracing::{debug, info, warn};
 
 /// Optimized constants for extreme performance
-const OPTIMAL_BATCH_SIZE: usize = 5000; // Increased for better throughput
-const MAX_PARALLEL_WORKERS: usize = 64; // Increased for higher parallelism
-const SIGNATURE_VERIFICATION_WORKERS: usize = 32; // Doubled for signature processing
+const OPTIMAL_BATCH_SIZE: usize = 10000; // Further increased for 10M+ TPS
+const MAX_PARALLEL_WORKERS: usize = 128; // Further increased for higher parallelism
+const SIGNATURE_VERIFICATION_WORKERS: usize = 64; // Quadrupled for signature processing
 #[allow(dead_code)]
 const MEMORY_POOL_SIZE: usize = 1024 * 1024; // 1MB memory pool
 #[allow(dead_code)]
@@ -340,8 +340,9 @@ impl OptimizedTransactionProcessor {
                     utxo_id.push('_');
                     utxo_id.push_str(&index.to_string());
 
-                    let mut explorer_link = String::with_capacity(45 + utxo_id.len());
-                    explorer_link.push_str("https://qantoblockexplorer.org/utxo/");
+                    // Use local explorer instead of external service
+                    let mut explorer_link = String::with_capacity(25 + utxo_id.len());
+                    explorer_link.push_str("/explorer/utxo/");
                     explorer_link.push_str(&utxo_id);
 
                     let utxo = UTXO {

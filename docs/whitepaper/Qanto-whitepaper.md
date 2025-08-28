@@ -2,9 +2,9 @@
 
 **Author:** trvorth | Qanto Project
 
-**Date:** January 2025
+**Date:** August 2025
 
-**Version:** 2.0
+**Version:** 1.0
 
 ## **Abstract**
 
@@ -168,7 +168,7 @@ Qanto integrates a comprehensive suite of cryptographic primitives chosen for se
 
 ### **5.1. Foundational Hashing Algorithms**
 
-The protocol specifies the use of the **SHA-3** family of hash functions \[29\]. Keccak256 is used for block hashing and Merkle tree construction \[12], while the wider Keccak512 is used for generating transaction identifiers to reduce the probability of hash collisions. For high-performance hashing of arbitrary data, the protocol utilizes BLAKE3 \[30], as seen in the qanto_hash standalone utility
+The protocol exclusively uses the **Qanhash32x** hash function, a custom, quantum-resistant hashing algorithm based on Keccak permutations, for all hashing operations including block hashing, Merkle tree construction, transaction identifiers, and arbitrary data hashing, as implemented in the qanto_hash utility
 
 ### **5.2. The Qanhash Proof-of-Work Algorithm**
 
@@ -212,7 +212,7 @@ The protocol's security is underpinned by a carefully engineered economic model 
 
 ### **6.1. Monetary Policy and Emission**
 
-The protocol defines a fixed TOTAL_SUPPLY of 10¹⁷ base units (representing 100 billion coins) and an INITIAL_REWARD (Rᵢₙᵢₜᵢₐₗ) of 50 units per checkpoint. The reward undergoes a gradual reduction every HALVING_PERIOD (Pₕₐₗᵥᵢₙ₉), where it is multiplied by a HALVING_FACTOR (fₕₐₗᵥᵢₙ₉) of 0.97. The reward for any given block at time t on one of N chains is defined as:
+The protocol defines a fixed TOTAL_SUPPLY of 21×10¹⁵ base units (representing 21 billion coins with 6 decimal places) and an INITIAL_REWARD (Rᵢₙᵢₜᵢₐₗ) of 50 QNTO per checkpoint. The reward undergoes a reduction every HALVING_PERIOD (Pₕₐₗᵥᵢₙ₉) of 3 months (7,776,000 seconds), where it is multiplied by a HALVING_FACTOR (fₕₐₗᵥᵢₙ₉) of 0.875 (12.5% reduction). The reward for any given block at time t on one of N chains is defined as:
 
 R(t) = (Rᵢₙᵢₜᵢₐₗ / N) * fₕₐₗᵥᵢₙ₉ ^ floor((t - t₉ₑₙₑₛᵢₛ) / Pₕₐₗᵥᵢₙ₉)
 
@@ -223,33 +223,35 @@ This ensures a predictable, deflationary monetary policy adapted for a multi-cha
 The QantoCoin emission follows a disinflationary curve:
 
 ```math
-E(t) = 50 ∙ e^(-0.357t)  ∙ 1/(1+〖0.018t〗^1.5 ) 
+E(t) = 50 ∙ 0.875^floor(t/3)
 ```
 
 
 Where:
-    E(0) = 50 (initial emission)
-    λ= 0.357 (base decay rate)
-    β= 0.018 (acceleration factor)
+    E(0) = 50 QNTO (initial emission)
+    Reduction factor = 0.875 (12.5% reduction every 3 months)
+    t = time in months from genesis
 
 
-![QNTO Emission Schedule](./assets/qnto_emission_curve.png)
+![QNTO Emission Schedule](./assets/qanto_emission_chart.png)
 
 ### Emission Schedule
-| Year | New Coins | Reduction |
-|------|-----------|-----------|
-| 0    | 50       | -         |
-| 2    | 24.5     | 51%       |
-| 4    | 12        | 51%       |
-| 8    | 2.9      | 76%       |
-| 16   | 0.17      | 94%       |
+| Period | New Coins | Reduction |
+|--------|-----------|-----------|
+| 0 months    | 50.00    | -         |
+| 3 months    | 43.75    | 12.5%     |
+| 6 months    | 38.28    | 12.5%     |
+| 12 months   | 29.30    | 12.5%     |
+| 24 months   | 18.85    | 12.5%     |
+| 36 months   | 11.86    | 12.5%     |
+| 48 months   | 7.47     | 12.5%     |
 
 ### Key Properties:
-1. **Initial Distribution**: High emission (50 coins/checkpoint) at launch
-2. **Progressive Halving**: Accelerating emission reductions
-3. **Asymptotic Scarcity**: Approaches near-zero emission by Year 16
+1. **Initial Distribution**: High emission (50 QNTO/checkpoint) at launch
+2. **Consistent Reduction**: 12.5% emission reduction every 3 months
+3. **Predictable Schedule**: Fixed halving periods ensure transparent monetary policy
 
-> **Note**: Emission checkpoints occur every 12000 blocks (~12 weeks)
+> **Note**: Emission reductions occur every 3 months (7,776,000 seconds)
 
 ### **6.2. Fee Structure and Staking Model**
 

@@ -1,0 +1,97 @@
+# Qanto Node Configuration Example
+#
+# This is an example configuration file. Copy it to 'config.toml'
+# and edit the values to suit your setup. Do NOT commit your
+# actual 'config.toml' to a public repository if it contains secrets.
+
+# -----------------------------------------------------------------------------
+# Core Network Settings
+# -----------------------------------------------------------------------------
+
+# P2P address for listening to incoming connections from other nodes.
+# "0.0.0.0" listens on all available network interfaces.
+[cite_start]p2p_address = "0.0.0.0:30333" [cite: 1]
+
+# List of initial peer addresses to connect to on startup.
+# Example: peers = ["/ip4/192.168.1.10/tcp/30333/p2p/PEER_ID_HERE"]
+[cite_start]peers = [] [cite: 1]
+
+# Unique identifier for the network to prevent connecting to wrong chains.
+[cite_start]network_id = "qanto-testnet" [cite: 1]
+
+# The public address of the wallet designated as the genesis validator.
+# On first run with '--clean', this address must match your wallet's address.
+[cite_start]genesis_validator = "your-wallet-public-address" [cite: 1]
+
+# -----------------------------------------------------------------------------
+# API and Interface Settings
+# -----------------------------------------------------------------------------
+
+# Address for the JSON-RPC API server.
+# "127.0.0.1" makes it accessible only on your local machine.
+[cite_start]api_address = "127.0.0.1:8080" [cite: 1]
+
+# -----------------------------------------------------------------------------
+# Mining and Consensus Settings
+# -----------------------------------------------------------------------------
+
+# Target time in seconds for mining a new block.
+[cite_start]target_block_time = 30 [cite: 1]
+
+# Initial difficulty for the proof-of-work algorithm.
+[cite_start]difficulty = 1 [cite: 1]
+
+# Number of CPU threads to use for mining.
+[cite_start]mining_threads = 4 [cite: 1]
+
+# Enable or disable GPU mining (requires a compatible GPU and drivers).
+[cite_start]use_gpu = false [cite: 1]
+
+# Enable or disable the generation of Zero-Knowledge proofs for transactions.
+[cite_start]zk_enabled = true [cite: 1]
+
+# The primary chain this miner will work on.
+[cite_start]mining_chain_id = 0 [cite: 1]
+
+# -----------------------------------------------------------------------------
+# Blockchain Parameters
+# -----------------------------------------------------------------------------
+
+# Total number of chains in the Qanto network.
+[cite_start]num_chains = 1 [cite: 1]
+
+# The address of the genesis contract that receives the initial coin supply.
+[cite_start]contract_address = "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394" [cite: 1]
+
+# Maximum total supply of Qanto coins.
+[cite_start]max_amount = 21000000000 [cite: 1]
+
+# -----------------------------------------------------------------------------
+# P2P Network Tuning
+# -----------------------------------------------------------------------------
+[p2p]
+
+# Interval in milliseconds for sending heartbeat messages to stay connected.
+[cite_start]heartbeat_interval = 500 [cite: 1]
+
+# Desired number of connections to maintain.
+[cite_start]mesh_n = 8 [cite: 1]
+
+# Low watermark for number of connections. If connections drop below this,
+# the node will actively seek more peers.
+[cite_start]mesh_n_low = 6 [cite: 1]
+
+# High watermark for number of connections. The node will start pruning
+# connections if the count exceeds this.
+[cite_start]mesh_n_high = 16 [cite: 1]
+
+# Minimum number of outbound connections to establish.
+[cite_start]mesh_outbound_min = 4 [cite: 1]
+
+# -----------------------------------------------------------------------------
+# Logging Settings
+# -----------------------------------------------------------------------------
+[logging]
+
+# Log level verbosity. Options are: "trace", "debug", "info", "warn", "error".
+[cite_start]level = "info" [cite: 1]

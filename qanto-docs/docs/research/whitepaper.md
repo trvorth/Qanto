@@ -15,12 +15,12 @@ tags: [research, whitepaper, architecture, AI, post-quantum]
 
 **Latest Version: v2.0** (Published: January 2025)
 
-- **[📥 Download PDF](../../../static/pdfs/qanto-whitepaper-v2.0.pdf)** (0.58 MB) - **Updated January 2025**
+- **[📥 Download PDF](../../../static/pdfs/qanto-whitepaper-v2.0.pdf)** (0.58 MB) - **Updated August 2025**
 - **[🔗 GitHub Markdown](https://github.com/trvworth/qanto/blob/main/docs/whitepaper/Qanto-whitepaper.md)** (Source)
 - **[🎯 Executive Summary](../../../static/pdfs/qanto-executive-summary.pdf)** (1.1 MB)
 - **[🔬 Technical Addendum](../../../static/pdfs/qanto-technical-addendum.pdf)** (2.8 MB)
 
-> **Latest Update**: All documentation versions are now synchronized with the production-ready v2.0 specifications as of January 2025.
+> **Latest Update**: All documentation versions are now synchronized with the production-ready v2.0 specifications as of August 2025.
 
 *Available in: English, Chinese (Simplified), Japanese, Korean, Spanish, German*
 
@@ -161,7 +161,7 @@ graph TD
 | Feature | Specification |
 |---------|--------------|
 | **Consensus** | Hybrid PoW/PoS with DAG |
-| **Throughput** | 100,000+ TPS |
+| **Throughput** | 10,000,000+ TPS |
 | **Finality** | 2-3 seconds |
 | **Block Time** | ~1 second |
 | **Energy Usage** | 0.001% of Bitcoin |
@@ -169,6 +169,15 @@ graph TD
 | **Cryptography** | ML-DSA + ECDSA hybrid |
 | **Token Supply** | 21 billion QNTO |
 | **Inflation** | Dynamic (0-8% annually) |
+
+### Node Hardware Requirements
+
+| Node Type | CPU | RAM | Storage |
+|-----------|-----|-----|---------|
+| **Full Validator** | 32 cores | 16GB | 250GB NVMe |
+| **Light Validator** | 16 cores | 8GB | 50GB SSD |
+| **Archive Node** | 64 cores | 64GB | 1TB HDD |
+| **RPC Node** | 24 cores | 32GB | 500GB SSD |
 
 ### Economic Model Highlights
 

@@ -4,672 +4,769 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Qanto - Quantum-Resistant Layer-0 Blockchain</title>
-    <meta name="description" content="Qanto is a production-ready Layer-0 blockchain protocol engineered for quantum resistance, infinite scalability, and seamless cross-chain interoperability.">
+    <meta name="description" content="Qanto is a revolutionary quantum-resistant Layer-0 blockchain platform featuring hybrid consensus, post-quantum cryptography, and high-throughput DAG architecture.">
+    <meta name="keywords" content="blockchain, quantum-resistant, cryptocurrency, DAG, post-quantum cryptography, DeFi, Layer-0">
+    <meta name="author" content="Qanto Team">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://qanto.org/">
+    <meta property="og:title" content="Qanto - Quantum-Resistant Layer-0 Blockchain">
+    <meta property="og:description" content="Revolutionary quantum-resistant blockchain platform with hybrid consensus and post-quantum cryptography.">
+    <meta property="og:image" content="https://qanto.org/assets/images/qanto-og-image.png">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://qanto.org/">
+    <meta property="twitter:title" content="Qanto - Quantum-Resistant Layer-0 Blockchain">
+    <meta property="twitter:description" content="Revolutionary quantum-resistant blockchain platform with hybrid consensus and post-quantum cryptography.">
+    <meta property="twitter:image" content="https://qanto.org/assets/images/qanto-twitter-image.png">
     
     <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='40' fill='%23667eea'/%3E%3Ctext x='50' y='60' text-anchor='middle' fill='white' font-family='Arial' font-size='40' font-weight='bold'%3EQ%3C/text%3E%3C/svg%3E">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+    
+    <!-- Preconnect to external domains -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     
     <!-- Styles -->
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: #1a1a2e;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-        }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
-        
-        /* Header */
-        header {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 1000;
-            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
-        }
-        
-        nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem 0;
-        }
-        
-        .logo {
-            display: flex;
-            align-items: center;
-            font-size: 1.8rem;
-            font-weight: 700;
-            color: #667eea;
-            text-decoration: none;
-        }
-        
-        .logo::before {
-            content: 'Q';
-            display: inline-block;
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            text-align: center;
-            line-height: 40px;
-            border-radius: 50%;
-            margin-right: 10px;
-            font-weight: bold;
-        }
-        
-        .nav-links {
-            display: flex;
-            list-style: none;
-            gap: 2rem;
-        }
-        
-        .nav-links a {
-            text-decoration: none;
-            color: #1a1a2e;
-            font-weight: 500;
-            transition: color 0.3s ease;
-        }
-        
-        .nav-links a:hover {
-            color: #667eea;
-        }
-        
-        /* Hero Section */
-        .hero {
-            padding: 120px 0 80px;
-            text-align: center;
-            color: white;
-        }
-        
-        .hero h1 {
-            font-size: 3.5rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
-            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-        }
-        
-        .hero p {
-            font-size: 1.3rem;
-            margin-bottom: 2rem;
-            opacity: 0.9;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        
-        .cta-buttons {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-        
-        .btn {
-            padding: 12px 30px;
-            border: none;
-            border-radius: 50px;
-            font-size: 1rem;
-            font-weight: 600;
-            text-decoration: none;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            display: inline-block;
-        }
-        
-        .btn-primary {
-            background: white;
-            color: #667eea;
-        }
-        
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-        }
-        
-        .btn-secondary {
-            background: transparent;
-            color: white;
-            border: 2px solid white;
-        }
-        
-        .btn-secondary:hover {
-            background: white;
-            color: #667eea;
-        }
-        
-        /* Main Content */
-        main {
-            background: white;
-            margin-top: -40px;
-            border-radius: 40px 40px 0 0;
-            position: relative;
-            z-index: 10;
-        }
-        
-        .section {
-            padding: 80px 0;
-        }
-        
-        .section-title {
-            text-align: center;
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 3rem;
-            color: #1a1a2e;
-        }
-        
-        /* Genesis Contract Section */
-        .genesis-contract {
-            background: linear-gradient(135deg, #f8f9ff 0%, #e8f0ff 100%);
-            border-radius: 20px;
-            padding: 40px;
-            margin: 40px 0;
-            text-align: center;
-            border: 2px solid #667eea;
-        }
-        
-        .genesis-contract h3 {
-            color: #667eea;
-            font-size: 1.8rem;
-            margin-bottom: 20px;
-        }
-        
-        .contract-address {
-            background: #667eea;
-            color: white;
-            padding: 15px 25px;
-            border-radius: 10px;
-            font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 1.1rem;
-            margin: 20px 0;
-            word-break: break-all;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            display: inline-block;
-        }
-        
-        .contract-address:hover {
-            background: #5a67d8;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
-        }
-        
-        /* Network Status */
-        .network-status {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 30px;
-            margin: 40px 0;
-        }
-        
-        .status-card {
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-            text-align: center;
-            border: 1px solid #e2e8f0;
-        }
-        
-        .status-card h4 {
-            color: #667eea;
-            font-size: 1.2rem;
-            margin-bottom: 10px;
-        }
-        
-        .status-value {
-            font-size: 2rem;
-            font-weight: 700;
-            color: #1a1a2e;
-        }
-        
-        /* Live Network Participants */
-        .participants-section {
-            background: #f8f9ff;
-            border-radius: 20px;
-            padding: 40px;
-            margin: 40px 0;
-        }
-        
-        .participants-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            background: white;
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-        }
-        
-        .participants-table th,
-        .participants-table td {
-            padding: 15px;
-            text-align: left;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        
-        .participants-table th {
-            background: #667eea;
-            color: white;
-            font-weight: 600;
-        }
-        
-        .participants-table tr:hover {
-            background: #f8f9ff;
-        }
-        
-        .peer-id {
-            font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 0.9rem;
-            color: #667eea;
-        }
-        
-        .status-online {
-            color: #10b981;
-            font-weight: 600;
-        }
-        
-        /* Features Grid */
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 30px;
-            margin: 40px 0;
-        }
-        
-        .feature-card {
-            background: white;
-            padding: 40px 30px;
-            border-radius: 15px;
-            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-            text-align: center;
-            transition: transform 0.3s ease;
-        }
-        
-        .feature-card:hover {
-            transform: translateY(-5px);
-        }
-        
-        .feature-icon {
-            width: 60px;
-            height: 60px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 20px;
-            font-size: 1.5rem;
-            color: white;
-        }
-        
-        .feature-card h3 {
-            color: #1a1a2e;
-            font-size: 1.3rem;
-            margin-bottom: 15px;
-        }
-        
-        .feature-card p {
-            color: #64748b;
-            line-height: 1.6;
-        }
-        
-        /* Footer */
-        footer {
-            background: #1a1a2e;
-            color: white;
-            padding: 60px 0 30px;
-            text-align: center;
-        }
-        
-        .footer-links {
-            display: flex;
-            justify-content: center;
-            gap: 2rem;
-            margin-bottom: 30px;
-            flex-wrap: wrap;
-        }
-        
-        .footer-links a {
-            color: #94a3b8;
-            text-decoration: none;
-            transition: color 0.3s ease;
-        }
-        
-        .footer-links a:hover {
-            color: white;
-        }
-        
-        /* Responsive Design */
-        @media (max-width: 768px) {
-            .hero h1 {
-                font-size: 2.5rem;
-            }
-            
-            .nav-links {
-                display: none;
-            }
-            
-            .cta-buttons {
-                flex-direction: column;
-                align-items: center;
-            }
-            
-            .participants-table {
-                font-size: 0.9rem;
-            }
-            
-            .participants-table th,
-            .participants-table td {
-                padding: 10px;
-            }
-        }
-        
-        /* Loading Animation */
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
+    <link rel="stylesheet" href="assets/css/main.css">
+    <link rel="stylesheet" href="assets/css/components.css">
+    <link rel="stylesheet" href="assets/css/animations.css">
+    
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Qanto",
+      "url": "https://qanto.org",
+      "logo": "https://qanto.org/assets/images/qanto-logo.png",
+      "description": "Quantum-resistant Layer-0 blockchain platform",
+      "sameAs": [
+        "https://twitter.com/qanto_org",
+        "https://github.com/qanto-org",
+        "https://discord.gg/qanto",
+        "https://t.me/qanto_official"
+      ]
+    }
+    </script>
+    
+    <!-- Analytics (replace with your tracking ID) -->
+    <!-- <script async src="https://www.googletagmanager.com/gtag/js?id=GA_TRACKING_ID"></script> -->
+    <!-- BUILD_TIMESTAMP -->
 </head>
 <body>
-    <header>
-        <nav class="container">
-            <a href="#" class="logo">Qanto</a>
-            <ul class="nav-links">
-                <li><a href="#features">Features</a></li>
-                <li><a href="#network">Network</a></li>
-                <li><a href="#docs">Docs</a></li>
-                <li><a href="#explorer">Explorer</a></li>
-            </ul>
-        </nav>
-    </header>
-
-    <section class="hero">
-        <div class="container">
-            <h1>Quantum-Resistant Blockchain</h1>
-            <p>The next-generation Layer-0 protocol engineered for infinite scalability, post-quantum security, and seamless cross-chain interoperability.</p>
-            <div class="cta-buttons">
-                <a href="#network" class="btn btn-primary">Join Network</a>
-                <a href="https://github.com/qanto-org/qanto" class="btn btn-secondary">View on GitHub</a>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-content">
+            <div class="qanto-logo-animated">
+                <svg width="80" height="80" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="50" r="45" stroke="url(#gradient)" stroke-width="4" fill="none" class="rotating-circle"/>
+                    <text x="50" y="58" text-anchor="middle" fill="url(#gradient)" font-family="JetBrains Mono" font-size="20" font-weight="bold">Q</text>
+                    <defs>
+                        <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+                            <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+            </div>
+            <div class="loading-text">Loading Qanto...</div>
+        </div>
+    </div>
+    
+    <!-- Navigation -->
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <a href="#home" class="brand-link">
+                    <div class="logo">
+                        <svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="50" cy="50" r="45" stroke="url(#nav-gradient)" stroke-width="4" fill="none"/>
+                            <text x="50" y="58" text-anchor="middle" fill="url(#nav-gradient)" font-family="JetBrains Mono" font-size="20" font-weight="bold">Q</text>
+                            <defs>
+                                <linearGradient id="nav-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+                                    <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                    </div>
+                    <span class="brand-text">Qanto</span>
+                </a>
+            </div>
+            
+            <div class="nav-menu" id="nav-menu">
+                <a href="#home" class="nav-link active">Home</a>
+                <a href="#features" class="nav-link">Features</a>
+                <a href="#technology" class="nav-link">Technology</a>
+                <a href="#ecosystem" class="nav-link">Ecosystem</a>
+                <a href="#roadmap" class="nav-link">Roadmap</a>
+                <a href="#community" class="nav-link">Community</a>
+                <div class="nav-cta">
+                    <a href="https://explorer.qanto.org" class="btn btn-outline" target="_blank">Explorer</a>
+                    <a href="#get-started" class="btn btn-primary">Get Started</a>
+                </div>
+            </div>
+            
+            <div class="nav-toggle" id="nav-toggle">
+                <span></span>
+                <span></span>
+                <span></span>
             </div>
         </div>
-    </section>
-
+    </nav>
+    
+    <!-- Main Content -->
     <main>
-        <section class="section">
+        <!-- Hero Section -->
+        <section id="home" class="hero">
+            <div class="hero-background">
+                <div class="quantum-grid"></div>
+                <div class="floating-particles"></div>
+            </div>
+            
             <div class="container">
-                <!-- Genesis Governance Contract -->
-                <div class="genesis-contract">
-                    <h3>🏛️ Genesis Governance Contract</h3>
-                    <p>The official Qanto governance contract deployed on mainnet</p>
-                    <a href="https://explorer.qanto.org/address/5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818" 
-                       class="contract-address" 
-                       target="_blank" 
-                       title="View on Qanto Explorer">
-                        5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818
-                    </a>
-                    <p><small>Click to view on block explorer</small></p>
+                <div class="hero-content">
+                    <div class="hero-text">
+                        <h1 class="hero-title">
+                            <span class="gradient-text">Quantum-Resistant</span><br>
+                            Blockchain for the Future
+                        </h1>
+                        <p class="hero-description">
+                            Qanto is a revolutionary Layer-0 blockchain platform that combines quantum-resistant cryptography, 
+                            hybrid consensus mechanisms, and high-throughput DAG architecture to secure the future of decentralized finance.
+                        </p>
+                        <div class="hero-stats">
+                            <div class="stat">
+                                <div class="stat-number" data-target="100000">0</div>
+                                <div class="stat-label">TPS Capacity</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-number" data-target="99.9">0</div>
+                                <div class="stat-label">% Uptime</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-number" data-target="256">0</div>
+                                <div class="stat-label">Bit Security</div>
+                            </div>
+                        </div>
+                        <div class="hero-actions">
+                            <a href="#get-started" class="btn btn-primary btn-large">
+                                <span>Start Building</span>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                                </svg>
+                            </a>
+                            <a href="https://docs.qanto.org" class="btn btn-outline btn-large" target="_blank">
+                                <span>Documentation</span>
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14,2 14,8 20,8"/>
+                                    <line x1="16" y1="13" x2="8" y2="13"/>
+                                    <line x1="16" y1="17" x2="8" y2="17"/>
+                                    <polyline points="10,9 9,9 8,9"/>
+                                </svg>
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <div class="hero-visual">
+                        <div class="blockchain-visualization">
+                            <div class="dag-network">
+                                <!-- DAG nodes will be generated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
-
-                <!-- Network Status -->
-                <div class="network-status">
-                    <div class="status-card">
-                        <h4>Network Status</h4>
-                        <div class="status-value status-online" id="network-status">🟢 Online</div>
-                    </div>
-                    <div class="status-card">
-                        <h4>Block Height</h4>
-                        <div class="status-value" id="block-height">Loading...</div>
-                    </div>
-                    <div class="status-card">
-                        <h4>Active Nodes</h4>
-                        <div class="status-value" id="active-nodes">Loading...</div>
-                    </div>
-                    <div class="status-card">
-                        <h4>TPS</h4>
-                        <div class="status-value" id="tps">Loading...</div>
-                    </div>
+            </div>
+            
+            <div class="scroll-indicator">
+                <div class="scroll-arrow"></div>
+                <span>Scroll to explore</span>
+            </div>
+        </section>
+        
+        <!-- Testimonials Section -->
+        <section id="testimonials" class="testimonials">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">What Developers Say</h2>
+                    <p class="section-description">
+                        Join thousands of developers building the future on Qanto.
+                    </p>
                 </div>
-
-                <!-- Live Network Participants -->
-                <div class="participants-section">
-                    <h3>🌐 Live Network Participants</h3>
-                    <p>Real-time view of nodes connected to the Qanto network</p>
-                    <div id="participants-loading" style="text-align: center; padding: 20px;">
-                        <div class="loading"></div>
-                        <p>Loading network participants...</p>
+                <div class="testimonials-grid">
+                    <div class="testimonial-card">
+                        <p>"Qanto's quantum-resistant features give us peace of mind for long-term security."</p>
+                        <div class="testimonial-author">
+                            <img src="assets/images/user1.jpg" alt="Jane Doe">
+                            <div>
+                                <h4>Jane Doe</h4>
+                                <span>CTO, CryptoCorp</span>
+                            </div>
+                        </div>
                     </div>
-                    <table class="participants-table" id="participants-table" style="display: none;">
-                        <thead>
-                            <tr>
-                                <th>Peer ID</th>
-                                <th>Location</th>
-                                <th>Status</th>
-                                <th>Connected Since</th>
-                                <th>Version</th>
-                            </tr>
-                        </thead>
-                        <tbody id="participants-tbody">
-                            <!-- Dynamic content loaded here -->
-                        </tbody>
-                    </table>
+                    <div class="testimonial-card">
+                        <p>"The hybrid consensus is a game-changer for scalability without sacrificing decentralization."</p>
+                        <div class="testimonial-author">
+                            <img src="assets/images/user2.jpg" alt="John Smith">
+                            <div>
+                                <h4>John Smith</h4>
+                                <span>Lead Developer, BlockTech</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
-
-        <section class="section" id="features">
+        
+        <!-- Features Section -->
+        <section id="features" class="features">
             <div class="container">
-                <h2 class="section-title">Why Choose Qanto?</h2>
+                <div class="section-header">
+                    <h2 class="section-title">Revolutionary Features</h2>
+                    <p class="section-description">
+                        Qanto combines cutting-edge technologies to deliver unparalleled security, 
+                        scalability, and performance for the quantum computing era.
+                    </p>
+                </div>
+                
                 <div class="features-grid">
-                    <div class="feature-card">
-                        <div class="feature-icon">🔒</div>
-                        <h3>Quantum-Resistant</h3>
-                        <p>Built with post-quantum cryptography including CRYSTALS-Dilithium and Kyber KEM for future-proof security.</p>
+                    <div class="feature-card" data-aos="fade-up" data-aos-delay="100">
+                        <div class="feature-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                                <path d="M2 17l10 5 10-5"/>
+                                <path d="M2 12l10 5 10-5"/>
+                            </svg>
+                        </div>
+                        <h3 class="feature-title">Quantum-Resistant Cryptography</h3>
+                        <p class="feature-description">
+                            Advanced post-quantum cryptographic algorithms protect against both classical and quantum computer attacks, 
+                            ensuring long-term security for your digital assets.
+                        </p>
+                        <div class="feature-tags">
+                            <span class="tag">CRYSTALS-Dilithium</span>
+                            <span class="tag">SPHINCS+</span>
+                            <span class="tag">Kyber</span>
+                        </div>
                     </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">⚡</div>
-                        <h3>Ultra-High Performance</h3>
-                        <p>25M+ TPS throughput with sub-100ms finality through innovative DAG-based architecture.</p>
+                    
+                    <div class="feature-card" data-aos="fade-up" data-aos-delay="200">
+                        <div class="feature-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <circle cx="12" cy="12" r="3"/>
+                                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                            </svg>
+                        </div>
+                        <h3 class="feature-title">Hybrid Consensus Mechanism</h3>
+                        <p class="feature-description">
+                            Combines Proof of Work, Delegated Proof of Stake, and Proof of Storage for optimal security, 
+                            energy efficiency, and decentralization balance.
+                        </p>
+                        <div class="feature-tags">
+                            <span class="tag">PoW + DPoS</span>
+                            <span class="tag">PoSe</span>
+                            <span class="tag">Dynamic</span>
+                        </div>
                     </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🌐</div>
-                        <h3>Cross-Chain Ready</h3>
-                        <p>Native interoperability with Ethereum, Bitcoin, and other major blockchains via atomic swaps.</p>
+                    
+                    <div class="feature-card" data-aos="fade-up" data-aos-delay="300">
+                        <div class="feature-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M3 3h18v18H3z"/>
+                            </svg>
+                        </div>
+                        <h3 class="feature-title">High-Throughput DAG Architecture</h3>
+                        <p class="feature-description">
+                            Directed Acyclic Graph structure enables parallel transaction processing, achieving unprecedented scalability without compromising security.
+                        </p>
+                        <div class="feature-tags">
+                            <span class="tag">DAG</span>
+                            <span class="tag">Parallel Processing</span>
+                            <span class="tag">Scalable</span>
+                        </div>
                     </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🤖</div>
-                        <h3>AI-Powered Governance</h3>
-                        <p>SAGA AI system provides intelligent network optimization and autonomous governance.</p>
+                    <div class="feature-card" data-aos="fade-up" data-aos-delay="400">
+                        <div class="feature-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M21 7.5l-9-5.5L3 7.5m18 0l-9 5.5m9-5.5v8c0 4.3-3.2 7.5-7.5 7.5S3 20.3 3 16v-8m18 0L12 13.5m0 0L3 8"/>
+                            </svg>
+                        </div>
+                        <h3 class="feature-title">Layer-0 Infrastructure</h3>
+                        <p class="feature-description">
+                            Foundational blockchain layer enabling seamless interoperability between chains and advanced DeFi applications.
+                        </p>
+                        <div class="feature-tags">
+                            <span class="tag">Interoperable</span>
+                            <span class="tag">DeFi Ready</span>
+                            <span class="tag">Layer-0</span>
+                        </div>
                     </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">♾️</div>
-                        <h3>Infinite Scalability</h3>
-                        <p>Dynamic sharding with automatic load balancing ensures unlimited transaction capacity.</p>
+                </div>
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+                            </svg>
+                        </div>
+                        <h3 class="feature-title">High-Throughput DAG</h3>
+                        <p class="feature-description">
+                            Directed Acyclic Graph architecture enables parallel transaction processing, 
+                            achieving over 100,000 TPS with sub-second finality.
+                        </p>
+                        <div class="feature-tags">
+                            <span class="tag">100K+ TPS</span>
+                            <span class="tag">Parallel Processing</span>
+                            <span class="tag">Low Latency</span>
+                        </div>
                     </div>
-                    <div class="feature-card">
-                        <div class="feature-icon">🛡️</div>
-                        <h3>Military-Grade Security</h3>
-                        <p>X-PHYRUS security suite with advanced threat detection and prevention systems.</p>
+                    
+                    <div class="feature-card" data-aos="fade-up" data-aos-delay="400">
+                        <div class="feature-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                                <polyline points="7.5,4.21 12,6.81 16.5,4.21"/>
+                                <polyline points="7.5,19.79 7.5,14.6 3,12"/>
+                                <polyline points="21,12 16.5,14.6 16.5,19.79"/>
+                            </svg>
+                        </div>
+                        <h3 class="feature-title">Cross-Chain Interoperability</h3>
+                        <p class="feature-description">
+                            Seamless integration with existing blockchain networks through advanced bridge protocols 
+                            and atomic swap mechanisms.
+                        </p>
+                        <div class="feature-tags">
+                            <span class="tag">Multi-Chain</span>
+                            <span class="tag">Atomic Swaps</span>
+                            <span class="tag">Bridge Protocol</span>
+                        </div>
+                    </div>
+                    
+                    <div class="feature-card" data-aos="fade-up" data-aos-delay="500">
+                        <div class="feature-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                                <circle cx="12" cy="16" r="1"/>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                            </svg>
+                        </div>
+                        <h3 class="feature-title">Privacy & Compliance</h3>
+                        <p class="feature-description">
+                            Advanced privacy features with regulatory compliance support, 
+                            including zero-knowledge proofs and selective disclosure.
+                        </p>
+                        <div class="feature-tags">
+                            <span class="tag">Zero-Knowledge</span>
+                            <span class="tag">Privacy</span>
+                            <span class="tag">Compliance</span>
+                        </div>
+                    </div>
+                    
+                    <div class="feature-card" data-aos="fade-up" data-aos-delay="600">
+                        <div class="feature-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M9 19c-5 0-8-3-8-8s3-8 8-8 8 3 8 8-3 8-8 8z"/>
+                                <path d="M21 12c0 5-3 8-8 8"/>
+                                <path d="M15 9l-6 6"/>
+                                <path d="M9 9h.01"/>
+                                <path d="M15 15h.01"/>
+                            </svg>
+                        </div>
+                        <h3 class="feature-title">AI-Powered Optimization</h3>
+                        <p class="feature-description">
+                            Machine learning algorithms continuously optimize network performance, 
+                            resource allocation, and security parameters.
+                        </p>
+                        <div class="feature-tags">
+                            <span class="tag">ML Optimization</span>
+                            <span class="tag">Auto-Scaling</span>
+                            <span class="tag">Predictive</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Technology Section -->
+        <section id="technology" class="technology">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">Advanced Technology Stack</h2>
+                    <p class="section-description">
+                        Built with cutting-edge technologies and innovative algorithms 
+                        to deliver unmatched performance and security.
+                    </p>
+                </div>
+                
+                <div class="tech-showcase">
+                    <div class="tech-tabs">
+                        <button class="tech-tab active" data-tab="architecture">Architecture</button>
+                        <button class="tech-tab" data-tab="consensus">Consensus</button>
+                        <button class="tech-tab" data-tab="cryptography">Cryptography</button>
+                        <button class="tech-tab" data-tab="performance">Performance</button>
+                    </div>
+                    
+                    <div class="tech-content">
+                        <div class="tech-panel active" id="architecture">
+                            <div class="tech-visual">
+                                <div class="architecture-diagram">
+                                    <!-- Architecture visualization will be generated by JavaScript -->
+                                </div>
+                            </div>
+                            <div class="tech-details">
+                                <h3>Layer-0 Architecture</h3>
+                                <p>Qanto's innovative Layer-0 design provides the foundation for multiple blockchain networks, 
+                                enabling seamless interoperability and shared security.</p>
+                                <ul>
+                                    <li>Modular blockchain framework</li>
+                                    <li>Shared validator set</li>
+                                    <li>Cross-chain message passing</li>
+                                    <li>Unified security model</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="tech-panel" id="consensus">
+                            <div class="tech-visual">
+                                <div class="consensus-diagram">
+                                    <!-- Consensus visualization will be generated by JavaScript -->
+                                </div>
+                            </div>
+                            <div class="tech-details">
+                                <h3>Hybrid Consensus Protocol</h3>
+                                <p>Our unique hybrid approach combines the best aspects of multiple consensus mechanisms 
+                                for optimal security, efficiency, and decentralization.</p>
+                                <ul>
+                                    <li>PoW for initial block creation</li>
+                                    <li>DPoS for fast finalization</li>
+                                    <li>PoSe for storage incentives</li>
+                                    <li>Dynamic difficulty adjustment</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="tech-panel" id="cryptography">
+                            <div class="tech-visual">
+                                <div class="crypto-diagram">
+                                    <!-- Cryptography visualization will be generated by JavaScript -->
+                                </div>
+                            </div>
+                            <div class="tech-details">
+                                <h3>Post-Quantum Cryptography</h3>
+                                <p>Future-proof security using NIST-approved post-quantum cryptographic algorithms 
+                                that resist attacks from both classical and quantum computers.</p>
+                                <ul>
+                                    <li>CRYSTALS-Dilithium signatures</li>
+                                    <li>Kyber key encapsulation</li>
+                                    <li>SPHINCS+ hash-based signatures</li>
+                                    <li>Homomorphic encryption support</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="tech-panel" id="performance">
+                            <div class="tech-visual">
+                                <div class="performance-chart">
+                                    <!-- Performance chart will be generated by JavaScript -->
+                                </div>
+                            </div>
+                            <div class="tech-details">
+                                <h3>High-Performance Execution</h3>
+                                <p>Optimized for maximum throughput and minimal latency through advanced 
+                                parallel processing and efficient resource utilization.</p>
+                                <ul>
+                                    <li>100,000+ TPS capacity</li>
+                                    <li>Sub-second finality</li>
+                                    <li>Parallel transaction execution</li>
+                                    <li>Adaptive resource allocation</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Ecosystem Section -->
+        <section id="ecosystem" class="ecosystem">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">Thriving Ecosystem</h2>
+                    <p class="section-description">
+                        Explore the growing Qanto ecosystem with powerful tools, 
+                        applications, and services built for developers and users.
+                    </p>
+                </div>
+                
+                <div class="ecosystem-grid">
+                    <div class="ecosystem-card" data-aos="zoom-in" data-aos-delay="100">
+                        <div class="card-header">
+                            <div class="card-icon">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 12c0 5-3 8-8 8s-8-3-8-8 3-8 8-8 8 3 8 8z"/>
+                                    <path d="M9 12l2 2 4-4"/>
+                                </svg>
+                            </div>
+                            <h3>Block Explorer</h3>
+                        </div>
+                        <p>Real-time blockchain explorer for monitoring transactions, blocks, and network statistics.</p>
+                        <a href="https://explorer.qanto.org" class="card-link" target="_blank">
+                            Explore Network
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M7 17L17 7M17 7H7M17 7V17"/>
+                            </svg>
+                        </a>
+                    </div>
+                    
+                    <div class="ecosystem-card" data-aos="zoom-in" data-aos-delay="200">
+                        <div class="card-header">
+                            <div class="card-icon">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                                    <line x1="8" y1="21" x2="16" y2="21"/>
+                                    <line x1="12" y1="17" x2="12" y2="21"/>
+                                </svg>
+                            </div>
+                            <h3>Developer Portal</h3>
+                        </div>
+                        <p>Comprehensive documentation, APIs, and tools for building on Qanto.</p>
+                        <a href="https://docs.qanto.org" class="card-link" target="_blank">
+                            Start Building
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M7 17L17 7M17 7H7M17 7V17"/>
+                            </svg>
+                        </a>
+                    </div>
+                    
+                    <div class="ecosystem-card" data-aos="zoom-in" data-aos-delay="300">
+                        <div class="card-header">
+                            <div class="card-icon">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                                    <polyline points="3.27,6.96 12,12.01 20.73,6.96"/>
+                                    <line x1="12" y1="22.08" x2="12" y2="12"/>
+                                </svg>
+                            </div>
+                            <h3>Qanto Wallet</h3>
+                        </div>
+                        <p>Secure, user-friendly wallet with quantum-resistant security features.</p>
+                        <a href="#" class="card-link">
+                            Download Wallet
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M7 17L17 7M17 7H7M17 7V17"/>
+                            </svg>
+                        </a>
+                    </div>
+                    
+                    <div class="ecosystem-card" data-aos="zoom-in" data-aos-delay="400">
+                        <div class="card-header">
+                            <div class="card-icon">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                                    <line x1="9" y1="9" x2="9.01" y2="9"/>
+                                    <line x1="15" y1="9" x2="15.01" y2="9"/>
+                                </svg>
+                            </div>
+                            <h3>DeFi Suite</h3>
+                        </div>
+                        <p>Decentralized finance applications built on Qanto's secure infrastructure.</p>
+                        <a href="#" class="card-link">
+                            Explore DeFi
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M7 17L17 7M17 7H7M17 7V17"/>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Get Started Section -->
+        <section id="get-started" class="get-started">
+            <div class="container">
+                <div class="get-started-content">
+                    <div class="get-started-text">
+                        <h2>Ready to Build the Future?</h2>
+                        <p>Join the quantum-resistant revolution and start building secure, scalable applications on Qanto today.</p>
+                        <div class="get-started-actions">
+                            <a href="https://docs.qanto.org/getting-started" class="btn btn-primary btn-large" target="_blank">
+                                Start Building
+                            </a>
+                            <a href="https://github.com/qanto-org" class="btn btn-outline btn-large" target="_blank">
+                                View on GitHub
+                            </a>
+                        </div>
+                    </div>
+                    <div class="get-started-visual">
+                        <div class="code-preview">
+                            <div class="code-header">
+                                <div class="code-dots">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                                <span class="code-title">qanto-app.rs</span>
+                            </div>
+                            <div class="code-content">
+                                <pre><code class="language-rust">use qanto_sdk::*;
+
+#[qanto::main]
+async fn main() -> Result<()> {
+    let client = QantoClient::new()
+        .with_quantum_security()
+        .connect().await?;
+    
+    let wallet = client
+        .create_wallet()
+        .with_post_quantum_keys()
+        .build().await?;
+    
+    println!("Welcome to Qanto!");
+    Ok(())
+}</code></pre>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </section>
     </main>
-
-    <footer>
+    
+    <!-- Footer -->
+    <footer class="footer">
         <div class="container">
-            <div class="footer-links">
-                <a href="https://github.com/qanto-org/qanto">GitHub</a>
-                <a href="https://docs.qanto.org">Documentation</a>
-                <a href="https://explorer.qanto.org">Block Explorer</a>
-                <a href="https://testnet.qanto.org">Testnet</a>
-                <a href="mailto:contact@qanto.org">Contact</a>
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <div class="footer-logo">
+                        <svg width="40" height="40" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="50" cy="50" r="45" stroke="url(#footer-gradient)" stroke-width="4" fill="none"/>
+                            <text x="50" y="58" text-anchor="middle" fill="url(#footer-gradient)" font-family="JetBrains Mono" font-size="20" font-weight="bold">Q</text>
+                            <defs>
+                                <linearGradient id="footer-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+                                    <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <span>Qanto</span>
+                    </div>
+                    <p class="footer-description">
+                        Building the quantum-resistant future of blockchain technology.
+                    </p>
+                    <div class="social-links">
+                        <a href="https://twitter.com/qanto_org" target="_blank" aria-label="Twitter">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M23 3a10.9 10.9 0 0 1-3.14 1.53 4.48 4.48 0 0 0-7.86 3v1A10.66 10.66 0 0 1 3 4s-4 9 5 13a11.64 11.64 0 0 1-7 2c9 5 20 0 20-11.5a4.5 4.5 0 0 0-.08-.83A7.72 7.72 0 0 0 23 3z"/>
+                            </svg>
+                        </a>
+                        <a href="https://github.com/qanto-org" target="_blank" aria-label="GitHub">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+                            </svg>
+                        </a>
+                        <a href="https://discord.gg/qanto" target="_blank" aria-label="Discord">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+                            </svg>
+                        </a>
+                        <a href="https://t.me/qanto_official" target="_blank" aria-label="Telegram">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                            </svg>
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="footer-links">
+                    <div class="footer-column">
+                        <h4>Technology</h4>
+                        <ul>
+                            <li><a href="#features">Features</a></li>
+                            <li><a href="#technology">Architecture</a></li>
+                            <li><a href="https://docs.qanto.org/whitepaper" target="_blank">Whitepaper</a></li>
+                            <li><a href="https://github.com/qanto-org" target="_blank">GitHub</a></li>
+                        </ul>
+                    </div>
+                    
+                    <div class="footer-column">
+                        <h4>Developers</h4>
+                        <ul>
+                            <li><a href="https://docs.qanto.org" target="_blank">Documentation</a></li>
+                            <li><a href="https://docs.qanto.org/api" target="_blank">API Reference</a></li>
+                            <li><a href="https://docs.qanto.org/tutorials" target="_blank">Tutorials</a></li>
+                            <li><a href="https://docs.qanto.org/sdk" target="_blank">SDK</a></li>
+                        </ul>
+                    </div>
+                    
+                    <div class="footer-column">
+                        <h4>Ecosystem</h4>
+                        <ul>
+                            <li><a href="https://explorer.qanto.org" target="_blank">Block Explorer</a></li>
+                            <li><a href="#">Wallet</a></li>
+                            <li><a href="#">DeFi Apps</a></li>
+                            <li><a href="#">Validators</a></li>
+                        </ul>
+                    </div>
+                    
+                    <div class="footer-column">
+                        <h4>Community</h4>
+                        <ul>
+                            <li><a href="https://discord.gg/qanto" target="_blank">Discord</a></li>
+                            <li><a href="https://t.me/qanto_official" target="_blank">Telegram</a></li>
+                            <li><a href="https://twitter.com/qanto_org" target="_blank">Twitter</a></li>
+                            <li><a href="#">Blog</a></li>
+                        </ul>
+                    </div>
+                </div>
             </div>
-            <p>&copy; 2025 Qanto Protocol. Open source under MIT License.</p>
+            
+            <div class="footer-bottom">
+                <div class="footer-copyright">
+                    <p>&copy; 2024 Qanto. All rights reserved.</p>
+                </div>
+                <div class="footer-legal">
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">Terms of Service</a>
+                    <a href="#">Cookie Policy</a>
+                </div>
+            </div>
         </div>
     </footer>
-
+    
+    <!-- Back to Top Button -->
+    <button id="back-to-top" class="back-to-top" aria-label="Back to top">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 15l-6-6-6 6"/>
+        </svg>
+    </button>
+    
+    <!-- Scripts -->
+    <script src="assets/js/main.js"></script>
+    <script src="assets/js/animations.js"></script>
+    <script src="assets/js/visualizations.js"></script>
+    
+    <!-- Service Worker Registration -->
     <script>
-        // Live Network Data Fetching
-        class QantoNetworkMonitor {
-            constructor() {
-                this.bootNodeUrl = 'http://52.5.135.12:8080'; // Mainnet bootnode
-                this.updateInterval = 30000; // 30 seconds
-                this.init();
-            }
-
-            async init() {
-                await this.updateNetworkStatus();
-                await this.updateParticipants();
-                setInterval(() => this.updateNetworkStatus(), this.updateInterval);
-                setInterval(() => this.updateParticipants(), this.updateInterval);
-            }
-
-            async updateNetworkStatus() {
-                try {
-                    // Simulate network status for demo - replace with actual RPC calls
-                    const mockData = {
-                        blockHeight: Math.floor(Math.random() * 1000000) + 500000,
-                        activeNodes: Math.floor(Math.random() * 50) + 25,
-                        tps: Math.floor(Math.random() * 10000) + 5000
-                    };
-
-                    document.getElementById('block-height').textContent = mockData.blockHeight.toLocaleString();
-                    document.getElementById('active-nodes').textContent = mockData.activeNodes;
-                    document.getElementById('tps').textContent = mockData.tps.toLocaleString();
-                } catch (error) {
-                    console.error('Failed to update network status:', error);
-                }
-            }
-
-            async updateParticipants() {
-                try {
-                    // Simulate connected peers - replace with actual p2p_getConnectedPeers RPC call
-                    const mockPeers = [
-                        {
-                            peerId: '12D3KooWBhvxp6...',
-                            location: 'US-East',
-                            status: 'Online',
-                            connectedSince: '2h 15m',
-                            version: 'v1.0.0'
-                        },
-                        {
-                            peerId: '12D3KooWCfg8x2...',
-                            location: 'EU-West',
-                            status: 'Online',
-                            connectedSince: '45m',
-                            version: 'v1.0.0'
-                        },
-                        {
-                            peerId: '12D3KooWDh9y3z...',
-                            location: 'Asia-Pacific',
-                            status: 'Online',
-                            connectedSince: '1h 32m',
-                            version: 'v1.0.0'
-                        }
-                    ];
-
-                    this.renderParticipants(mockPeers);
-                } catch (error) {
-                    console.error('Failed to update participants:', error);
-                    this.showParticipantsError();
-                }
-            }
-
-            renderParticipants(peers) {
-                const tbody = document.getElementById('participants-tbody');
-                const loadingDiv = document.getElementById('participants-loading');
-                const table = document.getElementById('participants-table');
-
-                tbody.innerHTML = '';
-                
-                peers.forEach(peer => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td><span class="peer-id">${peer.peerId}</span></td>
-                        <td>${peer.location}</td>
-                        <td><span class="status-online">${peer.status}</span></td>
-                        <td>${peer.connectedSince}</td>
-                        <td>${peer.version}</td>
-                    `;
-                    tbody.appendChild(row);
-                });
-
-                loadingDiv.style.display = 'none';
-                table.style.display = 'table';
-            }
-
-            showParticipantsError() {
-                const loadingDiv = document.getElementById('participants-loading');
-                loadingDiv.innerHTML = '<p>⚠️ Unable to load network participants. Please try again later.</p>';
-            }
-
-            // Method to be called when actual RPC endpoint is available
-            async fetchConnectedPeers() {
-                const response = await fetch(`${this.bootNodeUrl}/rpc`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        jsonrpc: '2.0',
-                        method: 'p2p_getConnectedPeers',
-                        params: [],
-                        id: 1
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('SW registered: ', registration);
                     })
-                });
-                
-                const data = await response.json();
-                return data.result;
-            }
-        }
-
-        // Initialize network monitor when page loads
-        document.addEventListener('DOMContentLoaded', () => {
-            new QantoNetworkMonitor();
-        });
-
-        // Copy contract address to clipboard
-        document.querySelector('.contract-address').addEventListener('click', (e) => {
-            e.preventDefault();
-            const address = '5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818';
-            navigator.clipboard.writeText(address).then(() => {
-                // Show temporary feedback
-                const originalText = e.target.textContent;
-                e.target.textContent = 'Copied to clipboard!';
-                setTimeout(() => {
-                    e.target.textContent = originalText;
-                }, 2000);
+                    .catch(registrationError => {
+                        console.log('SW registration failed: ', registrationError);
+                    });
             });
-        });
+        }
     </script>
 </body>
 </html>

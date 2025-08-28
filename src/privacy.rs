@@ -13,7 +13,6 @@
 //! - Confidential transactions with homomorphic encryption
 //! - Anonymous voting and governance participation
 
-use crate::types::HomomorphicEncrypted;
 use crate::transaction::{Input, Output};
 use crate::types::UTXO;
 use crate::zkp::{ZKProof, ZKProofSystem, ZKProofType};
@@ -30,7 +29,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tracing::{error, info, instrument};
+use tracing::{error, info};
 use uuid::Uuid;
 
 // --- Privacy Constants ---
@@ -410,12 +409,11 @@ impl PrivacyEngine {
             decoy_generator: Arc::new(DecoyGenerator::new()),
             metadata_obfuscator: Arc::new(MetadataObfuscator::new()),
             quantum_crypto: Arc::new(QuantumResistantCrypto::new()),
-        utxos: Arc::new(RwLock::new(HashMap::new())),
+            utxos: Arc::new(RwLock::new(HashMap::new())),
+        }
     }
-}
 
     /// Initialize the privacy engine with default configurations
-    #[instrument(skip(self))]
     pub async fn initialize(&self) -> Result<(), PrivacyError> {
         info!("Initializing privacy engine");
 
@@ -427,14 +425,13 @@ impl PrivacyEngine {
 
         // Initialize metadata obfuscation
         self.metadata_obfuscator.initialize().await?;
-    self.zkp_system.initialize().await?;
+        self.zkp_system.initialize().await?;
 
-    info!("Privacy engine initialized successfully");
-    Ok(())
-}
+        info!("Privacy engine initialized successfully");
+        Ok(())
+    }
 
     /// Create a confidential transaction with full privacy features
-    #[instrument(skip(self, inputs, outputs))]
     pub async fn create_confidential_transaction(
         &self,
         inputs: Vec<Input>,
@@ -1101,12 +1098,9 @@ impl PrivacyEngine {
         Ok(qanto_hash(&data).as_bytes().to_vec())
     }
 
-    /// Generate challenge for ring signature
-
-    /// Serialize ring signature data
-
+    // Generate challenge for ring signature
+    // Serialize ring signature data
     /// Generate a stealth address for recipient privacy
-    #[instrument(skip(self))]
     pub async fn generate_stealth_address(
         &self,
         recipient_address: &str,
@@ -1212,19 +1206,22 @@ impl PrivacyEngine {
     ) -> Result<Vec<EncryptedInput>, PrivacyError> {
         // For now, we'll use placeholder amounts since we don't have UTXO lookup
         let mut utxos: HashMap<String, UTXO> = HashMap::new(); // Placeholder
-        // Populate dummy UTXOs for testing
+                                                               // Populate dummy UTXOs for testing
         for input in inputs {
             let mut utxo_id = String::with_capacity(input.tx_id.len() + 20);
             utxo_id.push_str(&input.tx_id);
             utxo_id.push('_');
             utxo_id.push_str(&input.output_index.to_string());
-            utxos.insert(utxo_id.clone(), UTXO {
-    address: "dummy_address".to_string(),
-    amount: 1000,
-    tx_id: input.tx_id.clone(),
-    output_index: input.output_index,
-    explorer_link: "dummy_link".to_string(),
-}); // Dummy UTXO
+            utxos.insert(
+                utxo_id.clone(),
+                UTXO {
+                    address: "dummy_address".to_string(),
+                    amount: 1000,
+                    tx_id: input.tx_id.clone(),
+                    output_index: input.output_index,
+                    explorer_link: "dummy_link".to_string(),
+                },
+            ); // Dummy UTXO
         }
         let mut encrypted_inputs = Vec::new();
 
@@ -1233,7 +1230,9 @@ impl PrivacyEngine {
             utxo_id.push_str(&input.tx_id);
             utxo_id.push('_');
             utxo_id.push_str(&input.output_index.to_string());
-            let utxo = utxos.get(&utxo_id).ok_or_else(|| PrivacyError::UTXONotFound(utxo_id.clone()))?;
+            let utxo = utxos
+                .get(&utxo_id)
+                .ok_or_else(|| PrivacyError::UTXONotFound(utxo_id.clone()))?;
 
             let commitment = self.generate_pedersen_commitment(utxo.amount).await?;
             let nullifier = self.generate_nullifier(&input.tx_id).await?;
@@ -1386,13 +1385,16 @@ impl PrivacyEngine {
                 utxo_id.push_str(&input.tx_id);
                 utxo_id.push('_');
                 utxo_id.push_str(&input.output_index.to_string());
-                utxos_local.insert(utxo_id, UTXO {
-                    address: "dummy_address".to_string(),
-                    amount: 1000,
-                    tx_id: input.tx_id.clone(),
-                    output_index: input.output_index,
-                    explorer_link: "dummy_link".to_string(),
-                });
+                utxos_local.insert(
+                    utxo_id,
+                    UTXO {
+                        address: "dummy_address".to_string(),
+                        amount: 1000,
+                        tx_id: input.tx_id.clone(),
+                        output_index: input.output_index,
+                        explorer_link: "dummy_link".to_string(),
+                    },
+                );
             }
         }
         let input_amounts: Vec<u64> = inputs
@@ -1402,7 +1404,10 @@ impl PrivacyEngine {
                 utxo_id.push_str(&input.tx_id);
                 utxo_id.push('_');
                 utxo_id.push_str(&input.output_index.to_string());
-                utxos_local.get(&utxo_id).map(|utxo| utxo.amount).unwrap_or(0)
+                utxos_local
+                    .get(&utxo_id)
+                    .map(|utxo| utxo.amount)
+                    .unwrap_or(0)
             })
             .collect();
 
@@ -1460,7 +1465,7 @@ impl PrivacyEngine {
 
         let optimal_size =
             (base_size as f64 * network_load_factor * privacy_demand_factor) as usize;
-        optimal_size.max(base_size).min(base_size * 3) // Cap between 1x and 3x base size
+        optimal_size.clamp(base_size, base_size * 3) // Cap between 1x and 3x base size
     }
 
     /// Generate quantum-resistant mixing tree root
@@ -1686,7 +1691,6 @@ impl PrivacyEngine {
     }
 
     /// Create anonymous vote for governance
-    #[instrument(skip(self))]
     pub async fn create_anonymous_vote(
         &self,
         proposal_id: &str,
@@ -1777,7 +1781,6 @@ impl PrivacyEngine {
     }
 
     /// Verify confidential transaction
-    #[instrument(skip(self, tx))]
     pub async fn verify_confidential_transaction(
         &self,
         tx: &ConfidentialTransaction,
@@ -2037,6 +2040,7 @@ impl Default for PrivacyAnalytics {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::HomomorphicEncrypted;
     use crate::zkp::ZKProofSystem;
     use std::sync::Arc;
     use tokio;
@@ -2045,10 +2049,13 @@ mod tests {
     async fn test_privacy_engine_initialization() {
         let zkp_system = Arc::new(ZKProofSystem::new());
         let privacy_engine = PrivacyEngine::new(zkp_system);
-        
+
         let result = privacy_engine.initialize().await;
-        assert!(result.is_ok(), "Privacy engine initialization should succeed");
-        
+        assert!(
+            result.is_ok(),
+            "Privacy engine initialization should succeed"
+        );
+
         // Verify initial state
         let analytics = privacy_engine.get_privacy_analytics().await;
         assert_eq!(analytics.total_anonymous_transactions, 0);
@@ -2060,18 +2067,17 @@ mod tests {
     async fn test_ring_signature_generation() {
         let zkp_system = Arc::new(ZKProofSystem::new());
         let privacy_engine = PrivacyEngine::new(zkp_system);
-    privacy_engine.initialize().await.unwrap();
+        privacy_engine.initialize().await.unwrap();
 
-    use ark_relations::r1cs::{TracingMode, ConstraintLayer};
-    use ark_r1cs_std::prelude::*;
-    use tracing_subscriber::{prelude::*, Registry};
-    use tracing::subscriber;
+        use ark_relations::r1cs::{ConstraintLayer, TracingMode};
+        use tracing::subscriber;
+        use tracing_subscriber::{prelude::*, Registry};
 
-    let mut layer = ConstraintLayer::default();
-    layer.mode = TracingMode::OnlyConstraints;
-    let subscriber = Registry::default().with(layer);
-    let _guard = subscriber::set_default(subscriber);
-        
+        let mut layer = ConstraintLayer::default();
+        layer.mode = TracingMode::OnlyConstraints;
+        let subscriber = Registry::default().with(layer);
+        let _guard = subscriber::set_default(subscriber);
+
         // Create test inputs
         let inputs = vec![
             Input {
@@ -2083,12 +2089,15 @@ mod tests {
                 output_index: 1,
             },
         ];
-        
+
         let ring_signature = privacy_engine
             .generate_ring_signature(&inputs, PRIVACY_LEVEL_HIGH)
             .await;
-        
-        assert!(ring_signature.is_ok(), "Ring signature generation should succeed");
+
+        assert!(
+            ring_signature.is_ok(),
+            "Ring signature generation should succeed"
+        );
         let signature = ring_signature.unwrap();
         assert!(signature.ring_members.len() >= RING_SIZE_MIN);
         assert_eq!(signature.privacy_level, PRIVACY_LEVEL_HIGH);
@@ -2101,13 +2110,16 @@ mod tests {
         let zkp_system = Arc::new(ZKProofSystem::new());
         let privacy_engine = PrivacyEngine::new(zkp_system);
         privacy_engine.initialize().await.unwrap();
-        
+
         let recipient_address = "test_recipient_address_123";
         let stealth_address = privacy_engine
             .generate_stealth_address(recipient_address, PRIVACY_LEVEL_HIGH)
             .await;
-        
-        assert!(stealth_address.is_ok(), "Stealth address generation should succeed");
+
+        assert!(
+            stealth_address.is_ok(),
+            "Stealth address generation should succeed"
+        );
         let addr = stealth_address.unwrap();
         assert_eq!(addr.version, STEALTH_ADDRESS_VERSION);
         assert!(!addr.public_spend_key.key_data.is_empty());
@@ -2122,12 +2134,12 @@ mod tests {
         let zkp_system = Arc::new(ZKProofSystem::new());
         let privacy_engine = PrivacyEngine::new(zkp_system);
         privacy_engine.initialize().await.unwrap();
-        
+
         let inputs = vec![Input {
             tx_id: "input_tx_1".to_string(),
             output_index: 0,
         }];
-        
+
         let outputs = vec![Output {
             address: "output_address_1".to_string(),
             amount: 1000,
@@ -2136,21 +2148,27 @@ mod tests {
                 public_key: vec![5, 6, 7, 8],
             },
         }];
-        
+
         let utxo_id = format!("{}-{}", "input_tx_1", 0);
-        privacy_engine.utxos.write().await.insert(utxo_id, UTXO {
-            address: "test".to_string(),
-            amount: 1000,
-            tx_id: "input_tx_1".to_string(),
-            output_index: 0,
-            explorer_link: String::new(),
-        });
+        privacy_engine.utxos.write().await.insert(
+            utxo_id,
+            UTXO {
+                address: "test".to_string(),
+                amount: 1000,
+                tx_id: "input_tx_1".to_string(),
+                output_index: 0,
+                explorer_link: String::new(),
+            },
+        );
 
         let confidential_tx = privacy_engine
             .create_confidential_transaction(inputs, outputs, PRIVACY_LEVEL_HIGH)
             .await;
-        
-        assert!(confidential_tx.is_ok(), "Confidential transaction creation should succeed");
+
+        assert!(
+            confidential_tx.is_ok(),
+            "Confidential transaction creation should succeed"
+        );
         let tx = confidential_tx.unwrap();
         assert!(!tx.transaction_id.is_empty());
         assert_eq!(tx.encrypted_inputs.len(), 1);
@@ -2166,20 +2184,23 @@ mod tests {
         let zkp_system = Arc::new(ZKProofSystem::new());
         let privacy_engine = PrivacyEngine::new(zkp_system);
         privacy_engine.initialize().await.unwrap();
-        
+
         let proposal_id = "test_proposal_123";
         let vote_choice = true;
         let voter_commitment = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        
-        let anonymous_vote = privacy_engine
-        .create_anonymous_vote(proposal_id, vote_choice, voter_commitment.clone())
-        .await;
 
-    if let Err(e) = &anonymous_vote {
-        eprintln!("Error: {:?}", e);
-    }
-        
-        assert!(anonymous_vote.is_ok(), "Anonymous vote creation should succeed");
+        let anonymous_vote = privacy_engine
+            .create_anonymous_vote(proposal_id, vote_choice, voter_commitment.clone())
+            .await;
+
+        if let Err(e) = &anonymous_vote {
+            eprintln!("Error: {:?}", e);
+        }
+
+        assert!(
+            anonymous_vote.is_ok(),
+            "Anonymous vote creation should succeed"
+        );
         let vote = anonymous_vote.unwrap();
         assert!(!vote.vote_id.is_empty());
         assert_eq!(vote.proposal_id, proposal_id);
@@ -2187,7 +2208,7 @@ mod tests {
         assert!(!vote.nullifier.is_empty());
         assert!(!vote.vote_commitment.is_empty());
         assert!(vote.timestamp > 0);
-        
+
         // Verify the vote was stored
         let votes = privacy_engine.anonymous_votes.read().await;
         assert!(votes.contains_key(&vote.vote_id));
@@ -2198,13 +2219,13 @@ mod tests {
         let zkp_system = Arc::new(ZKProofSystem::new());
         let privacy_engine = PrivacyEngine::new(zkp_system);
         privacy_engine.initialize().await.unwrap();
-        
+
         // Create a confidential transaction to update analytics
         let inputs = vec![Input {
             tx_id: "analytics_test_tx".to_string(),
             output_index: 0,
         }];
-        
+
         let outputs = vec![Output {
             address: "analytics_test_address".to_string(),
             amount: 1000,
@@ -2213,28 +2234,36 @@ mod tests {
                 public_key: vec![11, 12, 13, 14],
             },
         }];
-        
+
         let utxo_id = format!("{}-{}", "analytics_test_tx", 0);
-        privacy_engine.utxos.write().await.insert(utxo_id, UTXO {
-            address: "test".to_string(),
-            amount: 1000,
-            tx_id: "analytics_test_tx".to_string(),
-            output_index: 0,
-            explorer_link: String::new(),
-        });
+        privacy_engine.utxos.write().await.insert(
+            utxo_id,
+            UTXO {
+                address: "test".to_string(),
+                amount: 1000,
+                tx_id: "analytics_test_tx".to_string(),
+                output_index: 0,
+                explorer_link: String::new(),
+            },
+        );
 
         let _confidential_tx = privacy_engine
             .create_confidential_transaction(inputs, outputs, PRIVACY_LEVEL_MAXIMUM)
             .await
             .unwrap();
-        
+
         // Check analytics were updated
         let analytics = privacy_engine.get_privacy_analytics().await;
         assert_eq!(analytics.total_anonymous_transactions, 1);
         assert_eq!(analytics.ring_signature_usage, 1);
         assert_eq!(analytics.stealth_address_usage, 1);
-        assert!(analytics.privacy_level_distribution.contains_key(&PRIVACY_LEVEL_MAXIMUM));
-        assert_eq!(analytics.privacy_level_distribution[&PRIVACY_LEVEL_MAXIMUM], 1);
+        assert!(analytics
+            .privacy_level_distribution
+            .contains_key(&PRIVACY_LEVEL_MAXIMUM));
+        assert_eq!(
+            analytics.privacy_level_distribution[&PRIVACY_LEVEL_MAXIMUM],
+            1
+        );
     }
 
     #[tokio::test]
@@ -2242,21 +2271,21 @@ mod tests {
         let zkp_system = Arc::new(ZKProofSystem::new());
         let privacy_engine = PrivacyEngine::new(zkp_system);
         privacy_engine.initialize().await.unwrap();
-        
+
         // Test quantum-resistant stealth address generation
         let stealth_addr = privacy_engine
             .generate_stealth_address("quantum_test_addr", PRIVACY_LEVEL_MAXIMUM)
             .await
             .unwrap();
-        
+
         assert!(stealth_addr.public_spend_key.quantum_resistant);
         assert!(stealth_addr.public_view_key.quantum_resistant);
         assert!(stealth_addr.one_time_address.quantum_resistant);
         assert!(stealth_addr.metadata.quantum_resistant);
-        
+
         // Verify quantum-resistant key types
         match stealth_addr.public_spend_key.key_type {
-            KeyType::Dilithium | KeyType::Falcon | KeyType::Sphincs => {},
+            KeyType::Dilithium | KeyType::Falcon | KeyType::Sphincs => {}
             _ => panic!("Expected quantum-resistant key type for maximum privacy level"),
         }
     }

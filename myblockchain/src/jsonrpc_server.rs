@@ -335,7 +335,7 @@ impl JsonRpcServer {
             "eth_getTransactionReceipt" => {
                 Self::handle_get_transaction_receipt(&params, &state).await
             }
-            "eth_sendRawTransaction" => Self::handle_send_raw_transaction(&params, &state).await,
+            "eth_sendRawTransaction" => Self::handle_send_raw_transaction(&params, &state),
             "eth_pendingTransactions" => {
                 let state_guard = state.read().await;
                 json!(state_guard.pending_transactions)
@@ -345,7 +345,7 @@ impl JsonRpcServer {
             "eth_getBalance" => Self::handle_get_balance(&params, &state).await,
             "eth_getTransactionCount" => Self::handle_get_transaction_count(&params, &state).await,
             "eth_getCode" => Self::handle_get_code(&params, &state).await,
-            "eth_getStorageAt" => Self::handle_get_storage_at(&params, &state).await,
+            "eth_getStorageAt" => Self::handle_get_storage_at(&params, &state),
 
             // Gas estimation
             "eth_gasPrice" => json!("0x3b9aca00"), // 1 Gwei
@@ -589,7 +589,7 @@ impl JsonRpcServer {
         }
     }
 
-    async fn handle_send_raw_transaction(
+    fn handle_send_raw_transaction(
         params: &[Value],
         _state: &Arc<RwLock<BlockchainState>>,
     ) -> Value {
@@ -649,10 +649,7 @@ impl JsonRpcServer {
         }
     }
 
-    async fn handle_get_storage_at(
-        _params: &[Value],
-        _state: &Arc<RwLock<BlockchainState>>,
-    ) -> Value {
+    fn handle_get_storage_at(_params: &[Value], _state: &Arc<RwLock<BlockchainState>>) -> Value {
         // For now, return empty storage
         json!("0x0000000000000000000000000000000000000000000000000000000000000000")
     }
@@ -684,10 +681,15 @@ impl JsonRpcServer {
     }
 }
 
+/// Start the JSON-RPC server
+pub async fn run_server(port: u16, chain_id: u64) -> Result<()> {
+    let server = JsonRpcServer::new(port, chain_id);
+    server.start().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::{sleep, Duration};
 
     #[tokio::test]
     async fn test_blockchain_state_creation() {
@@ -781,10 +783,4 @@ mod tests {
         assert!(cors_response.contains("Access-Control-Allow-Origin: *"));
         assert!(cors_response.contains("Content-Length: 0"));
     }
-}
-
-/// Start the JSON-RPC server
-pub async fn run_server(port: u16, chain_id: u64) -> Result<()> {
-    let server = JsonRpcServer::new(port, chain_id);
-    server.start().await
 }

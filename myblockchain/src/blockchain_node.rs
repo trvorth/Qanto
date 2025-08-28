@@ -1,5 +1,5 @@
-use bincode::{deserialize, serialize};
-use ed25519_dalek::{Signer, SigningKey};
+use ed25519_dalek::SigningKey;
+
 use my_blockchain::{
     difficulty_to_target, is_solution_valid, qanto_hash, Block, Blockchain, QantoHash,
 };
@@ -31,46 +31,9 @@ fn main() {
 
         loop {
             let last_block = blockchain.get_last_block().await;
-            let difficulty = 1000u64; // Low difficulty for testing
+            let difficulty = 1u64; // Very low difficulty for debugging
             let target = difficulty_to_target(difficulty);
-            let (tx_root, mut batches) = blockchain.execution_layer.create_block_payload().await;
-
-            // Add test transaction to demonstrate fees
-            let test_keypair = SigningKey::generate(&mut rand::thread_rng());
-            let test_message = serialize(&TxData { amount: 5_000_000 }).unwrap();
-            let test_signature = test_keypair.sign(&test_message);
-            let test_id = qanto_hash(&test_message);
-            let test_tx = my_blockchain::Transaction {
-                id: test_id,
-                message: test_message,
-                public_key: test_keypair.verifying_key(),
-                signature: test_signature,
-            };
-            batches.push(vec![test_tx]);
-
-            // Simulate transaction fees
-            for batch in &batches {
-                for tx in batch {
-                    if let Ok(tx_data) = deserialize::<TxData>(&tx.message) {
-                        let fee_percent = if tx_data.amount < 1_000_000 {
-                            0
-                        } else if tx_data.amount < 10_000_000 {
-                            1
-                        } else if tx_data.amount < 100_000_000 {
-                            2
-                        } else {
-                            3
-                        };
-                        let fee = (tx_data.amount * fee_percent as u64) / 100;
-                        log::info!(
-                            "Applied fee: {}% ({} QNTO) for amount {}",
-                            fee_percent,
-                            fee,
-                            tx_data.amount
-                        );
-                    }
-                }
-            }
+            let (tx_root, batches) = blockchain.execution_layer.create_block_payload();
 
             let state_root = blockchain
                 .execute_block(&Block::new(

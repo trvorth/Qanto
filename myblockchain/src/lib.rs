@@ -44,12 +44,15 @@ pub mod qanto_standalone {
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
         pub struct QantoHash([u8; 32]);
 
-        impl QantoHash {
-            pub fn new(bytes: [u8; 32]) -> Self {
-                Self(bytes)
+        impl fmt::Display for QantoHash {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "{}", hex::encode(self.0))
             }
-            pub fn as_bytes(&self) -> &[u8; 32] {
-                &self.0
+        }
+
+        impl From<[u8; 32]> for QantoHash {
+            fn from(bytes: [u8; 32]) -> Self {
+                QantoHash(bytes)
             }
         }
 
@@ -59,9 +62,38 @@ pub mod qanto_standalone {
             }
         }
 
+        impl From<QantoHash> for [u8; 32] {
+            fn from(hash: QantoHash) -> Self {
+                hash.0
+            }
+        }
+
+        impl QantoHash {
+            pub fn new(bytes: [u8; 32]) -> Self {
+                Self(bytes)
+            }
+            pub fn as_bytes(&self) -> &[u8; 32] {
+                &self.0
+            }
+        }
+
         impl fmt::Debug for QantoHash {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "QantoHash({})", hex::encode(self.0))
+            }
+        }
+
+        impl std::str::FromStr for QantoHash {
+            type Err = hex::FromHexError;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                let bytes = hex::decode(s)?;
+                if bytes.len() != 32 {
+                    return Err(hex::FromHexError::InvalidStringLength);
+                }
+                let mut array = [0u8; 32];
+                array.copy_from_slice(&bytes);
+                Ok(QantoHash(array))
             }
         }
 
@@ -91,9 +123,8 @@ pub mod qanto_standalone {
         use std::sync::Arc;
 
         #[derive(Clone)]
-        pub struct ConcurrentHashMap<K, V>(Arc<DashMap<K, V>>);
+        pub struct ConcurrentHashMap<K, V>(Arc<DashMap<K, V>>, Option<usize>);
 
-        // FIX: Implement `Default` for `ConcurrentHashMap`.
         impl<K: Eq + Hash + Clone, V> Default for ConcurrentHashMap<K, V> {
             fn default() -> Self {
                 Self::new()
@@ -102,21 +133,62 @@ pub mod qanto_standalone {
 
         impl<K: Eq + Hash + Clone, V> ConcurrentHashMap<K, V> {
             pub fn new() -> Self {
-                Self(Arc::new(DashMap::new()))
+                Self(Arc::new(DashMap::new()), None)
             }
-            pub async fn insert(&self, key: K, value: V) {
-                self.0.insert(key, value);
+
+            pub fn with_capacity(capacity: usize) -> Self {
+                Self(Arc::new(DashMap::with_capacity(capacity)), Some(capacity))
             }
-            pub async fn get_n_and_remove(&self, n: usize) -> Vec<(K, V)> {
-                let keys_to_remove: Vec<K> =
-                    self.0.iter().take(n).map(|e| e.key().clone()).collect();
-                let mut items = Vec::with_capacity(keys_to_remove.len());
-                for key in keys_to_remove {
-                    if let Some((k, v)) = self.0.remove(&key) {
-                        items.push((k, v));
+
+            pub fn insert(&self, key: K, value: V) -> bool {
+                // Check capacity limit and evict if necessary
+                if let Some(max_cap) = self.1 {
+                    if self.0.len() >= max_cap {
+                        // Evict oldest entries (approximate FIFO by removing first available)
+                        let keys_to_remove: Vec<K> = self
+                            .0
+                            .iter()
+                            .take((max_cap / 10).max(1)) // Remove 10% or at least 1 entry
+                            .map(|entry| entry.key().clone())
+                            .collect();
+
+                        for old_key in keys_to_remove {
+                            self.0.remove(&old_key);
+                        }
                     }
                 }
-                items
+                self.0.insert(key, value);
+                true
+            }
+
+            pub fn get_n_and_remove(&self, n: usize) -> Vec<(K, V)> {
+                let mut result = Vec::with_capacity(n);
+                let mut count = 0;
+                let keys: Vec<K> = self
+                    .0
+                    .iter()
+                    .take(n)
+                    .map(|entry| entry.key().clone())
+                    .collect();
+
+                for key in keys {
+                    if count >= n {
+                        break;
+                    }
+                    if let Some((k, v)) = self.0.remove(&key) {
+                        result.push((k, v));
+                        count += 1;
+                    }
+                }
+                result
+            }
+
+            pub fn len(&self) -> usize {
+                self.0.len()
+            }
+
+            pub fn is_empty(&self) -> bool {
+                self.0.is_empty()
             }
         }
     }
@@ -134,18 +206,23 @@ pub mod qanto_standalone {
 
         impl ThreadPool {
             pub fn new(size: usize) -> Self {
-                assert!(size > 0);
+                // Optimize thread pool size for resource efficiency
+                let optimal_size = size.min(num_cpus::get()).max(2); // Cap at CPU cores, minimum 2
                 let (sender, receiver) = unbounded::<Job>();
-                let receiver = Arc::new(receiver);
-                let mut workers = Vec::with_capacity(size);
-                for _ in 0..size {
+                let receiver = Arc::new(std::sync::Mutex::new(receiver));
+
+                let mut workers = Vec::with_capacity(optimal_size);
+                for _ in 0..optimal_size {
                     let receiver = Arc::clone(&receiver);
-                    workers.push(thread::spawn(move || {
-                        while let Ok(job) = receiver.recv() {
-                            job();
-                        }
+                    workers.push(thread::spawn(move || loop {
+                        let job = match receiver.lock().unwrap().recv() {
+                            Ok(job) => job,
+                            Err(_) => break,
+                        };
+                        job();
                     }));
                 }
+
                 Self {
                     sender: Some(sender),
                     workers,
@@ -155,8 +232,9 @@ pub mod qanto_standalone {
             where
                 F: FnOnce() + Send + 'static,
             {
-                let job = Box::new(f);
-                self.sender.as_ref().unwrap().send(job).unwrap();
+                if let Some(sender) = &self.sender {
+                    sender.send(Box::new(f)).unwrap();
+                }
             }
         }
 
@@ -170,9 +248,9 @@ pub mod qanto_standalone {
         }
     }
 
-    // Key-value database abstraction using RocksDB.
+    // Key-value database abstraction using RocksDB with optimized storage settings.
     pub mod db {
-        use rocksdb::{Options, DB};
+        use rocksdb::{BlockBasedOptions, Cache, DBCompressionType, Options, DB};
         use std::path::Path;
         use thiserror::Error;
 
@@ -188,7 +266,47 @@ pub mod qanto_standalone {
             pub fn open(path: &str) -> Result<Self, DbError> {
                 let mut opts = Options::default();
                 opts.create_if_missing(true);
-                opts.increase_parallelism(num_cpus::get() as i32);
+
+                // Optimize parallelism based on available CPU cores
+                let cpu_count = num_cpus::get() as i32;
+                opts.increase_parallelism(cpu_count);
+                opts.set_max_background_jobs(cpu_count.min(8)); // Cap at 8 to avoid resource contention
+
+                // Enable aggressive compression for storage optimization
+                opts.set_compression_type(DBCompressionType::Snappy);
+                opts.set_bottommost_compression_type(DBCompressionType::Zstd);
+                opts.set_compression_per_level(&[
+                    DBCompressionType::None,   // L0 - no compression for faster writes
+                    DBCompressionType::Snappy, // L1 - fast compression
+                    DBCompressionType::Lz4,    // L2 - balanced
+                    DBCompressionType::Lz4,    // L3 - balanced
+                    DBCompressionType::Zstd,   // L4+ - maximum compression
+                    DBCompressionType::Zstd,
+                    DBCompressionType::Zstd,
+                ]);
+
+                // Configure block-based table for memory efficiency
+                let mut block_opts = BlockBasedOptions::default();
+                let cache = Cache::new_lru_cache(256 * 1024 * 1024); // 256MB block cache
+                block_opts.set_block_cache(&cache);
+                block_opts.set_block_size(32 * 1024); // 32KB blocks for better compression
+                block_opts.set_cache_index_and_filter_blocks(true);
+                block_opts.set_pin_l0_filter_and_index_blocks_in_cache(true);
+                opts.set_block_based_table_factory(&block_opts);
+
+                // Memory and write optimization
+                opts.set_write_buffer_size(128 * 1024 * 1024); // 128MB write buffer
+                opts.set_max_write_buffer_number(4);
+                opts.set_min_write_buffer_number_to_merge(2);
+                opts.set_level_zero_file_num_compaction_trigger(4);
+                opts.set_level_zero_slowdown_writes_trigger(20);
+                opts.set_level_zero_stop_writes_trigger(36);
+
+                // Optimize for blockchain workload (append-heavy with occasional reads)
+                opts.set_compaction_style(rocksdb::DBCompactionStyle::Level);
+                opts.set_target_file_size_base(256 * 1024 * 1024); // 256MB target file size
+                opts.set_max_bytes_for_level_base(1024 * 1024 * 1024); // 1GB base level
+
                 Ok(Self(DB::open(&opts, Path::new(path))?))
             }
             pub fn put(&self, key: &[u8], value: &[u8]) -> Result<(), DbError> {
@@ -329,7 +447,11 @@ impl Block {
 }
 
 // --- High-Throughput Execution Layer ---
-const NUM_EXECUTION_SHARDS: usize = 16;
+// Optimized system resource constants for reduced overhead
+const NUM_EXECUTION_SHARDS: usize = 8; // Reduced from 16 to minimize thread contention and memory usage
+
+// Maximum number of transaction batches in mempool - reduced for tighter memory bounds
+const MAX_MEMPOOL_SIZE: usize = 5_000;
 
 pub mod execution_shard {
     use super::*;
@@ -386,9 +508,11 @@ impl Default for ExecutionLayer {
 
 impl ExecutionLayer {
     pub fn new() -> Self {
+        // Use optimal thread pool size for CPU efficiency
+        let pool_size = (num_cpus::get() / 2).max(2); // Use half CPU cores, minimum 2
         Self {
-            mempool: Arc::new(ConcurrentHashMap::new()),
-            verification_pool: Arc::new(ThreadPool::new(num_cpus::get())),
+            mempool: Arc::new(ConcurrentHashMap::with_capacity(MAX_MEMPOOL_SIZE)),
+            verification_pool: Arc::new(ThreadPool::new(pool_size)),
         }
     }
 
@@ -412,13 +536,13 @@ impl ExecutionLayer {
                     .copied()
                     .collect::<Vec<u8>>(),
             );
-            self.mempool.insert(batch_hash, batch).await;
+            self.mempool.insert(batch_hash, batch);
         }
     }
 
     /// Creates a block payload by selecting batches of transactions from the mempool.
-    pub async fn create_block_payload(&self) -> (QantoHash, Vec<Vec<Transaction>>) {
-        let batches_with_hashes = self.mempool.get_n_and_remove(NUM_EXECUTION_SHARDS).await;
+    pub fn create_block_payload(&self) -> (QantoHash, Vec<Vec<Transaction>>) {
+        let batches_with_hashes = self.mempool.get_n_and_remove(NUM_EXECUTION_SHARDS);
         if batches_with_hashes.is_empty() {
             return (qanto_hash(&[]), Vec::new());
         }
@@ -541,10 +665,34 @@ impl Blockchain {
         qanto_hash(&state_data)
     }
 
+    /// Returns the last block in the chain.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the chain is empty, though this should never happen as the chain
+    /// is initialized with a genesis block in the constructor.
     pub async fn get_last_block(&self) -> Block {
-        self.chain.lock().await.last().unwrap().clone()
+        let chain = self.chain.lock().await;
+        chain
+            .last()
+            .expect("Chain should never be empty - initialized with genesis block")
+            .clone()
     }
 
+    /// Adds a new block to the blockchain after performing validation.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The block index is not sequential (not exactly last_block.index + 1)
+    /// - The previous hash doesn't match the hash of the last block in the chain
+    /// - The block signature is invalid (fails cryptographic verification)
+    /// - The state root doesn't match the computed state after executing the block
+    /// - Database operations fail when persisting the block
+    ///
+    /// # Parameters
+    ///
+    /// - `block`: The block to add to the chain
     pub async fn add_block(&self, block: Block) -> anyhow::Result<()> {
         let last_block = self.get_last_block().await;
         if block.header.index != last_block.header.index + 1 {
@@ -577,15 +725,41 @@ impl Blockchain {
                 .is_multiple_of(qanhash::DIFFICULTY_ADJUSTMENT_WINDOW as u64)
         {
             let mut diff = self.difficulty.write().await;
-            let ts_vec: Vec<i64> = timestamps.iter().cloned().collect();
+            let ts_vec: Vec<i64> = timestamps.iter().copied().collect();
             *diff = qanhash::calculate_next_difficulty(*diff, &ts_vec);
         }
 
+        // Persist to database first
         self.db.put(
             &block.header.index.to_le_bytes(),
             &QantoSerialize::serialize(&block),
         )?;
+
+        // Add to in-memory chain
         self.chain.lock().await.push(block);
+
+        // Prune in-memory chain if needed for memory efficiency
+        self.prune_in_memory_chain().await;
+
         Ok(())
+    }
+
+    // Memory-bounded blockchain configuration constants
+    const MAX_IN_MEMORY_BLOCKS: usize = 1_000; // Keep last 1000 blocks in memory for fast access
+    const PRUNING_THRESHOLD: usize = 1_200; // Start pruning when exceeding this number
+
+    /// Prunes in-memory chain to maintain memory bounds while keeping recent blocks
+    async fn prune_in_memory_chain(&self) {
+        let mut chain = self.chain.lock().await;
+        if chain.len() > Self::PRUNING_THRESHOLD {
+            // Keep the genesis block and the most recent blocks
+            let keep_count = Self::MAX_IN_MEMORY_BLOCKS;
+            if chain.len() > keep_count {
+                // Remove blocks from position 1 to (len - keep_count + 1)
+                // This preserves genesis (index 0) and recent blocks
+                let drain_end = chain.len() - keep_count + 1;
+                chain.drain(1..drain_end);
+            }
+        }
     }
 }

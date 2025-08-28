@@ -39,7 +39,7 @@ The Holistic Adaptive Market Economy ensures sustainable growth:
 ### For Developers
 - **Simple Integration**: RESTful APIs and comprehensive SDKs
 - **Low Transaction Costs**: Predictable and minimal fees
-- **High Throughput**: 100,000+ TPS capacity
+- **High Throughput**: 10,000,000+ TPS capacity
 - **Smart Contract Support**: Full EVM compatibility (coming Q2 2025)
 
 ### For Enterprises
@@ -60,11 +60,11 @@ The Holistic Adaptive Market Economy ensures sustainable growth:
 |---------|--------------|
 | Consensus | Hybrid PoW/PoS with DAG |
 | Block Time | ~1 second |
-| Transaction Throughput | 100,000+ TPS |
+| Transaction Throughput | 10,000,000+ TPS |
 | Finality | 2-3 seconds |
 | Smart Contracts | WASM-based (EVM coming) |
 | Programming Languages | Rust, Go, JavaScript |
-| Minimum Stake | 1,000 QNTO |
+| Minimum Stake | 100 QNTO |
 | Network Fee | Dynamic (avg ~$0.001) |
 
 ## Getting Started

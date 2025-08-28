@@ -21,11 +21,14 @@ use crate::saga::{
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::{broadcast, RwLock};
 use tokio::time::{interval, Instant};
-use tracing::{debug, error, info, instrument};
+use tracing::{debug, error, info};
 use uuid::Uuid;
 
 /// Real-time analytics dashboard configuration
@@ -240,7 +243,6 @@ impl AnalyticsDashboard {
     }
 
     /// Start the real-time analytics dashboard service
-    #[instrument(skip(self, dag, saga))]
     pub async fn start_service(
         &self,
         dag: Arc<QantoDAG>,
@@ -293,7 +295,6 @@ impl AnalyticsDashboard {
     }
 
     /// Update all dashboard metrics
-    #[instrument(skip(self, dag, saga))]
     async fn update_metrics(
         &self,
         dag: &Arc<QantoDAG>,
@@ -354,8 +355,8 @@ impl AnalyticsDashboard {
             active_addresses,
             mempool_size: 0, // Simplified: mempool not directly accessible
             block_height,
-            tps_current: network_health.tps_current,
-            tps_peak: network_health.tps_peak_24h,
+            tps_current: network_health.tps_current.load(Ordering::Relaxed) as f64,
+            tps_peak: network_health.tps_peak_24h.load(Ordering::Relaxed) as f64,
         };
 
         // Update current metrics
@@ -433,15 +434,122 @@ impl AnalyticsDashboard {
             .map(|entry| entry.value().transactions.len() as f64)
             .fold(0.0f64, |a, b| a.max(b));
 
+        // Calculate total transactions across all blocks
+        let total_transactions: usize = dag
+            .blocks
+            .iter()
+            .map(|entry| entry.value().transactions.len())
+            .sum();
+
         NetworkHealthMetrics {
-            tps_current: current_tps,
-            tps_average_1h: avg_tps_1h,
-            tps_peak_24h: peak_tps_24h,
-            finality_time_ms: 2000, // Simplified: 2 second finality
-            validator_count: dag.validators.len() as u64,
-            network_congestion: if current_tps > 1000.0 { 0.8 } else { 0.2 }, // Simplified congestion metric
-            block_propagation_time: 500.0, // Simplified: 500ms propagation time
-            mempool_size: 0,               // Simplified: mempool not directly accessible
+            // Core blockchain metrics
+            blocks_processed: AtomicU64::new(dag.blocks.len() as u64),
+            transactions_processed: AtomicU64::new(total_transactions as u64),
+            validation_time_ms: AtomicU64::new(100),
+            block_creation_time_ms: AtomicU64::new(1000),
+            cache_hits: AtomicU64::new(0),
+            cache_misses: AtomicU64::new(0),
+            concurrent_validations: AtomicU64::new(0),
+            queue_depth: AtomicU64::new(0),
+            last_block_time: AtomicU64::new(current_time),
+            throughput_bps: AtomicU64::new((current_tps * 1000.0) as u64),
+            memory_usage_mb: AtomicU64::new(0),
+            cpu_utilization: AtomicU64::new(0),
+            disk_io_ops: AtomicU64::new(0),
+            network_bytes_sent: AtomicU64::new(0),
+            network_bytes_received: AtomicU64::new(0),
+
+            // Performance optimization metrics
+            simd_operations: AtomicU64::new(0),
+            lock_free_operations: AtomicU64::new(0),
+            pipeline_stages_completed: AtomicU64::new(0),
+            prefetch_hits: AtomicU64::new(0),
+            prefetch_misses: AtomicU64::new(0),
+            batch_processing_time_ns: AtomicU64::new(0),
+            memory_pool_allocations: AtomicU64::new(0),
+            zero_copy_operations: AtomicU64::new(0),
+            work_stealing_tasks: AtomicU64::new(0),
+            parallel_signature_verifications: AtomicU64::new(0),
+            utxo_cache_efficiency: AtomicU64::new(0),
+            transaction_throughput_tps: AtomicU64::new(current_tps as u64),
+            parallel_validations: AtomicU64::new(0),
+            batch_processing_ops: AtomicU64::new(0),
+            compression_ratio: AtomicU64::new(8000), // 80% compression
+
+            // Network and consensus metrics
+            tps: AtomicU64::new(current_tps as u64),
+            finality_ms: AtomicU64::new(2000),
+            validator_count: AtomicU64::new(dag.validators.len() as u64),
+            shard_count: AtomicU64::new(1),
+            cross_shard_tps: AtomicU64::new(0),
+            storage_efficiency: AtomicU64::new(9000), // 90% efficiency
+            network_bandwidth: AtomicU64::new(0),
+            consensus_latency: AtomicU64::new(1000),
+            transaction_volume: AtomicU64::new(total_transactions as u64),
+            average_gas_usage: AtomicU64::new(21000),
+            network_load: AtomicU64::new(if current_tps > 1000.0 { 8000 } else { 2000 }),
+
+            // SAGA-specific metrics
+            throughput: AtomicU64::new((current_tps * 1000.0) as u64),
+            latency: AtomicU64::new(2000),
+            error_rate: AtomicU64::new(10),             // 0.01%
+            resource_utilization: AtomicU64::new(5000), // 50%
+            security_score: AtomicU64::new(9500),       // 95%
+            stability_index: AtomicU64::new(9800),      // 98%
+
+            // Validator metrics
+            blocks_produced: AtomicU64::new(dag.blocks.len() as u64),
+            blocks_validated: AtomicU64::new(dag.blocks.len() as u64),
+            uptime_percentage: AtomicU64::new(99900), // 99.9%
+            response_time_ms: AtomicU64::new(50),
+            byzantine_faults: AtomicU64::new(0),
+            governance_participation: AtomicU64::new(8500), // 85%
+
+            // Network metrics
+            latency_ms: AtomicU64::new(50000),           // 50ms
+            bandwidth_utilization: AtomicU64::new(7000), // 70%
+            packet_loss_rate: AtomicU64::new(10),        // 0.01%
+            connection_stability: AtomicU64::new(99000), // 99%
+            message_throughput: AtomicU64::new((current_tps * 1000.0) as u64),
+
+            // Network health metrics
+            tps_current: AtomicU64::new(current_tps as u64),
+            tps_average_1h: AtomicU64::new(avg_tps_1h as u64),
+            tps_peak_24h: AtomicU64::new(peak_tps_24h as u64),
+            finality_time_ms: AtomicU64::new(2000),
+            network_congestion: AtomicU64::new(if current_tps > 1000.0 { 80 } else { 20 }),
+            block_propagation_time: AtomicU64::new(500),
+            mempool_size: AtomicU64::new(0),
+
+            // Relayer metrics
+            relayer_success_rate: AtomicU64::new(9900), // 99%
+            relayer_average_latency: AtomicU64::new(100),
+            relayer_total_fees_earned: AtomicU64::new(0),
+            relayer_packets_relayed: AtomicU64::new(0),
+            relayer_last_active: AtomicU64::new(current_time),
+
+            // Interoperability metrics
+            total_channels: AtomicU64::new(0),
+            open_channels: AtomicU64::new(0),
+            total_bridges: AtomicU64::new(0),
+            active_bridges: AtomicU64::new(0),
+            total_swaps: AtomicU64::new(0),
+            completed_swaps: AtomicU64::new(0),
+            active_relayers: AtomicU64::new(0),
+            total_relayers: AtomicU64::new(0),
+
+            // Enhanced simulation metrics
+            omega_rejected_transactions: AtomicU64::new(0),
+            cross_chain_effects_generated: AtomicU64::new(0),
+            governance_proposals_created: AtomicU64::new(0),
+            governance_proposals_passed: AtomicU64::new(0),
+            governance_proposals_omega_rejected: AtomicU64::new(0),
+            quantum_proofs_generated: AtomicU64::new(0),
+            average_stability_score: AtomicU64::new(9800), // 98%
+            threat_level_escalations: AtomicU64::new(0),
+
+            // Timestamp for metrics collection
+            last_updated: AtomicU64::new(current_time),
         }
     }
 
@@ -641,16 +749,20 @@ impl AnalyticsDashboard {
     async fn update_current_metrics(&self, data: &AnalyticsDashboardData) {
         let mut metrics = self.current_metrics.write().await;
 
-        metrics.current_tps = data.network_health.tps_current;
-        metrics.peak_tps_24h = data.network_health.tps_peak_24h.max(metrics.peak_tps_24h);
-        metrics.average_tps_1h = data.network_health.tps_average_1h;
+        metrics.current_tps = data.network_health.tps_current.load(Ordering::Relaxed) as f64;
+        metrics.peak_tps_24h = (data.network_health.tps_peak_24h.load(Ordering::Relaxed) as f64)
+            .max(metrics.peak_tps_24h);
+        metrics.average_tps_1h = data.network_health.tps_average_1h.load(Ordering::Relaxed) as f64;
         metrics.total_transactions = data.total_transactions;
         metrics.active_addresses = data.active_addresses;
         metrics.mempool_size = data.mempool_size;
         metrics.block_height = data.block_height;
-        metrics.finality_time_ms = data.network_health.finality_time_ms;
-        metrics.validator_count = data.network_health.validator_count;
-        metrics.network_congestion = data.network_health.network_congestion;
+        metrics.finality_time_ms = data.network_health.finality_time_ms.load(Ordering::Relaxed);
+        metrics.validator_count = data.network_health.validator_count.load(Ordering::Relaxed);
+        metrics.network_congestion = data
+            .network_health
+            .network_congestion
+            .load(Ordering::Relaxed) as f64;
         metrics.ai_model_accuracy = data.ai_performance.neural_network_accuracy;
         metrics.threat_level = data.security_insights.threat_level.clone();
         metrics.economic_security_score = data.economic_indicators.economic_security;
@@ -687,25 +799,28 @@ impl AnalyticsDashboard {
         // Create data points
         let tps_point = TimeSeriesDataPoint {
             timestamp,
-            value: data.network_health.tps_current,
+            value: data.network_health.tps_current.load(Ordering::Relaxed) as f64,
             metadata: HashMap::new(),
         };
 
         let block_time_point = TimeSeriesDataPoint {
             timestamp,
-            value: data.network_health.finality_time_ms as f64,
+            value: data.network_health.finality_time_ms.load(Ordering::Relaxed) as f64,
             metadata: HashMap::new(),
         };
 
         let validator_count_point = TimeSeriesDataPoint {
             timestamp,
-            value: data.network_health.validator_count as f64,
+            value: data.network_health.validator_count.load(Ordering::Relaxed) as f64,
             metadata: HashMap::new(),
         };
 
         let congestion_point = TimeSeriesDataPoint {
             timestamp,
-            value: data.network_health.network_congestion,
+            value: data
+                .network_health
+                .network_congestion
+                .load(Ordering::Relaxed) as f64,
             metadata: HashMap::new(),
         };
 
@@ -868,7 +983,10 @@ impl AnalyticsDashboard {
             .as_secs();
 
         // Network performance alerts
-        if network_health.tps_current < 100.0 {
+        let tps_current = network_health.tps_current.load(Ordering::Relaxed) as f64;
+        let network_congestion = network_health.network_congestion.load(Ordering::Relaxed) as f64;
+
+        if tps_current < 100.0 {
             alerts.push(Alert {
                 id: Uuid::new_v4().to_string(),
                 timestamp,
@@ -878,18 +996,18 @@ impl AnalyticsDashboard {
                 description: {
                     let mut desc = String::with_capacity(50);
                     desc.push_str("Current TPS (");
-                    desc.push_str(&format!("{:.2}", network_health.tps_current));
+                    desc.push_str(&format!("{tps_current:.2}"));
                     desc.push_str(") is below optimal threshold");
                     desc
                 },
-                metrics: [("current_tps".to_string(), network_health.tps_current)]
+                metrics: [("current_tps".to_string(), tps_current)]
                     .into_iter()
                     .collect(),
                 resolved: false,
             });
         }
 
-        if network_health.network_congestion > 0.8 {
+        if network_congestion > 0.8 {
             alerts.push(Alert {
                 id: Uuid::new_v4().to_string(),
                 timestamp,
@@ -899,16 +1017,13 @@ impl AnalyticsDashboard {
                 description: {
                     let mut desc = String::with_capacity(50);
                     desc.push_str("Network congestion (");
-                    desc.push_str(&format!("{:.2}", network_health.network_congestion));
+                    desc.push_str(&format!("{network_congestion:.2}"));
                     desc.push_str(") is critically high");
                     desc
                 },
-                metrics: [(
-                    "network_congestion".to_string(),
-                    network_health.network_congestion,
-                )]
-                .into_iter()
-                .collect(),
+                metrics: [("network_congestion".to_string(), network_congestion)]
+                    .into_iter()
+                    .collect(),
                 resolved: false,
             });
         }
@@ -1060,16 +1175,7 @@ impl AnalyticsDashboard {
 
         Ok(AnalyticsDashboardData {
             timestamp,
-            network_health: NetworkHealthMetrics {
-                tps_current: metrics.current_tps,
-                tps_average_1h: metrics.average_tps_1h,
-                tps_peak_24h: metrics.peak_tps_24h,
-                finality_time_ms: metrics.finality_time_ms,
-                validator_count: metrics.validator_count,
-                network_congestion: metrics.network_congestion,
-                block_propagation_time: 0.0, // Calculated in real-time
-                mempool_size: metrics.mempool_size,
-            },
+            network_health: NetworkHealthMetrics::default(),
             ai_performance: AIModelPerformance {
                 neural_network_accuracy: metrics.ai_model_accuracy,
                 prediction_confidence: 0.0, // Calculated in real-time

@@ -13,6 +13,7 @@ use crate::transaction::Transaction;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
@@ -24,6 +25,7 @@ use uuid::Uuid;
 
 use rand::{thread_rng, Rng};
 use serde_json;
+use std::sync::OnceLock;
 
 // --- AI Deep Learning Constants ---
 const NEURAL_NETWORK_LAYERS: usize = 6; // Deep architecture - used in network initialization
@@ -313,17 +315,7 @@ pub struct AnalyticsDashboardData {
     pub tps_peak: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NetworkHealthMetrics {
-    pub tps_current: f64,
-    pub tps_average_1h: f64,
-    pub tps_peak_24h: f64,
-    pub finality_time_ms: u64,
-    pub validator_count: u64,
-    pub network_congestion: f64,
-    pub block_propagation_time: f64,
-    pub mempool_size: u64,
-}
+pub use crate::metrics::QantoMetrics as NetworkHealthMetrics;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIModelPerformance {
@@ -446,15 +438,7 @@ pub struct AdaptationEvent {
     pub confidence: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PerformanceMetrics {
-    pub throughput: f64,
-    pub latency: f64,
-    pub error_rate: f64,
-    pub resource_utilization: f64,
-    pub security_score: f64,
-    pub stability_index: f64,
-}
+pub use crate::metrics::QantoMetrics as PerformanceMetrics;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PIDController {
@@ -799,66 +783,74 @@ impl CognitiveAnalyticsEngine {
     }
 
     fn initialize_deep_network() -> SagaDeepNetwork {
-        let mut layers = Vec::new();
+        // DEVELOPMENT OPTIMIZATION: Cache neural network to speed up startup
+        // TODO: Remove this caching for production deployment
+        static CACHED_NETWORK: OnceLock<SagaDeepNetwork> = OnceLock::new();
 
-        // Ensure we use exactly NEURAL_NETWORK_LAYERS layers
-        let total_layers = NEURAL_NETWORK_LAYERS;
+        CACHED_NETWORK
+            .get_or_init(|| {
+                let mut layers = Vec::new();
 
-        // Input layer
-        layers.push(Self::create_neural_layer(
-            INPUT_NEURONS,
-            HIDDEN_NEURONS[0],
-            ActivationFunction::ReLU,
-        ));
+                // Ensure we use exactly NEURAL_NETWORK_LAYERS layers
+                let total_layers = NEURAL_NETWORK_LAYERS;
 
-        // Hidden layers with different activation functions for diversity
-        for i in 0..HIDDEN_NEURONS.len() - 1 {
-            let activation = match i % 3 {
-                0 => ActivationFunction::ReLU,
-                1 => ActivationFunction::Swish,
-                _ => ActivationFunction::GELU,
-            };
-            layers.push(Self::create_neural_layer(
-                HIDDEN_NEURONS[i],
-                HIDDEN_NEURONS[i + 1],
-                activation,
-            ));
-        }
+                // Input layer
+                layers.push(Self::create_neural_layer(
+                    INPUT_NEURONS,
+                    HIDDEN_NEURONS[0],
+                    ActivationFunction::ReLU,
+                ));
 
-        // Output layer
-        layers.push(Self::create_neural_layer(
-            HIDDEN_NEURONS[HIDDEN_NEURONS.len() - 1],
-            OUTPUT_NEURONS,
-            ActivationFunction::Sigmoid,
-        ));
+                // Hidden layers with different activation functions for diversity
+                for i in 0..HIDDEN_NEURONS.len() - 1 {
+                    let activation = match i % 3 {
+                        0 => ActivationFunction::ReLU,
+                        1 => ActivationFunction::Swish,
+                        _ => ActivationFunction::GELU,
+                    };
+                    layers.push(Self::create_neural_layer(
+                        HIDDEN_NEURONS[i],
+                        HIDDEN_NEURONS[i + 1],
+                        activation,
+                    ));
+                }
 
-        // Validate we have the correct number of layers
-        assert_eq!(
-            layers.len(),
-            total_layers,
-            "Network must have exactly {NEURAL_NETWORK_LAYERS} layers"
-        );
+                // Output layer
+                layers.push(Self::create_neural_layer(
+                    HIDDEN_NEURONS[HIDDEN_NEURONS.len() - 1],
+                    OUTPUT_NEURONS,
+                    ActivationFunction::Sigmoid,
+                ));
 
-        SagaDeepNetwork {
-            layers,
-            learning_rate: LEARNING_RATE,
-            momentum: MOMENTUM,
-            training_history: Vec::with_capacity((RETRAIN_INTERVAL_EPOCHS * 10) as usize), // Use RETRAIN_INTERVAL_EPOCHS
-            adaptive_lr_scheduler: AdaptiveLRScheduler {
-                initial_lr: LEARNING_RATE,
-                decay_rate: 0.95,
-                patience: 5,
-                min_lr: 1e-6,
-                best_loss: f64::INFINITY,
-                wait_count: 0,
-            },
-            regularization: RegularizationConfig {
-                l1_lambda: 0.001,
-                l2_lambda: 0.01,
-                dropout_rate: DROPOUT_RATE,
-                gradient_clipping: 1.0,
-            },
-        }
+                // Validate we have the correct number of layers
+                assert_eq!(
+                    layers.len(),
+                    total_layers,
+                    "Network must have exactly {NEURAL_NETWORK_LAYERS} layers"
+                );
+
+                SagaDeepNetwork {
+                    layers,
+                    learning_rate: LEARNING_RATE,
+                    momentum: MOMENTUM,
+                    training_history: Vec::with_capacity((RETRAIN_INTERVAL_EPOCHS * 10) as usize), // Use RETRAIN_INTERVAL_EPOCHS
+                    adaptive_lr_scheduler: AdaptiveLRScheduler {
+                        initial_lr: LEARNING_RATE,
+                        decay_rate: 0.95,
+                        patience: 5,
+                        min_lr: 1e-6,
+                        best_loss: f64::INFINITY,
+                        wait_count: 0,
+                    },
+                    regularization: RegularizationConfig {
+                        l1_lambda: 0.001,
+                        l2_lambda: 0.01,
+                        dropout_rate: DROPOUT_RATE,
+                        gradient_clipping: 1.0,
+                    },
+                }
+            })
+            .clone()
     }
 
     fn create_neural_layer(
@@ -904,53 +896,61 @@ impl CognitiveAnalyticsEngine {
     }
 
     fn initialize_security_classifier() -> SecurityClassifier {
-        let threat_detection_network = Self::initialize_deep_network();
-        let mut threat_patterns = HashMap::new();
+        // DEVELOPMENT OPTIMIZATION: Cache security classifier to speed up startup
+        // TODO: Remove this caching for production deployment
+        static CACHED_CLASSIFIER: OnceLock<SecurityClassifier> = OnceLock::new();
 
-        // Initialize threat patterns for different attack types
-        let attack_types = [
-            "sybil",
-            "spam",
-            "centralization",
-            "oracle_manipulation",
-            "time_drift",
-            "wash_trading",
-            "collusion",
-            "economic",
-            "mempool_frontrun",
-        ];
-        for (i, attack_type) in attack_types.iter().enumerate() {
-            threat_patterns.insert(
-                attack_type.to_string(),
-                ThreatPattern {
-                    pattern_id: {
-                        let mut pattern_id = String::with_capacity(8);
-                        pattern_id.push_str("threat_");
-                        pattern_id.push_str(&i.to_string());
-                        pattern_id
+        CACHED_CLASSIFIER
+            .get_or_init(|| {
+                let threat_detection_network = Self::initialize_deep_network();
+                let mut threat_patterns = HashMap::new();
+
+                // Initialize threat patterns for different attack types
+                let attack_types = [
+                    "sybil",
+                    "spam",
+                    "centralization",
+                    "oracle_manipulation",
+                    "time_drift",
+                    "wash_trading",
+                    "collusion",
+                    "economic",
+                    "mempool_frontrun",
+                ];
+                for (i, attack_type) in attack_types.iter().enumerate() {
+                    threat_patterns.insert(
+                        attack_type.to_string(),
+                        ThreatPattern {
+                            pattern_id: {
+                                let mut pattern_id = String::with_capacity(8);
+                                pattern_id.push_str("threat_");
+                                pattern_id.push_str(&i.to_string());
+                                pattern_id
+                            },
+                            feature_weights: (0..INPUT_NEURONS)
+                                .map(|_| thread_rng().gen::<f64>())
+                                .collect(),
+                            severity_score: 0.5 + (i as f64 * 0.1),
+                            confidence_threshold: SECURITY_CONFIDENCE_THRESHOLD,
+                            last_updated: SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs(),
+                        },
+                    );
+                }
+
+                SecurityClassifier {
+                    threat_detection_network,
+                    anomaly_detection_threshold: 0.8,
+                    confidence_calibration: ConfidenceCalibration {
+                        temperature: 1.0,
+                        calibration_bins: Self::initialize_calibration_bins(),
                     },
-                    feature_weights: (0..INPUT_NEURONS)
-                        .map(|_| thread_rng().gen::<f64>())
-                        .collect(),
-                    severity_score: 0.5 + (i as f64 * 0.1),
-                    confidence_threshold: SECURITY_CONFIDENCE_THRESHOLD,
-                    last_updated: SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                },
-            );
-        }
-
-        SecurityClassifier {
-            threat_detection_network,
-            anomaly_detection_threshold: 0.8,
-            confidence_calibration: ConfidenceCalibration {
-                temperature: 1.0,
-                calibration_bins: Self::initialize_calibration_bins(),
-            },
-            threat_patterns,
-        }
+                    threat_patterns,
+                }
+            })
+            .clone()
     }
 
     fn initialize_calibration_bins() -> Vec<CalibrationBin> {
@@ -1007,13 +1007,13 @@ impl CognitiveAnalyticsEngine {
         AdaptiveController {
             control_parameters,
             adaptation_history: VecDeque::with_capacity(BATCH_SIZE * 100), // Use BATCH_SIZE
-            performance_metrics: PerformanceMetrics {
-                throughput: 0.0,
-                latency: 0.0,
-                error_rate: 0.0,
-                resource_utilization: 0.0,
-                security_score: 0.0,
-                stability_index: 0.0,
+            performance_metrics: {
+                let pm = PerformanceMetrics::default();
+                pm.finality_time_ms.store(1000, Ordering::Relaxed);
+                pm.validator_count.store(10, Ordering::Relaxed);
+                pm.network_congestion.store(100, Ordering::Relaxed);
+                pm.block_propagation_time.store(500, Ordering::Relaxed);
+                pm
             },
             pid_controllers,
         }
@@ -1520,7 +1520,7 @@ impl CognitiveAnalyticsEngine {
                 }
             }
         }
-        (1.0 - (suspicious_tx_count / tx_count)).max(0.0f64)
+        (1.0 - (suspicious_tx_count / tx_count) as f64).max(0.0f64)
     }
 
     /// Forward pass through the neural network
@@ -2923,7 +2923,6 @@ impl SecurityMonitor {
         }
     }
 
-    #[instrument(skip(self, dag))]
     pub async fn check_for_economic_attack(&self, dag: &QantoDAG) -> SecurityFinding {
         // This check looks for an unusually high average transaction fee during
         // a period of low network congestion, which might indicate an attempt
@@ -3029,7 +3028,6 @@ impl SecurityMonitor {
         }
     }
 
-    #[instrument(skip(self, dag))]
     pub async fn check_for_mempool_frontrun(&self, dag: &QantoDAG) -> SecurityFinding {
         let latest_blocks = self.get_recent_blocks_for_frontrun(&dag.blocks);
         let (suspicious_count, tx_checked) = self.analyze_frontrun_patterns(&latest_blocks);
@@ -3645,7 +3643,6 @@ impl PalletSaga {
         Ok(())
     }
 
-    #[instrument(skip(self, block, dag_arc))]
     pub async fn evaluate_block_with_saga(
         &self,
         block: &QantoBlock,
@@ -3752,7 +3749,6 @@ impl PalletSaga {
         Ok(final_reward)
     }
 
-    #[instrument(skip(self, dag))]
     pub async fn process_epoch_evolution(&self, current_epoch: u64, dag: &QantoDAG) {
         info!("SAGA is processing epoch evolution for epoch {current_epoch}");
         // SENSE: Gather data and assess the current state of the network.
@@ -3873,7 +3869,6 @@ impl PalletSaga {
         // Previously used LSTM model to predict network congestion
     }
 
-    #[instrument(skip(self, trust_breakdown, dag_arc))]
     async fn update_credit_score(
         &self,
         miner_address: &str,
@@ -4591,16 +4586,7 @@ impl PalletSaga {
 
     /// Collect network health metrics for dashboard
     async fn collect_network_health_metrics(&self) -> NetworkHealthMetrics {
-        NetworkHealthMetrics {
-            tps_current: 0.0, // Would be calculated from recent blocks
-            tps_average_1h: 0.0,
-            tps_peak_24h: 0.0,
-            finality_time_ms: 1000, // Default finality time
-            validator_count: 10,    // Default validator count
-            network_congestion: 0.1,
-            block_propagation_time: 500.0,
-            mempool_size: 0,
-        }
+        NetworkHealthMetrics::default()
     }
 
     /// Collect AI model performance metrics for dashboard

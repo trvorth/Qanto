@@ -11,7 +11,8 @@
 
 use anyhow::Result;
 use colored::*;
-use pqcrypto_traits::sign::{PublicKey, SecretKey};
+
+use qanto::qanto_storage::{QantoStorage, StorageConfig};
 use qanto::{
     consensus::Consensus,
     mempool::Mempool,
@@ -22,7 +23,6 @@ use qanto::{
     types::UTXO,
     wallet::Wallet,
 };
-use rocksdb::{Options, DB};
 use std::{
     collections::HashMap,
     io::{self, Write},
@@ -72,26 +72,36 @@ async fn run_autonomous_simulation() -> Result<()> {
         #[cfg(feature = "infinite-strata")]
         None,
     ));
-    let db_path = format!("./db_assistant_sim_{}", rand::random::<u16>());
-    let db = DB::open_default(&db_path)?;
+    let storage_path = format!("./db_assistant_sim_{}", rand::random::<u16>());
+    let storage_config = StorageConfig {
+        data_dir: storage_path.clone().into(),
+        max_file_size: 64 * 1024 * 1024, // 64MB
+        cache_size: 1024 * 1024,         // 1MB
+        compression_enabled: true,
+        encryption_enabled: false,
+        wal_enabled: true,
+        sync_writes: true,
+        compaction_threshold: 0.7,
+        max_open_files: 1000,
+    };
+    let storage = QantoStorage::new(storage_config)?;
 
     let dag_config = QantoDagConfig {
         initial_validator: validator_address.clone(),
-        target_block_time: 60,
+        target_block_time: 300,
         num_chains: 1,
-        qr_signing_key: &signing_key,
-        qr_public_key: &public_key,
+
     };
-    let dag_arc = QantoDAG::new(dag_config, saga_pallet.clone(), db)?;
+    let dag_arc = QantoDAG::new(dag_config, saga_pallet.clone(), storage)?;
 
     let mempool_arc = Arc::new(RwLock::new(Mempool::new(3600, 10_000_000, 1000)));
     let utxos_arc = Arc::new(RwLock::new(HashMap::<String, UTXO>::new()));
 
-    // Create genesis UTXO with full 100B supply for contract address
+    // Create genesis UTXO with full 21B supply for contract address
     let contract_address = qanto::qantodag::CONTRACT_ADDRESS.to_string();
     let genesis_utxo = UTXO {
         address: contract_address,
-        amount: 100_000_000_000_000_000, // 100 billion QNTO in smallest units with 6 decimals
+        amount: 21_000_000_000_000_000, // 21 billion QNTO in smallest units with 6 decimals
         tx_id: "genesis".to_string(),
         output_index: 0,
         explorer_link: "".to_string(),
@@ -131,12 +141,11 @@ async fn run_autonomous_simulation() -> Result<()> {
             },
         ],
         metadata: Some(HashMap::new()),
-        signing_key_bytes: signing_key.as_bytes(),
-        public_key_bytes: public_key.as_bytes(),
+
         tx_timestamps: Arc::new(RwLock::new(HashMap::new())),
     };
     // BUILD FIX (E0277): `await` the async `Transaction::new` function.
-    let signed_transaction = Transaction::new(tx_config).await?;
+    let signed_transaction = Transaction::new(tx_config, &signing_key).await?;
     println!(
         "{} {}",
         "Transaction created:".dimmed(),
@@ -171,7 +180,7 @@ async fn run_autonomous_simulation() -> Result<()> {
     let miner = Miner::new(qanto::miner::MinerConfig {
         address: validator_address.clone(),
         dag: dag_arc.clone(),
-        target_block_time: 60,
+        target_block_time: 300,
         use_gpu: false,
         zk_enabled: false,
         threads: 2,
@@ -221,7 +230,7 @@ async fn run_autonomous_simulation() -> Result<()> {
         );
     }
 
-    DB::destroy(&Options::default(), &db_path)?;
+    // QantoStorage cleanup is handled automatically when it goes out of scope
     println!(
         "{}",
         "\n+----------------------------------------------------+".truecolor(129, 140, 248)

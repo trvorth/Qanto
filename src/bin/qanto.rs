@@ -140,20 +140,29 @@ async fn main() -> Result<()> {
             println!("Configuration loaded from '{}'.", config_path.display());
 
             let db_path = "qantodag_db_evolved";
+            info!("Checking for clean flag");
             if clean {
                 println!("'--clean' flag detected. Removing old database directory: {db_path}");
                 if Path::new(db_path).exists() {
+                    info!("Removing existing database directory: {db_path}");
                     if let Err(e) = fs::remove_dir_all(db_path) {
                         eprintln!("Failed to remove database directory '{db_path}': {e}");
                         std::process::exit(1);
                     }
                     println!("Database directory removed successfully.");
+                    info!("Database directory removed successfully");
+                } else {
+                    info!("No existing database directory to remove");
                 }
+            } else {
+                info!("Clean flag not set, proceeding without database removal");
             }
 
+            info!("Prompting for wallet password");
             // Correctly load config and wallet with password.
             let password =
                 prompt_for_password(false).map_err(|e| anyhow::anyhow!("Password error: {}", e))?;
+            info!("Wallet password obtained successfully");
             let node_config = Config::load(&config)?;
             // Pass the SecretString directly, without re-wrapping it.
             let wallet_instance = Wallet::from_file(&wallet, &password)?;
@@ -193,13 +202,20 @@ async fn main() -> Result<()> {
             )
             .await?;
 
-            // Start node with shutdown monitoring
+            // Start node with shutdown monitoring - use existing tokio runtime
             let shutdown_monitor = shutdown.clone();
             let node_handle = tokio::spawn(async move { node.start().await });
 
             // Monitor shutdown flag
-            while !shutdown_monitor.load(Ordering::Relaxed) {
+            loop {
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+                // Check shutdown flag first
+                if shutdown_monitor.load(Ordering::Relaxed) {
+                    info!("Shutdown requested, stopping node...");
+                    node_handle.abort();
+                    break;
+                }
 
                 // Check if node task has ended unexpectedly
                 if node_handle.is_finished() {
@@ -213,8 +229,13 @@ async fn main() -> Result<()> {
                             return Err(anyhow::anyhow!("Node runtime error: {}", e));
                         }
                         Err(e) => {
-                            error!("Node task panicked: {}", e);
-                            return Err(anyhow::anyhow!("Node task panicked: {}", e));
+                            if e.is_cancelled() {
+                                info!("Node task was cancelled during shutdown.");
+                                break;
+                            } else {
+                                error!("Node task panicked: {}", e);
+                                return Err(anyhow::anyhow!("Node task panicked: {}", e));
+                            }
                         }
                     }
                 }
@@ -228,7 +249,7 @@ async fn main() -> Result<()> {
         Commands::GenerateWallet { output } => {
             println!("Generating new wallet...");
             let password =
-                prompt_for_password(true).map_err(|e| anyhow::anyhow!("Password error: {}", e))?;
+                prompt_for_password(false).map_err(|e| anyhow::anyhow!("Password error: {}", e))?;
             let wallet = Wallet::new()?;
             // Correctly save the wallet with the SecretString.
             wallet.save_to_file(&output, &password)?;

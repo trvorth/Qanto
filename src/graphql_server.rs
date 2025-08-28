@@ -31,11 +31,27 @@ static BLOCK_BROADCAST: Lazy<broadcast::Sender<QantoBlock>> = Lazy::new(|| {
     sender
 });
 
+/// Global broadcast sender for new transactions
+static TRANSACTION_BROADCAST: Lazy<broadcast::Sender<Transaction>> = Lazy::new(|| {
+    let (sender, _) = broadcast::channel(1000);
+    sender
+});
+
 /// Broadcast a new block to GraphQL subscribers
 pub async fn broadcast_new_block(block: &QantoBlock) {
     if let Err(e) = BLOCK_BROADCAST.send(block.clone()) {
         tracing::warn!(
             "Failed to broadcast new block to GraphQL subscribers: {}",
+            e
+        );
+    }
+}
+
+/// Broadcast a new transaction to GraphQL subscribers
+pub async fn broadcast_new_transaction(transaction: &Transaction) {
+    if let Err(e) = TRANSACTION_BROADCAST.send(transaction.clone()) {
+        tracing::warn!(
+            "Failed to broadcast new transaction to GraphQL subscribers: {}",
             e
         );
     }
@@ -208,7 +224,7 @@ impl MutationRoot {
             fee: input.fee.unwrap_or(1000.0) as u64,
             inputs: vec![],
             outputs: vec![],
-            qr_signature: crate::types::QuantumResistantSignature {
+            signature: crate::types::QuantumResistantSignature {
                 signature: hex::decode(input.signature.unwrap_or_default()).unwrap_or_default(),
                 signer_public_key: hex::decode("").unwrap_or_default(),
             },
@@ -259,9 +275,8 @@ pub struct SubscriptionRoot;
 #[Subscription]
 impl SubscriptionRoot {
     /// Subscribe to new blocks
-    async fn new_blocks(&self, ctx: &Context<'_>) -> impl futures::Stream<Item = Block> {
-        let context = ctx.data::<GraphQLContext>().unwrap();
-        let receiver = context.block_sender.subscribe();
+    async fn new_blocks(&self, _ctx: &Context<'_>) -> impl futures::Stream<Item = Block> {
+        let receiver = BLOCK_BROADCAST.subscribe();
 
         use futures::StreamExt;
         BroadcastStream::new(receiver).filter_map(|result| async move {
@@ -275,10 +290,9 @@ impl SubscriptionRoot {
     /// Subscribe to new transactions
     async fn new_transactions(
         &self,
-        ctx: &Context<'_>,
+        _ctx: &Context<'_>,
     ) -> impl futures::Stream<Item = TransactionGQL> {
-        let context = ctx.data::<GraphQLContext>().unwrap();
-        let receiver = context.transaction_sender.subscribe();
+        let receiver = TRANSACTION_BROADCAST.subscribe();
 
         use futures::StreamExt;
         BroadcastStream::new(receiver).filter_map(|result| async move {
@@ -347,7 +361,7 @@ impl From<Transaction> for TransactionGQL {
             amount: tx.amount as f64,
             fee: tx.fee as f64,
             timestamp: tx.timestamp as i32,
-            signature: hex::encode(tx.qr_signature.signature.clone()),
+            signature: hex::encode(tx.signature.signature.clone()),
             nonce: 0, // Transaction struct doesn't have nonce field
         }
     }
@@ -362,7 +376,7 @@ fn transaction_to_gql(tx: &Transaction) -> TransactionGQL {
         amount: tx.amount as f64,
         fee: tx.fee as f64,
         timestamp: tx.timestamp as i32,
-        signature: hex::encode(tx.qr_signature.signature.clone()),
+        signature: hex::encode(tx.signature.signature.clone()),
         nonce: 0,
     }
 }

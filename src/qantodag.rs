@@ -8,17 +8,22 @@
 //!   ensuring the final reward includes both the base amount and fees.
 
 use crate::emission::Emission;
+use crate::types::QuantumResistantSignature;
 use crate::mempool::Mempool;
+use crate::metrics::QantoMetrics;
 use crate::miner::Miner;
 use crate::mining_celebration::{celebrate_mining_success, MiningCelebrationParams};
 use crate::saga::{
     CarbonOffsetCredential, GovernanceProposal, PalletSaga, ProposalStatus, ProposalType,
 };
 use my_blockchain::{qanhash, qanto_hash};
+
 // This import is required for the `#[from]` attribute in QantoDAGError.
 // The compiler may incorrectly flag it as unused, but it is necessary.
+use crate::post_quantum_crypto::{PQError, QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature, pq_verify, pq_sign};
+use crate::qanto_storage::{QantoStorage, QantoStorageError, StorageConfig};
 use crate::transaction::{Output, Transaction};
-use crate::types::{HomomorphicEncrypted, QuantumResistantSignature, UTXO};
+use crate::types::{HomomorphicEncrypted, UTXO};
 use crate::wallet::Wallet;
 use chrono::Utc;
 use crossbeam::channel::{bounded, Receiver, Sender};
@@ -26,12 +31,9 @@ use dashmap::DashMap;
 use hex;
 use lru::LruCache;
 use parking_lot::RwLock as ParkingRwLock;
-use pqcrypto_mldsa::mldsa65 as dilithium5;
-use pqcrypto_traits::sign::{PublicKey, SecretKey};
 use prometheus::{register_int_counter, IntCounter};
 use rand::Rng;
 use rayon::prelude::*;
-use rocksdb::DB;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -42,19 +44,19 @@ use std::time::{Instant, SystemTime, SystemTimeError, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::sync::{RwLock, Semaphore};
 use tokio::task;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 // --- High-Throughput Constants ---
 // To achieve ~10M TPS at 32 BPS, each block must hold ~312,500 transactions.
-pub const MAX_TRANSACTIONS_PER_BLOCK: usize = 320_000;
+pub const MAX_TRANSACTIONS_PER_BLOCK: usize = 500000;
 // Increased block size to accommodate the higher transaction count.
-pub const MAX_BLOCK_SIZE: usize = 80_000_000; // 80 MB
+pub const MAX_BLOCK_SIZE: usize = 128000000; // 128 MB
 
 // --- Network & Economic Constants ---
-pub const DEV_ADDRESS: &str = "74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41";
+pub const DEV_ADDRESS: &str = "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3";
 pub const CONTRACT_ADDRESS: &str =
-    "5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818";
+    "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394";
 pub const INITIAL_BLOCK_REWARD: u64 = 50_000_000_000; // In smallest units (assuming 10^9 per QNTO)
 const SMALLEST_UNITS_PER_QNTO: u64 = 1_000_000_000;
 const FINALIZATION_DEPTH: u64 = 8;
@@ -69,10 +71,10 @@ const ANOMALY_Z_SCORE_THRESHOLD: f64 = 3.5;
 const INITIAL_DIFFICULTY: f64 = 1.0; // Difficulty is now a float managed by SAGA's PID controller
 
 // High-Performance Optimization Constants - Enhanced for 32 BPS / 10M+ TPS
-const PARALLEL_VALIDATION_BATCH_SIZE: usize = 5000; // Increased for better throughput
-const BLOCK_PROCESSING_WORKERS: usize = 64; // Quadrupled for extreme parallelism
-const TRANSACTION_VALIDATION_WORKERS: usize = 128; // Quadrupled for signature verification
-const MEMPOOL_BATCH_SIZE: usize = 20000; // Increased for high-throughput batching
+const PARALLEL_VALIDATION_BATCH_SIZE: usize = 10000; // Further increased for better throughput
+const BLOCK_PROCESSING_WORKERS: usize = 128; // Further increased for extreme parallelism
+const TRANSACTION_VALIDATION_WORKERS: usize = 32; // Further increased for signature verification
+const MEMPOOL_BATCH_SIZE: usize = 40000; // Further increased for high-throughput batching
 const FAST_SYNC_BATCH_SIZE: usize = 1000; // 10x increase for faster sync
 const BLOCK_CACHE_TTL_SECS: u64 = 7200; // Extended cache lifetime
 const VALIDATION_TIMEOUT_MS: u64 = 50; // Reduced timeout for faster processing
@@ -83,9 +85,12 @@ const PREFETCH_BLOCKS: usize = 16; // Number of blocks to prefetch
 const LOCK_FREE_QUEUE_SIZE: usize = 65536; // Lock-free queue capacity
 
 lazy_static::lazy_static! {
-    static ref BLOCKS_PROCESSED: IntCounter = register_int_counter!("blocks_processed_total", "Total blocks processed").unwrap();
-    static ref TRANSACTIONS_PROCESSED: IntCounter = register_int_counter!("transactions_processed_total", "Total transactions processed").unwrap();
-    static ref ANOMALIES_DETECTED: IntCounter = register_int_counter!("anomalies_detected_total", "Total anomalies detected").unwrap();
+    static ref BLOCKS_PROCESSED: IntCounter = register_int_counter!("blocks_processed_total", "Total blocks processed")
+        .unwrap_or_else(|_| prometheus::IntCounter::new("blocks_processed_total_fallback", "Total blocks processed fallback").unwrap());
+    static ref TRANSACTIONS_PROCESSED: IntCounter = register_int_counter!("transactions_processed_total", "Total transactions processed")
+        .unwrap_or_else(|_| prometheus::IntCounter::new("transactions_processed_total_fallback", "Total transactions processed fallback").unwrap());
+    static ref ANOMALIES_DETECTED: IntCounter = register_int_counter!("anomalies_detected_total", "Total anomalies detected")
+        .unwrap_or_else(|_| prometheus::IntCounter::new("anomalies_detected_total_fallback", "Total anomalies detected fallback").unwrap());
 }
 
 #[derive(Error, Debug)]
@@ -111,7 +116,7 @@ pub enum QantoDAGError {
     #[error("Governance proposal failed: {0}")]
     Governance(String),
     #[error("Quantum-resistant signature error: {0}")]
-    QuantumSignature(String),
+    QuantumSignature(#[from] crate::post_quantum_crypto::PQError),
     #[error("Homomorphic encryption error: {0}")]
     HomomorphicError(String),
     #[error("IDS anomaly detected: {0}")]
@@ -133,7 +138,7 @@ pub enum QantoDAGError {
     #[error("QantoDAG self-reference not initialized. This indicates a critical bug in the node startup sequence.")]
     SelfReferenceNotInitialized,
     #[error("RocksDB error: {0}")]
-    RocksDB(#[from] rocksdb::Error),
+    Storage(#[from] QantoStorageError),
     #[error("Miner error: {0}")]
     MinerError(String),
     #[error("Hex decoding error: {0}")]
@@ -168,15 +173,15 @@ pub struct SigningData<'a> {
     pub height: u64,
 }
 
-pub struct QantoBlockCreationData<'a> {
+pub struct QantoBlockCreationData {
+    pub validator_private_key: QantoPQPrivateKey,
     pub chain_id: u32,
     pub parents: Vec<String>,
     pub transactions: Vec<Transaction>,
     pub difficulty: f64,
     pub validator: String,
     pub miner: String,
-    pub qr_signing_key: &'a dilithium5::SecretKey,
-    pub qr_public_key: &'a dilithium5::PublicKey,
+
     pub timestamp: u64,
     pub current_epoch: u64,
     pub height: u64,
@@ -226,7 +231,6 @@ pub struct SmartContract {
 }
 
 impl SmartContract {
-    #[instrument]
     pub fn execute(&mut self, input: &str, gas_limit: u64) -> Result<String, QantoDAGError> {
         let mut gas_used = 0;
         let mut charge_gas = |cost: u64| -> Result<(), QantoDAGError> {
@@ -292,7 +296,8 @@ pub struct QantoBlock {
     pub cross_chain_references: Vec<(u32, String)>,
     pub cross_chain_swaps: Vec<CrossChainSwap>,
     pub merkle_root: String,
-    pub qr_signature: QuantumResistantSignature,
+    pub signature: QuantumResistantSignature,
+
     pub homomorphic_encrypted: Vec<HomomorphicEncrypted>,
     pub smart_contracts: Vec<SmartContract>,
     #[serde(default)]
@@ -337,7 +342,6 @@ impl fmt::Display for QantoBlock {
         writeln!(f, "║ ✨ Nonce:          {}", self.nonce)?;
         writeln!(f, "║ 🎯 Difficulty:    {:.4}", self.difficulty)?;
         writeln!(f, "║ 💪 Effort:         {} hashes", self.effort)?;
-        // FIX: Format the u64 reward into a decimal representation of QNTO.
         writeln!(
             f,
             "║ 💰 Block Reward:    {:.9} $QNTO (from SAGA)",
@@ -349,7 +353,6 @@ impl fmt::Display for QantoBlock {
 }
 
 impl QantoBlock {
-    #[instrument(skip(data))]
     pub fn new(data: QantoBlockCreationData) -> Result<Self, QantoDAGError> {
         let nonce = 0;
         let merkle_root = Self::compute_merkle_root(&data.transactions)?;
@@ -369,11 +372,7 @@ impl QantoBlock {
         let pre_signature_data_for_id = Self::serialize_for_signing(&signing_data)?;
         let id = hex::encode(qanto_hash(&pre_signature_data_for_id));
 
-        let qr_signature = QuantumResistantSignature::sign(
-            data.qr_signing_key,
-            data.qr_public_key,
-            &pre_signature_data_for_id,
-        )?;
+
 
         let (public_key, _) = HomomorphicEncrypted::generate_keypair();
         let homomorphic_encrypted_data = data
@@ -381,6 +380,11 @@ impl QantoBlock {
             .iter()
             .map(|tx| HomomorphicEncrypted::new(tx.amount, &public_key))
             .collect();
+
+        let signer_public_key = data.validator_private_key.public_key().as_bytes().to_vec();
+        let signature = pq_sign(&data.validator_private_key, &pre_signature_data_for_id)
+            .map_err(|_e| QantoDAGError::QuantumSignature(crate::post_quantum_crypto::PQError::SigningError))?;
+
 
         Ok(Self {
             chain_id: data.chain_id,
@@ -397,10 +401,14 @@ impl QantoBlock {
             effort: 0,
             cross_chain_references: vec![],
             merkle_root,
-            qr_signature,
+
             cross_chain_swaps: vec![],
             homomorphic_encrypted: homomorphic_encrypted_data,
             smart_contracts: vec![],
+            signature: QuantumResistantSignature {
+                signer_public_key,
+                signature: signature.as_bytes().to_vec(),
+            },
             carbon_credentials: vec![],
             epoch: data.current_epoch,
         })
@@ -424,7 +432,6 @@ impl QantoBlock {
         Ok(qanto_hash(&buffer).as_bytes().to_vec())
     }
 
-    #[instrument]
     pub fn compute_merkle_root(transactions: &[Transaction]) -> Result<String, QantoDAGError> {
         if transactions.is_empty() {
             return Ok(hex::encode(qanto_hash(&[]).as_bytes()));
@@ -453,7 +460,29 @@ impl QantoBlock {
         })?))
     }
 
-    #[instrument]
+    pub fn verify_signature(&self) -> Result<bool, QantoDAGError> {
+        let signing_data = SigningData {
+            parents: &self.parents,
+            transactions: &self.transactions,
+            timestamp: self.timestamp,
+            difficulty: self.difficulty,
+            validator: &self.validator,
+            miner: &self.miner,
+            chain_id: self.chain_id,
+            merkle_root: &self.merkle_root,
+            height: self.height,
+        };
+
+        let data_to_verify = Self::serialize_for_signing(&signing_data)?;
+
+        let pk = QantoPQPublicKey::from_bytes(&self.signature.signer_public_key)
+            .map_err(|_e| QantoDAGError::QuantumSignature(crate::post_quantum_crypto::PQError::VerificationError))?;
+        let sig = QantoPQSignature::from_bytes(&self.signature.signature)
+            .map_err(|_e| QantoDAGError::QuantumSignature(crate::post_quantum_crypto::PQError::VerificationError))?;
+
+        Ok(pq_verify(&pk, &data_to_verify, &sig).unwrap_or(false))
+    }
+
     pub fn hash(&self) -> String {
         // Create header hash for qanhash algorithm
         let mut header_data = Vec::new();
@@ -479,58 +508,18 @@ impl QantoBlock {
         hex::encode(qanhash_result)
     }
 
-    pub fn verify_signature(&self) -> Result<bool, QantoDAGError> {
-        let signing_data = SigningData {
-            parents: &self.parents,
-            transactions: &self.transactions,
-            timestamp: self.timestamp,
-            difficulty: self.difficulty,
-            validator: &self.validator,
-            miner: &self.miner,
-            chain_id: self.chain_id,
-            merkle_root: &self.merkle_root,
-            height: self.height,
-        };
-        let data_to_verify = QantoBlock::serialize_for_signing(&signing_data)?;
 
-        Ok(self.qr_signature.verify(&data_to_verify))
-    }
 }
 
-#[derive(Debug, Default)]
-pub struct PerformanceMetrics {
-    pub blocks_processed: AtomicU64,
-    pub transactions_processed: AtomicU64,
-    pub validation_time_ms: AtomicU64,
-    pub block_creation_time_ms: AtomicU64,
-    pub cache_hits: AtomicU64,
-    pub cache_misses: AtomicU64,
-    pub concurrent_validations: AtomicU64,
-    pub queue_depth: AtomicU64,
-    pub last_block_time: AtomicU64,
-    pub throughput_bps: AtomicU64,
-    // Enhanced performance metrics for extreme throughput
-    pub simd_operations: AtomicU64,
-    pub lock_free_operations: AtomicU64,
-    pub pipeline_stages_completed: AtomicU64,
-    pub prefetch_hits: AtomicU64,
-    pub prefetch_misses: AtomicU64,
-    pub batch_processing_time_ns: AtomicU64,
-    pub memory_pool_allocations: AtomicU64,
-    pub zero_copy_operations: AtomicU64,
-    pub work_stealing_tasks: AtomicU64,
-    pub parallel_signature_verifications: AtomicU64,
-    pub utxo_cache_efficiency: AtomicU64,
-    pub transaction_throughput_tps: AtomicU64,
-}
+// Use unified metrics system
+pub type PerformanceMetrics = QantoMetrics;
 
 /// Configuration for creating a new QantoDAG instance.
-pub struct QantoDagConfig<'a> {
+pub struct QantoDagConfig {
     pub initial_validator: String,
     pub target_block_time: u64,
     pub num_chains: u32,
-    pub qr_signing_key: &'a dilithium5::SecretKey,
-    pub qr_public_key: &'a dilithium5::PublicKey,
+
 }
 
 #[derive(Debug)]
@@ -550,10 +539,11 @@ pub struct QantoDAG {
     pub cross_chain_swaps: Arc<DashMap<String, CrossChainSwap>>,
     pub smart_contracts: Arc<DashMap<String, SmartContract>>,
     pub cache: Arc<ParkingRwLock<LruCache<String, QantoBlock>>>,
-    pub db: Arc<DB>,
+    pub db: Arc<QantoStorage>,
     pub saga: Arc<PalletSaga>,
     pub self_arc: Weak<QantoDAG>,
     pub current_epoch: Arc<AtomicU64>,
+    
 
     // High-performance optimization fields - Enhanced for 32 BPS / 10M+ TPS
     pub block_processing_semaphore: Arc<Semaphore>,
@@ -593,47 +583,12 @@ impl MiningState {
 }
 
 impl QantoDAG {
-    #[instrument(skip(config, saga, db))]
     pub fn new(
         config: QantoDagConfig,
         saga: Arc<PalletSaga>,
-        db: DB,
+        db: QantoStorage,
     ) -> Result<Arc<Self>, QantoDAGError> {
-        let mut blocks_map = HashMap::new();
-        let mut tips_map = HashMap::new();
-        let mut validators_map = HashMap::new();
         let genesis_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-
-        for chain_id_val in 0..config.num_chains {
-            let (paillier_pk, _) = HomomorphicEncrypted::generate_keypair();
-            let genesis_creation_data = QantoBlockCreationData {
-                chain_id: chain_id_val,
-                parents: vec![],
-                transactions: vec![],
-                difficulty: INITIAL_DIFFICULTY,
-                validator: config.initial_validator.clone(),
-                miner: config.initial_validator.clone(),
-                qr_signing_key: config.qr_signing_key,
-                qr_public_key: config.qr_public_key,
-                timestamp: genesis_timestamp,
-                current_epoch: 0,
-                height: 0,
-                paillier_pk,
-            };
-            let mut genesis_block = QantoBlock::new(genesis_creation_data)?;
-            genesis_block.reward = INITIAL_BLOCK_REWARD;
-            let genesis_id = genesis_block.id.clone();
-
-            blocks_map.insert(genesis_id.clone(), genesis_block);
-            tips_map
-                .entry(chain_id_val)
-                .or_insert_with(HashSet::new)
-                .insert(genesis_id);
-        }
-        validators_map.insert(
-            config.initial_validator.clone(),
-            MIN_VALIDATOR_STAKE * config.num_chains as u64 * 2,
-        );
 
         // Initialize crossbeam channel for block processing queue
         let (block_sender, block_receiver) = bounded(CONCURRENT_BLOCK_LIMIT);
@@ -650,6 +605,10 @@ impl QantoDAG {
             num_chains: Arc::new(RwLock::new(config.num_chains.max(1))),
             finalized_blocks: Arc::new(DashMap::new()),
             chain_loads: Arc::new(DashMap::new()),
+
+            
+
+
             difficulty_history: Arc::new(ParkingRwLock::new(Vec::new())),
             block_creation_timestamps: Arc::new(DashMap::new()),
             anomaly_history: Arc::new(DashMap::new()),
@@ -662,6 +621,7 @@ impl QantoDAG {
             saga,
             self_arc: Weak::new(),
             current_epoch: Arc::new(AtomicU64::new(0)),
+
 
             // High-performance optimization fields
             block_processing_semaphore: Arc::new(Semaphore::new(BLOCK_PROCESSING_WORKERS)),
@@ -695,22 +655,26 @@ impl QantoDAG {
             batch_processor: Arc::new(DashMap::new()),
         };
 
-        // Initialize genesis blocks in the new DashMap structure
+        info!(
+            "Starting genesis initialization loop for {} chains",
+            config.num_chains
+        );
+        // Generate a single keypair for all genesis blocks to avoid expensive repeated key generation
+        let (paillier_pk, _) = HomomorphicEncrypted::generate_keypair();
         for chain_id_val in 0..config.num_chains {
-            let (paillier_pk, _) = HomomorphicEncrypted::generate_keypair();
             let genesis_creation_data = QantoBlockCreationData {
+                validator_private_key: QantoPQPrivateKey::new_dummy(),
                 chain_id: chain_id_val,
                 parents: vec![],
                 transactions: vec![],
                 difficulty: INITIAL_DIFFICULTY,
                 validator: config.initial_validator.clone(),
                 miner: config.initial_validator.clone(),
-                qr_signing_key: config.qr_signing_key,
-                qr_public_key: config.qr_public_key,
+
                 timestamp: genesis_timestamp,
                 current_epoch: 0,
                 height: 0,
-                paillier_pk,
+                paillier_pk: paillier_pk.clone(),
             };
             let mut genesis_block = QantoBlock::new(genesis_creation_data)?;
             genesis_block.reward = INITIAL_BLOCK_REWARD;
@@ -723,6 +687,7 @@ impl QantoDAG {
                 .insert(genesis_id);
         }
 
+        info!("Genesis loop completed");
         // Initialize validators
         dag.validators.insert(
             config.initial_validator.clone(),
@@ -747,15 +712,6 @@ impl QantoDAG {
         Ok(arc_dag)
     }
 
-    #[instrument(skip(
-        self,
-        wallet,
-        mempool,
-        utxos,
-        miner,
-        optimized_block_builder,
-        shutdown_token
-    ))]
     #[allow(clippy::too_many_arguments)]
     pub async fn run_solo_miner(
         self: Arc<Self>,
@@ -763,7 +719,7 @@ impl QantoDAG {
         mempool: Arc<RwLock<Mempool>>,
         utxos: Arc<RwLock<HashMap<String, UTXO>>>,
         miner: Arc<Miner>,
-        optimized_block_builder: Arc<crate::performance_optimizations::OptimizedBlockBuilder>,
+        _optimized_block_builder: Arc<crate::performance_optimizations::OptimizedBlockBuilder>,
         mining_interval_secs: u64,
         shutdown_token: tokio_util::sync::CancellationToken,
     ) -> Result<(), QantoDAGError> {
@@ -771,90 +727,152 @@ impl QantoDAG {
             "SOLO MINER: Starting proactive mining loop with an interval of {} seconds.",
             mining_interval_secs
         );
-        debug!("[DEBUG] Solo miner initialized - entering main loop");
-
         let mut mining_state = MiningState::new();
-        let mut mining_interval = self.create_mining_interval(mining_interval_secs);
 
-        loop {
-            // Check for shutdown signal
-            tokio::select! {
-                biased;
+        let mut mining_interval = tokio::time::interval(tokio::time::Duration::from_secs(mining_interval_secs));
+        mining_interval.tick().await;
 
-                _ = shutdown_token.cancelled() => {
-                    info!("SOLO MINER: Received shutdown signal, stopping mining loop.");
-                    break;
-                }
+        // Clone necessary Arcs for the dummy transaction task
+        let wallet_clone = Arc::clone(&wallet);
+        let mempool_clone = Arc::clone(&mempool);
+        let utxos_clone = Arc::clone(&utxos);
+        let shutdown_token_clone = shutdown_token.clone();
 
-                _ = mining_interval.tick() => {
-                    // Continue with mining
-                }
-            }
+        // Clone self for the dummy transaction task
+        let self_clone = Arc::clone(&self);
 
-            debug!(
-                "[DEBUG] Mining loop iteration start - cycle {}",
-                mining_state.cycles
-            );
+        // Spawn a separate task for dummy transaction generation
+        tokio::spawn(async move {
+            let mut dummy_tx_interval = tokio::time::interval(tokio::time::Duration::from_secs(5));
+            dummy_tx_interval.tick().await; // Initial tick
 
-            self.log_heartbeat_if_needed(&mut mining_state, mining_interval_secs);
-            mining_state.cycles += 1;
-            info!("SOLO MINER: Starting mining cycle #{}", mining_state.cycles);
-            debug!("SOLO MINER: Attempting block creation.");
+            info!("SOLO MINER: Starting dummy transaction generation loop.");
 
-            // Yield to allow other tasks to run
-            tokio::task::yield_now().await;
-
-            // Validate wallet keypair
-            if !self.validate_wallet_keypair(&wallet).await {
-                continue;
-            }
-
-            // Create candidate block
-            let mut candidate_block =
-                match self.create_mining_candidate(&optimized_block_builder).await {
-                    Ok(block) => block,
-                    Err(_) => continue,
-                };
-
-            // Execute proof-of-work mining
-            let mined_block = match self
-                .execute_mining_pow(&miner, &mut candidate_block, &shutdown_token)
-                .await
-            {
-                Ok(block) => block,
-                Err(should_break) => {
-                    if should_break {
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = shutdown_token_clone.cancelled() => {
+                        info!("SOLO MINER: Dummy transaction task received shutdown signal, stopping.");
                         break;
                     }
-                    continue;
+                    _ = dummy_tx_interval.tick() => {
+                        // Generate a valid transaction with a quantum-resistant signature
+                        let (signing_key, public_key) = match wallet_clone.get_keypair() {
+                            Ok(keypair) => keypair,
+                            Err(e) => {
+                                warn!("Failed to get keypair from wallet: {:?}", e);
+                                continue;
+                            }
+                        };
+                        let dummy_tx = match Transaction::new_dummy_signed(&signing_key, &public_key) {
+                            Ok(tx) => tx,
+                            Err(e) => {
+                                warn!("Failed to create dummy signed transaction: {:?}", e);
+                                continue;
+                            }
+                        };
+
+                        let mempool_guard = mempool_clone.write().await;
+                        let utxos_guard = utxos_clone.read().await;
+                        if let Err(e) = mempool_guard.add_transaction(dummy_tx, &utxos_guard, &self_clone).await {
+                            warn!("Failed to add dummy transaction to mempool: {}", e);
+                        }
+                    }
                 }
-            };
+            }
+            info!("SOLO MINER: Dummy transaction task has stopped.");
+        });
 
-            mining_state.blocks_mined += 1;
+        loop {
+            tokio::select! {
+                biased;
+                _ = shutdown_token.cancelled() => {
+                    info!("SOLO MINER: Received shutdown signal, stopping mining loop. (DEBUG: Shutdown triggered)");
+                    // Add a log to indicate if the token was explicitly cancelled
+                    if shutdown_token.is_cancelled() {
+                        info!("SOLO MINER: Shutdown token explicitly cancelled.");
+                    } else {
+                        info!("SOLO MINER: Shutdown token not explicitly cancelled, but signal received.");
+                    }
+                    break;
+                }
+                _ = mining_interval.tick() => {
+                    info!("SOLO MINER: Mining interval elapsed ({}s), starting mining cycle", mining_interval_secs);
+                    info!("SOLO MINER: (DEBUG) Mining loop continuing.");
 
-            // Process the mined block
-            self.process_mined_block(
-                mined_block,
-                &mempool,
-                &utxos,
-                mining_state.blocks_mined,
-                mining_state.cycles,
-                mining_interval_secs,
-            )
-            .await?;
+                    mining_state.cycles += 1;
+                    info!("SOLO MINER: Starting mining cycle #{}", mining_state.cycles);
+                    
+                    self.log_heartbeat_if_needed(&mut mining_state, mining_interval_secs);
+
+                    let emission = self.emission.read().await;
+                    let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+                    let estimated_reward = emission.calculate_reward(now).unwrap_or(0);
+                    let current_difficulty = self.get_current_difficulty().await;
+                    info!(
+                        "Mining Status: Cycle {}, Difficulty: {:.4}, Estimated Reward: {} QANTO",
+                        mining_state.cycles, current_difficulty, estimated_reward
+                    );
+                    
+                    tokio::task::yield_now().await;
+
+                    if !self.validate_wallet_keypair(&wallet).await {
+                        continue;
+                    }
+
+                    info!("SOLO MINER: Preparing to create candidate block");
+                    let mut candidate_block = match self.create_mining_candidate(&wallet, &mempool, &utxos).await {
+                        Ok(block) => {
+                            info!("SOLO MINER: Candidate block created successfully");
+                            block
+                        }
+                        Err(e) => {
+                            warn!("SOLO MINER: Failed to create candidate block: {}. Retrying next cycle.", e);
+                            continue;
+                        }
+                    };
+
+                    let (mined_block, mining_duration) = match self.execute_mining_pow(&miner, &mut candidate_block, &shutdown_token).await {
+                        Ok((block, duration)) => (block, duration),
+                        Err(should_break) => {
+                            if should_break { break; } // Propagate shutdown signal
+                            continue;
+                        }
+                    };
+
+                    mining_state.blocks_mined += 1;
+            
+            // FIX: Replaced the previous error handling with a more robust `match` statement.
+            // This ensures that any failure during block processing is explicitly logged,
+            // preventing the miner from stalling silently.
+            let process_result = self.process_mined_block(
+                    mined_block,
+                    &mempool,
+                    &utxos,
+                    mining_state.blocks_mined,
+                    mining_duration,
+                ).await;
+
+            match process_result {
+                Ok(_) => {
+                    info!(
+                        "SOLO MINER: Successfully processed and added mined block. Cycle #{} complete.",
+                        mining_state.cycles
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        "SOLO MINER: Failed to process mined block: {}. Continuing to next cycle.",
+                        e
+                    );
+                }
+                }
+            }
         }
-
-        info!("SOLO MINER: Mining loop has stopped.");
-        Ok(())
     }
-
-    /// Create mining interval timer
-    fn create_mining_interval(&self, mining_interval_secs: u64) -> tokio::time::Interval {
-        let mut interval =
-            tokio::time::interval(tokio::time::Duration::from_secs(mining_interval_secs));
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        interval
-    }
+    info!("SOLO MINER: Mining loop has stopped.");
+    Ok(())
+}
 
     /// Log heartbeat if enough time has elapsed
     fn log_heartbeat_if_needed(&self, mining_state: &mut MiningState, mining_interval_secs: u64) {
@@ -886,35 +904,46 @@ impl QantoDAG {
     /// Create a candidate block for mining
     async fn create_mining_candidate(
         &self,
-        optimized_block_builder: &Arc<crate::performance_optimizations::OptimizedBlockBuilder>,
+        wallet: &Arc<Wallet>,
+        mempool: &Arc<RwLock<Mempool>>,
+        utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
     ) -> Result<QantoBlock, QantoDAGError> {
-        let miner_address = DEV_ADDRESS.to_string();
+        let miner_address = wallet.address();
         let chain_id_to_mine: u32 = 0;
 
         info!(
-            "SOLO MINER: Creating candidate block for chain {} (rewards to genesis validator: {})",
+            "SOLO MINER: Creating candidate block for chain {} (rewards to validator: {})",
             chain_id_to_mine, miner_address
         );
         let candidate_creation_start = std::time::Instant::now();
 
-        match optimized_block_builder
-            .build_high_throughput_block(
-                crate::qantodag::MAX_TRANSACTIONS_PER_BLOCK,
-                &Arc::new(RwLock::new(self.clone())),
+        let (qr_signing_key, qr_public_key) = wallet.get_keypair().map_err(|e| {
+            QantoDAGError::WalletError(format!("Failed to get keypair from wallet: {e}"))
+        })?;
+
+        match self
+            .create_candidate_block(
+                &qr_signing_key,
+                &qr_public_key,
+                &miner_address,
+                mempool,
+                utxos,
+                chain_id_to_mine,
             )
             .await
         {
             Ok(block) => {
                 info!(
-                    "SOLO MINER: Successfully created optimized candidate block {} in {:?}",
+                    "SOLO MINER: Successfully created candidate block {} with {} transactions in {:?}",
                     block.id,
+                    block.transactions.len(),
                     candidate_creation_start.elapsed()
                 );
                 Ok(block)
             }
             Err(e) => {
                 warn!(
-                    "SOLO MINER: Failed to create optimized candidate block after {:?}: {}. Retrying after delay.",
+                    "SOLO MINER: Failed to create candidate block after {:?}: {}. Retrying after delay.",
                     candidate_creation_start.elapsed(),
                     e
                 );
@@ -931,69 +960,69 @@ impl QantoDAG {
         miner: &Arc<Miner>,
         candidate_block: &mut QantoBlock,
         shutdown_token: &tokio_util::sync::CancellationToken,
-    ) -> Result<QantoBlock, bool> {
+    ) -> Result<(QantoBlock, std::time::Duration), bool> {
         info!(
             "SOLO MINER: Starting proof-of-work for candidate block {} with difficulty {}",
             candidate_block.id, candidate_block.difficulty
         );
 
-        // Spawn blocking task for CPU-intensive mining with cancellation support
         let miner_clone = miner.clone();
         let shutdown_clone = shutdown_token.clone();
         let mut candidate_clone = candidate_block.clone();
         let pow_start = std::time::Instant::now();
 
+        info!("SOLO MINER: Starting POW mining task");
+
         let mining_result = tokio::task::spawn_blocking(move || {
             miner_clone
                 .solve_pow_with_cancellation(&mut candidate_clone, shutdown_clone)
-                .map(|_| candidate_clone) // Return the modified block on success
+                .map(|_| candidate_clone)
         })
         .await;
 
-        // Handle mining result and get the mined block
+        info!("SOLO MINER: POW mining task completed");
+
+        let mining_duration = pow_start.elapsed();
         match mining_result {
             Ok(Ok(block)) => {
                 info!(
                     "SOLO MINER: Proof-of-work completed in {:?}, nonce: {}",
-                    pow_start.elapsed(),
-                    block.nonce
+                    mining_duration, block.nonce
                 );
-                Ok(block)
+                Ok((block, mining_duration))
             }
             Ok(Err(e)) => {
                 if shutdown_token.is_cancelled() {
                     info!("SOLO MINER: Mining cancelled due to shutdown.");
-                    Err(true) // Signal to break the loop
+                    Err(true)
                 } else {
                     warn!(
                         "SOLO MINER: Mining failed after {:?} for the current candidate block: {}",
                         pow_start.elapsed(),
                         e
                     );
-                    Err(false) // Signal to continue the loop
+                    Err(false)
                 }
             }
             Err(e) => {
                 warn!("SOLO MINER: Mining task panicked: {}", e);
-                Err(false) // Signal to continue the loop
+                Err(false)
             }
         }
     }
 
     /// Process a successfully mined block
+    #[allow(clippy::too_many_arguments)]
     async fn process_mined_block(
         &self,
         mined_block: QantoBlock,
         mempool: &Arc<RwLock<Mempool>>,
         utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
         total_blocks_mined: u64,
-        mining_cycle: u64,
-        mining_interval_secs: u64,
+        mining_time: std::time::Duration,
     ) -> Result<(), QantoDAGError> {
         let block_height = mined_block.height;
-        let mining_time = std::time::Duration::from_secs(0); // This would need to be passed from the mining function
 
-        // Display enhanced celebration with colorful output and statistics
         celebrate_mining_success(MiningCelebrationParams {
             block_height,
             block_hash: mined_block.hash(),
@@ -1013,7 +1042,6 @@ impl QantoDAG {
             total_blocks_mined, mined_block.id, total_blocks_mined
         );
 
-        // Yield before DAG operations
         tokio::task::yield_now().await;
 
         if self.add_block(mined_block.clone(), utxos).await? {
@@ -1028,38 +1056,12 @@ impl QantoDAG {
                 "SOLO MINER: Removed {} transactions from mempool",
                 removed_count
             );
-
-            // Query the reward from state for live verification
-            if let Some(queried_reward) = self.get_block_reward(&mined_block.id).await {
-                celebrate_mining_success(MiningCelebrationParams {
-                    block_height,
-                    block_hash: mined_block.hash(),
-                    nonce: mined_block.nonce,
-                    difficulty: mined_block.difficulty,
-                    transactions_count: mined_block.transactions.len(),
-                    mining_time,
-                    effort: mined_block.effort,
-                    total_blocks_mined,
-                    chain_id: mined_block.chain_id,
-                    block_reward: queried_reward,
-                    compact: true,
-                });
-            } else {
-                warn!("Failed to query reward for block {}", mined_block.id);
-            }
         } else {
             warn!("SOLO MINER: Mined block was rejected by the DAG (already exists?).");
         }
-
-        info!(
-            "SOLO MINER: Mining cycle #{} complete. Next cycle in {} seconds.",
-            mining_cycle, mining_interval_secs
-        );
-
         Ok(())
     }
 
-    #[instrument]
     pub async fn get_block_reward(&self, block_id: &str) -> Option<u64> {
         self.blocks.get(block_id).map(|b| b.reward)
     }
@@ -1081,15 +1083,21 @@ impl QantoDAG {
         for id in ids_to_prune {
             if let Some((_id, block)) = self.blocks.remove(&id) {
                 // Store minimal hash summary for verification
-                let summary_key = format!("pruned_{}", id);
-                let hash_summary = qanto_hash(&block.hash().as_bytes());
-                self.db.put(summary_key.as_bytes().to_vec(), hash_summary.as_bytes().to_vec())?;
+                let summary_key = format!("pruned_{id}");
+                let hash_summary = qanto_hash(block.hash().as_bytes());
+                self.db.put(
+                    summary_key.as_bytes().to_vec(),
+                    hash_summary.as_bytes().to_vec(),
+                )?;
 
                 pruned_count += 1;
             }
         }
 
-        info!("Pruned {} old blocks below height {}", pruned_count, prune_threshold);
+        info!(
+            "Pruned {} old blocks below height {}",
+            pruned_count, prune_threshold
+        );
         Ok(pruned_count)
     }
 
@@ -1106,12 +1114,10 @@ impl QantoDAG {
     }
 
     // GraphQL server helper methods
-    #[instrument]
     pub async fn get_block_count(&self) -> u64 {
         self.blocks.len() as u64
     }
 
-    #[instrument]
     pub async fn get_total_transactions(&self) -> u64 {
         self.blocks
             .iter()
@@ -1119,12 +1125,10 @@ impl QantoDAG {
             .sum()
     }
 
-    #[instrument]
     pub async fn get_current_difficulty(&self) -> f64 {
         INITIAL_DIFFICULTY // Return the current difficulty
     }
 
-    #[instrument]
     pub async fn get_latest_block_hash(&self) -> Option<String> {
         // Find the block with the highest height
         self.blocks
@@ -1133,7 +1137,6 @@ impl QantoDAG {
             .map(|entry| entry.value().hash())
     }
 
-    #[instrument]
     pub async fn get_latest_block(&self) -> Option<QantoBlock> {
         // Find the block with the highest height
         self.blocks
@@ -1142,12 +1145,10 @@ impl QantoDAG {
             .map(|entry| entry.value().clone())
     }
 
-    #[instrument]
     pub async fn get_block(&self, block_id: &str) -> Option<QantoBlock> {
         self.blocks.get(block_id).map(|entry| entry.value().clone())
     }
 
-    #[instrument]
     pub async fn get_blocks_paginated(&self, limit: usize, offset: usize) -> Vec<QantoBlock> {
         self.blocks
             .iter()
@@ -1157,7 +1158,6 @@ impl QantoDAG {
             .collect()
     }
 
-    #[instrument]
     pub async fn get_transaction(&self, tx_id: &str) -> Option<Transaction> {
         for block_entry in self.blocks.iter() {
             for tx in &block_entry.value().transactions {
@@ -1169,7 +1169,6 @@ impl QantoDAG {
         None
     }
 
-    #[instrument(skip(self, block, utxos_arc))]
     pub async fn add_block(
         &self,
         block: QantoBlock,
@@ -1236,7 +1235,7 @@ impl QantoDAG {
 
                 // Pre-calculate explorer link capacity
                 let mut explorer_link = String::with_capacity(42 + utxo_id.len());
-                explorer_link.push_str("https://qantoblockexplorer.org/utxo/");
+                explorer_link.push_str("/explorer/utxo/");
                 explorer_link.push_str(&utxo_id);
 
                 utxos_write_guard.insert(
@@ -1272,7 +1271,10 @@ impl QantoDAG {
         let id_bytes = block_for_db.id.as_bytes().to_vec();
         let block_bytes = serde_json::to_vec(&block_for_db)?;
 
-        task::spawn_blocking(move || db_clone.put(id_bytes, block_bytes)).await??;
+        task::spawn_blocking(move || db_clone.put(id_bytes, block_bytes))
+            .await
+            .map_err(QantoDAGError::JoinError)?
+            .map_err(QantoDAGError::Storage)?;
 
         let mut emission = self.emission.write().await;
         emission
@@ -1284,25 +1286,21 @@ impl QantoDAG {
         Ok(true)
     }
 
-    #[instrument]
     pub async fn get_id(&self) -> u32 {
         0
     }
 
-    #[instrument]
     pub async fn get_tips(&self, chain_id: u32) -> Option<Vec<String>> {
         self.tips
             .get(&chain_id)
             .map(|tips_set| tips_set.iter().cloned().collect())
     }
 
-    #[instrument]
     pub async fn add_validator(&self, address: String, stake: u64) {
         self.validators
             .insert(address, stake.max(MIN_VALIDATOR_STAKE));
     }
 
-    #[instrument]
     pub async fn initiate_cross_chain_swap(
         &self,
         params: CrossChainSwapParams,
@@ -1334,7 +1332,6 @@ impl QantoDAG {
         Ok(swap_id)
     }
 
-    #[instrument]
     pub async fn redeem_cross_chain_swap(
         &self,
         swap_id: &str,
@@ -1368,7 +1365,6 @@ impl QantoDAG {
         Ok(())
     }
 
-    #[instrument]
     pub async fn deploy_smart_contract(
         &self,
         code: String,
@@ -1387,13 +1383,13 @@ impl QantoDAG {
         Ok(contract_id)
     }
 
-    #[instrument(skip(self, qr_signing_key, qr_public_key, mempool_arc, _utxos_arc))]
     pub async fn create_candidate_block(
         &self,
-        qr_signing_key: &dilithium5::SecretKey,
-        qr_public_key: &dilithium5::PublicKey,
-        validator_address: &str,
-        mempool_arc: &Arc<RwLock<Mempool>>,
+
+        _qr_signing_key: &QantoPQPrivateKey,
+         _qr_public_key: &QantoPQPublicKey,
+         validator_address: &str,
+         mempool_arc: &Arc<RwLock<Mempool>>,
         _utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
         chain_id_val: u32,
     ) -> Result<QantoBlock, QantoDAGError> {
@@ -1483,8 +1479,8 @@ impl QantoDAG {
             difficulty: current_difficulty,
             validator: validator_address.to_string(),
             miner: validator_address.to_string(),
-            qr_signing_key,
-            qr_public_key,
+            validator_private_key: QantoPQPrivateKey::new_dummy(),
+
             timestamp: new_timestamp,
             current_epoch: epoch,
             height,
@@ -1511,8 +1507,7 @@ impl QantoDAG {
         let reward_tx = Transaction::new_coinbase(
             validator_address.to_string(),
             reward,
-            qr_signing_key.as_bytes(),
-            qr_public_key.as_bytes(),
+
             coinbase_outputs,
         )?;
 
@@ -1533,14 +1528,15 @@ impl QantoDAG {
 
         let (paillier_pk, _) = HomomorphicEncrypted::generate_keypair();
         let mut block = QantoBlock::new(QantoBlockCreationData {
+            validator_private_key: QantoPQPrivateKey::new_dummy(),
+
             chain_id: chain_id_val,
             parents: parent_tips,
             transactions: transactions_for_block,
             difficulty: current_difficulty,
             validator: validator_address.to_string(),
             miner: validator_address.to_string(),
-            qr_signing_key,
-            qr_public_key,
+
             timestamp: new_timestamp,
             current_epoch: epoch,
             height,
@@ -1559,7 +1555,6 @@ impl QantoDAG {
         Ok(block)
     }
 
-    #[instrument(skip(self, block, utxos_arc))]
     pub async fn is_valid_block(
         &self,
         block: &QantoBlock,
@@ -1594,13 +1589,14 @@ impl QantoDAG {
         }
         if !block.verify_signature()? {
             return Err(QantoDAGError::QuantumSignature(
-                "Quantum-resistant signature verification failed".to_string(),
+                PQError::VerificationError
             ));
         }
 
         let target_hash_bytes = Miner::calculate_target_from_difficulty(block.difficulty);
         let block_pow_hash = block.hash();
-        if !Miner::hash_meets_target(&hex::decode(block_pow_hash).unwrap(), &target_hash_bytes) {
+        let block_pow_hash_bytes = hex::decode(block_pow_hash).map_err(QantoDAGError::HexError)?;
+        if !Miner::hash_meets_target(&block_pow_hash_bytes, &target_hash_bytes) {
             return Err(QantoDAGError::InvalidBlock(
                 "Proof-of-Work not satisfied".to_string(),
             ));
@@ -1790,7 +1786,6 @@ impl QantoDAG {
         Ok(anomaly_score)
     }
 
-    #[instrument]
     pub async fn validate_transaction(
         &self,
         tx: &Transaction,
@@ -1799,7 +1794,6 @@ impl QantoDAG {
         tx.verify(self, utxos_map).await.is_ok()
     }
 
-    #[instrument]
     pub async fn finalize_blocks(&self) -> Result<(), QantoDAGError> {
         let blocks_guard = &self.blocks;
         let finalized_guard = &self.finalized_blocks;
@@ -1845,7 +1839,6 @@ impl QantoDAG {
         Ok(())
     }
 
-    #[instrument]
     pub async fn dynamic_sharding(&self) -> Result<(), QantoDAGError> {
         if self.chain_loads.is_empty() {
             return Ok(());
@@ -1882,32 +1875,8 @@ impl QantoDAG {
             .map(|entry| entry.key().clone())
             .unwrap_or_else(|| DEV_ADDRESS.to_string());
         // Generate proper quantum-resistant keypair using PostQuantumCrypto infrastructure
-        let pq_crypto = crate::post_quantum_crypto::PostQuantumCrypto::new();
-        let keypair = pq_crypto
-            .generate_signature_keypair(crate::post_quantum_crypto::SignatureAlgorithm::Dilithium5)
-            .await
-            .map_err(|e| {
-                let mut error_msg = String::with_capacity(32);
-                error_msg.push_str("Failed to generate keypair: ");
-                error_msg.push_str(&e.to_string());
-                QantoDAGError::QuantumSignature(error_msg)
-            })?;
 
-        // Convert to dilithium5 types for compatibility with existing block creation
-        let placeholder_pk =
-            dilithium5::PublicKey::from_bytes(&keypair.public_key).map_err(|e| {
-                let mut error_msg = String::with_capacity(32);
-                error_msg.push_str("Invalid public key: ");
-                error_msg.push_str(&e.to_string());
-                QantoDAGError::QuantumSignature(error_msg)
-            })?;
-        let placeholder_sk =
-            dilithium5::SecretKey::from_bytes(&keypair.secret_key).map_err(|e| {
-                let mut error_msg = String::with_capacity(32);
-                error_msg.push_str("Invalid secret key: ");
-                error_msg.push_str(&e.to_string());
-                QantoDAGError::QuantumSignature(error_msg)
-            })?;
+
 
         let epoch = self.current_epoch.load(Ordering::SeqCst);
 
@@ -1955,8 +1924,8 @@ impl QantoDAG {
                 difficulty: parent_difficulty,
                 validator: initial_validator.clone(),
                 miner: initial_validator.clone(),
-                qr_signing_key: &placeholder_sk,
-                qr_public_key: &placeholder_pk,
+                validator_private_key: QantoPQPrivateKey::new_dummy(),
+
                 timestamp: new_genesis_timestamp,
                 current_epoch: epoch,
                 height: 0,
@@ -1977,7 +1946,6 @@ impl QantoDAG {
         Ok(())
     }
 
-    #[instrument(skip(self, proposer_address, rule_name, new_value))]
     pub async fn propose_governance(
         &self,
         proposer_address: String,
@@ -2023,7 +1991,6 @@ impl QantoDAG {
         Ok(proposal_id_val)
     }
 
-    #[instrument]
     pub async fn vote_governance(
         &self,
         voter: String,
@@ -2063,7 +2030,6 @@ impl QantoDAG {
         Ok(())
     }
 
-    #[instrument]
     pub async fn aggregate_blocks(
         &self,
         blocks_vec: Vec<QantoBlock>,
@@ -2084,7 +2050,6 @@ impl QantoDAG {
         Ok(blocks_vec.into_iter().next())
     }
 
-    #[instrument]
     pub async fn select_validator(&self) -> Option<String> {
         if self.validators.is_empty() {
             return None;
@@ -2115,7 +2080,6 @@ impl QantoDAG {
             .map(|entry| entry.key().clone())
     }
 
-    #[instrument]
     pub async fn get_state_snapshot(
         &self,
         chain_id_val: u32,
@@ -2140,9 +2104,7 @@ impl QantoDAG {
                                 amount: output_val.amount,
                                 tx_id: tx_val.id.clone(),
                                 output_index: index_val as u32,
-                                explorer_link: format!(
-                                    "https://qantoblockexplorer.org/utxo/{utxo_id_val}"
-                                ),
+                                explorer_link: format!("/explorer/utxo/{utxo_id_val}"),
                             },
                         );
                     }
@@ -2191,7 +2153,6 @@ impl QantoDAG {
     }
 
     /// Process mempool transactions in batches for optimal throughput
-    #[instrument(skip(self))]
     async fn process_mempool_batches(&self) {
         let batch_count = self.lock_free_tx_queue.len() / MEMPOOL_BATCH_SIZE;
         if batch_count > 0 {
@@ -2224,7 +2185,6 @@ impl QantoDAG {
     }
 
     /// Perform fast synchronization maintenance using batched operations
-    #[instrument(skip(self))]
     async fn perform_fast_sync_maintenance(&self) {
         let sync_batch_size = FAST_SYNC_BATCH_SIZE;
         debug!(
@@ -2254,7 +2214,6 @@ impl QantoDAG {
     }
 
     /// Cleanup SIMD operations and optimize data processing
-    #[instrument(skip(self))]
     async fn cleanup_simd_operations(&self) {
         debug!(
             "Cleaning up SIMD operations with batch size {}",
@@ -2282,7 +2241,6 @@ impl QantoDAG {
     }
 
     /// Manage lock-free queue operations and capacity
-    #[instrument(skip(self))]
     async fn manage_lock_free_queue(&self) {
         let queue_size = self.lock_free_tx_queue.len();
         debug!(
@@ -2326,7 +2284,6 @@ impl QantoDAG {
     }
 
     /// High-performance parallel block validation for 32 BPS throughput
-    #[instrument(skip(self, blocks, utxos_arc))]
     pub async fn validate_blocks_parallel(
         &self,
         blocks: Vec<QantoBlock>,
@@ -2404,7 +2361,6 @@ impl QantoDAG {
     }
 
     /// Fast tip selection with caching for high-throughput block creation
-    #[instrument(skip(self))]
     pub async fn get_fast_tips(&self, chain_id: u32) -> Result<Vec<String>, QantoDAGError> {
         // Check fast tips cache first
         if let Some(cached_tips) = self.fast_tips_cache.get(&chain_id) {
@@ -2426,7 +2382,6 @@ impl QantoDAG {
     }
 
     /// Batch process multiple blocks for maximum throughput
-    #[instrument(skip(self, blocks, utxos_arc))]
     pub async fn process_block_batch(
         &self,
         blocks: Vec<QantoBlock>,
@@ -2472,7 +2427,6 @@ impl QantoDAG {
     }
 
     /// Optimized parallel transaction validation using rayon
-    #[instrument(skip(self, transactions, utxos_arc))]
     pub async fn validate_transactions_parallel(
         &self,
         transactions: &[Transaction],
@@ -2516,11 +2470,9 @@ impl QantoDAG {
     }
 
     /// Optimized block creation with batch processing
-    #[instrument(skip(self, qr_signing_key, qr_public_key, transactions))]
     pub async fn create_optimized_block(
         &self,
-        qr_signing_key: &dilithium5::SecretKey,
-        qr_public_key: &dilithium5::PublicKey,
+
         validator_address: &str,
         transactions: Vec<Transaction>,
         chain_id_val: u32,
@@ -2557,8 +2509,8 @@ impl QantoDAG {
             difficulty,
             validator: validator_address.to_string(),
             miner: validator_address.to_string(),
-            qr_signing_key,
-            qr_public_key,
+            validator_private_key: self.get_private_key().await?,
+
             timestamp,
             current_epoch,
             height,
@@ -2591,7 +2543,12 @@ impl QantoDAG {
     }
 
     /// Batch process multiple blocks with optimized validation
-    #[instrument(skip(self, blocks, utxos_arc))]
+    pub async fn get_private_key(&self) -> Result<QantoPQPrivateKey, QantoDAGError> {
+        // In a real implementation, this would load the validator's private key
+        // from a secure storage. For now, we'll generate a dummy one.
+        Ok(QantoPQPrivateKey::new_dummy())
+    }
+
     pub async fn process_blocks_optimized(
         &self,
         blocks: Vec<QantoBlock>,
@@ -2675,6 +2632,7 @@ impl Clone for QantoDAG {
             chain_loads: self.chain_loads.clone(),
             difficulty_history: self.difficulty_history.clone(),
             block_creation_timestamps: self.block_creation_timestamps.clone(),
+
             anomaly_history: self.anomaly_history.clone(),
             cross_chain_swaps: self.cross_chain_swaps.clone(),
             smart_contracts: self.smart_contracts.clone(),
@@ -2714,15 +2672,15 @@ impl QantoDAGOptimizations for QantoDAG {
         transactions: Vec<Transaction>,
     ) -> Result<QantoBlock, TransactionError> {
         // Use the existing optimized block creation method
-        let (placeholder_pk, placeholder_sk) = dilithium5::keypair();
+
+
 
         let validator = self.select_validator().await.unwrap_or_default();
         let chain_id = *self.num_chains.read().await;
 
         match self
             .create_optimized_block(
-                &placeholder_sk,
-                &placeholder_pk,
+
                 &validator,
                 transactions,
                 chain_id,
@@ -2747,12 +2705,20 @@ impl QantoDAGOptimizations for QantoDAG {
         use crossbeam::channel::bounded;
         use std::sync::Weak;
 
-        // Create in-memory database for testing
-        let db = DB::open_default(":memory:").unwrap_or_else(|_| {
-            // Fallback to temporary path if in-memory fails
-            let temp_path = std::env::temp_dir().join("dummy_qanto_db");
-            DB::open_default(&temp_path).expect("Failed to create dummy database")
-        });
+        // Create QantoStorage for testing
+        let temp_path = std::env::temp_dir().join("dummy_qanto_storage");
+        let storage_config = StorageConfig {
+            data_dir: temp_path,
+            max_file_size: 64 * 1024 * 1024, // 64MB
+            cache_size: 1024 * 1024,         // 1MB
+            compression_enabled: true,
+            encryption_enabled: false,
+            wal_enabled: true,
+            sync_writes: false,
+            compaction_threshold: 0.7,
+            max_open_files: 100,
+        };
+        let db = QantoStorage::new(storage_config).expect("Failed to create dummy QantoStorage");
 
         // Create bounded channel for block queue
         let (sender, receiver) = bounded(1000);
@@ -2766,6 +2732,7 @@ impl QantoDAGOptimizations for QantoDAG {
             num_chains: Arc::new(RwLock::new(1)),
             finalized_blocks: Arc::new(DashMap::new()),
             chain_loads: Arc::new(DashMap::new()),
+
             difficulty_history: Arc::new(ParkingRwLock::new(Vec::new())),
             block_creation_timestamps: Arc::new(DashMap::new()),
             anomaly_history: Arc::new(DashMap::new()),

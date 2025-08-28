@@ -54,6 +54,13 @@ Thumbs.db
 /node*/**/qantodag_db/
 /qantodag_db_test
 /peer_cache.json
+/qanto_db
+/test_bps_db
+/test_tps_db
+/test_bridge_db
+/test_channel_db
+/test_performance_db
+/test_swap_db
 
 # --- Sensitive Information ---
 *.key
@@ -63,7 +70,7 @@ Thumbs.db
 .wallet
 .json
 p2p_identity.key
-/deployment/.local.toml
+# Removed old deployment folder references
 wallet.key
 private_key.txt
 keypair.txt
@@ -75,7 +82,7 @@ node*/*.txt
 .env
 .env*
 !.env.example
-/deployment/*.local.toml
+
 
 # --- Production Configuration Files ---
 /config.mainnet.toml
@@ -88,6 +95,7 @@ node*/*.txt
 /mermaid-filter.err
 /scripts
 /docs/whitepaper/assets
+/docs/Deployment_Strategy.md
 /mining_rig_config.toml
 /Dockerfile
 /docker-compose.yml
@@ -96,6 +104,13 @@ node*/*.txt
 /deploy.sh
 /deploy-*.sh
 /deployment
+/DEPENDENCY_MIGRATION.md
+/DUPLICATION_AUDIT_REPORT.md
+/instance
+/user-data.sh
+/wrangler.toml
+/config.toml
+/.cargo/config.toml
 
 /hydra_manifest.toml
 /traceforce_watchlist.csv
@@ -185,6 +200,8 @@ out/
 # Package manager lock files (keep package-lock.json for consistency)
 yarn.lock
 pnpm-lock.yaml
+/profile.json.gz
+
 
 /web/dist/
 /web/.env*
@@ -194,8 +211,7 @@ yarn-error.log*
 
 # --- Deployment ---
 # Ignore local deployment archives
-/deployment/*.tar.gz
-/deployment/payload/
+
 
 # --- Cargo & Rust Specific ---
 
@@ -332,11 +348,12 @@ sbom-*.xml
 
 
 # Deployment sensitive files
-deployment/docker/secrets/
-deployment/docker/keys/
-deployment/docker/config/
-deployment/docker/logs/
-deployment/kubernetes/secrets-prod.yaml
+# Docker and Kubernetes secrets
+helm/*/secrets/
+helm/*/keys/
+helm/*/config/
+helm/*/logs/
+helm/*/secrets-prod.yaml
 *.key
 wallet_password.txt
 

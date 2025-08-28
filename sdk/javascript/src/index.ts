@@ -32,8 +32,8 @@ export const DEFAULT_ENDPOINTS = {
     graphql: 'https://testnet-graphql.qanto.network'
   },
   [NETWORKS.LOCAL]: {
-    http: 'http://localhost:8080',
-    websocket: 'ws://localhost:8080/ws',
-    graphql: 'http://localhost:8080/graphql'
+    http: 'p2p://discovery',  // Use P2P discovery instead of hardcoded endpoint
+    websocket: 'p2p://discovery',  // Use P2P discovery for WebSocket
+    graphql: 'p2p://discovery/graphql'  // Use P2P discovery for GraphQL
   }
 } as const;

@@ -12,17 +12,19 @@
 //! - Automatic compaction and garbage collection
 //! - Blockchain-optimized data structures
 
+use dashmap::DashMap;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Write, Seek, SeekFrom, BufReader, BufWriter};
+use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Mutex, RwLock};
+use std::time::SystemTime;
 use thiserror::Error;
-use serde::{Serialize, Deserialize};
 
 // Native serialization (will replace serde)
-use crate::qanto_serde::{QantoSerialize, QantoDeserialize, QantoSerializer, QantoDeserializer};
+use crate::qanto_serde::{QantoDeserialize, QantoDeserializer, QantoSerialize, QantoSerializer};
 
 #[derive(Error, Debug)]
 pub enum QantoStorageError {
@@ -30,6 +32,8 @@ pub enum QantoStorageError {
     Io(#[from] std::io::Error),
     #[error("Serialization error: {0}")]
     Serialization(String),
+    #[error("Serde error: {0}")]
+    Serde(#[from] crate::qanto_serde::QantoSerdeError),
     #[error("Key not found: {0}")]
     KeyNotFound(String),
     #[error("Transaction error: {0}")]
@@ -87,6 +91,80 @@ enum LogEntry {
     Checkpoint { sequence: u64 },
 }
 
+impl QantoSerialize for LogEntry {
+    fn serialize<W: QantoSerializer>(
+        &self,
+        serializer: &mut W,
+    ) -> Result<(), crate::qanto_serde::QantoSerdeError> {
+        match self {
+            LogEntry::Put { key, value } => {
+                serializer.write_u8(0)?;
+                QantoSerialize::serialize(key, serializer)?;
+                QantoSerialize::serialize(value, serializer)?;
+            }
+            LogEntry::Delete { key } => {
+                serializer.write_u8(1)?;
+                QantoSerialize::serialize(key, serializer)?;
+            }
+            LogEntry::Transaction { id, entries } => {
+                serializer.write_u8(2)?;
+                QantoSerialize::serialize(id, serializer)?;
+                QantoSerialize::serialize(entries, serializer)?;
+            }
+            LogEntry::Commit { transaction_id } => {
+                serializer.write_u8(3)?;
+                QantoSerialize::serialize(transaction_id, serializer)?;
+            }
+            LogEntry::Rollback { transaction_id } => {
+                serializer.write_u8(4)?;
+                QantoSerialize::serialize(transaction_id, serializer)?;
+            }
+            LogEntry::Checkpoint { sequence } => {
+                serializer.write_u8(5)?;
+                QantoSerialize::serialize(sequence, serializer)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl QantoDeserialize for LogEntry {
+    fn deserialize<R: QantoDeserializer>(
+        deserializer: &mut R,
+    ) -> Result<Self, crate::qanto_serde::QantoSerdeError> {
+        let tag = deserializer.read_u8()?;
+        match tag {
+            0 => {
+                let key = QantoDeserialize::deserialize(deserializer)?;
+                let value = QantoDeserialize::deserialize(deserializer)?;
+                Ok(LogEntry::Put { key, value })
+            }
+            1 => {
+                let key = QantoDeserialize::deserialize(deserializer)?;
+                Ok(LogEntry::Delete { key })
+            }
+            2 => {
+                let id = QantoDeserialize::deserialize(deserializer)?;
+                let entries = QantoDeserialize::deserialize(deserializer)?;
+                Ok(LogEntry::Transaction { id, entries })
+            }
+            3 => {
+                let transaction_id = QantoDeserialize::deserialize(deserializer)?;
+                Ok(LogEntry::Commit { transaction_id })
+            }
+            4 => {
+                let transaction_id = QantoDeserialize::deserialize(deserializer)?;
+                Ok(LogEntry::Rollback { transaction_id })
+            }
+            5 => {
+                let sequence = QantoDeserialize::deserialize(deserializer)?;
+                Ok(LogEntry::Checkpoint { sequence })
+            }
+            _ => Err(crate::qanto_serde::QantoSerdeError::InvalidTypeTag(tag)),
+        }
+    }
+}
+
 /// Storage statistics
 #[derive(Debug, Clone, Default)]
 pub struct StorageStats {
@@ -100,68 +178,94 @@ pub struct StorageStats {
     pub deletes: u64,
 }
 
-/// In-memory cache entry
-#[derive(Debug, Clone)]
+/// In-memory cache entry with atomic access count
+#[derive(Debug)]
 struct CacheEntry {
     value: Vec<u8>,
     last_accessed: SystemTime,
-    access_count: u64,
+    access_count: AtomicU64,
+}
+
+impl Clone for CacheEntry {
+    fn clone(&self) -> Self {
+        Self {
+            value: self.value.clone(),
+            last_accessed: self.last_accessed,
+            access_count: AtomicU64::new(self.access_count.load(Ordering::Relaxed)),
+        }
+    }
+}
+
+impl CacheEntry {
+    fn new(value: Vec<u8>) -> Self {
+        Self {
+            value,
+            last_accessed: SystemTime::now(),
+            access_count: AtomicU64::new(1),
+        }
+    }
+
+    fn touch(&self) -> u64 {
+        self.access_count.fetch_add(1, Ordering::Relaxed)
+    }
 }
 
 /// Write-ahead log
+#[derive(Debug)]
 struct WriteAheadLog {
     file: BufWriter<File>,
     sequence: u64,
+    #[allow(dead_code)] // May be used in future implementations
     path: PathBuf,
 }
 
 impl WriteAheadLog {
     fn new(path: PathBuf) -> Result<Self, QantoStorageError> {
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)?;
-        
+        let file = OpenOptions::new().create(true).append(true).open(&path)?;
+
         Ok(Self {
             file: BufWriter::new(file),
             sequence: 0,
             path,
         })
     }
-    
+
     fn append(&mut self, entry: &LogEntry) -> Result<u64, QantoStorageError> {
         self.sequence += 1;
-        
+
         // Serialize entry with sequence number
-        let mut serializer = QantoSerializer::new();
-        self.sequence.serialize(&mut serializer)?;
-        entry.serialize(&mut serializer)?;
-        
+        let mut serializer = crate::qanto_serde::BinarySerializer::new();
+        QantoSerialize::serialize(&self.sequence, &mut serializer)?;
+        QantoSerialize::serialize(entry, &mut serializer)?;
+
         let data = serializer.finish();
-        
+
         // Write length prefix + data
         let len = data.len() as u32;
         self.file.write_all(&len.to_le_bytes())?;
         self.file.write_all(&data)?;
         self.file.flush()?;
-        
+
         Ok(self.sequence)
     }
-    
+
     fn sync(&mut self) -> Result<(), QantoStorageError> {
         self.file.flush()?;
         self.file.get_mut().sync_all()?;
         Ok(())
     }
-    
+
     fn checkpoint(&mut self) -> Result<(), QantoStorageError> {
-        let checkpoint = LogEntry::Checkpoint { sequence: self.sequence };
+        let checkpoint = LogEntry::Checkpoint {
+            sequence: self.sequence,
+        };
         self.append(&checkpoint)?;
         self.sync()
     }
 }
 
 /// Storage segment (SSTable-like structure)
+#[derive(Debug)]
 struct StorageSegment {
     id: u64,
     path: PathBuf,
@@ -169,6 +273,7 @@ struct StorageSegment {
     file: Option<BufReader<File>>,
     size: u64,
     key_count: u64,
+    #[allow(dead_code)] // May be used for segment management
     created_at: SystemTime,
 }
 
@@ -184,7 +289,7 @@ impl StorageSegment {
             created_at: SystemTime::now(),
         }
     }
-    
+
     fn open(&mut self) -> Result<(), QantoStorageError> {
         if self.file.is_none() {
             let file = File::open(&self.path)?;
@@ -192,77 +297,84 @@ impl StorageSegment {
         }
         Ok(())
     }
-    
+
     fn get(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>, QantoStorageError> {
-        if let Some((offset, length)) = self.index.get(key) {
+        // Clone the offset and length to avoid borrowing issues
+        if let Some((offset, length)) = self.index.get(key).map(|(o, l)| (*o, *l)) {
             self.open()?;
-            
+
             if let Some(ref mut file) = self.file {
-                file.seek(SeekFrom::Start(*offset))?;
-                let mut buffer = vec![0u8; *length as usize];
+                file.seek(SeekFrom::Start(offset))?;
+                let mut buffer = vec![0u8; length as usize];
                 file.read_exact(&mut buffer)?;
-                
+
                 // Decompress if needed
                 let value = if self.is_compressed(&buffer) {
                     self.decompress(&buffer)?
                 } else {
                     buffer
                 };
-                
+
                 return Ok(Some(value));
             }
         }
         Ok(None)
     }
-    
+
+    #[allow(dead_code)] // May be used for future key existence checks
     fn contains_key(&self, key: &[u8]) -> bool {
         self.index.contains_key(key)
     }
-    
+
+    #[allow(dead_code)] // May be used for future key iteration features
     fn keys(&self) -> impl Iterator<Item = &Vec<u8>> {
         self.index.keys()
     }
-    
+
     fn is_compressed(&self, data: &[u8]) -> bool {
         // Simple magic number check
         data.len() > 4 && &data[0..4] == b"QCMP"
     }
-    
+
     fn decompress(&self, data: &[u8]) -> Result<Vec<u8>, QantoStorageError> {
         if !self.is_compressed(data) {
             return Ok(data.to_vec());
         }
-        
+
         if data.len() < 8 {
-            return Err(QantoStorageError::Corruption("Invalid compressed data".to_string()));
+            return Err(QantoStorageError::Corruption(
+                "Invalid compressed data".to_string(),
+            ));
         }
-        
+
         // Read original size
-        let original_size = u32::from_le_bytes([
-            data[4], data[5], data[6], data[7]
-        ]) as usize;
-        
+        let original_size = u32::from_le_bytes([data[4], data[5], data[6], data[7]]) as usize;
+
         let mut decompressed = Vec::with_capacity(original_size);
         let mut pos = 8; // Skip header and size
-        
+
         while pos < data.len() {
             let token = data[pos];
             pos += 1;
-            
+
             if token & 0x80 != 0 {
                 // Match: decode distance and length
                 if pos + 2 >= data.len() {
-                    return Err(QantoStorageError::Corruption("Truncated match data".to_string()));
+                    return Err(QantoStorageError::Corruption(
+                        "Truncated match data".to_string(),
+                    ));
                 }
-                
+
                 let match_len = (token & 0x7F) as usize;
                 let distance = u16::from_le_bytes([data[pos], data[pos + 1]]) as usize;
                 pos += 2;
-                
+
                 if distance == 0 || distance > decompressed.len() {
-                    return Err(QantoStorageError::Corruption("Invalid match distance".to_string()));
+                    return Err(QantoStorageError::Corruption(
+                        "Invalid match distance".to_string(),
+                    ));
                 }
-                
+
                 let match_start = decompressed.len() - distance;
                 for i in 0..match_len {
                     let byte = decompressed[match_start + (i % distance)];
@@ -272,21 +384,24 @@ impl StorageSegment {
                 // Literals: copy bytes directly
                 let literal_len = token as usize;
                 if pos + literal_len > data.len() {
-                    return Err(QantoStorageError::Corruption("Truncated literal data".to_string()));
+                    return Err(QantoStorageError::Corruption(
+                        "Truncated literal data".to_string(),
+                    ));
                 }
-                
+
                 decompressed.extend_from_slice(&data[pos..pos + literal_len]);
                 pos += literal_len;
             }
         }
-        
+
         if decompressed.len() != original_size {
-            return Err(QantoStorageError::Corruption(
-                format!("Decompressed size mismatch: expected {}, got {}", 
-                       original_size, decompressed.len())
-            ));
+            return Err(QantoStorageError::Corruption(format!(
+                "Decompressed size mismatch: expected {}, got {}",
+                original_size,
+                decompressed.len()
+            )));
         }
-        
+
         Ok(decompressed)
     }
 }
@@ -294,8 +409,10 @@ impl StorageSegment {
 /// Transaction context
 #[derive(Debug)]
 pub struct Transaction {
+    #[allow(dead_code)] // May be used for transaction tracking
     id: u64,
     operations: Vec<LogEntry>,
+    #[allow(dead_code)] // May be used for transaction state management
     committed: bool,
     read_snapshot: HashMap<Vec<u8>, Vec<u8>>,
 }
@@ -309,15 +426,15 @@ impl Transaction {
             read_snapshot: HashMap::new(),
         }
     }
-    
+
     pub fn put(&mut self, key: Vec<u8>, value: Vec<u8>) {
         self.operations.push(LogEntry::Put { key, value });
     }
-    
+
     pub fn delete(&mut self, key: Vec<u8>) {
         self.operations.push(LogEntry::Delete { key });
     }
-    
+
     pub fn get(&self, key: &[u8]) -> Option<&Vec<u8>> {
         // Check transaction-local changes first
         for op in self.operations.iter().rev() {
@@ -327,24 +444,34 @@ impl Transaction {
                 _ => {}
             }
         }
-        
+
         // Check read snapshot
         self.read_snapshot.get(key)
     }
 }
 
-/// Main storage engine
+/// Main storage engine with optimized concurrent access
+#[derive(Debug)]
 pub struct QantoStorage {
     config: StorageConfig,
     segments: RwLock<Vec<StorageSegment>>,
     memtable: RwLock<BTreeMap<Vec<u8>, Vec<u8>>>,
-    cache: RwLock<HashMap<Vec<u8>, CacheEntry>>,
+    cache: DashMap<Vec<u8>, CacheEntry>,
     wal: Mutex<Option<WriteAheadLog>>,
     stats: RwLock<StorageStats>,
-    next_segment_id: std::sync::atomic::AtomicU64,
-    next_transaction_id: std::sync::atomic::AtomicU64,
+    cache_size: AtomicUsize,
+    next_segment_id: AtomicU64,
+    next_transaction_id: AtomicU64,
     active_transactions: RwLock<HashMap<u64, Transaction>>,
-    compaction_in_progress: std::sync::atomic::AtomicBool,
+    compaction_in_progress: AtomicBool,
+}
+
+impl Clone for QantoStorage {
+    fn clone(&self) -> Self {
+        // Create a new storage instance with the same configuration
+        // but fresh internal state
+        Self::new(self.config.clone()).expect("Failed to clone QantoStorage")
+    }
 }
 
 impl QantoStorage {
@@ -352,156 +479,148 @@ impl QantoStorage {
     pub fn new(config: StorageConfig) -> Result<Self, QantoStorageError> {
         // Create data directory
         std::fs::create_dir_all(&config.data_dir)?;
-        
+
         let storage = Self {
             config: config.clone(),
             segments: RwLock::new(Vec::new()),
             memtable: RwLock::new(BTreeMap::new()),
-            cache: RwLock::new(HashMap::new()),
+            cache: DashMap::with_capacity(config.cache_size / 1024),
             wal: Mutex::new(None),
             stats: RwLock::new(StorageStats::default()),
-            next_segment_id: std::sync::atomic::AtomicU64::new(1),
-            next_transaction_id: std::sync::atomic::AtomicU64::new(1),
+            cache_size: AtomicUsize::new(0),
+            next_segment_id: AtomicU64::new(1),
+            next_transaction_id: AtomicU64::new(1),
             active_transactions: RwLock::new(HashMap::new()),
-            compaction_in_progress: std::sync::atomic::AtomicBool::new(false),
+            compaction_in_progress: AtomicBool::new(false),
         };
-        
+
         // Initialize WAL if enabled
         if config.wal_enabled {
             let wal_path = config.data_dir.join("wal.log");
             let wal = WriteAheadLog::new(wal_path)?;
             *storage.wal.lock().unwrap() = Some(wal);
         }
-        
+
         // Load existing segments
         storage.load_segments()?;
-        
+
         Ok(storage)
     }
-    
-    /// Put a key-value pair
+
+    /// Put a key-value pair with optimized cache operations
     pub fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), QantoStorageError> {
+        let value_size = key.len() + value.len();
+
         // Log to WAL first
         if let Some(ref mut wal) = *self.wal.lock().unwrap() {
-            let entry = LogEntry::Put { key: key.clone(), value: value.clone() };
+            let entry = LogEntry::Put {
+                key: key.clone(),
+                value: value.clone(),
+            };
             wal.append(&entry)?;
             if self.config.sync_writes {
                 wal.sync()?;
             }
         }
-        
+
         // Update memtable
         {
             let mut memtable = self.memtable.write().unwrap();
             memtable.insert(key.clone(), value.clone());
         }
-        
-        // Update cache
-        {
-            let mut cache = self.cache.write().unwrap();
-            let entry = CacheEntry {
-                value: value.clone(),
-                last_accessed: SystemTime::now(),
-                access_count: 1,
-            };
-            cache.insert(key, entry);
-            
-            // Evict cache if too large
-            if cache.len() * 1024 > self.config.cache_size {
-                self.evict_cache(&mut cache);
-            }
+
+        // Update cache using DashMap for lock-free access
+        let entry = CacheEntry::new(value.clone());
+        self.cache.insert(key, entry);
+
+        // Update cache size atomically
+        let current_size = self.cache_size.fetch_add(value_size, Ordering::Relaxed);
+
+        // Evict cache if too large
+        if current_size + value_size > self.config.cache_size {
+            self.evict_cache_lockfree();
         }
-        
+
         // Update stats
         {
             let mut stats = self.stats.write().unwrap();
             stats.writes += 1;
         }
-        
+
         // Check if memtable needs flushing
         let memtable_size = {
             let memtable = self.memtable.read().unwrap();
             memtable.len() * 1024 // Rough estimate
         };
-        
+
         if memtable_size > self.config.cache_size / 4 {
             self.flush_memtable()?;
         }
-        
+
         Ok(())
     }
-    
-    /// Get a value by key
+
+    /// Get a value by key with optimized cache access
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, QantoStorageError> {
-        // Check cache first
-        {
-            let mut cache = self.cache.write().unwrap();
-            if let Some(entry) = cache.get_mut(key) {
-                entry.last_accessed = SystemTime::now();
-                entry.access_count += 1;
-                
-                let mut stats = self.stats.write().unwrap();
-                stats.cache_hits += 1;
-                stats.reads += 1;
-                
-                return Ok(Some(entry.value.clone()));
-            }
+        // Check cache first using DashMap for lock-free read
+        if let Some(entry) = self.cache.get(key) {
+            entry.touch();
+
+            let mut stats = self.stats.write().unwrap();
+            stats.cache_hits += 1;
+            stats.reads += 1;
+
+            return Ok(Some(entry.value.clone()));
         }
-        
+
         // Check memtable
         {
             let memtable = self.memtable.read().unwrap();
             if let Some(value) = memtable.get(key) {
                 // Add to cache
-                let mut cache = self.cache.write().unwrap();
-                let entry = CacheEntry {
-                    value: value.clone(),
-                    last_accessed: SystemTime::now(),
-                    access_count: 1,
-                };
-                cache.insert(key.to_vec(), entry);
-                
+                let entry = CacheEntry::new(value.clone());
+                let value_size = key.len() + value.len();
+                self.cache.insert(key.to_vec(), entry);
+                self.cache_size.fetch_add(value_size, Ordering::Relaxed);
+
                 let mut stats = self.stats.write().unwrap();
                 stats.reads += 1;
-                
+
                 return Ok(Some(value.clone()));
             }
         }
-        
+
         // Check segments (newest first)
         {
             let mut segments = self.segments.write().unwrap();
             for segment in segments.iter_mut().rev() {
                 if let Some(value) = segment.get(key)? {
                     // Add to cache
-                    let mut cache = self.cache.write().unwrap();
-                    let entry = CacheEntry {
-                        value: value.clone(),
-                        last_accessed: SystemTime::now(),
-                        access_count: 1,
-                    };
-                    cache.insert(key.to_vec(), entry);
-                    
+                    let entry = CacheEntry::new(value.clone());
+                    let value_size = key.len() + value.len();
+                    self.cache.insert(key.to_vec(), entry);
+                    self.cache_size.fetch_add(value_size, Ordering::Relaxed);
+
                     let mut stats = self.stats.write().unwrap();
                     stats.cache_misses += 1;
                     stats.reads += 1;
-                    
+
                     return Ok(Some(value));
                 }
             }
         }
-        
+
         // Update stats
         {
             let mut stats = self.stats.write().unwrap();
             stats.cache_misses += 1;
             stats.reads += 1;
         }
-        
+
         Ok(None)
     }
-    
-    /// Delete a key
+
+    /// Delete a key with optimized cache removal
     pub fn delete(&self, key: &[u8]) -> Result<(), QantoStorageError> {
         // Log to WAL first
         if let Some(ref mut wal) = *self.wal.lock().unwrap() {
@@ -511,37 +630,78 @@ impl QantoStorage {
                 wal.sync()?;
             }
         }
-        
+
         // Remove from memtable
         {
             let mut memtable = self.memtable.write().unwrap();
             memtable.remove(key);
         }
-        
-        // Remove from cache
-        {
-            let mut cache = self.cache.write().unwrap();
-            cache.remove(key);
+
+        // Remove from cache and update size atomically
+        if let Some((_, entry)) = self.cache.remove(key) {
+            let value_size = key.len() + entry.value.len();
+            self.cache_size.fetch_sub(value_size, Ordering::Relaxed);
         }
-        
+
         // Update stats
         {
             let mut stats = self.stats.write().unwrap();
             stats.deletes += 1;
         }
-        
+
         Ok(())
     }
-    
+
+    /// Lock-free cache eviction using DashMap
+    fn evict_cache_lockfree(&self) {
+        let target_size = self.config.cache_size / 2;
+        let mut current_size = self.cache_size.load(Ordering::Relaxed);
+
+        if current_size <= target_size {
+            return;
+        }
+
+        // Collect entries for eviction (LRU-based)
+        let mut entries_to_evict = Vec::new();
+
+        for entry in self.cache.iter() {
+            let access_count = entry.access_count.load(Ordering::Relaxed);
+            let last_accessed = entry.last_accessed;
+
+            entries_to_evict.push((
+                entry.key().clone(),
+                access_count,
+                last_accessed,
+                entry.key().len() + entry.value.len(),
+            ));
+        }
+
+        // Sort by access count and last accessed time (LRU)
+        entries_to_evict.sort_by(|a, b| a.1.cmp(&b.1).then(a.2.cmp(&b.2)));
+
+        // Evict least recently used entries
+        for (key, _, _, size) in entries_to_evict {
+            if current_size <= target_size {
+                break;
+            }
+
+            if self.cache.remove(&key).is_some() {
+                current_size = self.cache_size.fetch_sub(size, Ordering::Relaxed) - size;
+            }
+        }
+    }
+
+    // ... (rest of the methods remain the same)
+
     /// Check if key exists
     pub fn contains_key(&self, key: &[u8]) -> Result<bool, QantoStorageError> {
         Ok(self.get(key)?.is_some())
     }
-    
+
     /// Get all keys with a prefix
     pub fn keys_with_prefix(&self, prefix: &[u8]) -> Result<Vec<Vec<u8>>, QantoStorageError> {
         let mut keys = HashSet::new();
-        
+
         // Check memtable
         {
             let memtable = self.memtable.read().unwrap();
@@ -551,7 +711,7 @@ impl QantoStorage {
                 }
             }
         }
-        
+
         // Check segments
         {
             let segments = self.segments.read().unwrap();
@@ -563,50 +723,50 @@ impl QantoStorage {
                 }
             }
         }
-        
+
         Ok(keys.into_iter().collect())
     }
-    
+
     /// Start a new transaction
     pub fn begin_transaction(&self) -> u64 {
-        let tx_id = self.next_transaction_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let tx_id = self.next_transaction_id.fetch_add(1, Ordering::SeqCst);
         let transaction = Transaction::new(tx_id);
-        
+
         {
             let mut transactions = self.active_transactions.write().unwrap();
             transactions.insert(tx_id, transaction);
         }
-        
+
         tx_id
     }
-    
+
     /// Commit a transaction
     pub fn commit_transaction(&self, tx_id: u64) -> Result<(), QantoStorageError> {
         let transaction = {
             let mut transactions = self.active_transactions.write().unwrap();
-            transactions.remove(&tx_id)
-                .ok_or_else(|| {
-                    let mut error_msg = String::with_capacity(30);
-                    error_msg.push_str("Transaction ");
-                    error_msg.push_str(&tx_id.to_string());
-                    error_msg.push_str(" not found");
-                    QantoStorageError::Transaction(error_msg)
-                })?
+            transactions.remove(&tx_id).ok_or_else(|| {
+                QantoStorageError::Transaction(format!("Transaction {tx_id} not found"))
+            })?
         };
-        
+
         // Log commit to WAL
         if let Some(ref mut wal) = *self.wal.lock().unwrap() {
-            let entry = LogEntry::Transaction { id: tx_id, entries: transaction.operations.clone() };
+            let entry = LogEntry::Transaction {
+                id: tx_id,
+                entries: transaction.operations.clone(),
+            };
             wal.append(&entry)?;
-            
-            let commit_entry = LogEntry::Commit { transaction_id: tx_id };
+
+            let commit_entry = LogEntry::Commit {
+                transaction_id: tx_id,
+            };
             wal.append(&commit_entry)?;
-            
+
             if self.config.sync_writes {
                 wal.sync()?;
             }
         }
-        
+
         // Apply operations
         for operation in transaction.operations {
             match operation {
@@ -619,61 +779,58 @@ impl QantoStorage {
                 _ => {}
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Rollback a transaction
     pub fn rollback_transaction(&self, tx_id: u64) -> Result<(), QantoStorageError> {
         {
             let mut transactions = self.active_transactions.write().unwrap();
-            transactions.remove(&tx_id)
-                .ok_or_else(|| {
-                    let mut error_msg = String::with_capacity(30);
-                    error_msg.push_str("Transaction ");
-                    error_msg.push_str(&tx_id.to_string());
-                    error_msg.push_str(" not found");
-                    QantoStorageError::Transaction(error_msg)
-                })?;
+            transactions.remove(&tx_id).ok_or_else(|| {
+                QantoStorageError::Transaction(format!("Transaction {tx_id} not found"))
+            })?;
         }
-        
+
         // Log rollback to WAL
         if let Some(ref mut wal) = *self.wal.lock().unwrap() {
-            let entry = LogEntry::Rollback { transaction_id: tx_id };
+            let entry = LogEntry::Rollback {
+                transaction_id: tx_id,
+            };
             wal.append(&entry)?;
             if self.config.sync_writes {
                 wal.sync()?;
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Get storage statistics
     pub fn stats(&self) -> StorageStats {
         self.stats.read().unwrap().clone()
     }
-    
+
     /// Flush memtable to disk
     pub fn flush(&self) -> Result<(), QantoStorageError> {
         self.flush_memtable()
     }
-    
+
     /// Compact storage segments
     pub fn compact(&self) -> Result<(), QantoStorageError> {
-        if self.compaction_in_progress.load(std::sync::atomic::Ordering::Acquire) {
+        if self.compaction_in_progress.load(Ordering::Acquire) {
             return Ok(()); // Already compacting
         }
-        
-        self.compaction_in_progress.store(true, std::sync::atomic::Ordering::Release);
-        
+
+        self.compaction_in_progress.store(true, Ordering::Release);
+
         let result = self.perform_compaction();
-        
-        self.compaction_in_progress.store(false, std::sync::atomic::Ordering::Release);
-        
+
+        self.compaction_in_progress.store(false, Ordering::Release);
+
         result
     }
-    
+
     /// Sync all data to disk
     pub fn sync(&self) -> Result<(), QantoStorageError> {
         if let Some(ref mut wal) = *self.wal.lock().unwrap() {
@@ -681,175 +838,174 @@ impl QantoStorage {
         }
         Ok(())
     }
-    
+
     /// Close the storage engine
     pub fn close(&self) -> Result<(), QantoStorageError> {
         // Flush memtable
         self.flush_memtable()?;
-        
+
         // Sync WAL
         if let Some(ref mut wal) = *self.wal.lock().unwrap() {
             wal.checkpoint()?;
         }
-        
+
         Ok(())
     }
-    
+
     // Private helper methods
-    
+
     fn load_segments(&self) -> Result<(), QantoStorageError> {
         if !self.config.data_dir.exists() {
             std::fs::create_dir_all(&self.config.data_dir)?;
             return Ok(());
         }
-        
+
         let mut segments = self.segments.write().unwrap();
         let mut loaded_segments = Vec::new();
-        
+
         // Scan data directory for segment files
         for entry in std::fs::read_dir(&self.config.data_dir)? {
             let entry = entry?;
             let path = entry.path();
-            
+
             if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
                 if filename.starts_with("segment_") && filename.ends_with(".qdb") {
                     // Extract segment ID from filename
-                    if let Some(id_str) = filename.strip_prefix("segment_").and_then(|s| s.strip_suffix(".qdb")) {
+                    if let Some(id_str) = filename
+                        .strip_prefix("segment_")
+                        .and_then(|s| s.strip_suffix(".qdb"))
+                    {
                         // Handle both regular and compacted segments
                         let id_part = if let Some(base) = id_str.strip_suffix("_compacted") {
                             base
                         } else {
                             id_str
                         };
-                        
+
                         if let Ok(segment_id) = id_part.parse::<u64>() {
                             let mut segment = StorageSegment::new(segment_id, path.clone());
-                            
+
                             // Load segment metadata and index
                             if let Err(e) = self.load_segment_index(&mut segment) {
-                                eprintln!("Warning: Failed to load segment {}: {}", segment_id, e);
+                                eprintln!("Warning: Failed to load segment {segment_id}: {e}");
                                 continue;
                             }
-                            
+
                             loaded_segments.push(segment);
-                            
+
                             // Update next segment ID
-                            let current_max = self.next_segment_id.load(std::sync::atomic::Ordering::SeqCst);
+                            let current_max = self.next_segment_id.load(Ordering::SeqCst);
                             if segment_id >= current_max {
-                                self.next_segment_id.store(segment_id + 1, std::sync::atomic::Ordering::SeqCst);
+                                self.next_segment_id.store(segment_id + 1, Ordering::SeqCst);
                             }
                         }
                     }
                 }
             }
         }
-        
+
         // Sort segments by ID
         loaded_segments.sort_by_key(|s| s.id);
-        
+
         // Update stats
         {
             let mut stats = self.stats.write().unwrap();
             stats.total_keys = loaded_segments.iter().map(|s| s.key_count).sum();
             stats.total_size = loaded_segments.iter().map(|s| s.size).sum();
         }
-        
+
         *segments = loaded_segments;
-        
+
         Ok(())
     }
-    
+
     fn load_segment_index(&self, segment: &mut StorageSegment) -> Result<(), QantoStorageError> {
         let mut file = BufReader::new(File::open(&segment.path)?);
-        
+
         // Read and verify header
         let mut magic = [0u8; 4];
         file.read_exact(&mut magic)?;
         if &magic != b"QSEG" {
-            return Err(QantoStorageError::Corruption("Invalid segment magic number".to_string()));
+            return Err(QantoStorageError::Corruption(
+                "Invalid segment magic number".to_string(),
+            ));
         }
-        
+
         let mut version_bytes = [0u8; 4];
         file.read_exact(&mut version_bytes)?;
         let version = u32::from_le_bytes(version_bytes);
         if version != 1 {
-            return Err(QantoStorageError::Corruption(format!("Unsupported segment version: {}", version)));
+            return Err(QantoStorageError::Corruption(format!(
+                "Unsupported segment version: {version}"
+            )));
         }
-        
+
         let mut count_bytes = [0u8; 4];
         file.read_exact(&mut count_bytes)?;
         let entry_count = u32::from_le_bytes(count_bytes) as u64;
-        
+
         // Build index by reading all entries
         let mut offset = 12u64; // Header size
         segment.index.clear();
-        
+
         for _ in 0..entry_count {
             // Read key length
             let mut key_len_bytes = [0u8; 4];
             file.read_exact(&mut key_len_bytes)?;
             let key_len = u32::from_le_bytes(key_len_bytes);
-            
+
             // Read key
             let mut key = vec![0u8; key_len as usize];
             file.read_exact(&mut key)?;
-            
+
             // Read value length
             let mut value_len_bytes = [0u8; 4];
             file.read_exact(&mut value_len_bytes)?;
             let value_len = u32::from_le_bytes(value_len_bytes);
-            
+
             // Skip value data
             file.seek(SeekFrom::Current(value_len as i64))?;
-            
+
             // Store index entry (offset points to value length field)
             let value_offset = offset + 4 + key_len as u64 + 4;
             segment.index.insert(key, (value_offset, value_len));
-            
+
             // Update offset for next entry
             offset += 4 + key_len as u64 + 4 + value_len as u64;
         }
-        
+
         segment.size = offset;
         segment.key_count = entry_count;
         segment.created_at = std::fs::metadata(&segment.path)?
             .created()
             .unwrap_or_else(|_| SystemTime::now());
-        
+
         Ok(())
     }
-    
+
     fn flush_memtable(&self) -> Result<(), QantoStorageError> {
         let memtable_data = {
             let mut memtable = self.memtable.write().unwrap();
             if memtable.is_empty() {
                 return Ok(());
             }
-            
+
             let data = memtable.clone();
             memtable.clear();
             data
         };
-        
+
         // Create new segment
-        let segment_id = self.next_segment_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let mut segment_filename = String::with_capacity(20);
-        segment_filename.push_str("segment_");
-        let id_str = segment_id.to_string();
-        let padding = 6_usize.saturating_sub(id_str.len());
-        for _ in 0..padding {
-            segment_filename.push('0');
-        }
-        segment_filename.push_str(&id_str);
-        segment_filename.push_str(".qdb");
+        let segment_id = self.next_segment_id.fetch_add(1, Ordering::SeqCst);
+        let segment_filename = format!("segment_{segment_id:06}.qdb");
         let segment_path = self.config.data_dir.join(segment_filename);
-        
+
         // Write segment to disk
         self.write_segment(&segment_path, &memtable_data)?;
-        
+
         // Add to segments list
         let mut segment = StorageSegment::new(segment_id, segment_path.clone());
-        
+
         // Build proper index with correct offsets and lengths
         let mut offset = 12u64; // Skip header (magic + version + count)
         for (key, value) in &memtable_data {
@@ -858,35 +1014,41 @@ impl QantoStorage {
             } else {
                 value.clone()
             };
-            
+
             // Calculate value offset (after key length + key + value length)
             let value_offset = offset + 4 + key.len() as u64 + 4;
-            segment.index.insert(key.clone(), (value_offset, compressed_value.len() as u32));
-            
+            segment
+                .index
+                .insert(key.clone(), (value_offset, compressed_value.len() as u32));
+
             // Update offset for next entry
             offset += 4 + key.len() as u64 + 4 + compressed_value.len() as u64;
         }
-        
+
         segment.size = offset;
         segment.key_count = memtable_data.len() as u64;
         segment.created_at = SystemTime::now();
-        
+
         {
             let mut segments = self.segments.write().unwrap();
             segments.push(segment);
         }
-        
+
         Ok(())
     }
-    
-    fn write_segment(&self, path: &Path, data: &BTreeMap<Vec<u8>, Vec<u8>>) -> Result<(), QantoStorageError> {
+
+    fn write_segment(
+        &self,
+        path: &Path,
+        data: &BTreeMap<Vec<u8>, Vec<u8>>,
+    ) -> Result<(), QantoStorageError> {
         let mut file = BufWriter::new(File::create(path)?);
-        
+
         // Write header
         file.write_all(b"QSEG")?; // Magic number
         file.write_all(&1u32.to_le_bytes())?; // Version
         file.write_all(&(data.len() as u32).to_le_bytes())?; // Entry count
-        
+
         // Write entries
         for (key, value) in data {
             // Compress value if enabled
@@ -895,36 +1057,38 @@ impl QantoStorage {
             } else {
                 value.clone()
             };
-            
+
             // Write key length + key
             file.write_all(&(key.len() as u32).to_le_bytes())?;
             file.write_all(key)?;
-            
+
             // Write value length + value
             file.write_all(&(compressed_value.len() as u32).to_le_bytes())?;
             file.write_all(&compressed_value)?;
         }
-        
+
         file.flush()?;
-        file.into_inner()?.sync_all()?;
-        
+        file.into_inner()
+            .map_err(|e| QantoStorageError::Io(e.into_error()))?
+            .sync_all()?;
+
         Ok(())
     }
-    
+
     fn compress(&self, data: &[u8]) -> Result<Vec<u8>, QantoStorageError> {
         if !self.config.compression_enabled {
             return Ok(data.to_vec());
         }
-        
+
         // LZ4-style compression implementation
         let mut compressed = Vec::with_capacity(data.len() + 8);
         compressed.extend_from_slice(b"QCMP"); // Magic header
         compressed.extend_from_slice(&(data.len() as u32).to_le_bytes()); // Original size
-        
+
         // Simple LZ4-like compression algorithm
         let mut pos = 0;
         let mut hash_table = vec![0u16; 4096]; // Hash table for finding matches
-        
+
         while pos < data.len() {
             let remaining = data.len() - pos;
             if remaining < 4 {
@@ -933,25 +1097,27 @@ impl QantoStorage {
                 compressed.extend_from_slice(&data[pos..]);
                 break;
             }
-            
+
             // Calculate hash for current 4-byte sequence
-            let hash = ((data[pos] as u32) << 24 |
-                       (data[pos + 1] as u32) << 16 |
-                       (data[pos + 2] as u32) << 8 |
-                       (data[pos + 3] as u32)) % 4096;
-            
+            let hash = ((data[pos] as u32) << 24
+                | (data[pos + 1] as u32) << 16
+                | (data[pos + 2] as u32) << 8
+                | (data[pos + 3] as u32))
+                % 4096;
+
             let match_pos = hash_table[hash as usize] as usize;
             hash_table[hash as usize] = pos as u16;
-            
+
             // Check for match
             if match_pos > 0 && pos > match_pos && (pos - match_pos) < 65536 {
                 let mut match_len = 0;
-                while match_len < remaining.min(255) &&
-                      match_pos + match_len < pos &&
-                      data[match_pos + match_len] == data[pos + match_len] {
+                while match_len < remaining.min(255)
+                    && match_pos + match_len < pos
+                    && data[match_pos + match_len] == data[pos + match_len]
+                {
                     match_len += 1;
                 }
-                
+
                 if match_len >= 4 {
                     // Encode match: distance (2 bytes) + length (1 byte)
                     let distance = (pos - match_pos) as u16;
@@ -961,141 +1127,136 @@ impl QantoStorage {
                     continue;
                 }
             }
-            
+
             // No match found, encode literal
             let mut literal_len = 1;
             let literal_start = pos;
             pos += 1;
-            
+
             // Collect consecutive literals
             while pos < data.len() && literal_len < 127 {
                 let hash = if pos + 3 < data.len() {
-                    ((data[pos] as u32) << 24 |
-                     (data[pos + 1] as u32) << 16 |
-                     (data[pos + 2] as u32) << 8 |
-                     (data[pos + 3] as u32)) % 4096
-                } else { 0 };
-                
+                    ((data[pos] as u32) << 24
+                        | (data[pos + 1] as u32) << 16
+                        | (data[pos + 2] as u32) << 8
+                        | (data[pos + 3] as u32))
+                        % 4096
+                } else {
+                    0
+                };
+
                 let match_pos = hash_table[hash as usize] as usize;
                 if match_pos > 0 && pos > match_pos && (pos - match_pos) < 65536 {
                     break; // Found potential match, stop collecting literals
                 }
-                
+
                 literal_len += 1;
                 pos += 1;
             }
-            
+
             // Encode literals: length + data
             compressed.push(literal_len as u8);
             compressed.extend_from_slice(&data[literal_start..literal_start + literal_len]);
         }
-        
+
         Ok(compressed)
     }
-    
-    fn evict_cache(&self, cache: &mut HashMap<Vec<u8>, CacheEntry>) {
-        // Simple LRU eviction
-        let target_size = self.config.cache_size / 2;
-        
-        let mut entries: Vec<_> = cache.iter().collect();
-        entries.sort_by_key(|(_, entry)| entry.last_accessed);
-        
-        let mut current_size = cache.len() * 1024; // Rough estimate
-        for (key, _) in entries {
-            if current_size <= target_size {
-                break;
-            }
-            cache.remove(key);
-            current_size -= 1024;
-        }
-    }
-    
+
     fn perform_compaction(&self) -> Result<(), QantoStorageError> {
-        if self.compaction_in_progress.load(std::sync::atomic::Ordering::Acquire) {
+        if self.compaction_in_progress.load(Ordering::Acquire) {
             return Ok(()); // Compaction already in progress
         }
-        
-        self.compaction_in_progress.store(true, std::sync::atomic::Ordering::Release);
-        
+
+        self.compaction_in_progress.store(true, Ordering::Release);
+
         let result = self.do_compaction();
-        
-        self.compaction_in_progress.store(false, std::sync::atomic::Ordering::Release);
-        
+
+        self.compaction_in_progress.store(false, Ordering::Release);
+
         result
     }
-    
+
     fn do_compaction(&self) -> Result<(), QantoStorageError> {
         let segments_to_compact = {
             let segments = self.segments.read().unwrap();
             if segments.len() < 2 {
                 return Ok(()); // Need at least 2 segments to compact
             }
-            
+
             // Select segments for compaction (oldest segments first)
-            let mut candidates: Vec<_> = segments.iter()
+            let mut candidates: Vec<_> = segments
+                .iter()
                 .enumerate()
                 .map(|(idx, seg)| (idx, seg.id, seg.size, seg.key_count))
                 .collect();
-            
+
             candidates.sort_by_key(|(_, _, _, key_count)| *key_count);
-            
+
             // Compact segments with low key density or small segments
             let mut to_compact = Vec::new();
             let mut total_size = 0u64;
-            
+
             for (idx, id, size, key_count) in candidates {
-                let density = if size > 0 { key_count as f64 / size as f64 } else { 0.0 };
-                
-                if density < self.config.compaction_threshold || size < self.config.max_file_size / 4 {
+                let density = if size > 0 {
+                    key_count as f64 / size as f64
+                } else {
+                    0.0
+                };
+
+                if density < self.config.compaction_threshold
+                    || size < self.config.max_file_size / 4
+                {
                     to_compact.push((idx, id));
                     total_size += size;
-                    
+
                     if to_compact.len() >= 4 || total_size > self.config.max_file_size {
                         break;
                     }
                 }
             }
-            
+
             to_compact
         };
-        
+
         if segments_to_compact.is_empty() {
             return Ok(());
         }
-        
+
         // Collect all key-value pairs from segments to compact
         let mut merged_data = BTreeMap::new();
         let mut segments_to_remove = Vec::new();
-        
+
         {
             let mut segments = self.segments.write().unwrap();
-            
+
             for (idx, _) in segments_to_compact.iter().rev() {
                 let mut segment = segments.remove(*idx);
                 segments_to_remove.push(segment.path.clone());
-                
+
                 // Read all data from this segment
                 segment.open()?;
-                for key in segment.keys() {
-                    if let Some(value) = segment.get(key)? {
-                        merged_data.insert(key.clone(), value);
+                // Collect keys first to avoid borrowing issues
+                let keys: Vec<Vec<u8>> = segment.keys().cloned().collect();
+                for key in keys {
+                    if let Some(value) = segment.get(&key)? {
+                        merged_data.insert(key, value);
                     }
                 }
             }
         }
-        
+
         // Create new compacted segment
         if !merged_data.is_empty() {
-            let segment_id = self.next_segment_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            let segment_filename = format!("segment_{:06}_compacted.qdb", segment_id);
+            let segment_id = self.next_segment_id.fetch_add(1, Ordering::SeqCst);
+            let segment_filename = format!("segment_{segment_id:06}_compacted.qdb");
             let segment_path = self.config.data_dir.join(segment_filename);
-            
+
             // Write merged data to new segment
             self.write_segment(&segment_path, &merged_data)?;
-            
+
             // Create new segment entry
             let mut new_segment = StorageSegment::new(segment_id, segment_path);
-            
+
             // Build index for new segment
             let mut offset = 12; // Skip header
             for (key, value) in &merged_data {
@@ -1104,106 +1265,45 @@ impl QantoStorage {
                 } else {
                     value.clone()
                 };
-                
-                new_segment.index.insert(key.clone(), (offset, compressed_value.len() as u32));
+
+                new_segment
+                    .index
+                    .insert(key.clone(), (offset, compressed_value.len() as u32));
                 offset += 4 + key.len() as u64 + 4 + compressed_value.len() as u64;
             }
-            
+
             new_segment.size = offset;
             new_segment.key_count = merged_data.len() as u64;
-            
+
             // Add new segment to segments list
             {
                 let mut segments = self.segments.write().unwrap();
                 segments.push(new_segment);
-                
+
                 // Sort segments by ID to maintain order
                 segments.sort_by_key(|s| s.id);
             }
         }
-        
+
         // Clean up old segment files
         for path in segments_to_remove {
             if let Err(e) = std::fs::remove_file(&path) {
-                eprintln!("Warning: Failed to remove old segment file {:?}: {}", path, e);
+                eprintln!("Warning: Failed to remove old segment file {path:?}: {e}");
             }
         }
-        
+
         // Update stats
         {
             let mut stats = self.stats.write().unwrap();
             stats.compactions += 1;
             stats.total_keys = merged_data.len() as u64;
-            
+
             // Recalculate total size
             let segments = self.segments.read().unwrap();
             stats.total_size = segments.iter().map(|s| s.size).sum();
         }
-        
+
         Ok(())
-    }
-}
-
-/// Iterator over storage entries
-pub struct StorageIterator<'a> {
-    storage: &'a QantoStorage,
-    current_key: Option<Vec<u8>>,
-    prefix: Option<Vec<u8>>,
-}
-
-impl<'a> StorageIterator<'a> {
-    pub fn new(storage: &'a QantoStorage) -> Self {
-        Self {
-            storage,
-            current_key: None,
-            prefix: None,
-        }
-    }
-    
-    pub fn with_prefix(storage: &'a QantoStorage, prefix: Vec<u8>) -> Self {
-        Self {
-            storage,
-            current_key: None,
-            prefix: Some(prefix),
-        }
-    }
-}
-
-impl<'a> Iterator for StorageIterator<'a> {
-    type Item = Result<(Vec<u8>, Vec<u8>), QantoStorageError>;
-    
-    fn next(&mut self) -> Option<Self::Item> {
-        let segments = self.storage.segments.read().unwrap();
-        let mut seg_iters: Vec<_> = segments.iter().rev().map(|seg| seg.index.range(self.prefix.as_ref().map_or(.., |p| p..)).map(|(k, _)| k.clone())).collect();
-        loop {
-            let mut min_key = None;
-            let mut min_iter_idx = None;
-            for (idx, iter) in seg_iters.iter_mut().enumerate() {
-                if let Some(key) = iter.next() {
-                    if min_key.is_none() || key < min_key.as_ref().unwrap() {
-                        min_key = Some(key);
-                        min_iter_idx = Some(idx);
-                    }
-                }
-            }
-            if let Some(key) = min_key {
-                // Check if this key is deleted in newer segments or get value from newest
-                for seg in segments.iter().rev() {
-                    if let Some((offset, len)) = seg.index.get(&key) {
-                        // Assuming deletions are tombstones; if value is empty, it's deleted
-                        let value = seg.get(&key).unwrap().unwrap_or(vec![]);
-                        if !value.is_empty() {
-                            self.current_key = Some(key.clone());
-                            return Some(Ok((key, value)));
-                        } else {
-                            break; // Deleted, skip to next
-                        }
-                    }
-                }
-            } else {
-                return None;
-            }
-        }
     }
 }
 
@@ -1212,29 +1312,35 @@ pub struct WriteBatch {
     operations: Vec<LogEntry>,
 }
 
+impl Default for WriteBatch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WriteBatch {
     pub fn new() -> Self {
         Self {
             operations: Vec::new(),
         }
     }
-    
+
     pub fn put(&mut self, key: Vec<u8>, value: Vec<u8>) {
         self.operations.push(LogEntry::Put { key, value });
     }
-    
+
     pub fn delete(&mut self, key: Vec<u8>) {
         self.operations.push(LogEntry::Delete { key });
     }
-    
+
     pub fn clear(&mut self) {
         self.operations.clear();
     }
-    
+
     pub fn len(&self) -> usize {
         self.operations.len()
     }
-    
+
     pub fn is_empty(&self) -> bool {
         self.operations.is_empty()
     }
@@ -1246,19 +1352,22 @@ impl QantoStorage {
         if batch.is_empty() {
             return Ok(());
         }
-        
+
         // Use transaction for atomicity
         let tx_id = self.begin_transaction();
-        
+
         // Log all operations to WAL first
         if let Some(ref mut wal) = *self.wal.lock().unwrap() {
-            let entry = LogEntry::Transaction { id: tx_id, entries: batch.operations.clone() };
+            let entry = LogEntry::Transaction {
+                id: tx_id,
+                entries: batch.operations.clone(),
+            };
             wal.append(&entry)?;
             if self.config.sync_writes {
                 wal.sync()?;
             }
         }
-        
+
         // Apply operations
         for operation in batch.operations {
             match operation {
@@ -1271,7 +1380,7 @@ impl QantoStorage {
                 _ => {}
             }
         }
-        
+
         self.commit_transaction(tx_id)
     }
 }
@@ -1279,8 +1388,9 @@ impl QantoStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use tempfile::TempDir;
-    
+
     fn test_config() -> StorageConfig {
         let temp_dir = TempDir::new().unwrap();
         StorageConfig {
@@ -1288,64 +1398,70 @@ mod tests {
             ..Default::default()
         }
     }
-    
+
     #[test]
     fn test_basic_operations() {
         let config = test_config();
         let storage = QantoStorage::new(config).unwrap();
-        
+
         // Test put and get
         let key = b"test_key".to_vec();
         let value = b"test_value".to_vec();
-        
+
         storage.put(key.clone(), value.clone()).unwrap();
         let retrieved = storage.get(&key).unwrap();
         assert_eq!(retrieved, Some(value));
-        
+
         // Test delete
         storage.delete(&key).unwrap();
         let retrieved = storage.get(&key).unwrap();
         assert_eq!(retrieved, None);
     }
-    
+
     #[test]
     fn test_transactions() {
         let config = test_config();
         let storage = QantoStorage::new(config).unwrap();
-        
+
         let tx_id = storage.begin_transaction();
-        
+
         // Transaction operations would go here
         // For now, just test commit/rollback
-        
+
         storage.commit_transaction(tx_id).unwrap();
     }
-    
+
     #[test]
     fn test_batch_operations() {
         let config = test_config();
         let storage = QantoStorage::new(config).unwrap();
-        
+
         let mut batch = WriteBatch::new();
         batch.put(b"key1".to_vec(), b"value1".to_vec());
         batch.put(b"key2".to_vec(), b"value2".to_vec());
         batch.delete(b"key3".to_vec());
-        
+
         storage.write_batch(batch).unwrap();
-        
+
         assert_eq!(storage.get(b"key1").unwrap(), Some(b"value1".to_vec()));
         assert_eq!(storage.get(b"key2").unwrap(), Some(b"value2".to_vec()));
     }
-    
+
     #[test]
     fn test_prefix_search() {
         let config = test_config();
         let storage = QantoStorage::new(config).unwrap();
-        
-        storage.put(b"prefix_key1".to_vec(), b"value1".to_vec()).unwrap();
-        storage.put(b"prefix_key2".to_vec(), b"value2".to_vec()).unwrap();
-        storage.put(b"other_key".to_vec(), b"value3".to_vec()).unwrap();
-        
+
+        storage
+            .put(b"prefix_key1".to_vec(), b"value1".to_vec())
+            .unwrap();
+        storage
+            .put(b"prefix_key2".to_vec(), b"value2".to_vec())
+            .unwrap();
+        storage
+            .put(b"other_key".to_vec(), b"value3".to_vec())
+            .unwrap();
+
         let keys = storage.keys_with_prefix(b"prefix_").unwrap();
         assert_eq!(keys.len(), 2);
     }

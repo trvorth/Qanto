@@ -9,11 +9,12 @@
 //!   fixed-point number for precise, deterministic calculations across all nodes.
 //! - OPTIMIZATION: Enhanced the internal `U256` division logic for efficiency.
 
+use crate::mining_celebration::{celebrate_mining_success, MiningCelebrationParams};
 use crate::qantodag::{QantoBlock, QantoDAG};
 use anyhow::Result;
 use hex;
 use my_blockchain::qanhash::{MiningConfig, MiningDevice, QanhashMiner};
-use my_blockchain::QantoHash;
+use my_blockchain::qanto_standalone::hash::QantoHash;
 use rand::Rng;
 use rayon::prelude::*;
 use regex::Regex;
@@ -22,7 +23,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use thiserror::Error;
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, info, warn};
 
 #[derive(Error, Debug)]
 pub enum MiningError {
@@ -187,8 +188,18 @@ impl U256 {
     }
 }
 
+#[derive(Clone)]
+struct MiningContext {
+    block_template: QantoBlock,
+    target_hash_value: Vec<u8>,
+    cancellation_token: tokio_util::sync::CancellationToken,
+    found_signal: Arc<AtomicBool>,
+    hashes_tried: Arc<AtomicU64>,
+    start_time: SystemTime,
+    timeout_duration: Duration,
+}
+
 impl Miner {
-    #[instrument]
     pub fn new(config: MinerConfig) -> Result<Self> {
         let address_regex = Regex::new(r"^[0-9a-fA-F]{64}$")?;
         if !address_regex.is_match(&config.address) {
@@ -208,18 +219,12 @@ impl Miner {
         }
 
         // Configure QanHash miner with optimal settings for high throughput
-        let mining_device = if effective_use_gpu {
-            #[cfg(feature = "gpu")]
-            {
-                MiningDevice::Gpu
-            }
-            #[cfg(not(feature = "gpu"))]
-            {
-                MiningDevice::Cpu
-            }
-        } else {
-            MiningDevice::Cpu
-        };
+        // Force CPU-only mining to avoid GPU initialization hang during development
+        let mining_device = MiningDevice::Cpu;
+
+        if effective_use_gpu {
+            warn!("GPU mining requested but disabled for development to avoid initialization hang");
+        }
 
         let qanhash_config = MiningConfig {
             device: mining_device,
@@ -245,7 +250,6 @@ impl Miner {
     /// Solves the Proof-of-Work for a given block template by finding a valid nonce.
     /// This is the primary mining function called by the node's mining loop.
     /// It modifies the block in-place with the found nonce and effort.
-    #[instrument(skip(self, block_template))]
     pub fn solve_pow(&self, block_template: &mut QantoBlock) -> Result<(), MiningError> {
         self.log_mining_start(block_template);
 
@@ -362,6 +366,27 @@ impl Miner {
                 block_template.id, found_nonce, effort
             );
 
+            // Use the detailed mining celebration with proper parameters
+            let _mining_time = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or_default();
+
+            let celebration_params = MiningCelebrationParams {
+                block_height: block_template.height,
+                block_hash: hex::encode(&final_hash[..8]), // First 8 bytes as hex
+                nonce: found_nonce,
+                difficulty: 1000.0, // Default difficulty for display
+                transactions_count: block_template.transactions.len(),
+                mining_time: Duration::from_secs(30), // Approximate mining time
+                effort,
+                total_blocks_mined: 1,
+                chain_id: 0,
+                block_reward: 50_000_000_000, // 50 QNTO in smallest units (corrected)
+                compact: false,
+            };
+
+            celebrate_mining_success(celebration_params);
+
             Ok(())
         } else {
             Err(MiningError::TimeoutOrCancelled)
@@ -370,7 +395,6 @@ impl Miner {
 
     /// Solves the Proof-of-Work with cancellation support.
     /// This version accepts a cancellation token that allows graceful shutdown.
-    #[instrument(skip(self, block_template, cancellation_token))]
     pub fn solve_pow_with_cancellation(
         &self,
         block_template: &mut QantoBlock,
@@ -439,9 +463,9 @@ impl Miner {
             self.threads
         );
         // Implement dynamic thread adjustment for CPU optimization
-let available_cores = num_cpus::get() as usize;
-let dynamic_threads = (available_cores as f64 * 0.75).ceil() as usize; // Use 75% of cores to reduce load
-let thread_pool = rayon::ThreadPoolBuilder::new()
+        let available_cores = num_cpus::get();
+        let dynamic_threads = (available_cores as f64 * 0.75).ceil() as usize; // Use 75% of cores to reduce load
+        let thread_pool = rayon::ThreadPoolBuilder::new()
             .num_threads(dynamic_threads.min(self.threads))
             .build()?;
         let found_signal = Arc::new(AtomicBool::new(false));
@@ -461,13 +485,15 @@ let thread_pool = rayon::ThreadPoolBuilder::new()
                 .find_map_any(|current_nonce| {
                     self.try_nonce(
                         current_nonce,
-                        block_template,
-                        target_hash_value,
-                        &cancellation_token,
-                        &found_signal,
-                        &hashes_tried,
-                        start_time,
-                        timeout_duration,
+                        &MiningContext {
+                            block_template: block_template.clone(),
+                            target_hash_value: target_hash_value.to_vec(),
+                            cancellation_token: cancellation_token.clone(),
+                            found_signal: found_signal.clone(),
+                            hashes_tried: hashes_tried.clone(),
+                            start_time,
+                            timeout_duration,
+                        },
                     )
                 })
         });
@@ -476,38 +502,39 @@ let thread_pool = rayon::ThreadPoolBuilder::new()
         Ok(result.map(|nonce| (nonce, final_hash_count)))
     }
 
-    fn try_nonce(
-        &self,
-        current_nonce: u64,
-        block_template: &QantoBlock,
-        target_hash_value: &[u8],
-        cancellation_token: &tokio_util::sync::CancellationToken,
-        found_signal: &Arc<AtomicBool>,
-        hashes_tried: &Arc<AtomicU64>,
-        start_time: SystemTime,
-        timeout_duration: Duration,
-    ) -> Option<u64> {
+    fn try_nonce(&self, current_nonce: u64, context: &MiningContext) -> Option<u64> {
         // Check for cancellation
-        if self.should_stop_mining(cancellation_token, found_signal) {
+        if self.should_stop_mining(&context.cancellation_token, &context.found_signal) {
             return None;
         }
 
-        let count = hashes_tried.fetch_add(1, Ordering::Relaxed);
+        let count = context.hashes_tried.fetch_add(1, Ordering::Relaxed);
 
         // Periodic checks for cancellation and timeout
         if self.should_check_cancellation(count)
-            && self.handle_cancellation_check(cancellation_token, found_signal) {
-                return None;
-            }
+            && self.handle_cancellation_check(&context.cancellation_token, &context.found_signal)
+        {
+            return None;
+        }
 
         if self.should_check_timeout(count)
-            && self.handle_timeout_check(start_time, timeout_duration, found_signal, count) {
-                return None;
-            }
+            && self.handle_timeout_check(
+                context.start_time,
+                context.timeout_duration,
+                &context.found_signal,
+                count,
+            )
+        {
+            return None;
+        }
 
         // Try the nonce
-        if self.test_nonce(current_nonce, block_template, target_hash_value) {
-            found_signal.store(true, Ordering::Relaxed);
+        if self.test_nonce(
+            current_nonce,
+            &context.block_template,
+            &context.target_hash_value,
+        ) {
+            context.found_signal.store(true, Ordering::Relaxed);
             return Some(current_nonce);
         }
 
@@ -614,4 +641,6 @@ let thread_pool = rayon::ThreadPoolBuilder::new()
     pub fn hash_meets_target(hash_bytes: &[u8], target_bytes: &[u8]) -> bool {
         hash_bytes <= target_bytes
     }
+
+    // Mining celebration is now handled by the mining_celebration module
 }

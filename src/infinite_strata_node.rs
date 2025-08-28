@@ -1,5 +1,5 @@
 //! --- SAGA Titan (Infinite Strata Node Module) ---
-//! v2.0.0 - Production-Grade Refactor
+//! v2.1.0 - Production-Grade Refactor
 //! This version has been completely rewritten to be a robust, standalone, and
 //! decentralized component suitable for a production environment. It addresses
 //! logical flaws in state management and prepares the system for high-throughput
@@ -15,12 +15,12 @@
 //!   environment. The reward multiplier is cached between checks to reduce overhead.
 //! - CONFIGURABILITY: Node configuration is expanded for fine-tuning in production.
 
+use crate::post_quantum_crypto::{generate_pq_keypair, pq_sign, pq_verify};
+use crate::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature};
 use anyhow::{anyhow, Result};
 use my_blockchain::qanto_hash;
 use num_bigint::BigUint;
 use num_traits::One;
-use pqcrypto_mldsa::mldsa65 as dilithium5;
-use pqcrypto_traits::sign::{PublicKey, SecretKey, SignedMessage};
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -33,7 +33,7 @@ use std::{
 };
 use sysinfo::System;
 use tokio::sync::RwLock;
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 // --- Constants ---
@@ -69,8 +69,8 @@ pub struct MultiSignatureProof {
 /// Sophisticated key management with rotation support
 #[derive(Debug, Clone)]
 pub struct QuantumResistantKeyManager {
-    current_keypair: (dilithium5::PublicKey, dilithium5::SecretKey),
-    previous_keypair: Option<(dilithium5::PublicKey, dilithium5::SecretKey)>,
+    current_keypair: (QantoPQPublicKey, QantoPQPrivateKey),
+    previous_keypair: Option<(QantoPQPublicKey, QantoPQPrivateKey)>,
     rotation_epoch: u64,
     key_derivation_path: Vec<u32>,
     #[allow(dead_code)]
@@ -78,7 +78,7 @@ pub struct QuantumResistantKeyManager {
 }
 
 impl QuantumResistantKeyManager {
-    pub fn new(pk: dilithium5::PublicKey, sk: dilithium5::SecretKey) -> Self {
+    pub fn new(pk: QantoPQPublicKey, sk: QantoPQPrivateKey) -> Self {
         // Generate master seed hash for deterministic key derivation
         let master_seed = qanto_hash(sk.as_bytes()).as_bytes().to_vec();
 
@@ -92,27 +92,27 @@ impl QuantumResistantKeyManager {
     }
 
     /// Rotate to a new key pair while keeping the previous for verification
-    pub fn rotate_keys(&mut self) -> (dilithium5::PublicKey, dilithium5::SecretKey) {
-        self.previous_keypair = Some(self.current_keypair);
-        let (new_pk, new_sk) = dilithium5::keypair();
-        self.current_keypair = (new_pk, new_sk);
+    pub fn rotate_keys(&mut self) -> (QantoPQPublicKey, QantoPQPrivateKey) {
+        self.previous_keypair = Some(self.current_keypair.clone());
+        let (new_pk, new_sk) = generate_pq_keypair(None).unwrap();
+        self.current_keypair = (new_pk.clone(), new_sk.clone());
         self.rotation_epoch += 1;
         self.key_derivation_path[2] = self.rotation_epoch as u32;
         (new_pk, new_sk)
     }
 
     /// Verify a signature against current or previous public key
-    pub fn verify_with_rotation(&self, _message: &[u8], signature: &[u8]) -> Result<bool> {
-        let signed_msg = dilithium5::SignedMessage::from_bytes(signature)?;
+    pub fn verify_with_rotation(&self, message: &[u8], signature: &[u8]) -> Result<bool> {
+        let sig = QantoPQSignature::from_bytes(signature)?;
 
         // Try current key first
-        if dilithium5::open(&signed_msg, &self.current_keypair.0).is_ok() {
+        if pq_verify(&self.current_keypair.0, message, &sig).unwrap_or(false) {
             return Ok(true);
         }
 
         // Try previous key if exists (for transition period)
         if let Some((prev_pk, _)) = &self.previous_keypair {
-            if dilithium5::open(&signed_msg, prev_pk).is_ok() {
+            if pq_verify(prev_pk, message, &sig).unwrap_or(false) {
                 return Ok(true);
             }
         }
@@ -200,8 +200,8 @@ pub struct InfiniteStrataNode {
     pub node_id: String,
     config: Arc<RwLock<NodeConfig>>,
     credits: AtomicU64,
-    signing_key: dilithium5::SecretKey,
-    public_key: dilithium5::PublicKey,
+    signing_key: QantoPQPrivateKey,
+    public_key: QantoPQPublicKey,
     // Quantum-resistant key management - now active for production security
     pub key_manager: Arc<RwLock<QuantumResistantKeyManager>>,
     oracle_aggregator: Arc<DecentralizedOracleAggregator>,
@@ -233,15 +233,15 @@ impl MerkleTree {
             let mut next_level = Vec::new();
 
             for chunk in current_level.chunks(2) {
-                let mut hash_data = Vec::new();
-                hash_data.extend_from_slice(&chunk[0]);
+                let mut data_to_hash = Vec::new();
+                data_to_hash.extend_from_slice(&chunk[0]);
                 if chunk.len() > 1 {
-                    hash_data.extend_from_slice(&chunk[1]);
+                    data_to_hash.extend_from_slice(&chunk[1]);
                 } else {
                     // Duplicate last node if odd number
-                    hash_data.extend_from_slice(&chunk[0]);
+                    data_to_hash.extend_from_slice(&chunk[0]);
                 }
-                next_level.push(qanto_hash(&hash_data).as_bytes().to_vec());
+                next_level.push(qanto_hash(&data_to_hash).as_bytes().to_vec());
             }
 
             tree.push(next_level.clone());
@@ -258,7 +258,11 @@ impl MerkleTree {
         let mut index = leaf_index;
 
         for level in &self.tree[..self.tree.len() - 1] {
-            let sibling_index = if index % 2 == 0 { index + 1 } else { index - 1 };
+            let sibling_index = if index % 2 == 0 {
+                index + 1
+            } else {
+                index - 1
+            };
             if sibling_index < level.len() {
                 proof.push(level[sibling_index].clone());
             }
@@ -273,15 +277,15 @@ impl MerkleTree {
         let mut index = leaf_index;
 
         for sibling in proof {
-            let mut hash_data = Vec::new();
+            let mut data_to_hash = Vec::new();
             if index % 2 == 0 {
-                hash_data.extend_from_slice(&current_hash);
-                hash_data.extend_from_slice(sibling);
+                data_to_hash.extend_from_slice(&current_hash);
+                data_to_hash.extend_from_slice(sibling);
             } else {
-                hash_data.extend_from_slice(sibling);
-                hash_data.extend_from_slice(&current_hash);
+                data_to_hash.extend_from_slice(sibling);
+                data_to_hash.extend_from_slice(&current_hash);
             }
-            current_hash = qanto_hash(&hash_data).as_bytes().to_vec();
+            current_hash = qanto_hash(&data_to_hash).as_bytes().to_vec();
             index /= 2;
         }
 
@@ -318,35 +322,37 @@ impl Default for VDFState {
 }
 
 impl VDFState {
-    /// Compute VDF with Wesolowski proof for time-locked consensus
-    pub fn compute(&mut self, input: &[u8], time_parameter: u64) -> Vec<u8> {
-        let adjusted_time = time_parameter.saturating_mul(self.difficulty_factor.max(1));
-
-        // Convert input to BigUint for modular exponentiation
+    /// Performs the heavy VDF computation. This is a pure function designed to be run in a blocking context.
+    fn run_computation_blocking(
+        input: &[u8],
+        time_parameter: u64,
+        difficulty_factor: u64,
+        modulus: &BigUint,
+    ) -> (Vec<u8>, u64, Vec<u8>) {
+        let adjusted_time = time_parameter.saturating_mul(difficulty_factor.max(1));
         let input_hash = qanto_hash(input);
-        let x = BigUint::from_bytes_be(input_hash.as_bytes()) % &self.modulus;
+        let x = BigUint::from_bytes_be(input_hash.as_bytes()) % modulus;
 
-        // Compute y = x^(2^T) mod N (sequential squaring)
+        // The CPU-intensive loop
         let mut y = x.clone();
         for _ in 0..adjusted_time {
-            y = (&y * &y) % &self.modulus;
+            y = (&y * &y) % modulus;
         }
+        let output = y.to_bytes_be();
+        let proof = Self::generate_wesolowski_proof_static(&x, &y, adjusted_time, modulus);
 
-        self.current_output = y.to_bytes_be();
-        self.iterations = adjusted_time;
-
-        // Generate Wesolowski proof
-        self.proof = self.generate_wesolowski_proof(&x, &y, adjusted_time);
-
-        self.current_output.clone()
+        (output, adjusted_time, proof)
     }
-
-    /// Generate Wesolowski proof for VDF computation
-    fn generate_wesolowski_proof(&self, x: &BigUint, y: &BigUint, t: u64) -> Vec<u8> {
+    
+    /// A static version of the proof generation for use in a blocking context.
+    fn generate_wesolowski_proof_static(
+        x: &BigUint,
+        y: &BigUint,
+        t: u64,
+        modulus: &BigUint,
+    ) -> Vec<u8> {
         // Simplified Wesolowski proof generation
         // In production, this would use proper Fiat-Shamir heuristic
-
-        // Generate challenge l (prime)
         let mut challenge_data = Vec::new();
         challenge_data.extend_from_slice(&x.to_bytes_be());
         challenge_data.extend_from_slice(&y.to_bytes_be());
@@ -361,7 +367,7 @@ impl VDFState {
         let r = &two_pow_t % &l;
 
         // Compute proof π = x^q mod N
-        let pi = x.modpow(&q, &self.modulus);
+        let pi = x.modpow(&q, modulus);
 
         // Serialize proof components
         let mut proof = Vec::new();
@@ -377,6 +383,20 @@ impl VDFState {
         proof.extend_from_slice(&r_bytes);
 
         proof
+    }
+    
+    /// Compute VDF with Wesolowski proof for time-locked consensus
+    pub fn compute(&mut self, input: &[u8], time_parameter: u64) -> Vec<u8> {
+        let (output, iterations, proof) = Self::run_computation_blocking(
+            input,
+            time_parameter,
+            self.difficulty_factor,
+            &self.modulus,
+        );
+        self.current_output = output;
+        self.iterations = iterations;
+        self.proof = proof;
+        self.current_output.clone()
     }
 
     /// Verify Wesolowski VDF proof
@@ -491,6 +511,7 @@ impl VDFState {
     }
 }
 
+
 /// Zero-Knowledge Proof for privacy-preserving validation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ZKProof {
@@ -509,12 +530,11 @@ pub enum ZKProofType {
 }
 
 impl InfiniteStrataNode {
-    #[instrument]
     pub fn new(config: NodeConfig, oracle_aggregator: Arc<DecentralizedOracleAggregator>) -> Self {
-        let (pk, sk) = dilithium5::keypair();
+        let (pk, sk) = generate_pq_keypair(None).unwrap();
 
         // Create sophisticated key manager with rotation support
-        let key_manager = QuantumResistantKeyManager::new(pk, sk);
+        let key_manager = QuantumResistantKeyManager::new(pk.clone(), sk.clone());
 
         // Initialize VDF state for time-locked cryptography
         let _vdf_state = VDFState::default();
@@ -564,7 +584,6 @@ impl InfiniteStrataNode {
         heartbeat_result
     }
 
-    #[instrument(skip(self), fields(node_id = %self.node_id))]
     async fn perform_heartbeat_cycle(&self) -> Result<()> {
         let current_credits = self.credits.fetch_sub(HEARTBEAT_COST, Ordering::SeqCst);
         if current_credits.saturating_sub(HEARTBEAT_COST) == 0 {
@@ -607,16 +626,11 @@ impl InfiniteStrataNode {
         };
 
         let data_to_sign = heartbeat.signable_data()?;
-        let signed_message = dilithium5::sign(&data_to_sign, &self.signing_key);
-        heartbeat.signature = signed_message.as_bytes().to_vec();
+        let signature = pq_sign(&self.signing_key, &data_to_sign).unwrap();
+        heartbeat.signature = signature.as_bytes().to_vec();
 
         // Self-verify before broadcasting to the oracle network.
-        if dilithium5::open(
-            &dilithium5::SignedMessage::from_bytes(&heartbeat.signature)?,
-            &self.public_key,
-        )
-        .is_ok()
-        {
+        if pq_verify(&self.public_key, &data_to_sign, &signature).unwrap_or(false) {
             info!(
                 epoch = epoch,
                 "Signed heartbeat created and self-verified successfully."
@@ -633,37 +647,64 @@ impl InfiniteStrataNode {
 
     /// Performs the Quantum State Verification (QSV) protocol
     /// This security ceremony combines VDF, threshold signatures, and ZK proofs
-    #[instrument(skip(self))]
     pub async fn perform_quantum_state_verification(
         &self,
         epoch: u64,
     ) -> Result<MultiSignatureProof> {
         info!("Initiating Quantum State Verification for epoch {}", epoch);
 
-        // Step 1: Generate time-locked challenge using VDF
-        let mut vdf = self.verifiable_delay_function.write().await;
-        let mut challenge_seed = String::with_capacity(self.node_id.len() + 20);
-        challenge_seed.push_str(&self.node_id);
-        challenge_seed.push('-');
-        challenge_seed.push_str(&epoch.to_string());
-        let challenge_seed = challenge_seed.into_bytes();
+        // Step 1: Gather parameters for the VDF computation under a read lock.
+        let vdf_params = {
+            let vdf = self.verifiable_delay_function.read().await;
+            (vdf.difficulty_factor, vdf.modulus.clone())
+        };
+        
+        let mut challenge_seed_str = String::with_capacity(self.node_id.len() + 20);
+        challenge_seed_str.push_str(&self.node_id);
+        challenge_seed_str.push('-');
+        challenge_seed_str.push_str(&epoch.to_string());
+        let challenge_seed = challenge_seed_str.into_bytes();
         let time_parameter = 1000 + (epoch % 1000); // Variable difficulty based on epoch
-        let vdf_output = vdf.compute(&challenge_seed, time_parameter);
+
+        // FIX: Clone `challenge_seed` before moving it into the closure to solve the borrow checker error.
+        let challenge_seed_for_move = challenge_seed.clone();
+
+        // Step 2: Run the blocking computation in a dedicated thread using spawn_blocking.
+        let (vdf_output, iterations, proof) = tokio::task::spawn_blocking(move || {
+            VDFState::run_computation_blocking(
+                &challenge_seed_for_move,
+                time_parameter,
+                vdf_params.0, // difficulty_factor
+                &vdf_params.1, // modulus
+            )
+        })
+        .await
+        .map_err(|e| anyhow!("VDF computation task failed: {}", e))?;
+        
+        // Step 3: Update the shared VDF state with the results under a write lock.
+        {
+            let mut vdf = self.verifiable_delay_function.write().await;
+            vdf.current_output = vdf_output.clone();
+            vdf.iterations = iterations;
+            vdf.proof = proof;
+        }
+        
         info!("VDF challenge generated with {} iterations", time_parameter);
 
         // Step 2: Create threshold signature proof
         // In a real network, this would involve multiple validators
         // For now, we simulate with a single node signature
-        let signature = dilithium5::sign(&vdf_output, &self.signing_key);
+        let signature = pq_sign(&self.signing_key, &vdf_output).unwrap();
         let signature_bytes = signature.as_bytes().to_vec();
 
         // Create proper Merkle tree with multiple data points
-        let mut merkle_data = Vec::new();
-        merkle_data.push(signature_bytes.clone());
-        merkle_data.push(self.node_id.as_bytes().to_vec());
-        merkle_data.push(vdf_output.clone());
-        merkle_data.push(challenge_seed.clone());
-        merkle_data.push(epoch.to_le_bytes().to_vec());
+        let merkle_data = vec![
+            signature_bytes.clone(),
+            self.node_id.as_bytes().to_vec(),
+            vdf_output.clone(),
+            challenge_seed.clone(),
+            epoch.to_le_bytes().to_vec(),
+        ];
 
         let merkle_tree = MerkleTree::new(merkle_data);
         let merkle_root = merkle_tree.root.clone();
@@ -705,6 +746,7 @@ impl InfiniteStrataNode {
         Ok(multi_sig_proof)
     }
 
+
     /// Generates a zero-knowledge proof for the QSV protocol using Schnorr-like construction
     async fn generate_zk_proof(
         &self,
@@ -713,7 +755,8 @@ impl InfiniteStrataNode {
     ) -> Result<ZKProof> {
         // Generate random nonce for commitment
         let mut rng = thread_rng();
-        let nonce: [u8; 32] = rng.gen();
+        let mut nonce = [0u8; 32];
+        rng.fill(&mut nonce);
 
         // Create commitment using the nonce and public parameters
         let mut commitment_data = Vec::new();
@@ -729,7 +772,7 @@ impl InfiniteStrataNode {
         challenge_data.extend_from_slice(self.node_id.as_bytes());
         challenge_data.extend_from_slice(&multi_sig_proof.aggregate_signature);
         let challenge_hash = qanto_hash(&challenge_data);
-        let challenge = challenge_hash.clone();
+        let challenge = challenge_hash;
 
         // Convert challenge to BigUint for arithmetic
         let challenge_big = BigUint::from_bytes_be(challenge_hash.as_bytes());
@@ -785,7 +828,6 @@ impl InfiniteStrataNode {
 
     /// Recalibrates node state and performance multipliers. This is the "Think" part
     /// of the node's internal Sense-Think-Act loop.
-    #[instrument(skip(self), fields(node_id = %self.node_id))]
     async fn recalibrate_state(&self) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -818,7 +860,6 @@ impl InfiniteStrataNode {
     /// Calculates a security factor based on the quantum state verification results
     /// This factor is used to adjust rewards and influence consensus decisions
     /// Can be called with a specific proof or will use all available proofs if none provided
-    #[instrument(skip(self, proof))]
     pub async fn calculate_quantum_security_factor(
         &self,
         proof: Option<&MultiSignatureProof>,
@@ -917,7 +958,6 @@ impl InfiniteStrataNode {
 
     /// Detects potential quantum threats or anomalies in the network
     /// This is a critical security function that helps protect against quantum attacks
-    #[instrument(skip(self))]
     pub async fn detect_quantum_threats(
         &self,
         network_proofs: &HashMap<String, MultiSignatureProof>,
@@ -1008,7 +1048,6 @@ impl InfiniteStrataNode {
     }
 
     /// Responds to detected quantum threats by taking appropriate security measures
-    #[instrument(skip(self))]
     pub async fn respond_to_quantum_threats(&self, threat_node_ids: &[String]) -> Result<()> {
         if threat_node_ids.is_empty() {
             return Ok(());
@@ -1076,14 +1115,13 @@ impl InfiniteStrataNode {
 
     /// Verifies a Quantum State Verification proof from another node
     /// This is a critical security function that validates the integrity of the network
-    #[instrument(skip(self, proof), fields(node_id = %self.node_id))]
     pub async fn verify_quantum_state_proof(
         &self,
         node_id: &str,
         epoch: u64,
         proof: &MultiSignatureProof,
         vdf_challenge: &[u8],
-        public_key: &dilithium5::PublicKey,
+        public_key: &QantoPQPublicKey,
     ) -> Result<bool> {
         info!(
             "Verifying Quantum State Proof from node {} for epoch {}",
@@ -1098,8 +1136,8 @@ impl InfiniteStrataNode {
         // Step 2: Verify the threshold signature
         // In a production environment, we would verify multiple signatures
         // against their respective public keys
-        let signature = dilithium5::SignedMessage::from_bytes(&proof.aggregate_signature)?;
-        let sig_valid = dilithium5::open(&signature, public_key).is_ok();
+        let signature = QantoPQSignature::from_bytes(&proof.aggregate_signature)?;
+        let sig_valid = pq_verify(public_key, vdf_challenge, &signature).unwrap_or(false);
 
         if !sig_valid {
             warn!(
@@ -1162,10 +1200,9 @@ impl InfiniteStrataNode {
 
     /// Validates the state of the network by verifying multiple QSV proofs
     /// Returns the percentage of valid proofs
-    #[instrument(skip(self, proofs))]
     pub async fn validate_network_quantum_state(
         &self,
-        proofs: &HashMap<String, (MultiSignatureProof, Vec<u8>, dilithium5::PublicKey)>,
+        proofs: &HashMap<String, (MultiSignatureProof, Vec<u8>, QantoPQPublicKey)>,
         epoch: u64,
     ) -> Result<f64> {
         let total_proofs = proofs.len();
@@ -1183,7 +1220,7 @@ impl InfiniteStrataNode {
                 Ok(true) => valid_count += 1,
                 Ok(false) => warn!("Invalid QSV proof from node {}", node_id),
                 Err(e) => warn!("Error verifying QSV proof from node {}: {}", node_id, e),
-            }
+            };
         }
 
         let validity_percentage = (valid_count as f64) / (total_proofs as f64) * 100.0;

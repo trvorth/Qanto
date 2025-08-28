@@ -13,6 +13,8 @@
 //! - Shard coordination and cross-shard communication
 
 use crate::consensus::{Consensus, ConsensusError};
+use crate::metrics::QantoMetrics;
+
 use crate::qanto_net::{NetworkMessage, PeerId, QantoNetServer};
 use crate::qantodag::{QantoBlock, QantoDAG};
 use crate::saga::{GovernanceProposal, PalletSaga};
@@ -22,6 +24,7 @@ use crate::zkp::{ZKProof, ZKProofSystem};
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
@@ -80,15 +83,8 @@ pub struct ValidatorInfo {
     pub shard_assignments: Vec<usize>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ValidatorMetrics {
-    pub blocks_produced: u64,
-    pub blocks_validated: u64,
-    pub uptime_percentage: f64,
-    pub response_time_ms: f64,
-    pub byzantine_faults: u64,
-    pub governance_participation: f64,
-}
+// Use unified metrics system
+pub type ValidatorMetrics = QantoMetrics;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConsensusRound {
@@ -198,14 +194,8 @@ pub struct NodeCapabilities {
     pub bandwidth_mbps: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct NetworkMetrics {
-    pub latency_ms: f64,
-    pub bandwidth_utilization: f64,
-    pub packet_loss_rate: f64,
-    pub connection_stability: f64,
-    pub message_throughput: f64,
-}
+// Use unified metrics system
+pub type NetworkMetrics = QantoMetrics;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartitionDetector {
@@ -404,7 +394,6 @@ impl DecentralizationEngine {
     }
 
     /// Initialize the decentralization engine with bootstrap configuration
-    #[instrument(skip(self))]
     pub async fn initialize(
         &self,
         bootstrap_validators: Vec<ValidatorInfo>,
@@ -525,7 +514,6 @@ impl DecentralizationEngine {
     }
 
     /// Start a new consensus round for block validation
-    #[instrument(skip(self, block, _dag))]
     pub async fn start_consensus_round(
         &self,
         block: QantoBlock,
@@ -594,7 +582,6 @@ impl DecentralizationEngine {
     }
 
     /// Process a validator vote in a consensus round
-    #[instrument(skip(self, vote))]
     pub async fn process_validator_vote(
         &self,
         round_id: &str,
@@ -1042,7 +1029,7 @@ impl DecentralizationEngine {
     ) -> Result<Vec<ValidatorInfo>, DecentralizationError> {
         let validators = self.validators.read().await;
         let all_validators: Vec<ValidatorInfo> = validators.values().cloned().collect();
-        
+
         if all_validators.len() < MIN_VALIDATOR_COUNT {
             return Err(DecentralizationError::InsufficientValidators(
                 all_validators.len(),
@@ -1051,14 +1038,12 @@ impl DecentralizationEngine {
         }
 
         // Use existing validator selection logic with default shard_id 0
-        let selected = self.select_diverse_validators(&all_validators, validator_count, epoch, 0).await?;
-        
-        info!(
-            "Selected {} validators for epoch {}",
-            selected.len(),
-            epoch
-        );
-        
+        let selected = self
+            .select_diverse_validators(&all_validators, validator_count, epoch, 0)
+            .await?;
+
+        info!("Selected {} validators for epoch {}", selected.len(), epoch);
+
         Ok(selected)
     }
 
@@ -1074,11 +1059,11 @@ impl DecentralizationEngine {
         // Verify submitter has sufficient stake/reputation
         let validators = self.validators.read().await;
         if let Some(validator) = validators.get(&submitter) {
-            if validator.stake < 1000 {
+            if validator.stake < 100 {
                 // Minimum stake requirement
                 return Err(DecentralizationError::InsufficientVotingPower(
                     validator.stake as f64,
-                    1000.0,
+                    100.0,
                 ));
             }
         } else {
@@ -1277,7 +1262,6 @@ impl DecentralizationEngine {
     }
 
     /// Detect and handle network partitions
-    #[instrument(skip(self))]
     pub async fn detect_network_partitions(
         &self,
     ) -> Result<Vec<NetworkPartition>, DecentralizationError> {
@@ -1308,7 +1292,11 @@ impl DecentralizationEngine {
         let average_latency = _topology
             .nodes
             .values()
-            .map(|n| n.network_metrics.latency_ms)
+            .map(|n| {
+                n.network_metrics
+                    .latency_ms
+                    .load(std::sync::atomic::Ordering::Relaxed) as f64
+            })
             .sum::<f64>()
             / _topology.nodes.len() as f64;
 
@@ -1413,7 +1401,11 @@ impl DecentralizationEngine {
         let avg_latency = topology
             .nodes
             .values()
-            .map(|n| n.network_metrics.latency_ms)
+            .map(|n| {
+                n.network_metrics
+                    .latency_ms
+                    .load(std::sync::atomic::Ordering::Relaxed) as f64
+            })
             .sum::<f64>()
             / topology.nodes.len() as f64;
         let latency_risk = (avg_latency - 100.0).max(0.0) / 1000.0; // Risk increases above 100ms
@@ -1423,7 +1415,11 @@ impl DecentralizationEngine {
         let avg_packet_loss = topology
             .nodes
             .values()
-            .map(|n| n.network_metrics.packet_loss_rate)
+            .map(|n| {
+                n.network_metrics
+                    .packet_loss_rate
+                    .load(std::sync::atomic::Ordering::Relaxed) as f64
+            })
             .sum::<f64>()
             / topology.nodes.len() as f64;
         let packet_loss_risk = (avg_packet_loss - 0.01).max(0.0) / 0.1; // Risk increases above 1%
@@ -1432,7 +1428,12 @@ impl DecentralizationEngine {
         // 5. Byzantine fault risk
         let byzantine_validators = validators
             .values()
-            .filter(|v| v.performance_metrics.byzantine_faults > 0)
+            .filter(|v| {
+                v.performance_metrics
+                    .byzantine_faults
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                    > 0
+            })
             .count();
         let byzantine_risk =
             (byzantine_validators as f64 / validators.len() as f64 / BYZANTINE_FAULT_TOLERANCE)
@@ -1445,7 +1446,6 @@ impl DecentralizationEngine {
     }
 
     /// Get comprehensive decentralization metrics
-    #[instrument(skip(self))]
     pub async fn get_decentralization_metrics(
         &self,
     ) -> Result<DecentralizationMetrics, DecentralizationError> {
@@ -1650,10 +1650,22 @@ impl DecentralizationEngine {
         let mut performance_scores = Vec::new();
 
         for validator in validators.values() {
-            aggregated.total_uptime += validator.performance_metrics.uptime_percentage;
-            aggregated.total_response_time += validator.performance_metrics.response_time_ms;
-            aggregated.total_blocks_produced += validator.performance_metrics.blocks_produced;
-            aggregated.total_byzantine_faults += validator.performance_metrics.byzantine_faults;
+            aggregated.total_uptime += validator
+                .performance_metrics
+                .uptime_percentage
+                .load(Ordering::Relaxed) as f64;
+            aggregated.total_response_time += validator
+                .performance_metrics
+                .response_time_ms
+                .load(Ordering::Relaxed) as f64;
+            aggregated.total_blocks_produced += validator
+                .performance_metrics
+                .blocks_produced
+                .load(Ordering::Relaxed);
+            aggregated.total_byzantine_faults += validator
+                .performance_metrics
+                .byzantine_faults
+                .load(Ordering::Relaxed);
 
             let performance_score =
                 self.calculate_individual_performance_score(&validator.performance_metrics);
@@ -1876,10 +1888,13 @@ impl DecentralizationEngine {
 
     /// Calculate individual validator performance score
     fn calculate_individual_performance_score(&self, metrics: &ValidatorMetrics) -> f64 {
-        let uptime_score = self.calculate_uptime_score(metrics.uptime_percentage);
-        let response_score = self.calculate_response_score(metrics.response_time_ms);
-        let reliability_score = self.calculate_reliability_score(metrics.byzantine_faults);
-        let participation_score = metrics.governance_participation;
+        let uptime_score =
+            self.calculate_uptime_score(metrics.uptime_percentage.load(Ordering::Relaxed) as f64);
+        let response_score =
+            self.calculate_response_score(metrics.response_time_ms.load(Ordering::Relaxed) as f64);
+        let reliability_score =
+            self.calculate_reliability_score(metrics.byzantine_faults.load(Ordering::Relaxed));
+        let participation_score = metrics.governance_participation.load(Ordering::Relaxed) as f64;
 
         // Weighted average of performance factors
         (uptime_score * 0.3)
@@ -2220,11 +2235,15 @@ impl PeerDiscoveryService {
 mod tests {
     use super::*;
     use crate::consensus::Consensus;
-    use crate::qanto_net::{QantoNetServer, PeerId};
-    use crate::qantodag::QantoDAG;
+
+    use crate::qanto_net::PeerId;
     use crate::saga::{GovernanceProposal, PalletSaga};
     use crate::zkp::ZKProofSystem;
+    use std::collections::HashMap;
+    use std::sync::atomic::AtomicU64;
+    use std::net::SocketAddr;
     use std::sync::Arc;
+        use tokio::sync::Mutex;
     use tokio::sync::RwLock;
     use uuid::Uuid;
 
@@ -2235,46 +2254,65 @@ mod tests {
         let governance_system = Arc::new(RwLock::new(DecentralizedGovernance::new()));
         let shard_coordinator = Arc::new(ShardCoordinator::new());
         let peer_discovery = Arc::new(PeerDiscoveryService::new());
-        
+
         // Mock dependencies - in real implementation these would be properly initialized
+        #[cfg(feature = "infinite-strata")]
+        let saga = Arc::new(PalletSaga::new(None));
+        #[cfg(not(feature = "infinite-strata"))]
         let saga = Arc::new(PalletSaga::new());
         let consensus_engine = Arc::new(Consensus::new(saga.clone()));
         let zkp_system = Arc::new(ZKProofSystem::new());
-        
+
         // Create mock network server with required parameters
-        use crate::post_quantum_crypto::PostQuantumCrypto;
-        use pqcrypto_mldsa::mldsa65::{PublicKey as DilithiumPublicKey, SecretKey as DilithiumSecretKey};
-        use pqcrypto_traits::sign::{PublicKey, SecretKey};
-        use crate::mempool::Mempool;
-        use std::net::SocketAddr;
-        use std::sync::Mutex as StdMutex;
-        
-        let pq_crypto = crate::post_quantum_crypto::PostQuantumCrypto::new();
-        let keypair = pq_crypto.generate_signature_keypair(crate::post_quantum_crypto::SignatureAlgorithm::Dilithium5).await.unwrap();
+        use rand::rngs::OsRng;
+
+        let pq_crypto = crate::qanto_native_crypto::QantoNativeCrypto::new();
+        let mut rng = OsRng;
+        let qanto_keypair = pq_crypto.generate_keypair(
+            crate::qanto_native_crypto::QantoSignatureAlgorithm::PostQuantum,
+            &mut rng,
+        );
+
+        let keypair = match qanto_keypair {
+            crate::qanto_native_crypto::QantoKeyPair::PostQuantum { public, private } => {
+                crate::post_quantum_crypto::PQSignatureKeyPair { public, private }
+            }
+            _ => panic!("Expected PostQuantum keypair"),
+        };
+
+
+
         let listen_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
         // Create mock QantoDAG - in real implementation this would be properly initialized
         let dag_config = crate::qantodag::QantoDagConfig {
             num_chains: 4,
             initial_validator: "test_validator".to_string(),
             target_block_time: 10,
-            qr_signing_key: &DilithiumSecretKey::from_bytes(&keypair.secret_key).unwrap(),
-            qr_public_key: &DilithiumPublicKey::from_bytes(&keypair.public_key).unwrap(),
+
         };
-        // Create test database with unique path to avoid conflicts
+        // Create test QantoStorage with unique path to avoid conflicts
         let unique_id = Uuid::new_v4();
-        let db_path = format!("/tmp/test_qanto_dag_{}", unique_id);
-        let db = rocksdb::DB::open_default(&db_path).unwrap();
-        let dag = QantoDAG::new(dag_config, saga.clone(), db).unwrap();
-        let mempool = Arc::new(StdMutex::new(Mempool::new(3600, 10_000_000, 10_000)));
+        let storage_path = format!("/tmp/test_qanto_dag_{}", unique_id);
+        use crate::qanto_storage::{QantoStorage, StorageConfig};
+        let storage_config = StorageConfig {
+            data_dir: storage_path.into(),
+            max_file_size: 64 * 1024 * 1024, // 64MB
+            cache_size: 1024 * 1024,         // 1MB
+            compression_enabled: true,
+            encryption_enabled: false,
+            wal_enabled: true,
+            sync_writes: true,
+            compaction_threshold: 0.7,
+            max_open_files: 1000,
+        };
+        let storage = QantoStorage::new(storage_config).unwrap();
+        let dag = QantoDAG::new(dag_config, saga.clone(), storage).unwrap();
+        use crate::mempool::Mempool;
+        let mempool = Arc::new(Mutex::new(Mempool::new(3600, 10_000_000, 10_000)));
         let utxos = Arc::new(RwLock::new(HashMap::new()));
-        
-        let network_server = Arc::new(QantoNetServer::new(
-            listen_addr,
-            keypair,
-            dag,
-            mempool,
-            utxos,
-        ).unwrap());
+
+        let network_server =
+            Arc::new(QantoNetServer::new(listen_addr, keypair, dag, mempool, utxos).unwrap());
 
         DecentralizationEngine {
             validators,
@@ -2297,12 +2335,13 @@ mod tests {
             reputation_score: 0.8,
             last_active_epoch: 100,
             performance_metrics: ValidatorMetrics {
-                blocks_produced: 50,
-                blocks_validated: 200,
-                uptime_percentage: 99.5,
-                response_time_ms: 50.0,
-                byzantine_faults: 0,
-                governance_participation: 0.9,
+                blocks_produced: AtomicU64::new(50),
+                blocks_validated: AtomicU64::new(200),
+                uptime_percentage: AtomicU64::new(995000), // 99.5 * 10000
+                response_time_ms: AtomicU64::new(50),
+                byzantine_faults: AtomicU64::new(0),
+                governance_participation: AtomicU64::new(9000), // 0.9 * 10000
+                ..Default::default()
             },
             public_key: vec![1, 2, 3, 4],
             network_address: "127.0.0.1:8080".to_string(),
@@ -2313,17 +2352,17 @@ mod tests {
     #[tokio::test]
     async fn test_decentralization_engine_initialization() {
         let engine = create_test_engine().await;
-        
+
         // Verify initial state
         let validators = engine.validators.read().await;
         assert_eq!(validators.len(), 0);
-        
+
         let consensus_rounds = engine.consensus_rounds.read().await;
         assert_eq!(consensus_rounds.len(), 0);
-        
+
         let topology = engine.network_topology.read().await;
         assert_eq!(topology.nodes.len(), 0);
-        
+
         let governance = engine.governance_system.read().await;
         assert_eq!(governance.active_proposals.len(), 0);
     }
@@ -2334,36 +2373,46 @@ mod tests {
         let round_id = Uuid::new_v4().to_string();
         let epoch = 1;
         let shard_id = 0;
-        
+
         let consensus_round = ConsensusRound {
             round_id: round_id.clone(),
             epoch,
             proposed_block: None,
             validator_votes: HashMap::new(),
             status: ConsensusStatus::Proposing,
-            start_time: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
-            timeout_time: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() + CONSENSUS_TIMEOUT_MS / 1000,
+            start_time: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            timeout_time: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + CONSENSUS_TIMEOUT_MS / 1000,
             shard_id,
         };
-        
+
         // Add consensus round
         {
             let mut rounds = engine.consensus_rounds.write().await;
             rounds.insert(round_id.clone(), consensus_round);
         }
-        
+
         // Verify round was created
         let rounds = engine.consensus_rounds.read().await;
         assert!(rounds.contains_key(&round_id));
         assert_eq!(rounds[&round_id].epoch, epoch);
         assert_eq!(rounds[&round_id].shard_id, shard_id);
-        assert!(matches!(rounds[&round_id].status, ConsensusStatus::Proposing));
+        assert!(matches!(
+            rounds[&round_id].status,
+            ConsensusStatus::Proposing
+        ));
     }
 
     #[tokio::test]
     async fn test_validator_rotation() {
         let engine = create_test_engine().await;
-        
+
         // Add enough test validators to meet MIN_VALIDATOR_COUNT requirement (21)
         let mut test_validators = Vec::new();
         for i in 0..25 {
@@ -2371,18 +2420,18 @@ mod tests {
             let validator = create_test_validator(PeerId::random(), stake);
             test_validators.push(validator);
         }
-        
+
         {
             let mut validators = engine.validators.write().await;
             for validator in &test_validators {
                 validators.insert(validator.peer_id.clone(), validator.clone());
             }
         }
-        
+
         // Test validator selection
         let selected = engine.select_validators_for_epoch(101, 2).await.unwrap();
         assert_eq!(selected.len(), 2);
-        
+
         // Verify selection criteria (should prefer higher stake and better performance)
         assert!(selected.iter().any(|v| v.stake >= 1500));
     }
@@ -2391,14 +2440,14 @@ mod tests {
     async fn test_governance_proposal_submission() {
         let engine = create_test_engine().await;
         let submitter = PeerId::random();
-        
+
         // Add a validator to have voting power
         let validator = create_test_validator(submitter.clone(), 1000);
         {
             let mut validators = engine.validators.write().await;
             validators.insert(submitter.clone(), validator);
         }
-        
+
         // Create test proposal
         let proposal = GovernanceProposal {
             id: Uuid::new_v4().to_string(),
@@ -2408,23 +2457,32 @@ mod tests {
             votes_against: 0.0,
             status: crate::saga::ProposalStatus::Voting,
             voters: Vec::new(),
-            creation_epoch: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            creation_epoch: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
             justification: Some("Test governance proposal".to_string()),
         };
-        
+
         // Submit proposal
-        let proposal_id = engine.submit_governance_proposal(proposal, submitter).await.unwrap();
-        
+        let proposal_id = engine
+            .submit_governance_proposal(proposal, submitter)
+            .await
+            .unwrap();
+
         // Verify proposal was submitted
         let governance = engine.governance_system.read().await;
         assert!(governance.active_proposals.contains_key(&proposal_id));
-        assert_eq!(governance.active_proposals[&proposal_id].status, crate::saga::ProposalStatus::Voting);
+        assert_eq!(
+            governance.active_proposals[&proposal_id].status,
+            crate::saga::ProposalStatus::Voting
+        );
     }
 
     #[tokio::test]
     async fn test_cross_shard_communication() {
         let engine = create_test_engine().await;
-        
+
         // Create test cross-shard message
         let message = CrossShardMessage {
             message_id: Uuid::new_v4().to_string(),
@@ -2432,13 +2490,16 @@ mod tests {
             target_shard: 1,
             message_type: CrossShardMessageType::TransactionTransfer,
             payload: vec![1, 2, 3, 4, 5],
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
             proof: None,
         };
-        
+
         // Process the message
         let result = engine.process_cross_shard_message(message.clone()).await;
-        
+
         // In a real implementation, this would verify the message was processed correctly
         // For now, we just verify the function doesn't panic and returns a result
         assert!(result.is_ok() || result.is_err()); // Either outcome is acceptable for this test
@@ -2447,7 +2508,7 @@ mod tests {
     #[tokio::test]
     async fn test_network_health_metrics() {
         let engine = create_test_engine().await;
-        
+
         // Add some test nodes to the topology
         {
             let mut topology = engine.network_topology.write().await;
@@ -2464,21 +2525,25 @@ mod tests {
                     bandwidth_mbps: 1000.0,
                 },
                 network_metrics: NetworkMetrics {
-                    latency_ms: 50.0,
-                    bandwidth_utilization: 0.7,
-                    packet_loss_rate: 0.001,
-                    connection_stability: 0.99,
-                    message_throughput: 1000.0,
+                    latency_ms: AtomicU64::new(50000),             // 50.0 * 1000
+                    bandwidth_utilization: AtomicU64::new(7000),   // 0.7 * 10000
+                    packet_loss_rate: AtomicU64::new(10),          // 0.001 * 10000
+                    connection_stability: AtomicU64::new(9900),    // 0.99 * 10000
+                    message_throughput: AtomicU64::new(1_000_000), // 1000.0 * 1000
+                    ..Default::default()
                 },
-                last_seen: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                last_seen: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
                 trust_score: 0.95,
             };
-        topology.nodes.insert(node_peer_id.clone(), node1);
+            topology.nodes.insert(node_peer_id.clone(), node1);
         }
-        
+
         // Test network health calculation
         let health = engine.get_network_health().await.unwrap();
-        assert!(health.validator_count >= 0);
+        // validator_count is unsigned, so this check is unnecessary
         assert!(health.average_latency >= 0.0);
         assert!(health.network_coverage >= 0.0 && health.network_coverage <= 1.0);
         assert!(health.partition_risk >= 0.0 && health.partition_risk <= 1.0);
@@ -2487,24 +2552,24 @@ mod tests {
     #[tokio::test]
     async fn test_decentralization_metrics() {
         let engine = create_test_engine().await;
-        
+
         // Add test validators with different stakes and locations
         let validators = vec![
             create_test_validator(PeerId::random(), 1000),
             create_test_validator(PeerId::random(), 2000),
             create_test_validator(PeerId::random(), 1500),
         ];
-        
+
         {
             let mut validator_map = engine.validators.write().await;
             for validator in validators {
                 validator_map.insert(validator.peer_id.clone(), validator);
             }
         }
-        
+
         // Calculate decentralization metrics
         let metrics = engine.get_decentralization_metrics().await.unwrap();
-        
+
         assert_eq!(metrics.validator_count, 3);
         assert!(metrics.decentralization_score >= 0.0 && metrics.decentralization_score <= 1.0);
         assert!(metrics.stake_distribution.total_stake > 0);

@@ -40,9 +40,9 @@ DEFAULT_ENDPOINTS = {
         graphql="https://testnet-graphql.qanto.network"
     ),
     Network.LOCAL: NetworkEndpoints(
-        http="http://localhost:8080",
-        websocket="ws://localhost:8081",
-        graphql="http://localhost:8082/graphql"
+        http="p2p://discovery",  # Use P2P discovery instead of hardcoded endpoint
+        websocket="p2p://discovery",  # Use P2P discovery for WebSocket
+        graphql="p2p://discovery/graphql"  # Use P2P discovery for GraphQL
     ),
 }
 

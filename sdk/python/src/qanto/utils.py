@@ -1,6 +1,5 @@
 """Utility functions for the Qanto Network SDK."""
 
-import hashlib
 import re
 import time
 from datetime import datetime, timezone
@@ -301,7 +300,7 @@ def satoshi_to_qanto(satoshi_amount: int) -> Decimal:
 
 
 def hash_data(data: Union[str, bytes]) -> str:
-    """Hash data using QanHash algorithm.
+    """Hash data using QanHash32x algorithm (ported from Rust).
     
     Args:
         data: Data to hash (string or bytes)
@@ -312,24 +311,62 @@ def hash_data(data: Union[str, bytes]) -> str:
     if isinstance(data, str):
         data = data.encode('utf-8')
     
-    # Use QanHash-compatible implementation
-    # This is a simplified version - in production, this would call the Rust QanHash implementation
-    import hashlib
-    from Crypto.Hash import keccak
+    # Ported QanHash32x implementation
+    KECCAK_ROUNDS = 24
+    FOLD_ROUNDS = 16
+    KECCAK_ROUND_CONSTANTS = [
+        0x0000000000000001, 0x0000000000008082, 0x800000000000808a,
+        0x8000000080008000, 0x000000000000808b, 0x0000000080000001,
+        0x8000000080008081, 0x8000000000008009, 0x000000000000008a,
+        0x0000000000000088, 0x0000000080008009, 0x000000008000000a,
+        0x000000008000808b, 0x800000000000008b, 0x8000000000008089,
+        0x8000000000008003, 0x8000000000008002, 0x8000000000000080,
+        0x000000000000800a, 0x800000008000000a, 0x8000000080008081,
+        0x8000000000008080, 0x0000000080000001, 0x8000000080008008
+    ]
     
-    # Multi-round hashing for quantum resistance (simplified QanHash approximation)
-    hash_state = data
-    for _ in range(16):  # Multiple rounds for security
-        keccak_hash = keccak.new(digest_bits=256)
-        keccak_hash.update(hash_state)
-        hash_state = keccak_hash.digest()
-        # Add folding operation
-        folded = bytearray(32)
-        for i in range(32):
-            folded[i] = hash_state[i] ^ hash_state[(i + 16) % 32]
-        hash_state = bytes(folded)
+    def keccak_f(state):
+        ROTATION_CONSTANTS = [1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44]
+        PI_LANES = [10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1]
+        for round_constant in KECCAK_ROUND_CONSTANTS:
+            c = [0] * 5
+            for x in range(5):
+                c[x] = state[x] ^ state[x + 5] ^ state[x + 10] ^ state[x + 15] ^ state[x + 20]
+            for x in range(5):
+                d = c[(x + 4) % 5] ^ ((c[(x + 1) % 5] << 1) | (c[(x + 1) % 5] >> 63))
+                for y in range(5):
+                    state[x + 5 * y] ^= d
+            temp = state[1]
+            for i in range(24):
+                j = PI_LANES[i]
+                next_temp = state[j]
+                state[j] = ((temp << ROTATION_CONSTANTS[i]) | (temp >> (64 - ROTATION_CONSTANTS[i]))) & ((1 << 64) - 1)
+                temp = next_temp
+            for y_step in range(5):
+                y = y_step * 5
+                t = state[y:y+5]
+                for x in range(5):
+                    state[y + x] = t[x] ^ ((~t[(x + 1) % 5]) & t[(x + 2) % 5])
+            state[0] ^= round_constant
     
-    return hash_state.hex()
+    state = [0] * 25
+    rate_in_bytes = 136
+    for chunk in [data[i:i+rate_in_bytes] for i in range(0, len(data), rate_in_bytes)]:
+        for i, word_chunk in enumerate([chunk[j:j+8] for j in range(0, len(chunk), 8)]):
+            word = [0] * 8
+            word[:len(word_chunk)] = word_chunk
+            state[i] ^= int.from_bytes(bytes(word), 'little')
+        keccak_f(state)
+    for _ in range(FOLD_ROUNDS):
+        for i in range(len(state)):
+            lane = state[i]
+            state[i] = lane ^ ((lane * 0x9E3779B97F4A7C15) & ((1 << 64) - 1))
+            state[i] = ((state[i] << 13) | (state[i] >> (64 - 13))) & ((1 << 64) - 1)
+        keccak_f(state)
+    out = bytearray(32)
+    for i in range(4):
+        out[i*8:(i+1)*8] = state[i].to_bytes(8, 'little')
+    return out.hex()
 
 
 def simple_hash(data: Union[str, bytes]) -> str:

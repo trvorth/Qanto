@@ -1,5 +1,5 @@
+use crate::qanto_compat::ed25519_dalek::SigningKey;
 use bip39::{Language, Mnemonic};
-use ed25519_dalek::SigningKey;
 use rand::rngs::OsRng;
 use rand::Rng;
 use std::fs::File;

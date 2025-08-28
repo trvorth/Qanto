@@ -3,7 +3,8 @@
 //! This module provides comprehensive benchmarking and validation of Qanto's
 //! performance targets: 32 BPS (Blocks Per Second) and 10M+ TPS (Transactions Per Second)
 
-use rocksdb::DB;
+use crate::qanto_storage::{QantoStorage, StorageConfig};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -11,12 +12,13 @@ use tokio::sync::RwLock as AsyncRwLock;
 use tracing::info;
 
 use crate::performance_optimizations::OptimizedTransactionProcessor;
+
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDagConfig};
+use crate::post_quantum_crypto::QantoPQPrivateKey;
 use crate::saga::PalletSaga;
 use crate::transaction::Transaction;
 use crate::types::HomomorphicEncrypted;
 use crate::wallet::Wallet;
-use pqcrypto_traits::sign::{PublicKey, SecretKey};
 
 /// Performance validation results
 #[derive(Debug, Clone)]
@@ -141,6 +143,8 @@ impl PerformanceValidator {
     pub async fn run_comprehensive_validation(
         &self,
         duration_secs: u64,
+        signing_key: &crate::qanto_native_crypto::QantoPQPrivateKey,
+        public_key: &crate::qanto_native_crypto::QantoPQPublicKey,
     ) -> Result<ValidationResults, Box<dyn std::error::Error>> {
         info!("Starting comprehensive performance validation...");
 
@@ -158,7 +162,8 @@ impl PerformanceValidator {
 
             // Simulate high-throughput transaction processing
             let tx_batch = 500_000; // 500k transactions per block simulation
-            total_transactions += tx_batch;
+            let transactions = self.generate_test_transactions(tx_batch as usize, signing_key, public_key).await;
+            total_transactions += transactions.len() as u64;
             self.transactions_processed
                 .store(total_transactions, Ordering::Relaxed);
 
@@ -209,32 +214,20 @@ impl PerformanceValidator {
 
     /// Generate test transactions for validation
     #[allow(dead_code)]
-    async fn generate_test_transactions(&self, count: usize) -> Vec<Transaction> {
+    async fn generate_test_transactions(
+        &self,
+        count: usize,
+        signing_key: &crate::qanto_native_crypto::QantoPQPrivateKey,
+        public_key: &crate::qanto_native_crypto::QantoPQPublicKey,
+    ) -> Vec<Transaction> {
         let mut transactions = Vec::with_capacity(count);
-        let mut wallets = Vec::with_capacity(10);
-        for _ in 0..10 {
-            wallets.push(Wallet::new().unwrap());
-        }
 
         for i in 0..count {
-            let wallet = &wallets[i % 10];
-            let mut message = String::with_capacity(10);
-            message.push_str("test_tx_");
-            message.push_str(&i.to_string());
-            let message = message.into_bytes();
-            let _signature = wallet.sign(&message).unwrap();
+            let message = b"test_message";
 
-            let mut tx_id = String::with_capacity(8);
-            tx_id.push_str("tx_");
-            tx_id.push_str(&i.to_string());
-
-            let mut sender = String::with_capacity(15);
-            sender.push_str("test_sender_");
-            sender.push_str(&i.to_string());
-
-            let mut receiver = String::with_capacity(17);
-            receiver.push_str("test_receiver_");
-            receiver.push_str(&i.to_string());
+            let tx_id = format!("tx_{}", i);
+            let sender = format!("test_sender_{}", i);
+            let receiver = format!("test_receiver_{}", i);
 
             let tx = Transaction {
                 id: tx_id,
@@ -244,19 +237,12 @@ impl PerformanceValidator {
                 fee: 10,
                 inputs: vec![],
                 outputs: vec![],
-                qr_signature: {
-                    let (signing_key, public_key) = wallet.get_keypair().unwrap();
-                    crate::types::QuantumResistantSignature::sign(
-                        &signing_key,
-                        &public_key,
-                        &message,
-                    )
-                    .unwrap_or_else(|_| {
-                        crate::types::QuantumResistantSignature {
+                signature: {
+                    crate::types::QuantumResistantSignature::sign(signing_key, message)
+                        .unwrap_or_else(|_| crate::types::QuantumResistantSignature {
                             signer_public_key: public_key.as_bytes().to_vec(),
                             signature: vec![],
-                        }
-                    })
+                        })
                 },
                 timestamp: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -282,8 +268,8 @@ impl PerformanceValidator {
         }
 
         for i in 0..count {
-            let wallet = &wallets[i % 10];
-            let (signing_key, public_key) = wallet.get_keypair().unwrap();
+            let _wallet = &wallets[i % 10];
+    
 
             let mut sender = String::with_capacity(25);
             sender.push_str("shard_");
@@ -304,13 +290,12 @@ impl PerformanceValidator {
                 fee: 10,
                 inputs: vec![],
                 outputs: vec![],
-                signing_key_bytes: signing_key.as_bytes(),
-                public_key_bytes: public_key.as_bytes(),
+
                 tx_timestamps: Arc::new(AsyncRwLock::new(std::collections::HashMap::new())),
                 metadata: None,
             };
 
-            if let Ok(tx) = Transaction::new(tx_config).await {
+            if let Ok(tx) = Transaction::new(tx_config, &crate::qanto_native_crypto::QantoPQPrivateKey::new_dummy()).await {
                 transactions.push(tx);
             }
         }
@@ -336,8 +321,8 @@ impl PerformanceValidator {
         };
 
         // Create a temporary wallet for test keys
-        let wallet = Wallet::new()?;
-        let (qr_signing_key, qr_public_key) = wallet.get_keypair()?;
+        let _wallet = Wallet::new()?;
+
 
         let (paillier_pk, _) = HomomorphicEncrypted::generate_keypair();
         let creation_data = crate::qantodag::QantoBlockCreationData {
@@ -347,8 +332,8 @@ impl PerformanceValidator {
             difficulty: 0.1, // Use very low difficulty for fast testing
             validator: crate::qantodag::DEV_ADDRESS.to_string(),
             miner: crate::qantodag::DEV_ADDRESS.to_string(),
-            qr_signing_key: &qr_signing_key,
-            qr_public_key: &qr_public_key,
+            validator_private_key: QantoPQPrivateKey::new_dummy(),
+
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -468,28 +453,38 @@ pub async fn validate_performance_targets(
     #[cfg(not(feature = "infinite-strata"))]
     let saga_pallet = Arc::new(PalletSaga::new());
 
-    // Create test DB
-    let db = DB::open_default("test_performance_db")?;
+    // Create test storage
+    let storage_config = StorageConfig {
+        data_dir: PathBuf::from("test_performance_db"),
+        max_file_size: 1024 * 1024 * 100, // 100MB
+        compression_enabled: true,
+        encryption_enabled: true,
+        wal_enabled: true,
+        sync_writes: false,
+        cache_size: 1024 * 1024 * 50, // 50MB cache
+        compaction_threshold: 0.7,
+        max_open_files: 100,
+    };
+    let storage = QantoStorage::new(storage_config)?;
 
     // Create QantoDAG config
     let dag_config = QantoDagConfig {
         initial_validator: crate::qantodag::DEV_ADDRESS.to_string(),
         target_block_time: 30,
         num_chains: 4,
-        qr_signing_key: &signing_key,
-        qr_public_key: &public_key,
+
     };
 
-    let dag_instance = QantoDAG::new(dag_config, saga_pallet, db)?;
+    let dag_instance = QantoDAG::new(dag_config, saga_pallet, storage)?;
     let dag_inner = Arc::try_unwrap(dag_instance).expect("Failed to unwrap Arc for DAG");
     let dag = Arc::new(AsyncRwLock::new(dag_inner));
     let validator = PerformanceValidator::new(dag);
     let (_paillier_pk, _) = HomomorphicEncrypted::generate_keypair();
 
-    let result = validator.run_comprehensive_validation(duration_secs).await;
+    let result = validator.run_comprehensive_validation(duration_secs, &signing_key, &public_key).await;
 
-    // Clean up test DB
-    let _ = DB::destroy(&rocksdb::Options::default(), "test_performance_db");
+    // Clean up test storage
+    // Note: QantoStorage handles cleanup automatically
 
     result
 }
@@ -501,8 +496,8 @@ mod tests {
     #[tokio::test]
     async fn test_bps_validation() {
         // Create test wallet for keys
-        let wallet = Wallet::new().unwrap();
-        let (signing_key, public_key) = wallet.get_keypair().unwrap();
+
+
 
         // Create SAGA pallet
         #[cfg(feature = "infinite-strata")]
@@ -510,19 +505,29 @@ mod tests {
         #[cfg(not(feature = "infinite-strata"))]
         let saga_pallet = Arc::new(PalletSaga::new());
 
-        // Create test DB
-        let db = DB::open_default("test_bps_db").unwrap();
+        // Create test storage
+        let storage_config = StorageConfig {
+            data_dir: PathBuf::from("test_bps_db"),
+            max_file_size: 1024 * 1024 * 100, // 100MB
+            compression_enabled: true,
+            encryption_enabled: true,
+            wal_enabled: true,
+            sync_writes: false,
+            cache_size: 1024 * 1024 * 10, // 10MB cache
+            compaction_threshold: 0.7,
+            max_open_files: 100,
+        };
+        let storage = QantoStorage::new(storage_config).unwrap();
 
         // Create QantoDAG config
         let dag_config = QantoDagConfig {
             initial_validator: crate::qantodag::DEV_ADDRESS.to_string(),
             target_block_time: 30,
             num_chains: 4,
-            qr_signing_key: &signing_key,
-            qr_public_key: &public_key,
+
         };
 
-        let dag_instance = QantoDAG::new(dag_config, saga_pallet, db).unwrap();
+        let dag_instance = QantoDAG::new(dag_config, saga_pallet, storage).unwrap();
         let dag_inner = Arc::try_unwrap(dag_instance).expect("Failed to unwrap Arc for DAG");
         let dag = Arc::new(AsyncRwLock::new(dag_inner));
         let validator = PerformanceValidator::new(dag);
@@ -530,15 +535,15 @@ mod tests {
         let bps = validator.validate_bps_target(5).await.unwrap();
         assert!(bps > 0.0, "BPS should be positive");
 
-        // Clean up test DB
-        let _ = DB::destroy(&rocksdb::Options::default(), "test_bps_db");
+        // Clean up test storage
+        // Note: QantoStorage handles cleanup automatically
     }
 
     #[tokio::test]
     async fn test_tps_validation() {
         // Create test wallet for keys
-        let wallet = Wallet::new().unwrap();
-        let (signing_key, public_key) = wallet.get_keypair().unwrap();
+
+
 
         // Create SAGA pallet
         #[cfg(feature = "infinite-strata")]
@@ -546,19 +551,30 @@ mod tests {
         #[cfg(not(feature = "infinite-strata"))]
         let saga_pallet = Arc::new(PalletSaga::new());
 
-        // Create test DB
-        let db = DB::open_default("test_tps_db").unwrap();
+        // Create test storage
+        let temp_dir = tempfile::tempdir().unwrap();
+        let storage_config = StorageConfig {
+            data_dir: temp_dir.path().to_path_buf(),
+            max_file_size: 64 * 1024 * 1024, // 64MB
+            cache_size: 1024 * 1024,         // 1MB
+            compression_enabled: true,
+            encryption_enabled: false,
+            wal_enabled: true,
+            sync_writes: true,
+            compaction_threshold: 0.7,
+            max_open_files: 1000,
+        };
+        let storage = QantoStorage::new(storage_config).unwrap();
 
         // Create QantoDAG config
         let dag_config = QantoDagConfig {
             initial_validator: crate::qantodag::DEV_ADDRESS.to_string(),
             target_block_time: 30,
             num_chains: 4,
-            qr_signing_key: &signing_key,
-            qr_public_key: &public_key,
+
         };
 
-        let dag_instance = QantoDAG::new(dag_config, saga_pallet, db).unwrap();
+        let dag_instance = QantoDAG::new(dag_config, saga_pallet, storage).unwrap();
         let dag_inner = Arc::try_unwrap(dag_instance).expect("Failed to unwrap Arc for DAG");
         let dag = Arc::new(AsyncRwLock::new(dag_inner));
         let validator = PerformanceValidator::new(dag);
@@ -566,8 +582,7 @@ mod tests {
         let tps = validator.validate_tps_target(5).await.unwrap();
         assert!(tps > 0.0, "TPS should be positive");
 
-        // Clean up test DB
-        let _ = DB::destroy(&rocksdb::Options::default(), "test_tps_db");
+        // No cleanup needed for QantoStorage
     }
 
     #[tokio::test]

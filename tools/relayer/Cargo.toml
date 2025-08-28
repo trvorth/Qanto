@@ -1,6 +1,6 @@
 [package]
 name = "qanto-relayer"
-version = "2.0.0"
+version = "0.1.0"
 edition = "2021"
 authors = ["Trevor <trvorth@gmail.com>"]
 description = "Production-ready cross-chain packet relayer for Qanto Protocol"
@@ -19,8 +19,9 @@ rand = "0.8"
 anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-blake3 = "1.5"
-sp-core = "35.0.1-rc1"
+my-blockchain = { path = "../../myblockchain" }
+qanto = { path = "../../" }
+
 psutil = "3.2"
 
 [[bin]]

@@ -14,7 +14,6 @@ use std::net::SocketAddr;
 use std::path::Path;
 use sysinfo::System;
 use thiserror::Error;
-use tracing::instrument;
 
 // --- Constants for Validation ---
 // EVOLVED: Time is now in MILLISECONDS to support high BPS.
@@ -112,11 +111,11 @@ impl Default for Config {
             network_id: "qanto-testnet-phoenix".to_string(),
             genesis_validator: "0000000000000000000000000000000000000000000000000000000000000000"
                 .to_string(),
-            contract_address: "5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818"
+            contract_address: "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"
                 .to_string(),
             target_block_time: 1000, // Evolved to 1 second for higher throughput
             difficulty: 1000,
-            max_amount: 100_000_000_000,
+            max_amount: 21_000_000_000,
             use_gpu: false,
             zk_enabled: false,
             mining_threads: Self::get_optimized_thread_count(),
@@ -167,13 +166,13 @@ impl Config {
             peers: vec![],
             local_full_p2p_address: None,
             network_id: "qanto-freetier-mainnet".to_string(),
-            genesis_validator: "74fd2aae70ae8e0930b87a3dcb3b77f5b71d956659849f067360d3486604db41"
+            genesis_validator: "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3"
                 .to_string(),
-            contract_address: "5a6a7d8f232bfc2e21f42177f8cd46d672bed53a04736da81d66306d6e9e6818"
+            contract_address: "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"
                 .to_string(),
             target_block_time: 2000, // 2 seconds for free-tier stability
             difficulty: 1,           // Minimal difficulty for free-tier
-            max_amount: 100_000_000_000,
+            max_amount: 21_000_000_000,
             use_gpu: false,    // No GPU on free-tier
             zk_enabled: false, // Disable ZK for resource savings
             mining_threads: 1, // Single thread for free-tier
@@ -192,7 +191,6 @@ impl Config {
         }
     }
 
-    #[instrument]
     pub fn load(path: &str) -> Result<Self, ConfigError> {
         if !Path::new(path).exists() {
             let default_config = Config::default();
@@ -222,7 +220,6 @@ impl Config {
         Ok(config)
     }
 
-    #[instrument(skip(self))]
     pub fn save(&self, path: &str) -> Result<(), ConfigError> {
         let toml_string = toml::to_string_pretty(self)
             .context("Failed to serialize configuration to TOML.")
