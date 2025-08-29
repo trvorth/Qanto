@@ -96,7 +96,7 @@ clap = { version = "4.5.4", features = ["derive"] }
 log = "0.4.21"
 env_logger = "0.11.3"
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.2.25", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 indicatif = "0.18.0"
 
 # --- Rate Limiting & Backoff ---
