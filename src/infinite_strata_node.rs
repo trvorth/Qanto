@@ -1,19 +1,26 @@
 //! --- SAGA Titan (Infinite Strata Node Module) ---
-//! v2.1.0 - Production-Grade Refactor
-//! This version has been completely rewritten to be a robust, standalone, and
-//! decentralized component suitable for a production environment. It addresses
-//! logical flaws in state management and prepares the system for high-throughput
-//! operation.
+//! v0.1.0 - Production-Grade Refactor
+//! This module implements the Infinite Strata Node for the Qanto blockchain,
+//! which is a decentralized oracle aggregator that provides secure, verifiable
+//! data feeds to smart contracts.
 //!
-//! Key Enhancements:
-//! - DECENTRALIZATION: The OracleAggregator is now a decentralized simulation,
-//!   where each node maintains its own view of the network, removing single points of failure.
-//! - ROBUSTNESS: State management is now more explicit and thread-safe, preventing
-//!   race conditions and ensuring consistent reward calculations. Error handling and
-//!   logging are significantly improved.
-//! - PERFORMANCE: Resource sampling and reward logic are optimized for an async
-//!   environment. The reward multiplier is cached between checks to reduce overhead.
-//! - CONFIGURABILITY: Node configuration is expanded for fine-tuning in production.
+//! Key Features:
+//! - Decentralized Oracle Aggregation: Multiple nodes aggregate data from various sources.
+//! - Post-Quantum Security: Utilizes native Qanto post-quantum cryptography for secure data transmission.
+//! - Smart Contract Integration: Allows smart contracts to request and verify data feeds.
+//! - Resilient Consensus: Implements a robust consensus mechanism for secure data aggregation.
+//! - Scalability: Designed to handle a large number of nodes and data requests.
+//! - Extensibility: Easily adaptable to support new data sources and use cases.
+//!
+//! --- Module Components ---
+//!
+//! - `InfiniteStrataNode`: The main struct that implements the node's functionality.
+//! - `OracleAggregator`: Manages the aggregation of data from multiple oracles.
+//! - `DataFeedRegistry`: Registers and tracks data feeds provided by the node.
+//! - `ConsensusMechanism`: Implements the consensus algorithm for secure data aggregation.
+//! - `PostQuantumCrypto`: Utilizes native Qanto post-quantum cryptography for secure communication.
+//! - `QuantumResistantKeyManager`: Implements a sophisticated key management system with rotation support.
+//! - `NodeRegistry`: Maintains a registry of all nodes in the network.
 
 use crate::post_quantum_crypto::{generate_pq_keypair, pq_sign, pq_verify};
 use crate::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature};

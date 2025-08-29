@@ -1,7 +1,7 @@
 // src/config.rs
 
 //! --- Qanto Node Configuration ---
-//! v2.0.0 - Production & Standalone Ready
+//! v0.1.0 - Production & Standalone Ready
 //! This module defines the configuration structure for a Qanto node.
 //! It uses serde for deserialization from a TOML file and includes
 //! robust validation logic to ensure that all configured parameters

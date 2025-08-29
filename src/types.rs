@@ -1,5 +1,10 @@
 // src/types.rs
 
+//! --- Qanto Types ---
+//! v0.1.0 - Initial Version
+//!
+//! This version defines basic types used throughout the Qanto system, including
+//! addresses, hashes, UTXOs, and post-quantum signatures.
 use crate::post_quantum_crypto::{pq_sign, pq_verify};
 use crate::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature};
 use libpaillier::crypto_bigint::{Encoding, U4096 as BigNumber};

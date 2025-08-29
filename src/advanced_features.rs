@@ -1,5 +1,5 @@
 //! --- Qanto Advanced Features Module ---
-//! v1.0.0 - Layer-0 Superiority Implementation
+//! v0.1.0 - Layer-0 Superiority Implementation
 //!
 //! This module implements cutting-edge features that position Qanto above
 //! all existing Layer-0 and Layer-1 blockchain solutions.

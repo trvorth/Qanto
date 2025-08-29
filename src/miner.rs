@@ -1,13 +1,9 @@
 //! --- Qanto Miner ---
-//! v2.0.0 - Deterministic PoW
+//! v0.1.0 - Deterministic PoW
+//!
 //! This version implements a production-grade, deterministic Proof-of-Work
 //! target calculation, removing all floating-point arithmetic from the consensus-
 //! critical path to eliminate nondeterminism and precision loss.
-//!
-//! - REFACTOR (Consensus-Critical): Replaced the f64-based `calculate_target_from_difficulty`
-//!   with a pure `U256` integer-based method. Difficulty is now treated as a
-//!   fixed-point number for precise, deterministic calculations across all nodes.
-//! - OPTIMIZATION: Enhanced the internal `U256` division logic for efficiency.
 
 use crate::mining_celebration::{celebrate_mining_success, MiningCelebrationParams};
 use crate::qantodag::{QantoBlock, QantoDAG};

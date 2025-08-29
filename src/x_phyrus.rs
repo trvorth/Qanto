@@ -1,4 +1,4 @@
-//! 🪖 X-PHYRUS™ Protocol Stack (v0.7.0 - Quantum-Hardened & Self-Healing Edition)
+//! 🪖 X-PHYRUS™ Protocol Stack (v0.1.0 - Quantum-Hardened & Self-Healing Edition)
 //! A groundbreaking, military-grade blockchain framework integrated directly into Qanto.
 //! This module provides advanced security, deployment, and operational integrity features,
 //! with a strong focus on post-quantum resilience, cloud-adaptive capabilities, and auto-healing.

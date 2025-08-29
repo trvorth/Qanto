@@ -1,5 +1,5 @@
 //! --- Qanto Native Serialization System ---
-//! v1.0.0 - Custom Serialization Implementation
+//! v0.1.0 - Custom Serialization Implementation
 //! This module provides a native serialization/deserialization system for Qanto,
 //! replacing serde with a custom high-performance implementation optimized for blockchain data.
 //!

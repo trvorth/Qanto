@@ -1,6 +1,6 @@
 //! Qanto Native Cryptographic Implementation
 //!
-//! v1.1.0 - Hardened & Corrected
+//! v0.1.0 - Hardened & Corrected
 //! This version provides a complete, standalone cryptographic implementation
 //! to replace all external cryptographic dependencies. It includes a critical
 //! fix for the post-quantum signature scheme and introduces security enhancements

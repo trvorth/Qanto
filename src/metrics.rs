@@ -1,7 +1,7 @@
 //! Unified metrics system for Qanto blockchain
 //! This module provides a centralized metrics collection and reporting system
 //! that eliminates duplication across the codebase.
-
+//! v0.1.0
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};

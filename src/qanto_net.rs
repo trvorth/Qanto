@@ -1,5 +1,5 @@
 //! --- Qanto Native Networking Layer ---
-//! v1.0.0 - Native P2P Implementation
+//! v0.1.0 - Native P2P Implementation
 //! This module provides a complete native networking stack for Qanto,
 //! replacing all libp2p dependencies with custom implementations.
 //!

@@ -1,5 +1,7 @@
 //! # Qanto Performance Validation Suite
 //!
+//! v0.1.0 - Initial Version
+//!
 //! This module provides comprehensive benchmarking and validation of Qanto's
 //! performance targets: 32 BPS (Blocks Per Second) and 10M+ TPS (Transactions Per Second)
 
@@ -227,9 +229,9 @@ impl PerformanceValidator {
         for i in 0..count {
             let message = b"test_message";
 
-            let tx_id = format!("tx_{}", i);
-            let sender = format!("test_sender_{}", i);
-            let receiver = format!("test_receiver_{}", i);
+            let tx_id = format!("tx_{i}");
+            let sender = format!("test_sender_{i}");
+            let receiver = format!("test_receiver_{i}");
 
             let tx = Transaction {
                 id: tx_id,

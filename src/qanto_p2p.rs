@@ -1,4 +1,5 @@
 //! Qanto Native P2P Networking Implementation
+//! v0.1.0
 //!
 //! This module provides a complete P2P networking stack built exclusively for Qanto,
 //! replacing libp2p with a custom implementation optimized for blockchain operations.

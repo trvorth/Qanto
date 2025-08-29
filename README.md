@@ -39,7 +39,7 @@ The following benchmarks were conducted on an Apple M-series CPU and an integrat
 | **Hyperscale Execution (1.6M txs)** | `~62.8 ms`       | **~25,447,000 TPS** | Peak raw throughput of the sharded execution model. |
 | **Post-Quantum Signatures** | `~1.2 ms`        | **~833 sigs/sec** | CRYSTALS-Dilithium signature verification performance. |
 | **Cross-Chain Verification** | `~15 ms`         | **~66 proofs/sec** | Light client proof verification across supported chains. |
-| **AI Governance (SAGA v9.1.1)** | `~5 ms`          | **~200 decisions/sec** | Neural network-based governance decision processing with real-time analytics. |
+| **AI Governance (SAGA)** | `~5 ms`          | **~200 decisions/sec** | Neural network-based governance decision processing with real-time analytics. |
 | **Infinite Strata VDF** | `~100 ms`        | **~10 proofs/sec** | Verifiable Delay Function proof generation and verification. |
 | **Analytics Dashboard** | `~2 ms`          | **~500 updates/sec** | Real-time network monitoring with AI insights and security analytics. |
 | **Memory Pool Processing** | `~0.5 ms`        | **~2000 txs/sec** | Priority-based transaction queuing with advanced validation. |
@@ -354,15 +354,6 @@ qanto-cli swap complete --swap-id 0x123... --secret-key your-secret
 ```
 
 ## Security Features
-
-### Security Audit Results
-
-| Component | Auditor | Date | Status | Report |
-|-----------|---------|------|--------|---------|
-| Core Protocol | Trail of Bits | 2025-08 | ✅ Passed | [View Report](./docs/audits/trail-of-bits-2025.pdf) |
-| Smart Contracts | Consensys Diligence | 2025-08 | ✅ Passed | [View Report](./docs/audits/consensys-2025.pdf) |
-| Cryptography | NCC Group | 2025-08 | ✅ Passed | [View Report](./docs/audits/ncc-group-2025.pdf) |
-| Bridge Security | Halborn | 2025-08 | 🔄 In Progress | TBD |
 
 ### Vulnerability Management
 

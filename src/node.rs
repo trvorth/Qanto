@@ -1,12 +1,24 @@
 //! --- Qanto Node Orchestrator ---
-//! v1.8.0 - Deterministic PoW Integration
-//! This version aligns the node's instantiation of the Miner with the new
-//! deterministic PoW configuration, resolving build errors from the consensus-
-//! critical refactor.
+//! v0.1.0 - Deterministic PoW Integration
 //!
-//! - BUILD FIX (E0560): Removed `difficulty_hex` and `num_chains` from the
-//!   `MinerConfig` struct during initialization in `Node::new`, as these are
-//!   no longer required by the refactored Miner.
+//! This version implements a basic node with P2P networking, consensus,
+//! and transaction processing.
+//!
+//! - P2P Networking: Implements a basic P2P network using libp2p for peer discovery
+//!   and message exchange.
+//! - Consensus: Utilizes the Qanto Hybrid Consensus Engine for secure and
+//!   decentralized block validation.
+//! - Transaction Processing: Handles transaction creation, validation, and
+//!   inclusion in blocks.
+//! - Mempool: Maintains a transaction pool for pending transactions to be
+//!   included in the next block.
+//! - Storage: Utilizes RocksDB for persistent storage of blockchain data.
+//! - GraphQL API: Exposes a GraphQL API for querying blockchain state and
+//!   interacting with the node.
+//! - WebSocket API: Provides a WebSocket API for real-time event subscription
+//!   and interaction.
+//! - Analytics Dashboard: Includes a real-time analytics dashboard for monitoring
+//!   node performance and network activity.
 
 use crate::analytics_dashboard::{AnalyticsDashboard, DashboardConfig};
 use crate::config::{Config, ConfigError};

@@ -1,17 +1,15 @@
 //! --- Qanto Wallet ---
-//! v2.5.1 - Compilation and Logic Fixes
-//! This version resolves compilation errors stemming from incorrect handling of
-//! Result types and cryptographic salt formats. It also cleans up unused imports.
+//! v0.1.0 - Basic Wallet Implementation
+//! This version implements a basic wallet with mnemonic generation, key derivation,
+//! and encryption/decryption of wallet files.
 //!
-//! - COMPILATION FIX (Result Handling): Correctly unwrapped the `Result` returned
-//!   by `Ed25519SigningKey::from_bytes` using the `?` operator. This fixes
-//!   multiple `E0599` and `E0308` errors where methods were being called on a
-//!   `Result` enum instead of the `SigningKey` struct.
-//! - COMPILATION FIX (Salt Format): The `argon2` key derivation function now
-//!   receives the salt in the correct `&[u8]` format by converting the `SaltString`
-//!   to its string representation first (`.as_str().as_bytes()`). This resolves
-//!   the `E0599` "method not found in `Salt`" errors.
-//! - CLEANUP: Removed all unused imports to eliminate compiler warnings.
+//! Features:
+//! - Mnemonic generation and seed derivation
+//! - Key derivation using Argon2id
+//! - Encryption of wallet files using AES-256-GCM
+//! - Decryption of wallet files using passphrase
+//! - Storage of Ed25519 and post-quantum keys
+//! - Serialization and deserialization of wallet files
 
 use crate::post_quantum_crypto::{generate_pq_keypair, QantoPQPrivateKey, QantoPQPublicKey};
 use crate::qanto_compat::ed25519_dalek::{

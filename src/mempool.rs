@@ -1,9 +1,8 @@
 //! --- Qanto Mempool ---
-//! v2.5.0 - Production Hardening & Fixes
-//! This version corrects a variable ownership bug and continues to harden the
-//! mempool's logic for continuous, high-throughput operation by activating
-//! the transaction pruning mechanism.
-
+//! v0.1.0 - Initial Version
+//!
+//! This version implements a basic mempool with transaction prioritization
+//! and UTXO tracking.
 use crate::qantodag::QantoDAG;
 use crate::transaction::{Transaction, TransactionError};
 use crate::types::UTXO;

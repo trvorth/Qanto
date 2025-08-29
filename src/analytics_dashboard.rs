@@ -1,5 +1,5 @@
 //! Real-time Analytics Dashboard for Qanto Network
-//! Production-Grade Implementation v1.0.0
+//! Production-Grade Implementation v0.1.0
 //!
 //! This module provides comprehensive real-time analytics and monitoring
 //! capabilities for the Qanto blockchain network, including:

@@ -1,3 +1,8 @@
+//! --- Qanto Keygen ---
+//! v0.1.0 - Initial Version
+//!
+//! This version implements a basic key generation utility for Qanto, using
+//! Ed25519 for secp256k1 compatibility.
 use crate::qanto_compat::ed25519_dalek::SigningKey;
 use bip39::{Language, Mnemonic};
 use rand::rngs::OsRng;

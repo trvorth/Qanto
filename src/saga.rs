@@ -1,9 +1,19 @@
 //! --- SAGA: Sentient Autonomous Governance Algorithm ---
-//! v9.1.1 - Production Ready
-//! This version is fully prepared for production deployment and further hardening.
-//! All known bugs and compiler warnings have been resolved.
+//! v0.1.0 - Production Ready
 //!
-//! - LINT FIX: Prefixed an unused variable with an underscore to resolve the final warning.
+//! This version implements the basic SAGA algorithm with rule execution,
+//! proposal voting, and epoch management.
+//!
+//! - Rule Execution: Executes governance rules defined in the SAGA protocol.
+//! - Proposal Voting: Allows users to vote on proposals submitted to the network.
+//! - Epoch Management: Manages epochs, which are time periods during which
+//!   governance decisions are made.
+//! - Rule Enforcement: Enforces governance rules and executes actions based on
+//!   voting results.
+//! - State Management: Maintains the current state of the SAGA protocol,
+//!   including rules, proposals, and voting results.
+//! - Event Logging: Logs important events and actions for auditing and
+//!   transparency.
 
 #[cfg(feature = "infinite-strata")]
 use crate::infinite_strata_node::InfiniteStrataNode;
@@ -1520,7 +1530,7 @@ impl CognitiveAnalyticsEngine {
                 }
             }
         }
-        (1.0 - (suspicious_tx_count / tx_count) as f64).max(0.0f64)
+        (1.0 - (suspicious_tx_count / tx_count)).max(0.0f64)
     }
 
     /// Forward pass through the neural network

@@ -88,6 +88,11 @@ node*/*.txt
 /config.mainnet.toml
 /config.production-client.toml
 /config.production.toml
+/mining_rig_config.toml
+/wrangler.toml
+/config.toml
+/.cargo/config.toml
+/hydra_manifest.toml
 
 # --- Generated Project Files ---
 /header.tex
@@ -96,7 +101,6 @@ node*/*.txt
 /scripts
 /docs/whitepaper/assets
 /docs/Deployment_Strategy.md
-/mining_rig_config.toml
 /docker-compose.production.yml
 /docker-compose.*.yml
 /deploy.sh
@@ -106,16 +110,12 @@ node*/*.txt
 /DUPLICATION_AUDIT_REPORT.md
 /instance
 /user-data.sh
-/wrangler.toml
-/config.toml
-/.cargo/config.toml
 /explorer
 /website
 /explorer/node_modules
 /website/node_modules
 /website/build
 /website/dist
-/hydra_manifest.toml
 /traceforce_watchlist.csv
 .github/workflows/rust.yml
 
@@ -223,7 +223,7 @@ yarn-error.log*
 /docs/whitepaper/assets/diagrams/*.svg
 /docs/whitepaper/Qanto-whitepaper.docx
 /docs/whitepaper/~$nto-whitepaper.docx
-
+/docs/audits
 # --- Local Scripts ---
 /scripts/run_local_net.sh
 

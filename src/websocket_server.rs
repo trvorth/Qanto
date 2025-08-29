@@ -1,5 +1,5 @@
 //! WebSocket Server for Real-time Qanto Network Subscriptions
-//! Production-Grade Implementation v1.0.0
+//! Production-Grade Implementation v0.1.0
 //!
 //! This module provides real-time WebSocket subscriptions for:
 //! - Block notifications

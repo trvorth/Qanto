@@ -1,4 +1,5 @@
 //! Qanto Native AI Metrics System
+//! v0.1.0
 //!
 //! This module provides native implementations for AI model performance metrics,
 //! replacing placeholder values with actual calculations based on network data.

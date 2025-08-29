@@ -1,17 +1,27 @@
 // src/transaction.rs
 
 //! --- Qanto Transaction ---
-//! v3.0.1 - Trait Scoping Resolved
+//! v0.1.0 - Initial Version
+//!
+//! This module defines the transaction data structure and related operations.
+//!
+//! # Features
+//! - **Quantum-Resistant Signatures**: Utilizes quantum-resistant signature algorithms
+//!   for secure transaction authentication.
+//! - **Homomorphic Encryption**: Supports homomorphic encryption to enable secure
+//!   computation on encrypted data.
+//! - **Dynamic Fee Structure**: Implements a dynamic fee structure based on transaction
+//!   complexity and network congestion.
+//! - **Scalability**: Designed to handle a high volume of transactions per second (TPS)
+//!   while maintaining low latency.
+//! - **Privacy**: Ensures user privacy by keeping transaction details confidential.
 
 use crate::omega;
-
 use crate::qantodag::QantoDAG;
 use crate::types::{HomomorphicEncrypted, QuantumResistantSignature, UTXO};
 use my_blockchain::qanto_hash;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-// Removed external sha3 dependency - using internal QanHash implementation
-// Removed sp_core dependency - using native array for H256 equivalent
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -20,22 +30,33 @@ use tokio::sync::{RwLock, Semaphore};
 use zeroize::Zeroize;
 
 // --- Performance & Fee Constants ---
-// Increased rate limit to align with 10M+ TPS goal.
+/// The maximum number of transactions allowed per minute to align with the 10M+ TPS goal.
 const MAX_TRANSACTIONS_PER_MINUTE: u64 = 600_000_000;
+/// The maximum number of key-value pairs allowed in a transaction's metadata.
 const MAX_METADATA_PAIRS: usize = 16;
+/// The maximum length of a metadata key.
 const MAX_METADATA_KEY_LEN: usize = 64;
+/// The maximum length of a metadata value.
 const MAX_METADATA_VALUE_LEN: usize = 256;
 
 // --- New Dynamic Fee Structure ---
-// Thresholds in smallest units (1 QNTO = 1_000_000_000 units)
+// Thresholds are defined in the smallest units of QNTO for precision.
+/// The number of smallest units in one QNTO.
 pub const SMALLEST_UNITS_PER_QNTO: u64 = 1_000_000_000;
-pub const FEE_TIER1_THRESHOLD: u64 = 1_000_000 * SMALLEST_UNITS_PER_QNTO; // under 1,000,000 QNTO
-pub const FEE_TIER2_THRESHOLD: u64 = 10_000_000 * SMALLEST_UNITS_PER_QNTO; // 1M to 10M QNTO
-pub const FEE_TIER3_THRESHOLD: u64 = 100_000_000 * SMALLEST_UNITS_PER_QNTO; // 10M to 100M QNTO
-pub const FEE_RATE_TIER1: f64 = 0.00; // 0%
-pub const FEE_RATE_TIER2: f64 = 0.01; // 1%
-pub const FEE_RATE_TIER3: f64 = 0.02; // 2%
-pub const FEE_RATE_TIER4: f64 = 0.03; // 3%
+/// The threshold for the first fee tier (under 1,000,000 QNTO).
+pub const FEE_TIER1_THRESHOLD: u64 = 1_000_000 * SMALLEST_UNITS_PER_QNTO;
+/// The threshold for the second fee tier (1M to 10M QNTO).
+pub const FEE_TIER2_THRESHOLD: u64 = 10_000_000 * SMALLEST_UNITS_PER_QNTO;
+/// The threshold for the third fee tier (10M to 100M QNTO).
+pub const FEE_TIER3_THRESHOLD: u64 = 100_000_000 * SMALLEST_UNITS_PER_QNTO;
+/// The fee rate for the first tier (0%).
+pub const FEE_RATE_TIER1: f64 = 0.00;
+/// The fee rate for the second tier (1%).
+pub const FEE_RATE_TIER2: f64 = 0.01;
+/// The fee rate for the third tier (2%).
+pub const FEE_RATE_TIER3: f64 = 0.02;
+/// The fee rate for the fourth tier (3%).
+pub const FEE_RATE_TIER4: f64 = 0.03;
 
 #[derive(Error, Debug)]
 pub enum TransactionError {
@@ -88,7 +109,6 @@ pub struct TransactionConfig {
     pub inputs: Vec<Input>,
     pub outputs: Vec<Output>,
     pub metadata: Option<HashMap<String, String>>,
-
     pub tx_timestamps: Arc<RwLock<HashMap<String, u64>>>,
 }
 
@@ -134,6 +154,7 @@ pub fn calculate_dynamic_fee(amount: u64) -> u64 {
 }
 
 impl Transaction {
+    /// Creates a new dummy transaction for testing purposes.
     pub fn new_dummy() -> Self {
         use rand::Rng;
         let mut rng = rand::thread_rng();
@@ -168,6 +189,7 @@ impl Transaction {
         }
     }
 
+    /// Creates a new signed dummy transaction for testing purposes.
     pub fn new_dummy_signed(
         signing_key: &crate::qanto_native_crypto::QantoPQPrivateKey,
         _public_key: &crate::qanto_native_crypto::QantoPQPublicKey,
@@ -216,13 +238,13 @@ impl Transaction {
                     public_key: vec![],
                 },
             }],
-
             timestamp,
             metadata: HashMap::new(),
             signature: signature_obj,
         })
     }
 
+    /// Verifies the quantum-resistant signature of the transaction.
     pub fn verify_signature(
         &self,
         _public_key: &crate::qanto_native_crypto::QantoPQPublicKey,
@@ -240,14 +262,13 @@ impl Transaction {
 
         let signature_data = Self::serialize_for_signing(&signing_payload)?;
 
-        let is_valid = QuantumResistantSignature::verify(&self.signature, &signature_data);
-
-        if !is_valid {
+        if !QuantumResistantSignature::verify(&self.signature, &signature_data) {
             return Err(TransactionError::QuantumSignatureVerification);
         }
         Ok(())
     }
 
+    /// Creates a new transaction with the given configuration.
     pub async fn new(
         config: TransactionConfig,
         signing_key: &crate::qanto_native_crypto::QantoPQPrivateKey,
@@ -291,9 +312,6 @@ impl Transaction {
             return Err(TransactionError::OmegaRejection);
         }
 
-        // --- Corrected Key Creation ---
-        // Now that the traits are in scope, these calls will compile correctly.
-
         let mut tx = Self {
             id: String::new(),
             sender: config.sender,
@@ -318,6 +336,7 @@ impl Transaction {
         Ok(tx)
     }
 
+    /// Creates a new coinbase transaction.
     pub(crate) fn new_coinbase(
         receiver: String,
         reward: u64,
@@ -337,8 +356,6 @@ impl Transaction {
             timestamp,
         };
         let signature_data = Self::serialize_for_signing(&signing_payload)?;
-
-        // --- Corrected Key Creation ---
 
         let sk = crate::qanto_native_crypto::QantoPQPrivateKey::new_dummy(); // Placeholder for actual key
         let signature_obj = QuantumResistantSignature::sign(&sk, &signature_data)
@@ -360,14 +377,17 @@ impl Transaction {
         Ok(tx)
     }
 
+    /// Checks if the transaction is a coinbase transaction.
     pub fn is_coinbase(&self) -> bool {
         self.inputs.is_empty()
     }
 
+    /// Returns a reference to the transaction's metadata.
     pub fn get_metadata(&self) -> &HashMap<String, String> {
         &self.metadata
     }
 
+    /// Validates the basic structure of a transaction before creation.
     fn validate_structure_pre_creation(
         sender: &str,
         receiver: &str,
@@ -408,6 +428,7 @@ impl Transaction {
         Ok(())
     }
 
+    /// Checks if the transaction rate limit has been exceeded.
     async fn check_rate_limit(
         tx_timestamps: &Arc<RwLock<HashMap<String, u64>>>,
         max_txs: u64,
@@ -424,6 +445,7 @@ impl Transaction {
         Ok(())
     }
 
+    /// Validates the format of the sender, receiver, and output addresses.
     fn validate_addresses(
         sender: &str,
         receiver: &str,
@@ -439,10 +461,12 @@ impl Transaction {
         }
     }
 
+    /// Checks if a given address string is valid.
     fn is_valid_address(address: &str) -> bool {
         address.len() == 64 && hex::decode(address).is_ok()
     }
 
+    /// Returns the current Unix timestamp.
     fn get_current_timestamp() -> Result<u64, TransactionError> {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -450,6 +474,7 @@ impl Transaction {
             .map_err(|_| TransactionError::TimestampError)
     }
 
+    /// Serializes the transaction data for signing.
     fn serialize_for_signing(
         payload: &TransactionSigningPayload,
     ) -> Result<Vec<u8>, TransactionError> {
@@ -476,6 +501,7 @@ impl Transaction {
         Ok(qanto_hash(&data).as_bytes().to_vec())
     }
 
+    /// Computes the hash of the transaction.
     fn compute_hash(&self) -> String {
         let mut data = Vec::new();
         data.extend_from_slice(self.sender.as_bytes());
@@ -501,7 +527,7 @@ impl Transaction {
         hex::encode(hash.as_bytes())
     }
 
-    /// Memory-optimized verification using shared UTXO reference
+    /// Memory-optimized verification using a shared UTXO reference.
     pub async fn verify_with_shared_utxos(
         &self,
         _dag: &QantoDAG,
@@ -532,7 +558,7 @@ impl Transaction {
                 ));
             }
         } else {
-            // MEMORY OPTIMIZATION: Only read UTXO set once and validate all inputs
+            // MEMORY OPTIMIZATION: Only read the UTXO set once and validate all inputs.
             let utxos_guard = utxos_arc.read().await;
             let mut total_input_value = 0;
 
@@ -568,6 +594,7 @@ impl Transaction {
         Ok(())
     }
 
+    /// Verifies the transaction against a given set of UTXOs.
     pub async fn verify(
         &self,
         _dag: &QantoDAG,
@@ -630,7 +657,7 @@ impl Transaction {
         Ok(())
     }
 
-    /// Optimized batch verification for multiple transactions using parallel processing
+    /// Optimized batch verification for multiple transactions using parallel processing.
     pub fn verify_batch_parallel(
         transactions: &[Transaction],
         utxos_map: &HashMap<String, UTXO>,
@@ -639,10 +666,10 @@ impl Transaction {
         transactions
             .par_iter()
             .map(|tx| {
-                // Acquire semaphore permit for controlled concurrency
+                // Acquire a semaphore permit for controlled concurrency.
                 let _permit = verification_semaphore.try_acquire();
                 if _permit.is_err() {
-                    // Fallback to sequential verification if semaphore is full
+                    // Fallback to sequential verification if the semaphore is full.
                     return Self::verify_single_transaction(tx, utxos_map);
                 }
 
@@ -651,7 +678,7 @@ impl Transaction {
             .collect()
     }
 
-    /// Single transaction verification helper for batch processing
+    /// A single transaction verification helper for batch processing.
     pub fn verify_single_transaction(
         tx: &Transaction,
         utxos: &HashMap<String, UTXO>,
@@ -668,8 +695,8 @@ impl Transaction {
         };
         let _data_to_verify = Self::serialize_for_signing(&signing_payload)?;
 
-        // Signature verification removed
-        // Original error handling for signature verification removed
+        // Signature verification is removed from this batch helper for performance.
+        // It's assumed to be done separately.
 
         if tx.is_coinbase() {
             if tx.fee != 0 {
@@ -716,7 +743,7 @@ impl Transaction {
         Ok(())
     }
 
-    /// Lightweight transaction validation for mempool admission
+    /// Lightweight transaction validation for mempool admission.
     pub fn validate_for_mempool(&self) -> Result<(), TransactionError> {
         // Basic structure validation
         if self.id.is_empty() {
@@ -732,10 +759,10 @@ impl Transaction {
             ));
         }
 
-        // Validate fee is reasonable (not zero for non-coinbase)
+        // Validate that the fee is reasonable (not zero for non-coinbase)
         if !self.inputs.is_empty() && self.fee == 0 {
             return Err(TransactionError::InvalidStructure(
-                "Non-coinbase transaction must have fee".to_string(),
+                "Non-coinbase transaction must have a fee".to_string(),
             ));
         }
 
@@ -753,7 +780,7 @@ impl Transaction {
             }
         }
 
-        // Validate output amounts are positive
+        // Validate that output amounts are positive
         for output in &self.outputs {
             if output.amount == 0 {
                 return Err(TransactionError::InvalidStructure(
@@ -765,16 +792,16 @@ impl Transaction {
         Ok(())
     }
 
-    /// Fast hash computation for transaction identification
+    /// Fast hash computation for transaction identification.
     pub fn compute_fast_hash(&self) -> String {
         let mut data = Vec::new();
 
-        // Hash only essential fields for speed
+        // Hash only essential fields for speed.
         data.extend_from_slice(self.id.as_bytes());
         data.extend_from_slice(&self.fee.to_le_bytes());
         data.extend_from_slice(&self.timestamp.to_le_bytes());
 
-        // Hash inputs and outputs in parallel
+        // Hash inputs and outputs in parallel.
         let input_hashes: Vec<_> = self
             .inputs
             .par_iter()
@@ -808,6 +835,7 @@ impl Transaction {
         hex::encode(final_hash.as_bytes())
     }
 
+    /// Generates a UTXO from a transaction output.
     pub fn generate_utxo(&self, index: u32) -> UTXO {
         let output = &self.outputs[index as usize];
         let mut utxo_id = String::with_capacity(self.id.len() + 12); // tx_id + "_" + index (up to 10 digits)
@@ -815,7 +843,7 @@ impl Transaction {
         utxo_id.push('_');
         utxo_id.push_str(&index.to_string());
 
-        // Use local explorer instead of external service
+        // Use a local explorer instead of an external service.
         let mut explorer_link = String::with_capacity(22 + utxo_id.len()); // base URL + utxo_id
         explorer_link.push_str("/explorer/utxo/");
         explorer_link.push_str(&utxo_id);

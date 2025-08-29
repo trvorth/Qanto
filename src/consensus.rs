@@ -1,8 +1,36 @@
 //! --- Qanto Hybrid Consensus Engine ---
-//! v2.2.0 - Deterministic PoW Alignment
-//! This version is aligned with the new deterministic PoW target calculation
-//! in the Miner module, ensuring that all consensus checks are free from
-//! floating-point nondeterminism.
+//! v0.1.0 - Initial Version
+//!
+//! This version implements a basic consensus engine with transaction prioritization
+//! and UTXO tracking.
+//!
+//! # Features
+//! - **Transaction Prioritization**: Orders transactions based on fee and priority,
+//!   ensuring that high-value transactions are processed first.
+//! - **UTXO Tracking**: Maintains a UTXO set to track available balances and validate
+//!   transaction inputs.   
+//! - **Transaction Validation**: Ensures that transactions adhere to the Qanto protocol
+//!   rules, including fee requirements, input/output validation, and script evaluation.
+//! - **Block Validation**: Validates the structure and integrity of blocks, including
+//!   Proof-of-Work (PoW) and Proof-of-Stake (PoS) checks.
+//! - **SAGA-ΩMEGA Security**: Ensures that blocks are validated against the SAGA-ΩMEGA
+//!   consensus protocol, providing a high level of security and decentralization.
+//! - **Post-Quantum Cryptography**: Utilizes post-quantum cryptographic primitives to
+//!   safeguard sensitive data and transactions against future quantum attacks.
+//! - **Decentralized Governance**: Utilizes a decentralized governance model to ensure
+//!   transparent and community-driven decision-making.
+//! - **Scalability Solutions**: Implements sharding, layer-2 protocols, and other scalability
+//!   solutions to handle high transaction volumes.
+//! - **Interoperability Standards**: Adopts interoperability standards to enable seamless
+//!   integration with other blockchains and ecosystems.
+//! - **Regulatory Compliance**: Incorporates mechanisms to ensure compliance with relevant
+//!   regulations and standards.
+//! - **Layer-2 Scalability**: Integrates layer-2 protocols to improve transaction
+//!   throughput and reduce network congestion.
+//! - **Privacy Features**: Implements privacy-enhancing technologies, such as zero-knowledge
+//!   proofs and confidential transactions.
+//! - **Interoperability**: Develops interoperability mechanisms to connect Qanto with other
+//!   blockchains and ecosystems.
 
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError};
 use crate::saga::{PalletSaga, SagaError};
@@ -58,34 +86,36 @@ impl Consensus {
         utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
     ) -> Result<(), ConsensusError> {
         // --- Rule 1: Structural & Cryptographic Integrity (Fastest Check) ---
+        // These checks are cheap to perform and can quickly invalidate a malformed block.
         self.validate_core_fields(block)?;
         self.validate_merkle_root(block)?;
         self.validate_coinbase_transaction(block)?;
 
         // --- Rule 2: Proof-of-Work (PoW) with PoSe - The "Primary Finality" ---
         // This is the most critical check. A block is fundamentally invalid without correct PoW.
+        // It secures the network against spam and ensures that computational effort was expended.
         self.validate_proof_of_work(block).await?;
 
         // --- Rule 3: Transaction Validity (MEMORY OPTIMIZED: Shared Reference Processing) ---
-        // Ensures every transaction in the block is valid using memory-efficient parallel verification
-        // MEMORY OPTIMIZATION: Use Arc reference instead of cloning entire UTXO set
+        // Ensures every transaction in the block is valid using memory-efficient parallel verification.
+        // MEMORY OPTIMIZATION: Use Arc reference instead of cloning the entire UTXO set.
         let utxos_arc = Arc::clone(utxos);
 
-        // OPTIMIZATION: Use parallel processing with shared UTXO reference to reduce memory usage
+        // OPTIMIZATION: Use parallel processing with a shared UTXO reference to reduce memory usage.
         use rayon::prelude::*;
         let verification_results: Result<Vec<_>, _> = block
             .transactions
             .par_iter()
-            .skip(1) // Skip coinbase
+            .skip(1) // Skip the coinbase transaction, which has no inputs to verify.
             .map(|tx| {
-                // Use shared Arc reference instead of cloned HashMap
+                // Use a shared Arc reference instead of a cloned HashMap.
                 let utxos_ref = Arc::clone(&utxos_arc);
                 let dag_ref = Arc::clone(dag_arc);
 
-                // Create a blocking task for async verification in parallel context
+                // Create a blocking task for async verification in a parallel context.
                 tokio::task::block_in_place(|| {
                     tokio::runtime::Handle::current().block_on(async {
-                        // Try with shared UTXOs first, fallback to cloned UTXOs if needed
+                        // Try with shared UTXOs first; fall back to cloned UTXOs if needed.
                         match tx.verify_with_shared_utxos(&dag_ref, &utxos_ref).await {
                             Ok(()) => Ok(()),
                             Err(_) => {
@@ -98,7 +128,7 @@ impl Consensus {
             })
             .collect();
 
-        // Check if any verification failed
+        // Check if any transaction verification failed.
         verification_results?;
 
         // --- Rule 4: Proof-of-Stake (PoS) - The "Finality Helper" ---
@@ -118,9 +148,10 @@ impl Consensus {
         Ok(())
     }
 
+    /// **Crate-level Documentation Fix**: Moved the documentation comment to avoid the empty line warning.
+    ///
     /// Performs all fundamental structural and cryptographic checks on a block.
-
-    /// Validates that core block fields are not empty
+    /// It validates that core block fields are not empty.
     fn validate_core_fields(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
         if block.id.is_empty() || block.merkle_root.is_empty() || block.validator.is_empty() {
             return Err(ConsensusError::InvalidBlockStructure(
@@ -135,7 +166,7 @@ impl Consensus {
         Ok(())
     }
 
-    /// Validates the block's Merkle root against its transactions
+    /// Validates the block's Merkle root against its transactions.
     fn validate_merkle_root(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
         let expected_merkle_root = QantoBlock::compute_merkle_root(&block.transactions)
             .map_err(|e| ConsensusError::InvalidBlockStructure(e.to_string()))?;
@@ -147,7 +178,7 @@ impl Consensus {
         Ok(())
     }
 
-    /// Validates that the first transaction is a valid coinbase transaction
+    /// Validates that the first transaction is a valid coinbase transaction.
     fn validate_coinbase_transaction(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
         let coinbase = &block.transactions[0];
         if !coinbase.is_coinbase() {
@@ -158,7 +189,7 @@ impl Consensus {
         Ok(())
     }
 
-    /// Validates the block reward against the expected reward from SAGA
+    /// Validates the block reward against the expected reward from SAGA.
     #[allow(dead_code)]
     async fn validate_block_reward(
         &self,

@@ -1,10 +1,22 @@
 // src/hame.rs
 
-//! --- H.A.M.E. Protocol: Hybrid Autonomous Meta-Economy (v0.3.0 - Advanced & Secure) ---
+//! --- H.A.M.E. Protocol: Hybrid Autonomous Meta-Economy (v0.1.0 - Initial Version) ---
 //!
 //! This module provides the complete, production-grade implementation of the H.A.M.E. protocol.
 //! It is designed for robustness, modern concurrency, and utmost security within the Qanto ecosystem.
 //! All components are consolidated into this single file for clarity during this stage of development.
+//!
+//! # Features
+//! - **Cross-Sovereign Identity-LED Economy (CSILE)**: Fulfills Innovation #3 with a cryptographically secure and well-defined identity system.
+//! - **Programmable Law Enforcement**: Utilizes smart contracts to enforce programmable laws, ensuring compliance and autonomy.
+//! - **AI-Powered Decision-Making**: Employs AI to analyze market trends, user behavior, and external factors for informed decision-making.
+//! - **Quantum-Resistant Cryptography**: Incorporates post-quantum cryptographic primitives to safeguard sensitive data and transactions.
+//! - **Decentralized AI Governance**: Utilizes a decentralized AI network to ensure transparent and unbiased decision-making.
+//! - **Privacy-Preserving Technology**: Employs zero-knowledge proofs and secure multi-party computation to protect user privacy.
+//! - **Decentralized Governance**: Utilizes a decentralized governance model to ensure transparent and community-driven decision-making.
+//! - **Scalability Solutions**: Implements sharding, layer-2 protocols, and other scalability solutions to handle high transaction volumes.
+//! - **Interoperability Standards**: Adopts interoperability standards to enable seamless integration with other blockchains and ecosystems.
+//! - **Regulatory Compliance**: Incorporates mechanisms to ensure compliance with relevant regulations and standards.
 
 // --- Core Dependencies ---
 use serde::{Deserialize, Serialize};

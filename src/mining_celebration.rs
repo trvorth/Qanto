@@ -1,6 +1,6 @@
 //! Mining Celebration Module
 //! Provides colorful, celebratory output when blocks are successfully mined.
-
+//! v0.1.0
 use chrono::{DateTime, Local};
 use colored::*;
 use std::time::Duration;

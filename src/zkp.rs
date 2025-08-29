@@ -1,4 +1,5 @@
 //! Zero-Knowledge Proof System for Qanto
+//! v0.1.0
 //!
 //! This module provides a production-grade zero-knowledge proof system for the Qanto blockchain,
 //! utilizing Groth16 and PLONK protocols. It includes circuits for range proofs, balance proofs,

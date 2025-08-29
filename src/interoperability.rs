@@ -1,7 +1,7 @@
 //! Complete Layer-0 Interoperability Implementation
 //! Production-ready cross-chain communication protocol
 //!
-//! Version: 2.1.0
+//! Version: 0.1.0
 //! Status: AWS Deployment Ready
 //! Change: Corrected cryptographic key generation in unit tests to resolve compilation errors.
 
