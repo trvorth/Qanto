@@ -88,7 +88,7 @@ impl QueryRoot {
             block_count: dag.get_block_count().await as i32,
             total_transactions: dag.get_total_transactions().await as i32,
             network_hash_rate: "1.5 TH/s".to_string(), // Placeholder
-            difficulty: dag.get_current_difficulty().await as f64,
+            difficulty: dag.get_current_difficulty().await,
             latest_block_hash: dag.get_latest_block_hash().await.unwrap_or_default(),
         })
     }
