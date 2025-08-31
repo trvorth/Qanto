@@ -18,7 +18,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install OpenCL
-        run: sudo apt-get update && sudo apt-get install -y ocl-icd-opencl-dev
+        run: sudo apt-get update && sudo apt-get install -y pocl-opencl-icd opencl-headers
 
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
