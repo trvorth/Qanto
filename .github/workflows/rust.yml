@@ -17,12 +17,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install OpenCL
+        run: sudo apt-get update && sudo apt-get install -y ocl-icd-opencl-dev
+
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
-
-
 
       - name: Check formatting for qanto package
         run: cargo fmt -p qanto -- --check
