@@ -35,7 +35,7 @@ use std::sync::{
 use std::time::Instant;
 
 #[cfg(target_arch = "x86_64")]
-use std::arch::x86_64::*;
+use std::is_x86_feature_detected;
 
 // CPU mining optimization constants
 const CPU_BATCH_SIZE: usize = 1024;

@@ -1,4 +1,4 @@
-[![Status](https://img.shields.io/badge/Status-Phase%202%3A%20Production%20Ready%20(100%25)-brightgreen?style=for-the-badge)](./docs/ROADMAP.md)
+[![Status](https://img.shields.io/badge/Status-Phase%201%3A%20Testnet%20Not%20Live-orange?style=for-the-badge)](./docs/ROADMAP.md)
 [![CI](https://img.shields.io/github/actions/workflow/status/trvorth/Qanto/rust.yml?branch=main&label=CI&style=for-the-badge)](https://github.com/trvorth/Qanto/actions/workflows/rust.yml)
 [![License](https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge)](https://github.com/trvorth/Qanto/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/Docs-Testnet%20Guide-blue?style=for-the-badge)](https://github.com/trvorth/Qanto/blob/main/docs/testnet-guide.md)
@@ -15,7 +15,7 @@
 
 ## **About Qanto**
 
-**Website**: https://Qanto.org (ongoing)   
+**Website**: https://Qanto.org (in process)   
 
 **Topics**: blockchain, ai, layer-0, rust, post-quantum-cryptography, high-throughput, decentralized-finance.
 
@@ -103,7 +103,7 @@ The Qanto repository is a Cargo workspace containing several key components:
 * `miner.rs`: Proof-of-Work puzzle solving with GPU optimization and ASIC resistance
 * `transaction.rs`: Transaction creation and validation with optimized serialization and parallel processing
 * `wallet.rs`: Encrypted wallet management with post-quantum cryptographic security
-* `saga.rs`: AI governance and adaptive security pallet (v9.1.1) with production-grade neural networks
+* `saga.rs`: AI governance and adaptive security pallet with production-grade neural networks
 * `analytics_dashboard.rs`: Real-time network analytics with AI insights, performance metrics, security analytics, and comprehensive dashboard functionality
 * `hame.rs`: Hybrid Autonomous Meta-Economy protocol with predictive economic modeling
 * `omega.rs`: Core identity and reflex protocol with quantum-resistant authentication
@@ -113,6 +113,33 @@ The Qanto repository is a Cargo workspace containing several key components:
 * `interoperability.rs`: Cross-chain bridge protocols with IBC-style communication and light client verification
 * `post_quantum_crypto.rs`: Complete post-quantum suite (CRYSTALS-Dilithium, Kyber KEM, SPHINCS+) with HSM support
 * `mempool.rs`: Optimized transaction pool with priority queuing and advanced validation algorithms
+* `advanced_features.rs`: Advanced features and experimental modules
+* `decentralization.rs`: Decentralization strategies and mechanisms
+* `emission.rs`: Token emission and distribution logic
+* `graphql_server.rs`: GraphQL API server implementation
+* `integration.rs`: Integration tests and utilities
+* `keygen.rs`: Key generation and management utilities
+* `lib.rs`: Main library file for the core source
+* `metrics.rs`: Performance metrics and monitoring
+* `mining_celebration.rs`: Logic for mining celebration events
+* `mining_kernel.cl`: OpenCL kernel for mining operations
+* `omega_enhanced.rs`: Enhanced Omega protocol implementation
+* `performance_optimizations.rs`: Performance optimization techniques
+* `performance_validation.rs`: Performance validation and benchmarking
+* `privacy.rs`: Privacy-enhancing features
+* `qanto_ai_metrics.rs`: AI-related metrics and analytics
+* `qanto_compat.rs`: Compatibility layers and utilities
+* `qanto_native_crypto.rs`: Native cryptographic implementations
+* `qanto_net.rs`: Network-related utilities
+* `qanto_p2p.rs`: P2P networking utilities
+* `qanto_serde.rs`: Serialization and deserialization utilities
+* `qanto_storage.rs`: Data storage and persistence
+* `qantodag_testnet.rs`: DAG ledger for testnet operations
+* `types.rs`: Common data types and structures
+* `websocket_server.rs`: WebSocket API server implementation
+* `worker.js`: Web Worker script for background tasks
+* `zkp.rs`: Zero-knowledge proof utilities
+* `bin/`: Executable binaries for node and wallet
 
 **Blockchain Core (`myblockchain/`)**:
 * `lib.rs`: Consolidated runtime with P2P, DPoS, mining, and execution modules
@@ -124,8 +151,6 @@ The Qanto repository is a Cargo workspace containing several key components:
 * `/src/bin`: Node and wallet executables
 * `/docs`: Project documentation and whitepaper
 * `/helm`: Kubernetes Helm charts for deployment (api, boot-node, website)
-* `/explorer`: Blockchain explorer web interface
-* `/website`: Official project website
 * `/tools`: Development and utility tools
 * `/tests`: Comprehensive test suites
 * `config.toml.example`: Example configuration file
@@ -450,7 +475,7 @@ qanto-cli node status
 
 ## Documentation & Resources
 
-- **[Whitepaper](./docs/whitepaper/Qanto-whitepaper.md)**: Formal specification and technical details
+- **[Whitepaper](./docs/whitepaper/Qanto-whitepaper.pdf)**: Formal specification and technical details
 - **[Architecture Guide](./docs/Architecture.md)**: System architecture overview
 - **[Wallet Guide](./docs/QANTOWALLET_GUIDE.md)**: CLI wallet operations
 - **API Documentation**: Complete REST and WebSocket specifications above
@@ -494,7 +519,7 @@ Report security vulnerabilities responsibly:
 
 - **Email**: security@qanto.org
 - **PGP Key**: https://qanto.org/security/pgp
-- **Bug Bounty**: Up to $50,000 for critical vulnerabilities
+- **Bug Bounty**: Up to $1,000 for critical vulnerabilities
 - **Response Time**: 24-48 hours
 
 ## Contributing
@@ -527,5 +552,16 @@ MIT License - see [LICENSE](LICENSE) file for details.
 Visit [qanto.org](https://qanto.org) | Join [Discord](https://discord.gg/curfp5FKWV)
 
 ## Recent Updates
-- Fixed compilation errors in `src/bin/qantowallet.rs` by adding necessary imports, implementing HTTP fallback functions, resolving moved value issues with cloning, and correcting `QuantumResistantSignature` initialization.
-- Ensured `cargo test` passes for the entire codebase.
+### Project Structure Updates
+- Updated configuration files: `.cargo/config.toml`, `.github/workflows/main.yml`, `.gitignore`, `Cargo.lock`, `Cargo.toml`, `config-freetier.toml`, `config.toml.example`, `config.toml`, `docker-compose-freetier.yml`
+- Updated documentation: `docs/Optimizations.md`, `docs/QANTOWALLET_GUIDE.md`, `docs/ROADMAP.md`, audits reports, and whitepaper
+- Modified Helm charts and values files for various components
+
+### Core Blockchain Updates
+- Updated `myblockchain` components including Cargo.toml, benchmarks, and core blockchain files
+- Enhanced node implementation files including advanced features, analytics, and various binaries
+
+### SDK Updates
+- Updated JavaScript and Python SDK components
+
+All tests have been verified to pass across the codebase.

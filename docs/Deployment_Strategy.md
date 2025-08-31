@@ -21,7 +21,7 @@ This document outlines comprehensive deployment strategies for both the Qanto Bl
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Namecheap DNS                            │
+│                     DNS                            │
 │  ┌─────────────────┐    ┌─────────────────────────────────┐ │
 │  │ explorer.qanto  │    │      www.qanto.org             │ │
 │  │     .org        │    │                                 │ │
@@ -36,8 +36,8 @@ This document outlines comprehensive deployment strategies for both the Qanto Bl
            │                              │
            ▼                              ▼
 ┌─────────────────┐              ┌─────────────────┐
-│  Namecheap      │              │  Namecheap      │
-│  Shared Hosting │              │  VPS Hosting    │
+│                 │              │                 │
+│   Hosting       │              │    Hosting      │
 │  (Explorer)     │              │  (Main Site)    │
 └─────────────────┘              └─────────────────┘
 ```
@@ -906,7 +906,7 @@ alerts:
 ## Implementation Timeline
 
 ### Phase 1: Infrastructure Setup (Week 1)
-- [ ] Purchase Namecheap hosting services
+- [x] Purchase Namecheap hosting services
 - [ ] Configure DNS and nameservers
 - [ ] Set up Cloudflare CDN
 - [ ] Install SSL certificates

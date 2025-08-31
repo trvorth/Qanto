@@ -40,16 +40,16 @@ Qanto aims to be the most advanced Layer-0 blockchain, surpassing existing solut
 
 ## Strategic Phases
 
-### **Phase 1: FOUNDATION (Development & Testing)** ✅ COMPLETED
+### **Phase 1: FOUNDATION (Development & Testing)** 🚀 IN PROGRESS
 **Goal**: Build a robust, secure, and functional blockchain.
-**Status**: ✅ **COMPLETED** (Q1-Q3 2025)
+**Status**: 🚀 **IN PROGRESS** (Q1-Q3 2025)
 
 #### **Key Milestones**:
 - **✅ Core Runtime Developed**: Production-ready Rust implementation with DAG consensus, SAGA AI governance, and post-quantum cryptography
 - **✅ Genesis Block Configuration Created**: Multi-chain genesis configuration with dynamic sharding support
 - **✅ Whitepaper & Tokenomics Finalized**: Comprehensive v2.0 whitepaper with HAME economic model and detailed tokenomics
 - **✅ Local Testnet Operational**: Multi-node testnet with full consensus validation and cross-chain interoperability
-- **✅ Public Testnet Launch**: Production testnet with public RPC endpoints, faucet, and validator onboarding
+- **🚧 Public Testnet Launch**: Production testnet with public RPC endpoints, faucet, and validator onboarding (Not Live)
 - **✅ Security Audit**: Comprehensive security audits completed with post-quantum cryptography implementation
 - **✅ Performance Benchmarks**: 50,000+ TPS throughput with <100ms latency confirmed
 - **✅ Cross-Chain Integration**: Bridge operations with Ethereum, Bitcoin, Cosmos, and Polkadot networks

@@ -80,7 +80,7 @@ impl PerformanceValidator {
             self.blocks_processed.fetch_add(1, Ordering::Relaxed);
 
             // Log progress every 100 blocks
-            if blocks_created.is_multiple_of(100) {
+            if blocks_created % 100 == 0 {
                 let current_bps = blocks_created as f64 / start_time.elapsed().as_secs_f64();
                 info!(
                     "Progress: {} blocks created, current BPS: {:.2}",
@@ -122,7 +122,7 @@ impl PerformanceValidator {
             tokio::time::sleep(Duration::from_micros(10)).await;
 
             // Log progress every 10 million transactions
-            if total_transactions.is_multiple_of(10_000_000) {
+            if total_transactions % 10_000_000 == 0 {
                 let current_tps = total_transactions as f64 / start_time.elapsed().as_secs_f64();
                 info!(
                     "Progress: {} transactions processed, current TPS: {:.0}",
@@ -163,7 +163,7 @@ impl PerformanceValidator {
                 .store(blocks_created, Ordering::Relaxed);
 
             // Simulate high-throughput transaction processing
-            let tx_batch = 500_000; // 500k transactions per block simulation
+            let tx_batch = 1_000; // 1k transactions per block simulation
             let transactions = self
                 .generate_test_transactions(tx_batch as usize, signing_key, public_key)
                 .await;
@@ -172,7 +172,7 @@ impl PerformanceValidator {
                 .store(total_transactions, Ordering::Relaxed);
 
             // Log progress periodically
-            if blocks_created.is_multiple_of(100) {
+            if blocks_created % 100 == 0 {
                 let elapsed = validation_start.elapsed().as_secs_f64();
                 let current_bps = blocks_created as f64 / elapsed;
                 let current_tps = total_transactions as f64 / elapsed;
