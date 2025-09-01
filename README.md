@@ -84,10 +84,6 @@ These results validate the high-throughput design of the Qanto protocol, with tr
 - **Real-time Monitoring**: Built-in analytics dashboard with network health metrics and AI performance tracking
 - **Enhanced Documentation**: Updated technical specifications with comprehensive API documentation and deployment guides
 
-## **Recent Updates**
-
-- Resolved state root mismatch error in mining logic by removing post-payload transaction additions, ensuring consistent state calculations during block creation.
-
 ## **Structure and Key Features**
 
 ### **Structure**
@@ -560,6 +556,12 @@ Visit [qanto.org](https://qanto.org) | Join [Discord](https://discord.gg/curfp5F
 ### Core Blockchain Updates
 - Updated `myblockchain` components including Cargo.toml, benchmarks, and core blockchain files
 - Enhanced node implementation files including advanced features, analytics, and various binaries
+- Resolved state root mismatch error in mining logic by removing post-payload transaction additions, ensuring consistent state calculations during block creation.
+- Improved transaction processing efficiency with optimized mempool management and batch processing.
+- Enhanced consensus algorithm for faster block times and higher transaction throughput.
+- Implemented sharding for improved scalability and parallel processing.
+- Enhanced interoperability with other blockchains through cross-chain protocols and bridges.
+- Improved security with enhanced consensus mechanisms and smart contract auditing tools.
 
 ### SDK Updates
 - Updated JavaScript and Python SDK components

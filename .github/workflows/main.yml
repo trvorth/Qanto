@@ -38,7 +38,11 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          
+      
+      # Install system dependencies required for building the project
+      - name: Install OpenCL
+        run: sudo apt-get update && sudo apt-get install -y ocl-icd-opencl-dev
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -167,6 +171,5 @@ jobs:
             --namespace qanto-mainnet \
             --create-namespace \
             --set image.tag=${{ github.sha }} \
-            --set network.id=qanto-mainnet \
             --set replicaCount=5 \
             --wait
