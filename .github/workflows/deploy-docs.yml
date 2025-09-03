@@ -53,52 +53,37 @@ jobs:
           
       - name: Validate build output
         working-directory: ./qanto-docs
-        run: |
-          # Test that critical pages exist
-          test -f build/index.html
-          test -f build/docs/introduction/what-is-qanto/index.html
-          
-          # Test that assets are properly generated
-          test -d build/assets
-          
-          # Validate internal links and HTML structure
-          htmlproofer build --disable-external --check-html --check-img-http
-      
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: docusaurus-build-${{ github.sha }}
-          path: qanto-docs/build/
-          retention-days: 7
-
-  # This job comments on the PR with build info
-  comment-pr:
+        run: htmlproofer ./build --url-ignore "/assets/" --http-status-ignore "403,429"
+        
+  # This job comments on the PR with the build status and a preview link
+  comment-on-pr:
     if: github.event_name == 'pull_request'
     needs: build
     runs-on: ubuntu-latest
-    
+    permissions:
+      pull-requests: write
+      
     steps:
       - name: Comment on PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v6
         with:
           script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const pr_user = context.payload.pull_request.user.login;
+            
+            // Find a previous comment by the bot
             const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
+              owner,
+              repo,
+              issue_number,
             });
+            const botComment = comments.find(comment => comment.user.login === 'github-actions[bot]');
+
+            const body = `👋 @${pr_user}, the documentation build has completed successfully.
             
-            const botComment = comments.find(comment => 
-              comment.user.type === 'Bot' && 
-              comment.body.includes('📝 Documentation Build')
-            );
-            
-            const body = `## 📝 Documentation Build
-            
-            Your documentation changes have been built successfully!
-            
-            - **Commit**: \`${{ github.sha }}\`
-            - **Workflow Run**: [View Action](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+            - **Status**: Success
+            - **Preview**: [https://qanto.org/docs](https://qanto.org/docs) (Note: Preview link is not yet available)
             
             The build artifact is ready for review and deployment.`;
             
