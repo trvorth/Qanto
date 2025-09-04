@@ -25,7 +25,7 @@ Key innovations include an AI-driven governance system (SAGA), post-quantum secu
 
 As a foundational protocol, Qanto facilitates interoperability across its ecosystem, capable of hosting Layer-1-like chains and enabling Layer-2 scaling solutions such as rollups. As a foundational protocol, Qanto is engineered to be a standalone, production-grade system capable of supporting a high-throughput environment, the open-source (MIT) project welcomes community contributions to help build a future-proof, decentralized ecosystem.
 
-For a comprehensive academic and technical overview, please refer to the official [**Qanto Whitepaper v1.0**](./docs/whitepaper/Qanto-whitepaper.pdf) (Updated August 2025).
+For a comprehensive academic and technical overview, please refer to the official [**Qanto Whitepaper**](./docs/whitepaper/Qanto-whitepaper.pdf) (Updated August 2025).
 
 ## **Performance Benchmarks** 📈
 
@@ -84,7 +84,7 @@ These results validate the high-throughput design of the Qanto protocol, with tr
 - **Real-time Monitoring**: Built-in analytics dashboard with network health metrics and AI performance tracking
 - **Enhanced Documentation**: Updated technical specifications with comprehensive API documentation and deployment guides
 
-## **Structure and Key Features**
+## **Architecture Overview**
 
 ### **Structure**
 
