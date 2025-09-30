@@ -25,6 +25,8 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 [patch.crates-io]
 # Replace derivative with synstructure for arkworks compatibility
 derivative = { git = "https://github.com/mcarton/rust-derivative", branch = "master" }
+# Force secure tracing-subscriber version for all transitive dependencies
+tracing-subscriber = { git = "https://github.com/tokio-rs/tracing", tag = "tracing-subscriber-0.3.20" }
 
 [dependencies]
 # --- Homomorphic Encryption (Updated for security) ---
