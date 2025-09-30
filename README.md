@@ -1,7 +1,7 @@
 [![Status](https://img.shields.io/badge/Status-Phase%201%3A%20Testnet%20Not%20Live-orange?style=for-the-badge)](./docs/ROADMAP.md)
 [![CI](https://img.shields.io/github/actions/workflow/status/trvorth/Qanto/rust.yml?branch=main&label=CI&style=for-the-badge)](https://github.com/trvorth/Qanto/actions/workflows/rust.yml)
 [![License](https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge)](https://github.com/trvorth/Qanto/blob/main/LICENSE)
-[![Docs](https://img.shields.io/badge/Docs-Testnet%20Guide-blue?style=for-the-badge)](https://github.com/trvorth/Qanto/blob/main/docs/testnet-guide.md)
+[![Docs](https://img.shields.io/badge/Docs-Testnet%20Guide-blue?style=for-the-badge)](https://github.com/trvorth/Qanto/blob/main/docs/guide/testnet-guide.md)
 
 ---
 
@@ -11,11 +11,11 @@
 
 **Author**: trvorth
 
+Visit [qanto.org](https://qanto.org)  | Follow [X] (https://x.com/QantoLayer0) | Join [Discord](https://discord.gg/curfp5FKWV)
+
 ---
 
 ## **About Qanto**
-
-**Website**: https://Qanto.org (in process)   
 
 **Topics**: blockchain, ai, layer-0, rust, post-quantum-cryptography, high-throughput, decentralized-finance.
 
@@ -58,7 +58,7 @@ These results validate the high-throughput design of the Qanto protocol, with tr
 - **✅ Performance Optimization**: Hyperscale execution achieving 25M+ TPS with parallel processing, memory optimization, and efficient data structures targeting 32 BPS
 - **✅ Memory Pool Enhancement**: Priority-based queuing with advanced transaction validation, resource management, and optimized fee estimation
 - **✅ Code Quality Assurance**: Comprehensive CI/CD pipeline with automated testing, linting, security auditing, and workspace validation
-- **✅ Production Deployment**: AWS cloud infrastructure with automated deployment, monitoring, and block explorer integration
+- **✅ Production Deployment**: Cloud infrastructure with automated deployment, monitoring, and block explorer integration
 
 ### **Advanced AI Integration**
 
@@ -174,8 +174,8 @@ The Qanto repository is a Cargo workspace containing several key components:
 
 - **Rust**: 1.75+ with Cargo
 - **System**: Linux/macOS/Windows
-- **Memory**: 16GB+ RAM recommended
-- **Storage**: 500GB+ SSD for full node
+- **Memory**: 8-16GB+ RAM recommended
+- **Storage**: 50GB+ SSD for full node
 - **Network**: Stable internet connection
 
 ### Installation
@@ -448,8 +448,8 @@ cargo run --release --bin qanto-node --features profiling
 ### Production Deployment
 
 ```bash
-# Terraform
-cd infrastructure/terraform && terraform apply
+# Infrastructure
+cd infrastructure && terraform apply
 
 # Kubernetes with Helm
 helm upgrade --install qanto-api ./helm/api
@@ -545,7 +545,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 **Qanto** - Quantum-resistant Layer-0 blockchain with hyperscale performance.
 
-Visit [qanto.org](https://qanto.org) | Join [Discord](https://discord.gg/curfp5FKWV)
+Visit [qanto.org](https://qanto.org)  | Follow [X] (https://x.com/QantoLayer0) | Join [Discord](https://discord.gg/curfp5FKWV)
 
 ## Recent Updates
 ### Project Structure Updates

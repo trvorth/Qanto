@@ -1,0 +1,24 @@
+# Cargo audit configuration for Qanto blockchain
+# This file defines security policies and allowed warnings
+
+[advisories]
+# Ignore transitive dependencies that are difficult to upgrade
+ignore = [
+    "RUSTSEC-2024-0388", # derivative unmaintained - transitive from ark-crypto-primitives
+    "RUSTSEC-2025-0055", # tracing-subscriber 0.2.25 - transitive from ark-relations, workspace override in place
+]
+
+# Vulnerability database configuration
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/RustSec/advisory-db"]
+
+# Yanked crate policy
+yanked = "warn"
+
+# Informational warnings to show
+informational_warnings = ["unmaintained", "unsound", "notice"]
+
+[output]
+# Output format for audit results
+format = "terminal"
+show-stats = true

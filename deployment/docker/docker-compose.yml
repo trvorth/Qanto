@@ -1,0 +1,322 @@
+version: '3.8'
+
+services:
+  qanto-node:
+    build:
+      context: ../..
+      dockerfile: deployment/docker/Dockerfile
+      args:
+        - VERSION=${QANTO_VERSION:-latest}
+        - RUST_VERSION=${RUST_VERSION:-1.75}
+    image: qanto/qanto-node:${QANTO_VERSION:-latest}
+    container_name: qanto-node-${ENVIRONMENT:-dev}
+    hostname: qanto-node
+    restart: unless-stopped
+    init: true
+    environment:
+      # Core configuration
+      - CONFIG_PATH=/opt/qanto/config/config.toml
+      - WALLET_PATH=/opt/qanto/keys/wallet.key
+      - P2P_IDENTITY=/opt/qanto/keys/p2p_identity.key
+      - PEER_CACHE=/opt/qanto/keys/peer_cache.json
+      - LOG_DIR=/opt/qanto/logs
+      - DATA_DIR=/opt/qanto/data
+      
+      # Security
+      - WALLET_PASSWORD_FILE=/run/secrets/wallet_password
+      
+      # Performance tuning
+      - RUST_LOG=${RUST_LOG:-info}
+      - RUST_BACKTRACE=${RUST_BACKTRACE:-1}
+      - QANTO_THREADS=${QANTO_THREADS:-4}
+      - QANTO_MAX_CONNECTIONS=${QANTO_MAX_CONNECTIONS:-100}
+      
+      # Monitoring
+      - ENABLE_METRICS=${ENABLE_METRICS:-true}
+      - METRICS_PORT=${METRICS_PORT:-9090}
+      - ENABLE_TRACING=${ENABLE_TRACING:-true}
+      
+      # Environment
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - NODE_NAME=${NODE_NAME:-qanto-node-1}
+    volumes:
+      # Configuration (read-only)
+      - ./config:/opt/qanto/config:ro
+      
+      # Keys and secrets (read-write, restricted permissions)
+      - qanto_keys:/opt/qanto/keys:rw
+      
+      # Persistent data (read-write)
+      - qanto_data:/opt/qanto/data:rw
+      
+      # Logs (read-write)
+      - qanto_logs:/opt/qanto/logs:rw
+    ports:
+      # External API (public)
+      - "${EXTERNAL_API_PORT:-8080}:8080"
+      # Internal API (health checks, admin)
+      - "${INTERNAL_API_PORT:-8081}:8081"
+      # P2P network
+      - "${P2P_PORT:-8333}:8333"
+      # Metrics (if enabled)
+      - "${METRICS_PORT:-9090}:9090"
+    secrets:
+      - wallet_password
+    networks:
+      - qanto-network
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '${CPU_LIMIT:-4.0}'
+          memory: ${MEMORY_LIMIT:-8G}
+        reservations:
+          cpus: '${CPU_RESERVATION:-2.0}'
+          memory: ${MEMORY_RESERVATION:-4G}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: false
+    tmpfs:
+      - /tmp:noexec,nosuid,size=1G
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      nproc:
+        soft: 4096
+        hard: 4096
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+        labels: "service,environment,node_name"
+    labels:
+      - "com.qanto.service=node"
+      - "com.qanto.environment=${ENVIRONMENT:-development}"
+      - "com.qanto.version=${QANTO_VERSION:-latest}"
+    profiles:
+      - qanto
+      - full
+
+  # Monitoring Services
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: qanto-prometheus-${ENVIRONMENT:-dev}
+    hostname: prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    ports:
+      - "${PROMETHEUS_PORT:-9091}:9090"
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus:rw
+    networks:
+      - qanto-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - monitoring
+      - full
+
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: qanto-grafana-${ENVIRONMENT:-dev}
+    hostname: grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+      - GF_SECURITY_DISABLE_GRAVATAR=true
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      - GF_SECURITY_COOKIE_SECURE=true
+      - GF_SECURITY_COOKIE_SAMESITE=strict
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana:rw
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - qanto-network
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - monitoring
+      - full
+
+  # Log aggregation
+  loki:
+    image: grafana/loki:2.8.0
+    container_name: qanto-loki-${ENVIRONMENT:-dev}
+    hostname: loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - loki_data:/loki:rw
+      - ./monitoring/loki:/etc/loki:ro
+    networks:
+      - qanto-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - monitoring
+      - full
+
+  # Log shipping
+  promtail:
+    image: grafana/promtail:2.8.0
+    container_name: qanto-promtail-${ENVIRONMENT:-dev}
+    hostname: promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./monitoring/promtail:/etc/promtail:ro
+      - qanto_logs:/var/log/qanto:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - qanto-network
+    depends_on:
+      - loki
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - monitoring
+      - full
+
+secrets:
+  wallet_password:
+    file: ./secrets/wallet_password.txt
+
+volumes:
+  # Qanto node volumes
+  qanto_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${QANTO_DATA_PATH:-./data}
+  
+  qanto_keys:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${QANTO_KEYS_PATH:-./keys}
+  
+  qanto_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${QANTO_LOGS_PATH:-./logs}
+  
+  qanto_temp:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=1G,uid=1000,gid=1000
+  
+  # Monitoring volumes
+  prometheus_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PROMETHEUS_DATA_PATH:-./monitoring/prometheus/data}
+  
+  grafana_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${GRAFANA_DATA_PATH:-./monitoring/grafana/data}
+  
+  loki_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${LOKI_DATA_PATH:-./monitoring/loki/data}
+
+networks:
+  qanto-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: ${NETWORK_SUBNET:-172.20.0.0/16}
+    driver_opts:
+      com.docker.network.bridge.name: qanto-br0
+      com.docker.network.driver.mtu: 1500

@@ -20,41 +20,176 @@ use axum::{
 };
 use hex;
 use once_cell::sync::Lazy;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::BroadcastStream;
-use tracing::info;
+use tracing::{debug, info, warn};
 
-/// Global broadcast sender for new blocks
-static BLOCK_BROADCAST: Lazy<broadcast::Sender<QantoBlock>> = Lazy::new(|| {
-    let (sender, _) = broadcast::channel(1000);
-    sender
-});
+/// Channel health metrics
+static BLOCK_BROADCAST_ERRORS: AtomicU64 = AtomicU64::new(0);
+static TRANSACTION_BROADCAST_ERRORS: AtomicU64 = AtomicU64::new(0);
 
-/// Global broadcast sender for new transactions
-static TRANSACTION_BROADCAST: Lazy<broadcast::Sender<Transaction>> = Lazy::new(|| {
-    let (sender, _) = broadcast::channel(1000);
-    sender
-});
+/// Channel manager for automatic reinitialization
+struct ChannelManager {
+    block_sender: Mutex<broadcast::Sender<QantoBlock>>,
+    transaction_sender: Mutex<broadcast::Sender<Transaction>>,
+}
+
+impl ChannelManager {
+    fn new() -> Self {
+        let (block_sender, _) = broadcast::channel(1000);
+        let (transaction_sender, _) = broadcast::channel(1000);
+
+        Self {
+            block_sender: Mutex::new(block_sender),
+            transaction_sender: Mutex::new(transaction_sender),
+        }
+    }
+
+    fn get_block_sender(&self) -> broadcast::Sender<QantoBlock> {
+        let sender = self.block_sender.lock().unwrap();
+
+        // Check if channel is closed (no receivers and send would fail)
+        if sender.receiver_count() == 0 && !sender.is_empty() {
+            // Channel might be stale, but we'll let the broadcast function handle recreation
+        }
+
+        sender.clone()
+    }
+
+    fn get_transaction_sender(&self) -> broadcast::Sender<Transaction> {
+        let sender = self.transaction_sender.lock().unwrap();
+
+        // Check if channel is closed (no receivers and send would fail)
+        if sender.receiver_count() == 0 && !sender.is_empty() {
+            // Channel might be stale, but we'll let the broadcast function handle recreation
+        }
+
+        sender.clone()
+    }
+
+    fn reinitialize_block_channel(&self) -> broadcast::Sender<QantoBlock> {
+        let (new_sender, _) = broadcast::channel(1000);
+        let mut sender = self.block_sender.lock().unwrap();
+        *sender = new_sender.clone();
+        debug!("Reinitialized GraphQL block broadcast channel");
+        new_sender
+    }
+
+    fn reinitialize_transaction_channel(&self) -> broadcast::Sender<Transaction> {
+        let (new_sender, _) = broadcast::channel(1000);
+        let mut sender = self.transaction_sender.lock().unwrap();
+        *sender = new_sender.clone();
+        debug!("Reinitialized GraphQL transaction broadcast channel");
+        new_sender
+    }
+}
+
+/// Global channel manager
+static CHANNEL_MANAGER: Lazy<ChannelManager> = Lazy::new(ChannelManager::new);
 
 /// Broadcast a new block to GraphQL subscribers
 pub async fn broadcast_new_block(block: &QantoBlock) {
-    if let Err(e) = BLOCK_BROADCAST.send(block.clone()) {
-        tracing::warn!(
-            "Failed to broadcast new block to GraphQL subscribers: {}",
-            e
-        );
+    let sender = CHANNEL_MANAGER.get_block_sender();
+    let subscriber_count = sender.receiver_count();
+
+    // Early return if no subscribers to avoid unnecessary work
+    if subscriber_count == 0 {
+        debug!("No GraphQL block subscribers, skipping broadcast");
+        return;
+    }
+
+    match sender.send(block.clone()) {
+        Ok(_) => {
+            debug!(
+                "Successfully broadcast block to {} GraphQL subscribers",
+                subscriber_count
+            );
+        }
+        Err(tokio::sync::broadcast::error::SendError(_)) => {
+            // Channel is closed, try to reinitialize and retry once
+            warn!("GraphQL block broadcast channel closed, reinitializing...");
+            let new_sender = CHANNEL_MANAGER.reinitialize_block_channel();
+
+            match new_sender.send(block.clone()) {
+                Ok(_) => {
+                    debug!("Successfully broadcast block after channel reinitialization");
+                }
+                Err(_) => {
+                    let error_count = BLOCK_BROADCAST_ERRORS.fetch_add(1, Ordering::Relaxed) + 1;
+
+                    if error_count.is_multiple_of(100) {
+                        warn!(
+                            "GraphQL block broadcast failed {} times (channel issues persist)",
+                            error_count
+                        );
+                    } else {
+                        debug!("GraphQL block broadcast failed after reinitialization");
+                    }
+                }
+            }
+        }
     }
 }
 
 /// Broadcast a new transaction to GraphQL subscribers
 pub async fn broadcast_new_transaction(transaction: &Transaction) {
-    if let Err(e) = TRANSACTION_BROADCAST.send(transaction.clone()) {
-        tracing::warn!(
-            "Failed to broadcast new transaction to GraphQL subscribers: {}",
-            e
-        );
+    let sender = CHANNEL_MANAGER.get_transaction_sender();
+    let subscriber_count = sender.receiver_count();
+
+    // Early return if no subscribers to avoid unnecessary work
+    if subscriber_count == 0 {
+        debug!("No GraphQL transaction subscribers, skipping broadcast");
+        return;
     }
+
+    match sender.send(transaction.clone()) {
+        Ok(_) => {
+            debug!(
+                "Successfully broadcast transaction to {} GraphQL subscribers",
+                subscriber_count
+            );
+        }
+        Err(tokio::sync::broadcast::error::SendError(_)) => {
+            // Channel is closed, try to reinitialize and retry once
+            warn!("GraphQL transaction broadcast channel closed, reinitializing...");
+            let new_sender = CHANNEL_MANAGER.reinitialize_transaction_channel();
+
+            match new_sender.send(transaction.clone()) {
+                Ok(_) => {
+                    debug!("Successfully broadcast transaction after channel reinitialization");
+                }
+                Err(_) => {
+                    let error_count =
+                        TRANSACTION_BROADCAST_ERRORS.fetch_add(1, Ordering::Relaxed) + 1;
+
+                    if error_count.is_multiple_of(100) {
+                        warn!(
+                            "GraphQL transaction broadcast failed {} times (channel issues persist)",
+                            error_count
+                        );
+                    } else {
+                        debug!("GraphQL transaction broadcast failed after reinitialization");
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Get channel health metrics for monitoring
+pub fn get_channel_health() -> (u64, u64) {
+    (
+        BLOCK_BROADCAST_ERRORS.load(Ordering::Relaxed),
+        TRANSACTION_BROADCAST_ERRORS.load(Ordering::Relaxed),
+    )
+}
+
+/// Reset channel health metrics (useful for testing or periodic resets)
+pub fn reset_channel_health() {
+    BLOCK_BROADCAST_ERRORS.store(0, Ordering::Relaxed);
+    TRANSACTION_BROADCAST_ERRORS.store(0, Ordering::Relaxed);
 }
 
 /// Create GraphQL schema
@@ -276,13 +411,21 @@ pub struct SubscriptionRoot;
 impl SubscriptionRoot {
     /// Subscribe to new blocks
     async fn new_blocks(&self, _ctx: &Context<'_>) -> impl futures::Stream<Item = Block> {
-        let receiver = BLOCK_BROADCAST.subscribe();
+        let sender = CHANNEL_MANAGER.get_block_sender();
+        let receiver = sender.subscribe();
 
         use futures::StreamExt;
         BroadcastStream::new(receiver).filter_map(|result| async move {
             match result {
-                Ok(block) => Some(Block::from(block)),
-                Err(_) => None,
+                Ok(block) => {
+                    debug!("GraphQL: Streaming new block to subscriber");
+                    Some(Block::from(block))
+                }
+                Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(missed)) => {
+                    // Log lagged error but continue stream
+                    warn!("Block subscription lagged, {} blocks missed", missed);
+                    None
+                }
             }
         })
     }
@@ -292,13 +435,24 @@ impl SubscriptionRoot {
         &self,
         _ctx: &Context<'_>,
     ) -> impl futures::Stream<Item = TransactionGQL> {
-        let receiver = TRANSACTION_BROADCAST.subscribe();
+        let sender = CHANNEL_MANAGER.get_transaction_sender();
+        let receiver = sender.subscribe();
 
         use futures::StreamExt;
         BroadcastStream::new(receiver).filter_map(|result| async move {
             match result {
-                Ok(transaction) => Some(transaction_to_gql(&transaction)),
-                Err(_) => None,
+                Ok(transaction) => {
+                    debug!("GraphQL: Streaming new transaction to subscriber");
+                    Some(transaction_to_gql(&transaction))
+                }
+                Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(missed)) => {
+                    // Log lagged error but continue stream
+                    warn!(
+                        "Transaction subscription lagged, {} transactions missed",
+                        missed
+                    );
+                    None
+                }
             }
         })
     }

@@ -1129,7 +1129,7 @@ pub mod enhanced_simulation {
             max_open_files: 1000,
         };
         let mock_storage = QantoStorage::new(storage_config)
-            .map_err(|e| anyhow::anyhow!("Failed to create test storage: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to create test storage: {e}"))?;
 
         let dag_result = QantoDAG::new(mock_config, mock_saga, mock_storage)?;
         let dag = Arc::try_unwrap(dag_result)

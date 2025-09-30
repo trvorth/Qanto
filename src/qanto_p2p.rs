@@ -17,8 +17,22 @@ use tokio::time::{interval, timeout};
 use bytes::Bytes;
 use dashmap::DashMap;
 use rand::{thread_rng, Rng};
+use thiserror::Error;
 
 use my_blockchain::qanto_standalone::hash::{qanto_hash, QantoHash};
+
+/// P2P-specific error types
+#[derive(Error, Debug)]
+pub enum QantoP2PError {
+    #[error("Network statistics lock poisoned: {0}")]
+    StatsLockPoisoned(String),
+    #[error("Connection error: {0}")]
+    Connection(String),
+    #[error("Protocol error: {0}")]
+    Protocol(String),
+    #[error("Serialization error: {0}")]
+    Serialization(String),
+}
 
 /// Maximum number of concurrent connections
 const MAX_CONNECTIONS: usize = 1000;
@@ -296,7 +310,9 @@ impl QantoP2P {
 
         // Update stats
         {
-            let mut stats = stats.write().unwrap();
+            let mut stats = stats.write().map_err(|e| {
+                QantoP2PError::StatsLockPoisoned(format!("Failed to acquire stats write lock: {e}"))
+            })?;
             stats.active_connections += 1;
             stats.total_connections += 1;
         }
@@ -351,8 +367,10 @@ impl QantoP2P {
         // Clean up
         peers.remove(&peer_id);
         {
-            let mut stats = stats.write().unwrap();
-            stats.active_connections -= 1;
+            if let Ok(mut stats) = stats.write() {
+                stats.active_connections -= 1;
+            }
+            // Note: If lock is poisoned, we silently continue as this is cleanup code
         }
 
         Ok(())
@@ -435,7 +453,7 @@ impl QantoP2P {
         let len = serialized.len() as u32;
 
         if len > MAX_MESSAGE_SIZE as u32 {
-            return Err(anyhow!("Message too large: {} bytes", len));
+            return Err(anyhow!("Message too large: {len} bytes"));
         }
 
         writer.write_all(&len.to_le_bytes()).await?;
@@ -456,7 +474,7 @@ impl QantoP2P {
         let len = u32::from_le_bytes(len_bytes) as usize;
 
         if len > MAX_MESSAGE_SIZE {
-            return Err(anyhow!("Message too large: {} bytes", len));
+            return Err(anyhow!("Message too large: {len} bytes"));
         }
 
         let mut buffer = vec![0u8; len];
@@ -485,7 +503,7 @@ impl QantoP2P {
         let stream = timeout(self.config.connection_timeout, TcpStream::connect(addr))
             .await
             .map_err(|_| anyhow!("Connection timeout"))?
-            .map_err(|e| anyhow!("TCP connection failed: {}", e))?;
+            .map_err(|e| anyhow!("TCP connection failed: {e}"))?;
         let (peer_id, reader, writer) =
             Self::perform_handshake(stream, self.node_id, false).await?;
 
@@ -506,7 +524,11 @@ impl QantoP2P {
 
         // Update stats
         {
-            let mut stats = self.stats.write().unwrap();
+            let mut stats = self.stats.write().map_err(|e| {
+                QantoP2PError::StatsLockPoisoned(format!(
+                    "Failed to acquire stats write lock in connect_to_peer: {e}"
+                ))
+            })?;
             stats.active_connections += 1;
             stats.total_connections += 1;
         }
@@ -603,8 +625,10 @@ impl QantoP2P {
         // Clean up
         peers.remove(&peer_id);
         {
-            let mut stats = stats.write().unwrap();
-            stats.active_connections -= 1;
+            // Silently continue if lock is poisoned during cleanup
+            if let Ok(mut stats) = stats.write() {
+                stats.active_connections -= 1;
+            }
         }
 
         Ok(())
@@ -755,15 +779,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_peer_connection() {
-        let mut config1 = NetworkConfig::default();
-        config1.listen_port = 18333;
+        let config1 = NetworkConfig {
+            listen_port: 18333,
+            ..Default::default()
+        };
 
-        let mut config2 = NetworkConfig::default();
-        config2.listen_port = 18334;
-        config2.bootstrap_nodes = vec![SocketAddr::new(
-            IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
-            18333,
-        )];
+        let config2 = NetworkConfig {
+            listen_port: 18334,
+            bootstrap_nodes: vec![SocketAddr::new(
+                IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
+                18333,
+            )],
+            ..Default::default()
+        };
 
         let mut node1 = QantoP2P::new(config1).unwrap();
         let mut node2 = QantoP2P::new(config2).unwrap();
@@ -776,7 +804,7 @@ mod tests {
         sleep(Duration::from_millis(500)).await;
 
         // Check connections
-        assert!(node1.get_peers().len() > 0 || node2.get_peers().len() > 0);
+        assert!(!node1.get_peers().is_empty() || !node2.get_peers().is_empty());
 
         // Shutdown
         node1.shutdown().await.unwrap();

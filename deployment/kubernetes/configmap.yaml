@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qanto-config
+  namespace: qanto
+data:
+  config.toml: |
+    # Qanto Node Configuration
+    p2p_address = "/ip4/0.0.0.0/tcp/8333"
+    api_address = "0.0.0.0:8081"
+    peers = []
+    local_full_p2p_address = ""
+    network_id = "qanto-mainnet"
+    genesis_validator = "REPLACE_WITH_VALIDATOR_ADDRESS"
+    target_block_time = 60
+    difficulty = 10
+    max_amount = 100000000000
+    use_gpu = false
+    zk_enabled = false
+    mining_threads = 4
+    num_chains = 32
+    mining_chain_id = 0
+
+    [logging]
+    level = "info"
+
+    [p2p]
+    heartbeat_interval = 500
+    mesh_n_low = 6
+    mesh_n = 8
+    mesh_n_high = 16
+    mesh_outbound_min = 4

@@ -9,6 +9,7 @@
 # --- Build Optimizations ---
 [build]
 rustflags = ["-C", "target-cpu=native"]
+incremental = false
 
 # --- Release Profile Overrides ---
 [profile.release]

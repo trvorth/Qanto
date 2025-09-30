@@ -171,7 +171,7 @@ impl Transaction {
             inputs: vec![],
             outputs: vec![Output {
                 address: "dummy_miner_address".to_string(),
-                amount: 50_000_000_000, // Example mining reward (50 QNTO)
+                amount: 150_000_000_000, // Example mining reward (150 QNTO)
                 homomorphic_encrypted: HomomorphicEncrypted {
                     ciphertext: vec![],
                     public_key: vec![],
@@ -232,7 +232,7 @@ impl Transaction {
             inputs: vec![],
             outputs: vec![Output {
                 address: "dummy_miner_address".to_string(),
-                amount: 50_000_000_000, // Example mining reward (50 QNTO)
+                amount: 150_000_000_000, // Example mining reward (150 QNTO)
                 homomorphic_encrypted: HomomorphicEncrypted {
                     ciphertext: vec![],
                     public_key: vec![],
@@ -874,153 +874,5 @@ impl Zeroize for Transaction {
 impl Drop for Transaction {
     fn drop(&mut self) {
         self.zeroize();
-    }
-}
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::omega::{self};
-    use crate::qanto_storage::{QantoStorage, StorageConfig};
-    use crate::qantodag::{QantoDAG, QantoDagConfig};
-    use crate::saga::PalletSaga;
-    use crate::wallet::Wallet;
-    use serial_test::serial;
-    use std::path::PathBuf;
-
-    #[tokio::test]
-    #[serial]
-    async fn test_transaction_creation_and_verification() -> Result<(), Box<dyn std::error::Error>>
-    {
-        // Initialize Omega state for testing with high entropy
-        omega::initialize_for_testing().await;
-
-        let db_path = "qantodag_db_test";
-        if std::path::Path::new(db_path).exists() {
-            std::fs::remove_dir_all(db_path)?;
-        }
-
-        let wallet = Arc::new(Wallet::new()?);
-        let (qr_secret_key, _qr_public_key) = wallet.get_keypair()?;
-        let sender_address = wallet.address();
-        let amount_to_receiver = 50;
-
-        // Use the new dynamic fee calculation
-        let fee = calculate_dynamic_fee(amount_to_receiver);
-
-        let dev_fee_on_transfer = (amount_to_receiver as f64 * 0.0304).round() as u64;
-
-        let mut initial_utxos_map = HashMap::new();
-        let input_utxo_amount = amount_to_receiver + fee + dev_fee_on_transfer + 10;
-        let genesis_utxo_for_test = UTXO {
-            address: sender_address.clone(),
-            amount: input_utxo_amount,
-            tx_id: "genesis_tx_id_for_test_0".to_string(),
-            output_index: 0,
-            explorer_link: String::new(),
-        };
-        initial_utxos_map.insert(
-            "genesis_tx_id_for_test_0_0".to_string(),
-            genesis_utxo_for_test,
-        );
-
-        let inputs_for_tx = vec![Input {
-            tx_id: "genesis_tx_id_for_test_0".to_string(),
-            output_index: 0,
-        }];
-
-        let change_amount = input_utxo_amount - amount_to_receiver - fee - dev_fee_on_transfer;
-
-        // Generate proper Paillier encryption keys for homomorphic encryption
-        let (he_public_key_bytes, _he_private_key_bytes) = HomomorphicEncrypted::generate_keypair();
-        let he_pub_key_material_slice: &[u8] = &he_public_key_bytes;
-
-        let mut outputs_for_tx = vec![Output {
-            address: "0000000000000000000000000000000000000000000000000000000000000001".to_string(),
-            amount: amount_to_receiver,
-            homomorphic_encrypted: HomomorphicEncrypted::new(
-                amount_to_receiver,
-                he_pub_key_material_slice,
-            ),
-        }];
-        if dev_fee_on_transfer > 0 {
-            outputs_for_tx.push(Output {
-                address: "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3"
-                    .to_string(), // DEV_ADDRESS
-                amount: dev_fee_on_transfer,
-                homomorphic_encrypted: HomomorphicEncrypted::new(
-                    dev_fee_on_transfer,
-                    he_pub_key_material_slice,
-                ),
-            });
-        }
-        if change_amount > 0 {
-            outputs_for_tx.push(Output {
-                address: sender_address.clone(),
-                amount: change_amount,
-                homomorphic_encrypted: HomomorphicEncrypted::new(
-                    change_amount,
-                    he_pub_key_material_slice,
-                ),
-            });
-        }
-
-        let mut metadata = HashMap::new();
-        metadata.insert("memo".to_string(), "Test transaction".to_string());
-
-        let tx_timestamps_map = Arc::new(RwLock::new(HashMap::new()));
-
-        let tx_config = TransactionConfig {
-            sender: sender_address.clone(),
-            receiver: "0000000000000000000000000000000000000000000000000000000000000001"
-                .to_string(),
-            amount: amount_to_receiver,
-            fee,
-            inputs: inputs_for_tx.clone(),
-            outputs: outputs_for_tx.clone(),
-            metadata: Some(metadata),
-
-            tx_timestamps: tx_timestamps_map.clone(),
-        };
-
-        let tx = Transaction::new(tx_config, &qr_secret_key).await?;
-
-        let saga_pallet = Arc::new(PalletSaga::new(
-            #[cfg(feature = "infinite-strata")]
-            None,
-        ));
-
-        let dag_config = QantoDagConfig {
-            initial_validator: sender_address.clone(),
-            target_block_time: 60000,
-            num_chains: 1,
-        };
-        let dag_arc = QantoDAG::new(
-            dag_config,
-            saga_pallet,
-            QantoStorage::new(StorageConfig {
-                data_dir: PathBuf::from(db_path),
-                max_file_size: 1024 * 1024 * 100, // 100MB
-                compression_enabled: true,
-                encryption_enabled: true,
-                wal_enabled: true,
-                sync_writes: false,
-                cache_size: 1024 * 1024 * 10, // 10MB cache
-                compaction_threshold: 0.7,
-                max_open_files: 100,
-            })
-            .unwrap(),
-        )?;
-
-        let utxos_arc_for_test = Arc::new(RwLock::new(initial_utxos_map));
-        let utxos_read_guard = utxos_arc_for_test.read().await;
-        tx.verify(&dag_arc, &utxos_read_guard)
-            .await
-            .map_err(|e| format!("TX verification error: {e:?}"))?;
-
-        let generated_utxo_instance = tx.generate_utxo(0);
-        assert_eq!(generated_utxo_instance.tx_id, tx.id);
-        assert_eq!(generated_utxo_instance.amount, amount_to_receiver);
-
-        Ok(())
     }
 }

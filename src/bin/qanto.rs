@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use qanto::config::Config;
+use qanto::diagnostics::{cli::DiagnosticsArgs, DiagnosticsEngine};
 use qanto::node::Node;
 use qanto::wallet::Wallet;
 use secrecy::{ExposeSecret, SecretString};
@@ -12,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use thiserror::Error;
 use tracing::{error, info};
-use tracing_subscriber::EnvFilter;
+// use tracing_subscriber::EnvFilter;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Qanto Node CLI", long_about = None)]
@@ -22,24 +23,53 @@ struct Cli {
 }
 
 #[derive(Subcommand, Debug)]
+#[allow(clippy::large_enum_variant)]
 enum Commands {
     /// Starts the Qanto node
     Start {
-        #[arg(short, long, default_value = "config.toml")]
+        #[arg(
+            short,
+            long,
+            default_value = "config.toml",
+            help = "Path to configuration file"
+        )]
         config: String,
-        #[arg(short, long, default_value = "wallet.key")]
-        wallet: String,
-        #[arg(long, default_value = "p2p_identity.key")]
-        p2p_identity: String,
-        #[arg(long, default_value = "peer_cache.json")]
-        peer_cache: String,
-        /// Clean the database directory before starting to prevent corruption errors.
+        #[arg(short, long, help = "Path to wallet key file (overrides config)")]
+        wallet: Option<String>,
+        #[arg(long, help = "Path to P2P identity key file (overrides config)")]
+        p2p_identity: Option<String>,
+        #[arg(long, help = "Path to peer cache file (overrides config)")]
+        peer_cache: Option<String>,
+        #[arg(long, help = "Data directory path (overrides config)")]
+        data_dir: Option<String>,
+        #[arg(long, help = "Database path (overrides config)")]
+        db_path: Option<String>,
+        #[arg(long, help = "Log file path (overrides config)")]
+        log_file: Option<String>,
+        #[arg(long, help = "TLS certificate path (overrides config)")]
+        tls_cert: Option<String>,
+        #[arg(long, help = "TLS private key path (overrides config)")]
+        tls_key: Option<String>,
+        /// Clean database on startup
         #[arg(long)]
         clean: bool,
+        /// Enable debug mode with detailed logging
+        #[arg(
+            long,
+            help = "Enable debug mode with detailed mining and strata logging"
+        )]
+        debug_mode: bool,
+        #[command(flatten)]
+        diagnostics: Box<DiagnosticsArgs>,
     },
     /// Generates a new wallet
     GenerateWallet {
-        #[arg(short, long, default_value = "wallet.key")]
+        #[arg(
+            short,
+            long,
+            default_value = "wallet.key",
+            help = "Output path for wallet key file"
+        )]
         output: String,
     },
 }
@@ -117,9 +147,8 @@ async fn cleanup_resources(_wallet: &Arc<Wallet>, _db_path: &str) {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Correctly initialize logging.
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    // Initialize logging with env_logger to support RUST_LOG environment variable
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let cli = Cli::parse();
 
@@ -129,7 +158,14 @@ async fn main() -> Result<()> {
             wallet,
             p2p_identity,
             peer_cache,
+            data_dir,
+            db_path,
+            log_file,
+            tls_cert,
+            tls_key,
             clean,
+            debug_mode,
+            diagnostics,
         } => {
             println!("Qanto node starting...");
             let config_path = Path::new(&config);
@@ -139,13 +175,27 @@ async fn main() -> Result<()> {
             }
             println!("Configuration loaded from '{}'.", config_path.display());
 
-            let db_path = "qantodag_db_evolved";
+            let mut node_config = Config::load(&config)?;
+
+            // Apply CLI path overrides using the new method
+            node_config.apply_cli_overrides(
+                wallet,
+                p2p_identity,
+                data_dir,
+                db_path,
+                log_file,
+                tls_cert,
+                tls_key,
+            );
+
+            let db_path = node_config.db_path.clone();
+
             info!("Checking for clean flag");
             if clean {
                 println!("'--clean' flag detected. Removing old database directory: {db_path}");
-                if Path::new(db_path).exists() {
+                if Path::new(&db_path).exists() {
                     info!("Removing existing database directory: {db_path}");
-                    if let Err(e) = fs::remove_dir_all(db_path) {
+                    if let Err(e) = fs::remove_dir_all(&db_path) {
                         eprintln!("Failed to remove database directory '{db_path}': {e}");
                         std::process::exit(1);
                     }
@@ -161,11 +211,15 @@ async fn main() -> Result<()> {
             info!("Prompting for wallet password");
             // Correctly load config and wallet with password.
             let password =
-                prompt_for_password(false).map_err(|e| anyhow::anyhow!("Password error: {}", e))?;
+                prompt_for_password(false).map_err(|e| anyhow::anyhow!("Password error: {e}"))?;
             info!("Wallet password obtained successfully");
-            let node_config = Config::load(&config)?;
+
+            // Use paths from config instead of hardcoded values
+            let wallet_path = node_config.wallet_path.clone();
+            let p2p_identity_path = node_config.p2p_identity_path.clone();
+
             // Pass the SecretString directly, without re-wrapping it.
-            let wallet_instance = Wallet::from_file(&wallet, &password)?;
+            let wallet_instance = Wallet::from_file(&wallet_path, &password)?;
             let wallet_arc = Arc::new(wallet_instance);
 
             // Create shutdown flag
@@ -193,12 +247,37 @@ async fn main() -> Result<()> {
             });
 
             println!("Initializing Qanto services... (Press Ctrl+C for graceful shutdown)");
+
+            // Initialize diagnostics engine
+            let diagnostics_engine = Arc::new(DiagnosticsEngine::new(debug_mode));
+
+            // Process diagnostics CLI commands if any
+            if diagnostics.show_mining_stats
+                || diagnostics.analyze_issues
+                || diagnostics.export_diagnostics.is_some()
+            {
+                qanto::diagnostics::cli::process_diagnostics_commands(
+                    &diagnostics,
+                    &diagnostics_engine,
+                )
+                .await?;
+                return Ok(());
+            }
+
+            if debug_mode {
+                println!("🔍 Debug mode enabled - detailed logging active");
+                info!("Debug mode enabled with comprehensive diagnostics");
+            }
+
+            // Use peer_cache from CLI or default
+            let peer_cache_path = peer_cache.unwrap_or_else(|| "peer_cache.json".to_string());
+
             let node = Node::new(
                 node_config,
                 config.clone(),
                 wallet_arc.clone(),
-                &p2p_identity,
-                peer_cache,
+                &p2p_identity_path,
+                peer_cache_path,
             )
             .await?;
 
@@ -226,7 +305,7 @@ async fn main() -> Result<()> {
                         }
                         Ok(Err(e)) => {
                             error!("Node runtime error: {}", e);
-                            return Err(anyhow::anyhow!("Node runtime error: {}", e));
+                            return Err(anyhow::anyhow!("Node runtime error: {e}"));
                         }
                         Err(e) => {
                             if e.is_cancelled() {
@@ -234,7 +313,7 @@ async fn main() -> Result<()> {
                                 break;
                             } else {
                                 error!("Node task panicked: {}", e);
-                                return Err(anyhow::anyhow!("Node task panicked: {}", e));
+                                return Err(anyhow::anyhow!("Node task panicked: {e}"));
                             }
                         }
                     }
@@ -243,13 +322,13 @@ async fn main() -> Result<()> {
 
             // Cleanup routine
             info!("Performing cleanup...");
-            cleanup_resources(&wallet_arc, db_path).await;
+            cleanup_resources(&wallet_arc, &db_path).await;
             info!("Qanto node has shut down gracefully.");
         }
         Commands::GenerateWallet { output } => {
             println!("Generating new wallet...");
             let password =
-                prompt_for_password(false).map_err(|e| anyhow::anyhow!("Password error: {}", e))?;
+                prompt_for_password(false).map_err(|e| anyhow::anyhow!("Password error: {e}"))?;
             let wallet = Wallet::new()?;
             // Correctly save the wallet with the SecretString.
             wallet.save_to_file(&output, &password)?;

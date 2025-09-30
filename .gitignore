@@ -25,6 +25,11 @@
 node*/cert.pem
 /filter_sensitive_commits.py
 /integrate_isnm.sh
+/K8s
+/helm
+/data
+/logs
+/monitoring
 
 # --- IDE & Editor Files ---
 .idea/
@@ -49,12 +54,18 @@ Thumbs.db
 
 # --- Logs & Databases ---
 *.log
+/qanto-docs
+/qanto_data
 /qantodag_db/
 /qantodag_db_evolved/
 /node*/**/qantodag_db/
 /qantodag_db_test
 /peer_cache.json
 /qanto_db
+/myblockchain/qanto_db
+/myblockchain/test_mining_db
+/myblockchain/test_multi_mining_db
+/myblockchain/test_rpc_db
 /test_bps_db
 /test_tps_db
 /test_bridge_db
@@ -70,6 +81,7 @@ Thumbs.db
 .wallet
 .json
 p2p_identity.key
+
 # Removed old deployment folder references
 wallet.key
 private_key.txt
@@ -85,9 +97,9 @@ node*/*.txt
 
 
 # --- Production Configuration Files ---
-/config.mainnet.toml
-/config.production-client.toml
-/config.production.toml
+/config.bootnode.toml
+/config.performance.toml
+/config.toml.production
 /mining_rig_config.toml
 /wrangler.toml
 /config.toml
@@ -106,11 +118,22 @@ node*/*.txt
 /docs/whitepaper/eisvogel.latex
 /docs/whitepaper/fix-math-in-code.lua
 /docs/Deployment_Strategy.md
+/docs/guide/deployment-guide.md
+/docs/cleanup-analysis.md
+/docs/dependency-analysis.md
+/docs/guide/CLEANUP_GUIDE.md
+/docs/PERFORMANCE_ANALYSIS.md
+/docs/PERFORMANCE_REPORT.md
+/docs/PERFORMANCE_RESULTS.txt
 /docker-compose.production.yml
 /docker-compose.*.yml
 /deploy.sh
 /deploy-*.sh
-/deployment
+/cleanup.sh
+/start_bootnode.sh
+/stress_test.sh
+/deployment/Kubernetes/secrets.yaml
+/deployment/website
 /DEPENDENCY_MIGRATION.md
 /DUPLICATION_AUDIT_REPORT.md
 /instance
@@ -123,6 +146,12 @@ node*/*.txt
 /website/dist
 /traceforce_watchlist.csv
 .github/workflows/rust.yml
+/Agents.md
+cleanup-*.log
+/test_config.rs
+/lighthouse-audit.json
+/package.json
+/package-lock.json
 
 # --- Language & Framework Specific ---
 # Python
@@ -231,7 +260,7 @@ yarn-error.log*
 /docs/audits
 # --- Local Scripts ---
 /scripts/run_local_net.sh
-
+/myblockchain/testnet_debug.sh
 # ===============================================================
 # Additional general ignores (additions only; no removals above)
 # ===============================================================

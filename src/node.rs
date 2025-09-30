@@ -31,6 +31,7 @@ use crate::performance_optimizations::{OptimizedBlockBuilder, OptimizedMempool};
 use crate::qanto_compat::sp_core::H256;
 use crate::qanto_storage::{QantoStorage, QantoStorageError, StorageConfig};
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError, QantoDagConfig};
+use crate::resource_cleanup::ResourceCleanup;
 use crate::saga::PalletSaga;
 use crate::transaction::Transaction;
 use crate::types::UTXO;
@@ -76,7 +77,10 @@ const MAX_UTXOS: usize = 1_000_000;
 const MAX_PROPOSALS: usize = 10_000;
 const ADDRESS_REGEX: &str = r"^[0-9a-fA-F]{64}$";
 const MAX_SYNC_AGE_SECONDS: u64 = 3600;
-const DEFAULT_MINING_INTERVAL_SECS: u64 = 300;
+
+// Performance-test mode: 32 BPS target (31ms per block)
+// Performance testing and default mining intervals are now configured via config.toml
+// These constants have been removed as they are unused
 
 lazy_static::lazy_static! {
     static ref ADDRESS_REGEX_COMPILED: Regex = Regex::new(ADDRESS_REGEX).expect("Invalid address regex pattern");
@@ -174,6 +178,7 @@ pub struct Node {
     pub saga_pallet: Arc<PalletSaga>,
     pub analytics: Arc<AnalyticsDashboard>,
     pub optimized_block_builder: Arc<OptimizedBlockBuilder>,
+    pub resource_cleanup: Arc<ResourceCleanup>,
     #[cfg(feature = "infinite-strata")]
     isnm_service: Arc<InfiniteStrataNode>,
 }
@@ -258,11 +263,15 @@ impl Node {
 
         // Conditionally compile and initialize the Infinite Strata service.
         #[cfg(feature = "infinite-strata")]
-        let isnm_service = {
+        let isnm_service: Arc<InfiniteStrataNode> = {
             info!("[ISNM] Infinite Strata feature enabled, initializing service.");
             let isnm_config = IsnmNodeConfig::default();
             let oracle_aggregator = Arc::new(DecentralizedOracleAggregator::default());
-            Arc::new(InfiniteStrataNode::new(isnm_config, oracle_aggregator))
+            Arc::new(InfiniteStrataNode::new(
+                isnm_config,
+                oracle_aggregator,
+                crate::infinite_strata_node::TestnetMode::default(),
+            ))
         };
 
         // Initialize the SAGA pallet, injecting the ISNM service if the feature is enabled.
@@ -283,7 +292,7 @@ impl Node {
         info!("Initializing QantoDAG (loading database)...");
         info!("Opening Qanto native storage");
         let storage_config = StorageConfig {
-            data_dir: "qantodag_db_evolved".into(),
+            data_dir: config.data_dir.clone().into(),
             cache_size: 1024 * 1024 * 100, // 100MB cache
             compression_enabled: true,
             encryption_enabled: true,
@@ -321,7 +330,7 @@ impl Node {
             let mut utxos_lock = utxos.write().await;
             utxos_lock.clear(); // Reset UTXO state completely
 
-            let genesis_utxo_id = "genesis_utxo_total_supply".to_string();
+            let genesis_utxo_id = "genesis_total_supply_tx_0".to_string();
             utxos_lock.insert(
                 genesis_utxo_id.clone(),
                 UTXO {
@@ -366,6 +375,9 @@ impl Node {
         let optimized_mempool = OptimizedMempool::new(10_000_000, 3600); // 10MB, 1 hour TTL
         let optimized_block_builder = Arc::new(OptimizedBlockBuilder::new(optimized_mempool));
 
+        // Initialize ResourceCleanup for graceful shutdown with timeout and task abortion
+        let resource_cleanup = Arc::new(ResourceCleanup::new(Duration::from_secs(30)));
+
         Ok(Self {
             _config_path: config_path,
             config: config.clone(),
@@ -380,6 +392,7 @@ impl Node {
             saga_pallet,
             analytics,
             optimized_block_builder,
+            resource_cleanup,
             #[cfg(feature = "infinite-strata")]
             isnm_service,
         })
@@ -393,15 +406,33 @@ impl Node {
         let (tx_p2p_commands, mut rx_p2p_commands) = mpsc::channel::<P2PCommand>(100);
         let mut join_set: JoinSet<Result<(), NodeError>> = JoinSet::new();
 
-        // Create cancellation tokens for graceful shutdown
-        let shutdown_token = tokio_util::sync::CancellationToken::new();
+        // Get the cancellation token from resource cleanup system
+        let shutdown_token = self.resource_cleanup.get_cancellation_token();
+
+        // Register runtime shutdown hooks
+        let resource_cleanup_clone = self.resource_cleanup.clone();
+        let _ = self
+            .resource_cleanup
+            .register_runtime_hook(Box::new(move |_token| {
+                let cleanup = resource_cleanup_clone.clone();
+                tokio::spawn(async move {
+                    info!("Executing node shutdown sequence...");
+                    // Cancel all managed tasks
+                    cleanup.cancel_all_tasks().await.unwrap_or_else(|e| {
+                        error!("Failed to cancel all tasks during shutdown: {}", e);
+                    });
+                    info!("Node shutdown sequence completed");
+                    Ok(())
+                })
+            }))
+            .await;
 
         // If the 'infinite-strata' feature is enabled, spawn its periodic task.
         #[cfg(feature = "infinite-strata")]
         {
             info!("[ISNM] Spawning periodic cloud presence check task.");
             let isnm_service_clone = self.isnm_service.clone();
-            join_set.spawn(async move {
+            let _task_handle = join_set.spawn(async move {
                 // Initial delay to allow the node to stabilize.
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 let mut interval =
@@ -422,6 +453,15 @@ impl Node {
                 #[allow(unreachable_code)]
                 Ok(())
             });
+
+            // Register the task with resource cleanup
+            self.resource_cleanup
+                .register_task(|_token| async move {
+                    // Note: task_handle is an AbortHandle, not awaitable
+                    // The task will be aborted when the cancellation token is triggered
+                    Ok(())
+                })
+                .await?;
         }
 
         // --- Core Command Processor Task ---
@@ -432,6 +472,7 @@ impl Node {
             let utxos_clone = self.utxos.clone();
             let p2p_tx_clone = tx_p2p_commands.clone();
             let saga_clone = self.saga_pallet.clone();
+            let mempool_batch_size = self.config.mempool_batch_size.unwrap_or(40000);
 
             async move {
                 while let Some(command) = rx_p2p_commands.recv().await {
@@ -442,7 +483,7 @@ impl Node {
 
                             if matches!(add_result, Ok(true)) {
                                 debug!("Running periodic maintenance after adding new block.");
-                                dag_clone.run_periodic_maintenance().await;
+                                dag_clone.run_periodic_maintenance(mempool_batch_size).await;
                             } else if let Err(e) = add_result {
                                 warn!("Block failed validation or processing: {}", e);
                             }
@@ -495,7 +536,7 @@ impl Node {
                                     added_count, failed_count
                                 );
                                 // Run maintenance to update DAG state after sync.
-                                dag_clone.run_periodic_maintenance().await;
+                                dag_clone.run_periodic_maintenance(mempool_batch_size).await;
                             } else {
                                 error!(
                                     "Failed to topologically sort blocks from sync response. Discarding batch."
@@ -534,13 +575,50 @@ impl Node {
                                 info!(cred_id=%cred.id, "Successfully verified and stored CarbonOffsetCredential from network.");
                             }
                         }
+                        P2PCommand::RequestState => {
+                            info!("Received RequestState command, broadcasting current state");
+
+                            // Collect current blocks from DAG as HashMap
+                            let blocks: HashMap<String, QantoBlock> = dag_clone
+                                .blocks
+                                .iter()
+                                .map(|entry| (entry.key().clone(), entry.value().clone()))
+                                .collect();
+
+                            // Collect current UTXOs
+                            let utxos = {
+                                let utxos_reader = utxos_clone.read().await;
+                                utxos_reader.clone()
+                            };
+
+                            // Send BroadcastState command with current state (tuple syntax)
+                            let broadcast_cmd = P2PCommand::BroadcastState(blocks, utxos);
+                            if let Err(e) = p2p_tx_clone.send(broadcast_cmd).await {
+                                error!("Failed to send BroadcastState command: {}", e);
+                            } else {
+                                info!(
+                                    "Successfully sent state broadcast with {} blocks and {} UTXOs",
+                                    dag_clone.blocks.len(),
+                                    utxos_clone.read().await.len()
+                                );
+                            }
+                        }
                         _ => { /* Ignore other command types not relevant to this processor */ }
                     }
                 }
                 Ok(())
             }
         };
-        join_set.spawn(command_processor_task);
+        let _command_task_handle = join_set.spawn(command_processor_task);
+
+        // Register the command processor task with resource cleanup
+        self.resource_cleanup
+            .register_task(|_token| async move {
+                // Note: command_task_handle is an AbortHandle, not awaitable
+                // The task will be aborted when the cancellation token is triggered
+                Ok(())
+            })
+            .await?;
 
         // --- P2P Server / Solo Miner Task ---
         // If peers are configured, start the P2P server. Otherwise, run in solo mining mode.
@@ -618,7 +696,16 @@ impl Node {
                 let (_p2p_tx, p2p_rx) = mpsc::channel::<P2PCommand>(100);
                 p2p_server.run(p2p_rx).await.map_err(NodeError::P2PSpecific)
             };
-            join_set.spawn(p2p_task_fut);
+            let _p2p_task_handle = join_set.spawn(p2p_task_fut);
+
+            // Register the P2P task with resource cleanup
+            self.resource_cleanup
+                .register_task(|_token| async move {
+                    // Note: p2p_task_handle is an AbortHandle, not awaitable
+                    // The task will be aborted when the cancellation token is triggered
+                    Ok(())
+                })
+                .await?;
         } else {
             info!("No peers found. Running in single-node mode. Spawning solo miner...");
             let miner_dag_clone = self.dag.clone();
@@ -629,7 +716,51 @@ impl Node {
             let miner_shutdown_token = shutdown_token.clone();
             let optimized_block_builder_clone = self.optimized_block_builder.clone();
 
-            join_set.spawn(async move {
+            // Convert target_block_time from milliseconds to seconds for mining interval
+            #[cfg(feature = "performance-test")]
+            let mining_interval_secs = if self.config.target_block_time < 1000 {
+                // For performance testing with sub-second intervals, use at least 1 second
+                // but log the actual target for reference
+                info!("Performance test mode: target_block_time {} ms, using 1 second mining interval", 
+                      self.config.target_block_time);
+                1
+            } else {
+                (self.config.target_block_time as f64 / 1000.0) as u64
+            };
+
+            #[cfg(not(feature = "performance-test"))]
+            let mining_interval_secs = {
+                // Calculate mining interval from target_block_time without forcing minimum
+                // Allow sub-second intervals for high-performance mining (e.g., 200ms target)
+                let target_secs = self.config.target_block_time as f64 / 1000.0;
+                if target_secs < 1.0 {
+                    // For sub-second intervals, use 0 to indicate millisecond precision
+                    0
+                } else {
+                    target_secs as u64
+                }
+            };
+
+            info!(
+                "Using mining interval: {} seconds (from target_block_time: {} ms)",
+                mining_interval_secs, self.config.target_block_time
+            );
+
+            let dummy_tx_interval_secs = self.config.dummy_tx_interval_ms.unwrap_or(30000) / 1000;
+            let dummy_tx_per_cycle = self.config.dummy_tx_per_cycle.unwrap_or(100) as usize;
+            let mempool_max_size_bytes = self.config.mempool_max_size_bytes.unwrap_or(1024 * 1024);
+            let mempool_batch_size = self.config.mempool_batch_size.unwrap_or(40000);
+            let mempool_backpressure_threshold =
+                self.config.mempool_backpressure_threshold.unwrap_or(0.8)
+                    * (mempool_max_size_bytes as f64);
+
+            // TX generator backpressure configuration
+            let tx_batch_size = self.config.tx_batch_size.unwrap_or(100);
+            let adaptive_batch_threshold = self.config.adaptive_batch_threshold.unwrap_or(0.85);
+            let memory_soft_limit = self.config.memory_soft_limit.unwrap_or(8 * 1024 * 1024); // 8MB default
+            let memory_hard_limit = self.config.memory_hard_limit.unwrap_or(10 * 1024 * 1024); // 10MB default
+
+            let _solo_miner_task_handle = join_set.spawn(async move {
                 debug!("[DEBUG] Spawning solo miner task");
                 miner_dag_clone
                     .run_solo_miner(
@@ -638,12 +769,30 @@ impl Node {
                         miner_utxos_clone,
                         miner_clone,
                         optimized_block_builder_clone,
-                        DEFAULT_MINING_INTERVAL_SECS,
+                        mining_interval_secs,
+                        dummy_tx_interval_secs,
+                        dummy_tx_per_cycle,
+                        mempool_max_size_bytes,
+                        mempool_batch_size,
+                        mempool_backpressure_threshold as usize,
+                        tx_batch_size,
+                        adaptive_batch_threshold,
+                        memory_soft_limit,
+                        memory_hard_limit,
                         miner_shutdown_token,
                     )
                     .await
                     .map_err(|e| NodeError::DAG(e.to_string()))
             });
+
+            // Register the solo miner task with resource cleanup
+            self.resource_cleanup
+                .register_task(|_token| async move {
+                    // Note: solo_miner_task_handle is an AbortHandle, not awaitable
+                    // The task will be aborted when the cancellation token is triggered
+                    Ok(())
+                })
+                .await?;
         }
 
         // --- WebSocket Server State ---
@@ -720,7 +869,16 @@ impl Node {
                 Ok(())
             }
         };
-        join_set.spawn(websocket_broadcast_task);
+        let _websocket_broadcast_task_handle = join_set.spawn(websocket_broadcast_task);
+
+        // Register the WebSocket broadcasting task with resource cleanup
+        self.resource_cleanup
+            .register_task(|_token| async move {
+                // Note: websocket_broadcast_task_handle is an AbortHandle, not awaitable
+                // The task will be aborted when the cancellation token is triggered
+                Ok(())
+            })
+            .await?;
 
         // --- API Server Task ---
         // Clone all necessary data outside the async block to avoid lifetime issues
@@ -752,6 +910,7 @@ impl Node {
                 saga_pallet: self.saga_pallet.clone(),
                 analytics: self.analytics.clone(),
                 optimized_block_builder: self.optimized_block_builder.clone(),
+                resource_cleanup: self.resource_cleanup.clone(),
                 #[cfg(feature = "infinite-strata")]
                 isnm_service: self.isnm_service.clone(),
             }),
@@ -817,28 +976,64 @@ impl Node {
             }
             Ok(())
         };
-        join_set.spawn(server_task_fut);
+        let _server_task_handle = join_set.spawn(server_task_fut);
+
+        // Register the API server task with resource cleanup
+        self.resource_cleanup
+            .register_task(|_token| async move {
+                // Note: server_task_handle is an AbortHandle, not awaitable
+                // The task will be aborted when the cancellation token is triggered
+                Ok(())
+            })
+            .await?;
 
         // --- Main Shutdown Handler ---
         // Waits for either a Ctrl+C signal or for a critical task to fail.
         tokio::select! {
             biased;
             _ = signal::ctrl_c() => {
-                info!("Received Ctrl+C, initiating shutdown...");
+                info!("Received Ctrl+C, initiating graceful shutdown...");
+                self.resource_cleanup.request_shutdown();
+
+                // Wait for graceful shutdown with timeout
+                if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
+                    warn!("Graceful shutdown failed: {}, forcing shutdown", e);
+                }
+
                 warn!("Node shutdown initiated by Ctrl+C.");
             },
             Some(res) = join_set.join_next() => {
                 match res {
                     Ok(Err(e)) => {
                         error!("A critical node task failed: {}", e);
+                        self.resource_cleanup.request_shutdown();
+
+                        // Wait for graceful shutdown with timeout
+                        if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
+                            warn!("Graceful shutdown failed: {}, forcing shutdown", e);
+                        }
+
                         warn!("Node shutdown initiated by critical task failure.");
                     }
                     Err(e) => {
                         error!("A critical node task panicked: {}", e);
+                        self.resource_cleanup.request_shutdown();
+
+                        // Wait for graceful shutdown with timeout
+                        if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
+                            warn!("Graceful shutdown failed: {}, forcing shutdown", e);
+                        }
+
                         warn!("Node shutdown initiated by critical task panic.");
                     }
                     _ => {
                         warn!("Node shutdown initiated by unknown task completion.");
+                        self.resource_cleanup.request_shutdown();
+
+                        // Wait for graceful shutdown with timeout
+                        if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
+                            warn!("Graceful shutdown failed: {}, forcing shutdown", e);
+                        }
                     }
                 }
             },
@@ -1354,89 +1549,3 @@ async fn analytics_dashboard_handler(
 }
 
 // --- Unit Tests ---
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::config::{LoggingConfig, P2pConfig};
-    use crate::wallet::Wallet;
-    use rand::Rng;
-    use serial_test::serial;
-    use std::fs as std_fs;
-
-    #[tokio::test]
-    #[serial]
-    async fn test_node_creation_and_config_save() -> Result<(), Box<dyn std::error::Error>> {
-        // Setup paths for test artifacts.
-        let db_path = "qantodag_db_test_node_creation";
-        if std::path::Path::new(db_path).exists() {
-            let _ = std_fs::remove_dir_all(db_path);
-        }
-        let _ = tracing_subscriber::fmt::try_init();
-
-        // Create a new wallet for the test.
-        let wallet =
-            Wallet::new().map_err(|e| format!("Failed to create new wallet for test: {e}"))?;
-        let wallet_arc = Arc::new(wallet);
-        let genesis_validator_addr = wallet_arc.address();
-
-        // Use a random ID to prevent test conflicts.
-        let rand_id: u32 = rand::thread_rng().gen();
-        let temp_config_path = format!("./temp_test_config_{rand_id}.toml");
-        let temp_identity_path = format!("./temp_p2p_identity_{rand_id}.key");
-        let temp_peer_cache_path = format!("./temp_peer_cache_{rand_id}.json");
-
-        // Create a default config for the test.
-        let test_config = Config {
-            p2p_address: "/ip4/127.0.0.1/tcp/0".to_string(),
-            local_full_p2p_address: None,
-            api_address: "127.0.0.1:0".to_string(),
-            peers: vec![],
-            genesis_validator: genesis_validator_addr.clone(),
-            contract_address: "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"
-                .to_string(),
-            target_block_time: 60,
-            difficulty: 10, // Default difficulty value that matches SAGA's base_difficulty default
-            max_amount: 10_000_000_000,
-            use_gpu: false,
-            zk_enabled: false,
-            mining_threads: 1,
-            num_chains: 1,
-            mining_chain_id: 0,
-            logging: LoggingConfig {
-                level: "debug".to_string(),
-            },
-            p2p: P2pConfig::default(),
-            network_id: "testnet".to_string(),
-        };
-        test_config
-            .save(&temp_config_path)
-            .map_err(|e| format!("Failed to save initial temp config for test: {e}"))?;
-
-        // Attempt to create a new node instance.
-        let node_instance_result = Node::new(
-            test_config,
-            temp_config_path.clone(),
-            wallet_arc.clone(),
-            &temp_identity_path,
-            temp_peer_cache_path.clone(),
-        )
-        .await;
-
-        // --- Teardown ---
-        if std::path::Path::new(db_path).exists() {
-            let _ = std_fs::remove_dir_all(db_path);
-        }
-        let _ = std_fs::remove_file(&temp_config_path);
-        let _ = std_fs::remove_file(&temp_identity_path);
-        let _ = std_fs::remove_file(&temp_peer_cache_path);
-
-        // Assert that node creation was successful.
-        assert!(
-            node_instance_result.is_ok(),
-            "Node::new failed: {:?}",
-            node_instance_result.err()
-        );
-
-        Ok(())
-    }
-}

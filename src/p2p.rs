@@ -235,6 +235,8 @@ pub struct P2PServer {
     initial_peers_config: Vec<String>,
     peer_cache_path: String,
     p2p_command_sender: mpsc::Sender<P2PCommand>,
+    dag: Arc<QantoDAG>,
+    utxos: Arc<RwLock<HashMap<String, UTXO>>>,
 }
 
 #[derive(Clone)]
@@ -256,6 +258,7 @@ impl P2PServer {
         let store = MemoryStore::new(local_peer_id);
         let mut kademlia_behaviour = KadBehaviour::new(local_peer_id, store);
 
+        // Add initial peers to Kademlia routing table
         for peer_addr_str in &config.initial_peers {
             if let Ok(multiaddr) = peer_addr_str.parse::<Multiaddr>() {
                 if let Some(peer_id) = multiaddr.iter().find_map(|p| {
@@ -265,8 +268,19 @@ impl P2PServer {
                         None
                     }
                 }) {
-                    kademlia_behaviour.add_address(&peer_id, multiaddr);
+                    kademlia_behaviour.add_address(&peer_id, multiaddr.clone());
+                    info!(
+                        "Added initial peer to Kademlia: {} at {}",
+                        peer_id, multiaddr
+                    );
+                } else {
+                    warn!("Could not extract peer ID from address: {}", peer_addr_str);
                 }
+            } else {
+                warn!(
+                    "Invalid multiaddr format for initial peer: {}",
+                    peer_addr_str
+                );
             }
         }
 
@@ -325,6 +339,8 @@ impl P2PServer {
             initial_peers_config: config.initial_peers,
             peer_cache_path: config.peer_cache_path,
             p2p_command_sender,
+            dag: config.dag.clone(),
+            utxos: config.utxos.clone(),
         })
     }
 
@@ -333,11 +349,9 @@ impl P2PServer {
         p2p_config: &P2pConfig,
     ) -> Result<gossipsub::Behaviour, P2PError> {
         let message_id_fn = |message: &gossipsub::Message| {
-            let mut data_to_hash = message.data.clone();
-            if let Some(source) = message.source.as_ref() {
-                data_to_hash.extend_from_slice(&source.to_bytes());
-            }
-            let hash_result = qanto_hash(&data_to_hash);
+            // Only use message data for deduplication, not source peer ID
+            // This allows nodes to receive their own broadcast messages back
+            let hash_result = qanto_hash(&message.data);
             gossipsub::MessageId::from(hex::encode(hash_result.as_bytes()))
         };
 
@@ -370,40 +384,24 @@ impl P2PServer {
     }
 
     fn subscribe_to_topics(
-        topic_prefix: &str,
+        _topic_prefix: &str,
         gossipsub: &mut gossipsub::Behaviour,
     ) -> Result<Vec<IdentTopic>, P2PError> {
-        let mut blocks_topic = String::with_capacity(15 + topic_prefix.len());
-        blocks_topic.push_str("/qanto/");
-        blocks_topic.push_str(topic_prefix);
-        blocks_topic.push_str("/blocks");
-
-        let mut transactions_topic = String::with_capacity(21 + topic_prefix.len());
-        transactions_topic.push_str("/qanto/");
-        transactions_topic.push_str(topic_prefix);
-        transactions_topic.push_str("/transactions");
-
-        let mut state_updates_topic = String::with_capacity(22 + topic_prefix.len());
-        state_updates_topic.push_str("/qanto/");
-        state_updates_topic.push_str(topic_prefix);
-        state_updates_topic.push_str("/state_updates");
-
-        let mut carbon_credentials_topic = String::with_capacity(27 + topic_prefix.len());
-        carbon_credentials_topic.push_str("/qanto/");
-        carbon_credentials_topic.push_str(topic_prefix);
-        carbon_credentials_topic.push_str("/carbon_credentials");
-
+        // Use specific versioned Qanto topics for better protocol organization
         let topics_str = [
-            blocks_topic,
-            transactions_topic,
-            state_updates_topic,
-            carbon_credentials_topic,
+            "/qanto/blocks/1",             // Versioned block propagation topic
+            "/qanto/utxo/1",               // Versioned UTXO state updates topic
+            "/qanto/transactions/1",       // Versioned transaction propagation topic
+            "/qanto/carbon_credentials/1", // Versioned carbon offset credentials topic
+            "/qanto/state_sync/1",         // Versioned state synchronization topic
         ];
+
         let mut topics = Vec::new();
         for topic_s in topics_str.iter() {
-            let topic = IdentTopic::new(topic_s);
+            let topic = IdentTopic::new(*topic_s);
             gossipsub.subscribe(&topic)?;
             topics.push(topic);
+            info!("Subscribed to gossipsub topic: {}", topic_s);
         }
         Ok(topics)
     }
@@ -492,7 +490,64 @@ impl P2PServer {
             }
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 info!("Connection established with peer: {peer_id}");
+                // Log current mesh status after connection
+                for topic in &self.topics {
+                    let mesh_peers: Vec<_> = self
+                        .swarm
+                        .behaviour()
+                        .gossipsub
+                        .mesh_peers(&topic.hash())
+                        .collect();
+                    info!(
+                        "After connection to {}, topic {} has {} mesh peers",
+                        peer_id,
+                        topic,
+                        mesh_peers.len()
+                    );
+                }
             }
+            SwarmEvent::Behaviour(NodeBehaviourEvent::Gossipsub(gossipsub::Event::Message {
+                propagation_source,
+                message_id: _,
+                message,
+            })) => {
+                let blacklist = Arc::new(RwLock::new(HashSet::new()));
+                let rate_limiters = GossipRateLimiters {
+                    block: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(10u32)))),
+                    tx: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(50u32)))),
+                    state: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(5u32)))),
+                    credential: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(10u32)))),
+                };
+
+                Self::static_process_gossip_message(
+                    message,
+                    propagation_source,
+                    blacklist,
+                    self.p2p_command_sender.clone(),
+                    rate_limiters,
+                )
+                .await;
+            }
+            SwarmEvent::Behaviour(NodeBehaviourEvent::Mdns(MdnsEvent::Discovered(list))) => {
+                for (peer_id, multiaddr) in list {
+                    info!("mDNS discovered peer: {} at {}", peer_id, multiaddr);
+                    self.swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .add_address(&peer_id, multiaddr);
+                }
+            }
+            SwarmEvent::Behaviour(NodeBehaviourEvent::Kademlia(
+                KadEvent::OutboundQueryProgressed { result, .. },
+            )) => match result {
+                libp2p::kad::QueryResult::Bootstrap(Ok(_)) => {
+                    info!("Kademlia bootstrap completed successfully");
+                }
+                libp2p::kad::QueryResult::Bootstrap(Err(e)) => {
+                    warn!("Kademlia bootstrap failed: {:?}", e);
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -534,7 +589,22 @@ impl P2PServer {
                     .await
             }
             P2PCommand::RequestState => {
-                self.broadcast_message(NetworkMessageData::StateRequest, 2, "state request")
+                // Collect current blocks from DAG as HashMap
+                let blocks: HashMap<String, QantoBlock> = self
+                    .dag
+                    .blocks
+                    .iter()
+                    .map(|entry| (entry.key().clone(), entry.value().clone()))
+                    .collect();
+
+                // Collect current UTXOs
+                let utxos = {
+                    let utxos_guard = self.utxos.read().await;
+                    utxos_guard.clone()
+                };
+
+                // Broadcast the current state
+                self.broadcast_message(NetworkMessageData::State(blocks, utxos), 2, "state data")
                     .await
             }
             P2PCommand::BroadcastState(blocks, utxos) => {
@@ -568,7 +638,14 @@ impl P2PServer {
         p2p_command_sender: mpsc::Sender<P2PCommand>,
         rate_limiters: GossipRateLimiters,
     ) {
+        info!(
+            "Received gossipsub message from {} on topic {}",
+            source,
+            message.topic.as_str()
+        );
+
         if blacklist.read().await.contains(&source) {
+            warn!("Ignoring message from blacklisted peer: {}", source);
             return;
         }
 
@@ -577,7 +654,7 @@ impl P2PServer {
             &rate_limiters.block
         } else if topic_str.contains("transactions") {
             &rate_limiters.tx
-        } else if topic_str.contains("state_updates") {
+        } else if topic_str.contains("utxo") || topic_str.contains("state_sync") {
             &rate_limiters.state
         } else if topic_str.contains("carbon_credentials") {
             &rate_limiters.credential
@@ -595,21 +672,46 @@ impl P2PServer {
             return;
         }
 
-        if let Ok(msg_payload) = serde_json::from_slice::<NetworkMessage>(&message.data) {
-            let cmd = match msg_payload.data {
-                NetworkMessageData::Block(block) => P2PCommand::BroadcastBlock(block),
-                NetworkMessageData::Transaction(tx) => P2PCommand::BroadcastTransaction(tx),
-                NetworkMessageData::State(blocks, utxos) => P2PCommand::SyncResponse {
-                    blocks: blocks.into_values().collect(),
-                    utxos,
-                },
-                NetworkMessageData::StateRequest => P2PCommand::RequestState,
-                NetworkMessageData::CarbonOffsetCredential(cred) => {
-                    P2PCommand::BroadcastCarbonCredential(cred)
+        match serde_json::from_slice::<NetworkMessage>(&message.data) {
+            Ok(msg_payload) => {
+                info!("Successfully deserialized message from {}", source);
+                let cmd = match msg_payload.data {
+                    NetworkMessageData::Block(block) => {
+                        info!("Processing block message: {}", block.id);
+                        P2PCommand::BroadcastBlock(block)
+                    }
+                    NetworkMessageData::Transaction(tx) => {
+                        info!("Processing transaction message: {}", tx.id);
+                        P2PCommand::BroadcastTransaction(tx)
+                    }
+                    NetworkMessageData::State(blocks, utxos) => {
+                        info!(
+                            "Processing state sync response with {} blocks and {} UTXOs",
+                            blocks.len(),
+                            utxos.len()
+                        );
+                        P2PCommand::SyncResponse {
+                            blocks: blocks.into_values().collect(),
+                            utxos,
+                        }
+                    }
+                    NetworkMessageData::StateRequest => {
+                        info!("Processing state request from {}", source);
+                        P2PCommand::RequestState
+                    }
+                    NetworkMessageData::CarbonOffsetCredential(cred) => {
+                        info!("Processing carbon credential message");
+                        P2PCommand::BroadcastCarbonCredential(cred)
+                    }
+                };
+
+                match p2p_command_sender.send(cmd).await {
+                    Ok(_) => info!("Successfully forwarded message to command processor"),
+                    Err(e) => error!("Failed to forward message to command processor: {}", e),
                 }
-            };
-            if p2p_command_sender.send(cmd).await.is_err() {
-                error!("Failed to forward message to command processor");
+            }
+            Err(e) => {
+                error!("Failed to deserialize message from {}: {}", source, e);
             }
         }
     }
@@ -622,7 +724,17 @@ impl P2PServer {
                 .gossipsub
                 .mesh_peers(&topic_instance.hash())
                 .collect();
+            info!(
+                "Topic {} has {} mesh peers (min required: {})",
+                topic_instance,
+                mesh_peers.len(),
+                MIN_PEERS_FOR_MESH
+            );
             if mesh_peers.len() < MIN_PEERS_FOR_MESH {
+                warn!(
+                    "Insufficient mesh peers for topic {}, attempting reconnection",
+                    topic_instance
+                );
                 self.reconnect_to_initial_peers().await;
                 break;
             }
@@ -641,6 +753,28 @@ impl P2PServer {
         log_info: &str,
     ) -> Result<(), P2PError> {
         let topic = &self.topics[topic_index];
+
+        // Check mesh peers before broadcasting
+        let mesh_peers: Vec<_> = self
+            .swarm
+            .behaviour()
+            .gossipsub
+            .mesh_peers(&topic.hash())
+            .collect();
+        info!(
+            "Broadcasting {} to topic {} with {} mesh peers",
+            log_info,
+            topic,
+            mesh_peers.len()
+        );
+
+        if mesh_peers.is_empty() {
+            warn!(
+                "No mesh peers available for topic {} when broadcasting {}",
+                topic, log_info
+            );
+        }
+
         let net_msg = NetworkMessage::new(data, &self.node_qr_sk)?;
         let msg_bytes = serde_json::to_vec(&net_msg)?;
 

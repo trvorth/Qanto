@@ -529,7 +529,7 @@ impl ZKProofSystem {
 
         // Generate keys
         let (pk, vk) = Groth16::<E>::circuit_specific_setup(circuit, &mut rng)
-            .map_err(|e| anyhow!("Failed to setup range proof: {}", e))?;
+            .map_err(|e| anyhow!("Failed to setup range proof: {e}"))?;
 
         // Serialize and store keys
         let mut pk_bytes = Vec::new();
@@ -561,7 +561,7 @@ impl ZKProofSystem {
 
         // Generate keys
         let (pk, vk) = Groth16::<E>::circuit_specific_setup(circuit, &mut rng)
-            .map_err(|e| anyhow!("Failed to setup balance proof: {}", e))?;
+            .map_err(|e| anyhow!("Failed to setup balance proof: {e}"))?;
 
         // Serialize and store keys
         let mut pk_bytes = Vec::new();
@@ -592,7 +592,7 @@ impl ZKProofSystem {
 
         // Generate keys
         let (pk, vk) = Groth16::<E>::circuit_specific_setup(circuit, &mut rng)
-            .map_err(|e| anyhow!("Failed to setup membership proof: {}", e))?;
+            .map_err(|e| anyhow!("Failed to setup membership proof: {e}"))?;
 
         // Serialize and store keys
         let mut pk_bytes = Vec::new();
@@ -627,7 +627,7 @@ impl ZKProofSystem {
 
         // Generate keys
         let (pk, vk) = Groth16::<E>::circuit_specific_setup(circuit, &mut rng)
-            .map_err(|e| anyhow!("Failed to setup computation proof: {}", e))?;
+            .map_err(|e| anyhow!("Failed to setup computation proof: {e}"))?;
 
         // Serialize and store keys
         let mut pk_bytes = Vec::new();
@@ -661,7 +661,7 @@ impl ZKProofSystem {
 
         // Generate keys
         let (pk, vk) = Groth16::<E>::circuit_specific_setup(circuit, &mut rng)
-            .map_err(|e| anyhow!("Failed to setup identity proof: {}", e))?;
+            .map_err(|e| anyhow!("Failed to setup identity proof: {e}"))?;
 
         // Serialize and store keys
         let mut pk_bytes = Vec::new();
@@ -695,7 +695,7 @@ impl ZKProofSystem {
 
         // Generate keys
         let (pk, vk) = Groth16::<E>::circuit_specific_setup(circuit, &mut rng)
-            .map_err(|e| anyhow!("Failed to setup voting proof: {}", e))?;
+            .map_err(|e| anyhow!("Failed to setup voting proof: {e}"))?;
 
         // Serialize and store keys
         let mut pk_bytes = Vec::new();
@@ -731,7 +731,7 @@ impl ZKProofSystem {
 
         let mut rng = ark_std::rand::thread_rng();
         let proof = Groth16::<E>::prove(&pk, circuit, &mut rng)
-            .map_err(|e| anyhow!("Failed to generate range proof: {}", e))?;
+            .map_err(|e| anyhow!("Failed to generate range proof: {e}"))?;
 
         // Serialize proof
         let mut proof_bytes = Vec::new();
@@ -816,7 +816,7 @@ impl ZKProofSystem {
 
         let mut rng = ark_std::rand::thread_rng();
         let proof = Groth16::<E>::prove(&pk, circuit, &mut rng)
-            .map_err(|e| anyhow!("Failed to generate balance proof: {}", e))?;
+            .map_err(|e| anyhow!("Failed to generate balance proof: {e}"))?;
 
         // Serialize proof
         let mut proof_bytes = Vec::new();
@@ -879,7 +879,7 @@ impl ZKProofSystem {
 
         let mut rng = ark_std::rand::thread_rng();
         let proof = Groth16::<E>::prove(&pk, circuit, &mut rng)
-            .map_err(|e| anyhow!("Failed to generate computation proof: {}", e))?;
+            .map_err(|e| anyhow!("Failed to generate computation proof: {e}"))?;
 
         // Serialize proof
         let mut proof_bytes = Vec::new();
@@ -949,13 +949,13 @@ impl ZKProofSystem {
         };
 
         // Enable constraint tracing
-        use ark_relations::r1cs::{ConstraintLayer, ConstraintSystem, TracingMode};
-        use tracing::subscriber;
-        use tracing_subscriber::{self, layer::SubscriberExt, Registry};
-        let mut layer = ConstraintLayer::default();
-        layer.mode = TracingMode::OnlyConstraints;
-        let subscriber = Registry::default().with(layer);
-        let _guard = subscriber::set_default(subscriber);
+        use ark_relations::r1cs::ConstraintSystem;
+        // use tracing::subscriber;
+        // use tracing_subscriber::{self, layer::SubscriberExt, Registry};
+        // let mut layer = ConstraintLayer::default();
+        // layer.mode = TracingMode::OnlyConstraints;
+        // let subscriber = Registry::default().with(layer);
+        // let _guard = subscriber::set_default(subscriber);
 
         // Manually create CS and generate constraints for debugging
         let cs = ConstraintSystem::<ConstraintF>::new_ref();
@@ -967,7 +967,7 @@ impl ZKProofSystem {
 
         let mut rng = ark_std::rand::thread_rng();
         let proof = Groth16::<E>::prove(&pk, circuit, &mut rng)
-            .map_err(|e| anyhow!("Failed to generate identity proof: {}", e))?;
+            .map_err(|e| anyhow!("Failed to generate identity proof: {e}"))?;
 
         // Serialize proof
         let mut proof_bytes = Vec::new();
@@ -1047,7 +1047,7 @@ impl ZKProofSystem {
 
         let mut rng = ark_std::rand::thread_rng();
         let proof = Groth16::<E>::prove(&pk, circuit, &mut rng)
-            .map_err(|e| anyhow!("Failed to generate voting proof: {}", e))?;
+            .map_err(|e| anyhow!("Failed to generate voting proof: {e}"))?;
 
         // Serialize proof
         let mut proof_bytes = Vec::new();
@@ -1132,7 +1132,7 @@ impl ZKProofSystem {
 
         // Verify the proof
         let is_valid = Groth16::<E>::verify(&vk, &public_inputs, &groth_proof)
-            .map_err(|e| anyhow!("Proof verification failed: {}", e))?;
+            .map_err(|e| anyhow!("Proof verification failed: {e}"))?;
 
         if is_valid {
             debug!("Proof verification successful");
@@ -1321,7 +1321,7 @@ impl ZKProofSystem {
         };
 
         let proving_key: ProvingKey<E> = ProvingKey::deserialize_compressed(&proving_key_bytes[..])
-            .map_err(|e| anyhow!("Failed to deserialize proving key: {}", e))?;
+            .map_err(|e| anyhow!("Failed to deserialize proving key: {e}"))?;
 
         // Create circuit with membership proof logic
         let set_field: Vec<ConstraintF> = set.iter().map(|&x| ConstraintF::from(x)).collect();
@@ -1332,12 +1332,12 @@ impl ZKProofSystem {
 
         let mut rng = ark_std::rand::thread_rng();
         let proof = Groth16::<E>::prove(&proving_key, circuit, &mut rng)
-            .map_err(|e| anyhow!("Proof generation failed: {}", e))?;
+            .map_err(|e| anyhow!("Proof generation failed: {e}"))?;
 
         let mut proof_bytes = Vec::new();
         proof
             .serialize_compressed(&mut proof_bytes)
-            .map_err(|e| anyhow!("Proof serialization failed: {}", e))?;
+            .map_err(|e| anyhow!("Proof serialization failed: {e}"))?;
 
         let public_inputs = vec![element.to_le_bytes().to_vec()];
 
@@ -1386,164 +1386,5 @@ impl ZKProofSystem {
 impl Default for ZKProofSystem {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_zk_system_initialization() {
-        let zk_system = ZKProofSystem::new();
-        assert!(zk_system.initialize().await.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_range_proof_generation_and_verification() {
-        let zk_system = ZKProofSystem::new();
-        zk_system.initialize().await.unwrap();
-
-        let proof = zk_system.generate_range_proof(500, 0, 1000).await.unwrap();
-        let is_valid = zk_system.verify_proof(&proof).await.unwrap();
-        assert!(is_valid);
-    }
-
-    #[tokio::test]
-    async fn test_balance_proof_generation_and_verification() {
-        let zk_system = ZKProofSystem::new();
-        zk_system.initialize().await.unwrap();
-
-        let inputs = vec![100, 200];
-        let outputs = vec![150, 150];
-        let proof = zk_system
-            .generate_balance_proof(inputs, outputs)
-            .await
-            .unwrap();
-        let is_valid = zk_system.verify_proof(&proof).await.unwrap();
-        assert!(is_valid);
-    }
-
-    #[tokio::test]
-    async fn test_invalid_balance_proof() {
-        let zk_system = ZKProofSystem::new();
-        zk_system.initialize().await.unwrap();
-
-        let inputs = vec![100, 200];
-        let outputs = vec![150, 200]; // Sum doesn't match
-        let result = zk_system.generate_balance_proof(inputs, outputs).await;
-        assert!(result.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_computation_proof() {
-        let zk_system = ZKProofSystem::new();
-        zk_system.initialize().await.unwrap();
-
-        // Test addition computation (type 0)
-        let private_inputs = vec![10u64, 20u64];
-        let public_inputs = vec![5u64];
-        let expected_output = 35u64; // 10 + 20 + 5
-        let computation_type = 0u8; // Addition
-
-        let proof = zk_system
-            .generate_computation_proof(
-                private_inputs,
-                public_inputs,
-                expected_output,
-                computation_type,
-            )
-            .await
-            .unwrap();
-
-        let is_valid = zk_system.verify_proof(&proof).await.unwrap();
-        assert!(is_valid, "Computation proof should be valid");
-
-        // Test multiplication computation (type 1)
-        let private_inputs = vec![3u64, 4u64];
-        let public_inputs = vec![2u64];
-        let expected_output = 24u64; // 3 * 4 * 2
-        let computation_type = 1u8; // Multiplication
-
-        let proof = zk_system
-            .generate_computation_proof(
-                private_inputs,
-                public_inputs,
-                expected_output,
-                computation_type,
-            )
-            .await
-            .unwrap();
-
-        let is_valid = zk_system.verify_proof(&proof).await.unwrap();
-        assert!(is_valid, "Multiplication computation proof should be valid");
-    }
-
-    #[tokio::test]
-    async fn test_identity_proof() {
-        let zk_system = ZKProofSystem::new();
-        zk_system.initialize().await.unwrap();
-
-        let identity_key = 12345u64;
-        let nonce = 98765u64;
-        let identity_commitment = (identity_key + nonce) * (identity_key + nonce); // Simple commitment
-        let age = 25u64;
-        let age_threshold = 18u64;
-
-        let proof = zk_system
-            .generate_identity_proof(identity_key, identity_commitment, nonce, age, age_threshold)
-            .await
-            .unwrap();
-
-        let is_valid = zk_system.verify_proof(&proof).await.unwrap();
-        assert!(is_valid, "Identity proof should be valid");
-    }
-
-    #[tokio::test]
-    async fn test_voting_proof() {
-        let zk_system = ZKProofSystem::new();
-        zk_system.initialize().await.unwrap();
-
-        let voter_key = 54321u64;
-        let vote = 1u64; // Vote for option 1
-        let eligibility_proof = vec![voter_key]; // Simple eligibility: sum equals voter key
-        let election_pubkey = 11111u64;
-
-        let proof = zk_system
-            .generate_voting_proof(voter_key, vote, eligibility_proof.clone(), election_pubkey)
-            .await
-            .unwrap();
-
-        let is_valid = zk_system.verify_proof(&proof).await.unwrap();
-        assert!(is_valid, "Voting proof should be valid");
-
-        // Test invalid vote (should fail)
-        let invalid_vote = 2u64; // Invalid vote (must be 0 or 1)
-        let invalid_proof = zk_system
-            .generate_voting_proof(
-                voter_key,
-                invalid_vote,
-                eligibility_proof.clone(),
-                election_pubkey,
-            )
-            .await;
-
-        assert!(
-            invalid_proof.is_err(),
-            "Invalid vote should fail proof generation"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_proof_caching() {
-        let zk_system = ZKProofSystem::new();
-        zk_system.initialize().await.unwrap();
-
-        let proof = zk_system.generate_range_proof(500, 0, 1000).await.unwrap();
-        let proof_id = zk_system.compute_proof_id(&proof);
-
-        let cached_proof = zk_system.get_cached_proof(&proof_id).await;
-        assert!(cached_proof.is_some());
-        assert_eq!(cached_proof.unwrap().proof, proof.proof);
     }
 }

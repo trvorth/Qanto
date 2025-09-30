@@ -529,7 +529,7 @@ impl AlertManager {
         message.push_str(&alert.component);
         message.push(')');
 
-        // For production, integrate with SMS providers like Twilio, AWS SNS, etc.
+        // For production, integrate with SMS providers like Twilio, etc.
         // For now, we'll log the SMS content
         info!("[AlertManager] SMS to {number}: {message}");
 
@@ -568,9 +568,7 @@ impl AlertManager {
                 Ok(())
             }
             Err(e) => Err(anyhow::anyhow!(
-                "P2P webhook routing failed for target {}: {}",
-                target,
-                e
+                "P2P webhook routing failed for target {target}: {e}"
             )),
         }
     }
@@ -735,9 +733,7 @@ impl AlertManager {
                 Ok(())
             }
             Err(e) => Err(anyhow::anyhow!(
-                "P2P notification failed for target {}: {}",
-                target_node,
-                e
+                "P2P notification failed for target {target_node}: {e}"
             )),
         }
     }
@@ -867,7 +863,7 @@ impl AlertManager {
             alert.acknowledge();
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Alert not found: {}", alert_id))
+            Err(anyhow::anyhow!("Alert not found: {alert_id}"))
         }
     }
 
@@ -895,7 +891,7 @@ impl AlertManager {
 
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Alert not found: {}", alert_id))
+            Err(anyhow::anyhow!("Alert not found: {alert_id}"))
         }
     }
 
@@ -1108,8 +1104,7 @@ fn check_system_entropy() -> Result<()> {
             });
 
             Err(anyhow::anyhow!(
-                "FATAL: OS entropy pool non-responsive: {}",
-                e
+                "FATAL: OS entropy pool non-responsive: {e}"
             ))
         }
     }
@@ -1215,7 +1210,7 @@ async fn check_file_integrity(wallet_path: &Path) -> Result<()> {
                 alert_manager().add_alert(alert).await;
             });
 
-            return Err(anyhow::anyhow!("Failed to read wallet file: {}", e));
+            return Err(anyhow::anyhow!("Failed to read wallet file: {e}"));
         }
     };
 
@@ -1325,7 +1320,7 @@ async fn check_port_availability(config: &Config) -> Result<()> {
             });
 
             error!("FATAL: API address {api_addr} is already in use or cannot be bound: {e}. Halting startup.");
-            return Err(anyhow::anyhow!("API address {} unavailable.", api_addr));
+            return Err(anyhow::anyhow!("API address {api_addr} unavailable."));
         }
     }
 
@@ -1560,9 +1555,7 @@ async fn check_chain_state_integrity() -> Result<()> {
 
             error!("FATAL: Could not open existing chain state database: {e}. The database may be corrupt or locked by another process. Please resolve the issue before restarting. Halting startup.");
             Err(anyhow::anyhow!(
-                "Chain state DB at '{}' is inaccessible or corrupt: {}",
-                DB_PATH,
-                e
+                "Chain state DB at '{DB_PATH}' is inaccessible or corrupt: {e}"
             ))
         }
     }
@@ -1958,7 +1951,7 @@ async fn init_cloud_anchor() -> Result<()> {
 
 fn detect_cloud_environment() -> Option<&'static str> {
     let cloud_vars = [
-        // Removed AWS detection for NameCheap hosting migration
+        // Removed cloud provider detection for generic hosting migration
         ("GOOGLE_CLOUD_PROJECT", "Google Cloud Platform"),
         ("AZURE_FUNCTIONS_ENVIRONMENT", "Azure"),
         // Add more cloud providers

@@ -585,6 +585,15 @@ impl ExecutionLayer {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SimpleBlock {
+    pub hash: u64,
+    pub previous_hash: u64,
+    pub nonce: u64,
+    pub difficulty: u64,
+    pub timestamp: i64,
+}
+
 pub struct Blockchain {
     pub chain: Arc<AsyncMutex<Vec<Block>>>,
     db: Arc<KeyValueStore>,
@@ -598,11 +607,13 @@ impl Blockchain {
     pub fn start_jsonrpc(
         self: std::sync::Arc<Self>,
         port: u16,
-        chain_id: u64,
+        _chain_id: u64,
     ) -> tokio::task::JoinHandle<()> {
-        // Use the jsonrpc_server module to run the HTTP server.
+        // Use the jsonrpc_server module to run the HTTP server with actual blockchain instance.
         tokio::spawn(async move {
-            if let Err(e) = jsonrpc_server::run_server(port, chain_id).await {
+            let server = jsonrpc_server::JsonRpcServer::new(self);
+            let addr = format!("127.0.0.1:{port}");
+            if let Err(e) = server.start(&addr).await {
                 eprintln!("JSON-RPC server error: {e}");
             }
         })
@@ -745,6 +756,45 @@ impl Blockchain {
     }
 
     // Memory-bounded blockchain configuration constants
+    pub fn get_block_count(&self) -> u64 {
+        // For now, return a simple count based on the in-memory chain
+        // In a production system, this would query the database
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let chain = self.chain.lock().await;
+                chain.len() as u64
+            })
+        })
+    }
+
+    pub fn get_block(&self, block_number: u64) -> Option<SimpleBlock> {
+        // Return a simplified block structure for JSON-RPC
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                let chain = self.chain.lock().await;
+                chain.get(block_number as usize).map(|block| SimpleBlock {
+                    hash: block
+                        .get_hash()
+                        .as_bytes()
+                        .iter()
+                        .fold(0u64, |acc, &b| acc.wrapping_mul(256).wrapping_add(b as u64)),
+                    previous_hash: block
+                        .header
+                        .previous_hash
+                        .as_bytes()
+                        .iter()
+                        .fold(0u64, |acc, &b| acc.wrapping_mul(256).wrapping_add(b as u64)),
+                    nonce: 0, // Simplified for now
+                    difficulty: tokio::task::block_in_place(|| {
+                        tokio::runtime::Handle::current()
+                            .block_on(async { *self.difficulty.read().await })
+                    }),
+                    timestamp: block.header.timestamp,
+                })
+            })
+        })
+    }
+
     const MAX_IN_MEMORY_BLOCKS: usize = 1_000; // Keep last 1000 blocks in memory for fast access
     const PRUNING_THRESHOLD: usize = 1_200; // Start pruning when exceeding this number
 
@@ -761,5 +811,26 @@ impl Blockchain {
                 chain.drain(1..drain_end);
             }
         }
+    }
+
+    /// Check if mining is currently active
+    pub fn is_mining(&self) -> bool {
+        // For now, assume mining is always active in this implementation
+        // In a real implementation, this would check if mining threads are running
+        true
+    }
+
+    /// Get current mining difficulty
+    pub fn get_current_difficulty(&self) -> u64 {
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async { *self.difficulty.read().await })
+        })
+    }
+
+    /// Get current hash rate (simplified implementation)
+    pub fn get_hash_rate(&self) -> u64 {
+        // For now, return a mock hash rate
+        // In a real implementation, this would calculate based on recent mining performance
+        1_000_000 // 1 MH/s
     }
 }

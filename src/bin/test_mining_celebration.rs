@@ -17,7 +17,7 @@ fn main() {
         effort: 2500000,
         total_blocks_mined: 1,
         chain_id: 0,
-        block_reward: 50000000000, // 50 QNTO in smallest units (50 * 1e9)
+        block_reward: 150000000000, // 150 QNTO in smallest units (150 * 1e9)
         compact: false,
     };
 
@@ -40,7 +40,7 @@ fn main() {
         effort: 2500000,
         total_blocks_mined: 1,
         chain_id: 0,
-        block_reward: 50000000000, // 50 QNTO in smallest units (50 * 1e9)
+        block_reward: 150000000000, // 150 QNTO in smallest units (150 * 1e9)
         compact: true,
     };
 

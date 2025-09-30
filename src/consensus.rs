@@ -36,6 +36,7 @@ use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError};
 use crate::saga::{PalletSaga, SagaError};
 use crate::transaction::TransactionError;
 use crate::types::UTXO;
+use futures::future;
 use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
@@ -103,33 +104,47 @@ impl Consensus {
 
         // OPTIMIZATION: Use parallel processing with a shared UTXO reference to reduce memory usage.
         use rayon::prelude::*;
-        let verification_results: Result<Vec<_>, _> = block
+        let verification_tasks: Vec<_> = block
             .transactions
             .par_iter()
             .skip(1) // Skip the coinbase transaction, which has no inputs to verify.
             .map(|tx| {
-                // Use a shared Arc reference instead of a cloned HashMap.
+                // Clone the transaction to avoid lifetime issues with tokio::spawn
+                let tx_clone = tx.clone();
                 let utxos_ref = Arc::clone(&utxos_arc);
                 let dag_ref = Arc::clone(dag_arc);
 
-                // Create a blocking task for async verification in a parallel context.
-                tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(async {
-                        // Try with shared UTXOs first; fall back to cloned UTXOs if needed.
-                        match tx.verify_with_shared_utxos(&dag_ref, &utxos_ref).await {
-                            Ok(()) => Ok(()),
-                            Err(_) => {
-                                let guard = utxos_ref.read().await;
-                                tx.verify(&dag_ref, &guard.clone()).await
-                            }
+                // Spawn async task instead of using block_on to avoid runtime-in-runtime panic
+                tokio::spawn(async move {
+                    // Try with shared UTXOs first; fall back to cloned UTXOs if needed.
+                    match tx_clone
+                        .verify_with_shared_utxos(&dag_ref, &utxos_ref)
+                        .await
+                    {
+                        Ok(()) => Ok(()),
+                        Err(_) => {
+                            let guard = utxos_ref.read().await;
+                            tx_clone.verify(&dag_ref, &guard.clone()).await
                         }
-                    })
+                    }
                 })
             })
-            .collect();
+            .collect::<Vec<_>>();
+
+        // Await all verification tasks
+        let verification_results = future::join_all(verification_tasks).await;
 
         // Check if any transaction verification failed.
-        verification_results?;
+        for result in verification_results {
+            match result {
+                Ok(verification_result) => verification_result?,
+                Err(join_error) => {
+                    return Err(ConsensusError::StateError(format!(
+                        "Transaction verification task failed: {join_error}"
+                    )));
+                }
+            }
+        }
 
         // --- Rule 4: Proof-of-Stake (PoS) - The "Finality Helper" ---
         // This check is now supplementary. A failure here logs a warning but does NOT
@@ -286,7 +301,18 @@ impl Consensus {
     /// This is the core of PoSe, where SAGA's intelligence modifies the base PoW.
     pub async fn get_effective_difficulty(&self, miner_address: &str) -> f64 {
         let rules = self.saga.economy.epoch_rules.read().await;
-        let base_difficulty = rules.get("base_difficulty").map_or(10.0, |r| r.value);
+        
+        // Debug logging to see what's in the rules HashMap
+        debug!("Available rules: {:?}", rules.keys().collect::<Vec<_>>());
+        
+        let base_difficulty = rules.get("base_difficulty").map_or(10.0, |r| {
+            debug!("Found base_difficulty rule with value: {}", r.value);
+            r.value
+        });
+        
+        if !rules.contains_key("base_difficulty") {
+            debug!("base_difficulty rule not found, using fallback value of 10.0");
+        }
 
         let scs = self
             .saga
@@ -299,6 +325,9 @@ impl Consensus {
 
         let difficulty_modifier = 1.0 - (scs - 0.5);
         let effective_difficulty = base_difficulty * difficulty_modifier;
+
+        debug!("Calculated effective difficulty: {} (base: {}, modifier: {})", 
+               effective_difficulty, base_difficulty, difficulty_modifier);
 
         // Clamp the difficulty within a reasonable range (e.g., 50% to 200% of base).
         effective_difficulty.clamp(base_difficulty / 2.0, base_difficulty * 2.0)

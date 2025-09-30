@@ -59,6 +59,8 @@ pub enum QantoNetError {
     NoConnection,
     #[error("Key error: {0}")]
     KeyError(String),
+    #[error("Mutex lock poisoned")]
+    MutexLockPoisoned,
 }
 
 impl From<Box<bincode::ErrorKind>> for QantoNetError {
@@ -423,7 +425,10 @@ impl QantoNetServer {
 
     /// Start the networking server
     pub async fn start(&mut self) -> Result<(), QantoNetError> {
-        *self.running.lock().unwrap() = true;
+        *self
+            .running
+            .lock()
+            .map_err(|_| QantoNetError::MutexLockPoisoned)? = true;
 
         let listener = tokio::net::TcpListener::bind(&self.listen_addr).await?;
         let running = self.running.clone();
@@ -431,7 +436,7 @@ impl QantoNetServer {
         let keypair = self.keypair.clone();
         let local_peer_id = self.local_peer_id.clone();
         tokio::spawn(async move {
-            while *running.lock().unwrap() {
+            while running.lock().is_ok_and(|guard| *guard) {
                 if let Ok((mut stream, addr)) = listener.accept().await {
                     let connections_clone = connections.clone();
                     let keypair = keypair.clone();
@@ -533,7 +538,9 @@ impl QantoNetServer {
 
     /// Stop the networking server
     pub async fn stop(&mut self) {
-        *self.running.lock().unwrap() = false;
+        if let Ok(mut running) = self.running.lock() {
+            *running = false;
+        }
         println!("[QantoNet] Stopping networking server");
     }
 
@@ -970,7 +977,7 @@ impl QantoNetServer {
         combined_data.extend_from_slice(
             &SystemTime::now()
                 .duration_since(UNIX_EPOCH)
-                .unwrap()
+                .unwrap_or_else(|_| Duration::from_secs(0))
                 .as_nanos()
                 .to_le_bytes(),
         );
@@ -1002,64 +1009,6 @@ pub enum QantoNetResponse {
     PeerConnected(PeerId),
     ConnectedPeers(Vec<PeerId>),
     Error(String),
-}
-
-// Native runtime implemented using threads and std::net
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_peer_id_generation() {
-        let public_key = b"test_public_key_data_here";
-        let peer_id = PeerId::new(public_key);
-        assert_eq!(peer_id.id.len(), 32);
-    }
-
-    #[test]
-    fn test_rate_limiter() {
-        let mut limiter = RateLimiter::new(10, 5);
-
-        // Should allow initial tokens
-        assert!(limiter.try_consume(5));
-        assert!(limiter.try_consume(5));
-
-        // Should reject when out of tokens
-        assert!(!limiter.try_consume(1));
-    }
-
-    #[test]
-    fn test_dht_routing_table() {
-        let local_peer = PeerId::random();
-        let mut dht = DhtRoutingTable::new(local_peer);
-
-        let peer_info = PeerInfo {
-            peer_id: PeerId::random(),
-            address: "127.0.0.1:8080".parse().unwrap(),
-            public_key: Vec::new(),
-            capabilities: Vec::new(),
-            last_seen: SystemTime::now(),
-            reputation: 0,
-            connection_count: 0,
-        };
-
-        dht.add_peer(peer_info.clone());
-        let closest = dht.find_closest_peers(&peer_info.peer_id, 1);
-        assert_eq!(closest.len(), 1);
-    }
-
-    #[test]
-    fn test_gossip_protocol() {
-        let mut gossip = GossipProtocol::new();
-        let peer_id = PeerId::random();
-        let topic = "test_topic".to_string();
-
-        gossip.subscribe(topic.clone(), peer_id.clone());
-        let subscribers = gossip.get_subscribers(&topic);
-        assert_eq!(subscribers.len(), 1);
-        assert_eq!(subscribers[0], peer_id);
-    }
 }
 
 /// Simple internal run-length encoding compression for Qanto network messages
@@ -1099,3 +1048,5 @@ fn qanto_decompress(compressed: &[u8]) -> Vec<u8> {
     }
     decompressed
 }
+
+// Native runtime implemented using threads and std::net

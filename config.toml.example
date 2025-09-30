@@ -1,57 +1,35 @@
-# Qanto Node Configuration Example
-#
-# This is an example configuration file. Copy it to 'config.toml'
-# and edit the values to suit your setup. Do NOT commit your
-# actual 'config.toml' to a public repository if it contains secrets.
+# Qanto Example Configuration
+# Optimized for 32+ BPS (blocks per second) and 10M+ TPS performance
 
-# -----------------------------------------------------------------------------
-# Core Network Settings
-# -----------------------------------------------------------------------------
+[network]
+p2p_address = "127.0.0.1:8333"
+network_id = "qanto-testnet"
+max_peers = 32
+bootstrap_peers = []
 
-# P2P address for listening to incoming connections from other nodes.
-# "0.0.0.0" listens on all available network interfaces.
-[cite_start]p2p_address = "0.0.0.0:30333" [cite: 1]
+[api]
+api_address = "127.0.0.1:8080"
+enable_api = true
+enable_websocket = true
+websocket_address = "127.0.0.1:8081"
 
-# List of initial peer addresses to connect to on startup.
-# Example: peers = ["/ip4/192.168.1.10/tcp/30333/p2p/PEER_ID_HERE"]
-[cite_start]peers = [] [cite: 1]
+[mining]
+enable_mining = true
+mining_threads = 4
+use_gpu = false
+mining_chain_id = 0
+# MICROSECOND PRECISION: Optimized for 31ms block time
+mining_interval_ms = 30  # 30ms mining interval for 31ms block target
+dummy_tx_interval_ms = 15  # 15ms dummy TX generation for high frequency testing
+dummy_tx_per_cycle = 100  # Generate 100 dummy TXs per cycle
 
-# Unique identifier for the network to prevent connecting to wrong chains.
-[cite_start]network_id = "qanto-testnet" [cite: 1]
-
-# The public address of the wallet designated as the genesis validator.
-# On first run with '--clean', this address must match your wallet's address.
-[cite_start]genesis_validator = "your-wallet-public-address" [cite: 1]
-
-# -----------------------------------------------------------------------------
-# API and Interface Settings
-# -----------------------------------------------------------------------------
-
-# Address for the JSON-RPC API server.
-# "127.0.0.1" makes it accessible only on your local machine.
-[cite_start]api_address = "127.0.0.1:8080" [cite: 1]
-
-# -----------------------------------------------------------------------------
-# Mining and Consensus Settings
-# -----------------------------------------------------------------------------
-
-# Target time in seconds for mining a new block.
-[cite_start]target_block_time = 30 [cite: 1]
-
-# Initial difficulty for the proof-of-work algorithm.
-[cite_start]difficulty = 1 [cite: 1]
-
-# Number of CPU threads to use for mining.
-[cite_start]mining_threads = 4 [cite: 1]
-
-# Enable or disable GPU mining (requires a compatible GPU and drivers).
-[cite_start]use_gpu = false [cite: 1]
-
-# Enable or disable the generation of Zero-Knowledge proofs for transactions.
-[cite_start]zk_enabled = true [cite: 1]
-
-# The primary chain this miner will work on.
-[cite_start]mining_chain_id = 0 [cite: 1]
+[consensus]
+# CRITICAL: 31ms block time for 32.25+ BPS performance
+target_block_time = 31  # milliseconds (was 30 seconds)
+difficulty = 1
+zk_enabled = true
+max_block_size = 10485760  # 10MB for high TPS
+max_transactions_per_block = 100000  # Support 10M+ TPS with batching
 
 # -----------------------------------------------------------------------------
 # Blockchain Parameters
@@ -64,7 +42,51 @@
 [cite_start]contract_address = "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394" [cite: 1]
 
 # Maximum total supply of Qanto coins.
-[cite_start]max_amount = 21000000000 [cite: 1]
+max_amount = 21000000000
+
+# -----------------------------------------------------------------------------
+# File and Database Paths
+# -----------------------------------------------------------------------------
+
+# Directory for storing blockchain data and temporary files.
+data_dir = "./data"
+
+# Path to the main database file.
+db_path = "./data/qanto.db"
+
+# Path to the encrypted wallet file.
+wallet_path = "wallet.key"
+
+# Path to the P2P identity key file.
+p2p_identity_path = "p2p_identity.key"
+
+# Path to the log file (optional, leave empty to disable file logging).
+log_file_path = "./logs/qanto.log"
+
+# Path to TLS certificate file (optional, for secure connections).
+# tls_cert_path = "./certs/server.crt"
+
+# Path to TLS private key file (optional, for secure connections).
+# tls_key_path = "./certs/server.key"
+
+# -----------------------------------------------------------------------------
+# Mining Configuration (Optional)
+# -----------------------------------------------------------------------------
+
+# Mining interval in seconds (optional, defaults to 5 seconds).
+# mining_interval_secs = 5
+
+# Dummy transaction generation interval in seconds (optional).
+# dummy_tx_interval_secs = 5
+
+# Number of dummy transactions to generate per cycle (optional).
+# dummy_tx_per_cycle = 100000
+
+# Maximum age for transactions in mempool in seconds (optional).
+# mempool_max_age_secs = 3600
+
+# Maximum size of mempool in bytes (optional).
+# mempool_max_size_bytes = 67108864
 
 # -----------------------------------------------------------------------------
 # P2P Network Tuning

@@ -1,53 +1,65 @@
-use qanto::wallet::Wallet;
+use clap::{Arg, Command};
+use qanto::{config::Config, wallet::Wallet};
 use secrecy::SecretString;
-use std::env;
-use std::error::Error;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: cargo run --bin import_wallet \"<private_key_or_mnemonic>\"");
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let matches = Command::new("import_wallet")
+        .about("Import a Qanto wallet from a private key")
+        .arg(
+            Arg::new("private_key")
+                .help("Private key to import")
+                .required(true)
+                .index(1),
+        )
+        .arg(
+            Arg::new("output")
+                .short('o')
+                .long("output")
+                .value_name("FILE")
+                .help("Output wallet file path")
+                .default_value("wallet.key"),
+        )
+        .arg(
+            Arg::new("config")
+                .short('c')
+                .long("config")
+                .value_name("FILE")
+                .help("Configuration file path")
+                .default_value("config.toml"),
+        )
+        .get_matches();
+
+    let private_key = matches.get_one::<String>("private_key").unwrap();
+    let output_path = matches.get_one::<String>("output").unwrap();
+    let config_path = matches.get_one::<String>("config").unwrap();
+
+    // Load configuration (for potential future use)
+    let _config = Config::load(config_path)?;
+
+    // Prompt for password
+    print!("Enter password for imported wallet: ");
+    std::io::Write::flush(&mut std::io::stdout())?;
+    let password = rpassword::read_password()?;
+
+    print!("Confirm password: ");
+    std::io::Write::flush(&mut std::io::stdout())?;
+    let confirm_password = rpassword::read_password()?;
+
+    if password != confirm_password {
+        eprintln!("Passwords do not match!");
         std::process::exit(1);
     }
-    let key_or_mnemonic = &args[1];
-    let wallet = if key_or_mnemonic.split_whitespace().count() >= 12 {
-        println!("Attempting to import from mnemonic...");
-        Wallet::from_mnemonic(key_or_mnemonic)?
-    } else {
-        println!("Attempting to import from private key...");
-        Wallet::from_private_key(key_or_mnemonic)?
-    };
-    // Check for WALLET_PASSWORD environment variable first
-    let password = if let Ok(env_pass) = std::env::var("WALLET_PASSWORD") {
-        if env_pass.is_empty() {
-            return Err("WALLET_PASSWORD is set but empty.".into());
-        }
-        env_pass
-    } else {
-        let pass1 =
-            rpassword::prompt_password("Create a password to encrypt the imported wallet: ")
-                .expect("Failed to read password");
-        if pass1.is_empty() {
-            return Err("Password cannot be empty.".into());
-        }
-        let pass2 =
-            rpassword::prompt_password("Confirm password: ").expect("Failed to read password");
-        if pass1 != pass2 {
-            return Err("Passwords do not match.".into());
-        }
-        pass1
-    };
 
-    // Log when using environment variable
-    if std::env::var("WALLET_PASSWORD").is_ok() {
-        println!("Using password from WALLET_PASSWORD environment variable.");
-    }
+    let password = SecretString::new(password);
+    let wallet = Wallet::from_private_key(private_key)?;
+    wallet.save_to_file(output_path, &password)?;
 
-    let secret_password = SecretString::new(password);
-    wallet.save_to_file("wallet.key", &secret_password)?;
     println!(
-        "Wallet imported and saved successfully!\n  Address: {}",
+        "Wallet imported and saved to '{}'. Address: {}",
+        output_path,
         wallet.address()
     );
+    println!("IMPORTANT: Please back up this file securely and remember your password.");
+
     Ok(())
 }

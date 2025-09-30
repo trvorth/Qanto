@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 use bytes::Bytes;
 use my_blockchain::qanto_standalone::hash::QantoHash;
 use qanto::{
+    config::Config,
     qanto_p2p::{MessageType, NetworkMessage, QantoP2P},
     transaction::Transaction,
     wallet::{Wallet, WalletError},
@@ -24,7 +25,7 @@ use uuid::Uuid; // Assuming this is the correct path based on error suggestion
 #[allow(dead_code)]
 const DEV_ADDRESS: &str = "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3";
 #[allow(dead_code)]
-const DEV_FEE_RATE: f64 = 0.0304;
+const DEV_FEE_RATE: f64 = 0.10;
 
 // --- CLI Structure ---
 
@@ -38,6 +39,10 @@ const DEV_FEE_RATE: f64 = 0.0304;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+    #[arg(long, global = true, help = "Configuration file path")]
+    config: Option<PathBuf>,
+    #[arg(long, global = true, help = "Data directory for wallet files")]
+    data_dir: Option<PathBuf>,
     #[arg(
         long,
         global = true,
@@ -57,14 +62,14 @@ struct Cli {
 enum Commands {
     /// [generate] Creates a new, secure, and encrypted wallet file.
     Generate {
-        #[arg(short, long, value_name = "OUTPUT_FILE", default_value = "wallet.key")]
-        output: PathBuf,
+        #[arg(short, long, value_name = "OUTPUT_FILE")]
+        output: Option<PathBuf>,
     },
     /// [show] Shows wallet information. Use --keys to reveal secrets.
     Show {
-        #[arg(short, long, value_name = "WALLET_FILE", default_value = "wallet.key")]
-        wallet: PathBuf,
-        /// DANGER: Reveals the private key and mnemonic phrase.
+        #[arg(short, long, value_name = "WALLET_FILE")]
+        wallet: Option<PathBuf>,
+        /// Show private keys and mnemonic (WARNING: Sensitive information)
         #[arg(long)]
         keys: bool,
     },
@@ -82,8 +87,8 @@ enum Commands {
     },
     /// [send] Sends QNTO with Governance-Aware Transaction Tracking™.
     Send {
-        #[arg(short, long, value_name = "WALLET_FILE", default_value = "wallet.key")]
-        wallet: PathBuf,
+        #[arg(short, long, value_name = "WALLET_FILE")]
+        wallet: Option<PathBuf>,
         #[arg()]
         to: String,
         #[arg()]
@@ -91,8 +96,8 @@ enum Commands {
     },
     /// [receive] Monitors for incoming transactions to this wallet.
     Receive {
-        #[arg(short, long, value_name = "WALLET_FILE", default_value = "wallet.key")]
-        wallet: PathBuf,
+        #[arg(short, long, value_name = "WALLET_FILE")]
+        wallet: Option<PathBuf>,
     },
 }
 
@@ -102,32 +107,73 @@ enum Commands {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Initialize P2P network for wallet operations
-    let p2p_enabled = cli.p2p_discovery.unwrap_or(true);
-    let p2p_client = if p2p_enabled {
+    // Load configuration with CLI overrides
+    let config_path = cli.config.unwrap_or_else(|| PathBuf::from("config.toml"));
+    let mut config = if config_path.exists() {
+        Config::load(config_path.to_str().unwrap())?
+    } else {
+        // Use CLI data_dir or default to current directory
+        let base_dir = cli
+            .data_dir
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| ".".to_string());
+        Config::with_base_dir(&base_dir)
+    };
+
+    // Apply CLI data directory override if provided
+    if let Some(data_dir) = &cli.data_dir {
+        let base_dir = data_dir.to_string_lossy().to_string();
+        let (new_data_dir, new_db_path, new_wallet_path, new_p2p_identity_path) =
+            Config::get_default_paths(&base_dir);
+
+        config.data_dir = new_data_dir;
+        config.db_path = new_db_path;
+        // Only update wallet and p2p paths if they're still defaults
+        if config.wallet_path == "wallet.key" {
+            config.wallet_path = new_wallet_path;
+        }
+        if config.p2p_identity_path == "p2p_identity.key" {
+            config.p2p_identity_path = new_p2p_identity_path;
+        }
+    }
+
+    // Initialize P2P client if discovery is enabled
+    let p2p_client = if cli.p2p_discovery.unwrap_or(true) {
         Some(initialize_p2p_client(cli.p2p_port).await?)
     } else {
         None
     };
 
     let result = match cli.command {
-        Commands::Generate { output } => generate_wallet(output).await,
-        Commands::Show { wallet, keys } => show_wallet_info(wallet, keys).await,
+        Commands::Generate { output } => {
+            let wallet_path = output.unwrap_or_else(|| PathBuf::from(&config.wallet_path));
+            generate_wallet(wallet_path).await
+        }
+        Commands::Show { wallet, keys } => {
+            let wallet_path = wallet.unwrap_or_else(|| PathBuf::from(&config.wallet_path));
+            show_wallet_info(wallet_path, keys).await
+        }
         Commands::Import {
             mnemonic,
             private_key,
         } => import_wallet(mnemonic, private_key).await,
         Commands::Balance { address } => get_balance_p2p(&p2p_client, address).await,
         Commands::Send { wallet, to, amount } => {
-            send_transaction_p2p(&p2p_client, wallet, to, amount).await
+            let wallet_path = wallet.unwrap_or_else(|| PathBuf::from(&config.wallet_path));
+            send_transaction_p2p(&p2p_client, wallet_path, to, amount).await
         }
-        Commands::Receive { wallet } => receive_transactions_p2p(&p2p_client, wallet).await,
+        Commands::Receive { wallet } => {
+            let wallet_path = wallet.unwrap_or_else(|| PathBuf::from(&config.wallet_path));
+            receive_transactions_p2p(&p2p_client, wallet_path).await
+        }
     };
 
     if let Err(e) = result {
         eprintln!("\nNEURAL-VAULT™ Error: {e:?}");
         std::process::exit(1);
     }
+
     Ok(())
 }
 
@@ -175,19 +221,15 @@ async fn generate_wallet(output: PathBuf) -> Result<()> {
 
 async fn show_wallet_info(wallet_path: PathBuf, show_keys: bool) -> Result<()> {
     if !wallet_path.exists() {
-        return Err(anyhow::anyhow!(
-            "Wallet file not found at: {:?}",
-            wallet_path
-        ));
+        return Err(anyhow::anyhow!("Wallet file not found at: {wallet_path:?}"));
     }
 
     println!("Enter password to decrypt vault:");
     let password = prompt_for_password(false, "")?;
 
     println!("🔓 Decrypting NEURAL-VAULT™...");
-    let loaded_wallet = Wallet::from_file(&wallet_path, &password).map_err(|e| {
-        anyhow::anyhow!("Failed to decrypt vault. Check your password. Error: {}", e)
-    })?;
+    let loaded_wallet = Wallet::from_file(&wallet_path, &password)
+        .map_err(|e| anyhow::anyhow!("Failed to decrypt vault. Check your password. Error: {e}"))?;
 
     println!("\n+----------------------------------------------------------+");
     println!("|                   QANTO WALLET DETAILS                   |");

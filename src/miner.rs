@@ -226,7 +226,7 @@ impl Miner {
             device: mining_device,
             thread_count: Some(config.threads.max(1)),
             batch_size: Some(1024), // Optimized batch size for high throughput
-            max_iterations: None,   // No limit for continuous mining
+            max_iterations: Some(config.target_block_time * 1_000_000), // Limit iterations based on target block time
             enable_simd: true,      // Enable SIMD optimizations
         };
 
@@ -279,7 +279,11 @@ impl Miner {
             block_template.difficulty
         );
 
-        let header_hash_hex = block_template.hash();
+        // Create a temporary block with nonce 0 to ensure consistent hash calculation
+        // This matches the behavior in test_nonce where we create a temp block and set the nonce
+        let mut temp_block = block_template.clone();
+        temp_block.nonce = 0;
+        let header_hash_hex = temp_block.hash();
         let header_hash_bytes = hex::decode(&header_hash_hex).map_err(|e| {
             let mut error_msg = String::with_capacity(20 + e.to_string().len());
             error_msg.push_str("Invalid header hash: ");
@@ -371,13 +375,13 @@ impl Miner {
                 block_height: block_template.height,
                 block_hash: hex::encode(&final_hash[..8]), // First 8 bytes as hex
                 nonce: found_nonce,
-                difficulty: 1000.0, // Default difficulty for display
+                difficulty: block_template.difficulty, // Use actual block difficulty
                 transactions_count: block_template.transactions.len(),
                 mining_time: Duration::from_secs(30), // Approximate mining time
                 effort,
                 total_blocks_mined: 1,
                 chain_id: 0,
-                block_reward: 50_000_000_000, // 50 QNTO in smallest units (corrected)
+                block_reward: 150_000_000_000, // 150 QNTO in smallest units (corrected)
                 compact: false,
             };
 

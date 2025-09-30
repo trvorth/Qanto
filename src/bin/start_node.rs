@@ -1,111 +1,82 @@
-use anyhow::Context;
-use clap::Parser;
-use log::{error, info, warn};
+use clap::{Arg, Command};
 use qanto::{config::Config, node::Node, wallet::Wallet};
-use secrecy::Secret;
-use std::path::Path;
+use secrecy::SecretString;
 use std::sync::Arc;
-use tokio::signal;
 
-/// Command-line arguments for the node starter.
-#[derive(Parser, Debug)]
-#[clap(author, version, about = "A generic QantoDAG node starter.")]
-struct Args {
-    /// Path to the configuration file.
-    #[clap(long, default_value = "config.toml")]
-    config_path: String,
-
-    /// Path to the wallet file.
-    #[clap(long, default_value = "wallet.key")]
-    wallet_path: String,
-}
-
-/// The main asynchronous function that sets up and runs the node.
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let args = Args::parse();
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let matches = Command::new("start_node")
+        .about("Start a Qanto node")
+        .arg(
+            Arg::new("config")
+                .short('c')
+                .long("config")
+                .value_name("FILE")
+                .help("Configuration file path")
+                .default_value("config.toml"),
+        )
+        .arg(
+            Arg::new("wallet")
+                .short('w')
+                .long("wallet")
+                .value_name("FILE")
+                .help("Wallet file path (overrides config)"),
+        )
+        .arg(
+            Arg::new("data-dir")
+                .short('d')
+                .long("data-dir")
+                .value_name("DIR")
+                .help("Data directory path (overrides config)"),
+        )
+        .arg(
+            Arg::new("db-path")
+                .long("db-path")
+                .value_name("PATH")
+                .help("Database path (overrides config)"),
+        )
+        .arg(
+            Arg::new("log-file")
+                .long("log-file")
+                .value_name("FILE")
+                .help("Log file path (overrides config)"),
+        )
+        .get_matches();
 
-    // Check for config file existence before loading.
-    if !Path::new(&args.config_path).exists() {
-        anyhow::bail!(
-            "Configuration file not found at path: {}",
-            &args.config_path
-        );
-    }
+    // Load configuration
+    let config_path = matches.get_one::<String>("config").unwrap();
+    let mut config = Config::load(config_path)?;
 
-    // Load the configuration.
-    let config = Config::load(&args.config_path)
-        .context(format!("Failed to load config from {}", &args.config_path))?;
-
-    // Initialize the logger.
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or(&config.logging.level),
-    )
-    .init();
-    info!("Starting QantoDAG node (from start_node.rs)...");
-
-    // Load the wallet.
-    if !Path::new(&args.wallet_path).exists() {
-        anyhow::bail!(
-            "Wallet file not found at path: {}. Please create or import a wallet.",
-            &args.wallet_path
-        );
-    }
+    // Apply CLI overrides
+    config.apply_cli_overrides(
+        matches.get_one::<String>("wallet").cloned(),
+        None, // p2p_identity not supported in this binary
+        matches.get_one::<String>("data-dir").cloned(),
+        matches.get_one::<String>("db-path").cloned(),
+        matches.get_one::<String>("log-file").cloned(),
+        None, // tls_cert not supported in this binary
+        None, // tls_key not supported in this binary
+    );
 
     // Check for WALLET_PASSWORD environment variable first
-    let passphrase = std::env::var("WALLET_PASSWORD").unwrap_or_else(|_| {
+    let pass = std::env::var("WALLET_PASSWORD").unwrap_or_else(|_| {
         // Fallback to interactive prompt if no environment variable
-        rpassword::prompt_password("Enter passphrase to unlock wallet: ")
-            .expect("Failed to read password")
+        rpassword::prompt_password("Enter wallet password: ").expect("Failed to read password")
     });
 
-    // Validate that the password is not empty
-    if passphrase.is_empty() {
-        anyhow::bail!("Password cannot be empty.");
-    }
+    let password = SecretString::new(pass);
+    let wallet = Wallet::from_file(&config.wallet_path, &password)?;
+    let wallet = Arc::new(wallet);
 
-    // Log when using environment variable (for debugging/audit purposes)
-    if std::env::var("WALLET_PASSWORD").is_ok() {
-        info!("Using password from WALLET_PASSWORD environment variable.");
-    }
-
-    let secret_passphrase = Secret::new(passphrase);
-
-    let wallet = Wallet::from_file(&args.wallet_path, &secret_passphrase)
-        .context("Failed to load wallet from file. Check the wallet path and passphrase.")?;
-    let wallet_arc = Arc::new(wallet);
-
-    // SECURITY: Ensure private key files have restrictive permissions.
-    let identity_key_path = "start_node_p2p_identity.key";
-    if Path::new(identity_key_path).exists() {
-        warn!("SECURITY: Reusing existing P2P identity key at '{identity_key_path}'. For production, ensure this file is secure and has restricted permissions.");
-    }
-
-    // Initialize the node with its configuration and wallet.
-    let peer_cache_path = "start_node_peer_cache.json".to_string();
     let node = Node::new(
-        config,
-        args.config_path.clone(),
-        wallet_arc,
-        identity_key_path,
-        peer_cache_path,
+        config.clone(),
+        config_path.to_string(),
+        wallet,
+        &config.p2p_identity_path,
+        "start_node_peer_cache.json".to_string(),
     )
     .await?;
+    node.start().await?;
 
-    // Spawn the node's main event loop in a separate Tokio task.
-    let node_handle = tokio::spawn(async move {
-        if let Err(e) = node.start().await {
-            error!("Node failed: {e}");
-        }
-    });
-
-    // Wait for shutdown signal (Ctrl+C).
-    signal::ctrl_c().await?;
-    info!("Received Ctrl+C, shutting down.");
-
-    node_handle.abort();
-    let _ = node_handle.await;
-
-    info!("Shutdown complete.");
     Ok(())
 }

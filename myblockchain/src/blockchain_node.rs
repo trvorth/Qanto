@@ -15,7 +15,7 @@ struct TxData {
 }
 
 fn calculate_reward(block_index: u64) -> f64 {
-    let base = 50.0;
+    let base = 150.0;
     base / (2.0f64).powi((block_index / 210_000) as i32)
 }
 
@@ -23,12 +23,31 @@ fn main() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
         env_logger::init();
+        println!("🚀 Starting Qanto Blockchain Node...");
+        log::info!("Initializing blockchain node");
+
         let keypair = SigningKey::generate(&mut rand::thread_rng());
         let blockchain = Arc::new(Blockchain::new("qanto_db").unwrap());
 
-        // Start JSON-RPC server in background
-        let _rpc_handle = blockchain.clone().start_jsonrpc(3030, 1);
+        println!("✅ Blockchain initialized");
+        log::info!("Blockchain database initialized");
 
+        // Start JSON-RPC server in background with configurable port (default 8545)
+        let rpc_port = std::env::var("RPC_PORT")
+            .unwrap_or_else(|_| "8545".to_string())
+            .parse::<u16>()
+            .unwrap_or(8545);
+
+        println!("🌐 Starting JSON-RPC server on port {}...", rpc_port);
+        let _rpc_handle = tokio::spawn({
+            let blockchain = blockchain.clone();
+            async move {
+                blockchain.start_jsonrpc(rpc_port, 1).await
+            }
+        });
+        println!("✅ JSON-RPC server started");
+
+        println!("⛏️  Starting mining loop...");
         loop {
             let last_block = blockchain.get_last_block().await;
             let difficulty = 1u64; // Very low difficulty for debugging
@@ -52,9 +71,13 @@ fn main() {
             let mut input = header_hash.as_bytes().to_vec();
             input.extend_from_slice(&nonce_bytes);
 
-            log::info!("Starting mining for block {}", last_block.header.index + 1);
+            println!("🔨 Starting mining for block {}", last_block.header.index + 1);
+            let mut attempts = 0;
             loop {
-                log::info!("Trying nonce: {nonce}");
+                attempts += 1;
+                if attempts % 10000 == 0 {
+                    println!("⚡ Mining attempt #{}: nonce {}", attempts, nonce);
+                }
                 let candidate = qanto_hash(&input);
                 if is_solution_valid(candidate.as_bytes(), target) {
                     let block = Block::new(
@@ -68,16 +91,17 @@ fn main() {
                     match blockchain.add_block(block.clone()).await {
                         Ok(_) => {
                             let reward = calculate_reward(block.header.index);
-                            log::info!(
-                                "🎉 Block #{} Mined! | Hash: {:?} | 💰 Reward: {:.3} QANTO",
+                            println!(
+                                "🎉 Block #{} Mined! | Hash: {:?} | 💰 Reward: {:.3} QANTO | Attempts: {}",
                                 block.header.index,
                                 block.get_hash(),
-                                reward
+                                reward,
+                                attempts
                             );
                             break;
                         }
                         Err(e) => {
-                            log::warn!("Failed to add block: {e:?}. Retrying with new state...");
+                            println!("❌ Failed to add block: {e:?}. Retrying with new state...");
                             break; // Break inner loop to recalculate state
                         }
                     }
@@ -88,7 +112,7 @@ fn main() {
                 input.extend_from_slice(&nonce_bytes);
                 sleep(Duration::from_millis(1)).await;
             }
-            log::info!("Block mined successfully");
+            println!("✅ Block mined successfully, restarting mining loop...");
         }
     });
 }

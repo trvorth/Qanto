@@ -18,11 +18,19 @@ use crate::qanto_standalone::{
     hash::{qanto_hash, QantoHash},
     parallel::ThreadPool,
 };
+#[cfg(feature = "zk")]
 use ark_bls12_381::Fr;
+#[cfg(feature = "zk")]
 use ark_ff::PrimeField;
+#[cfg(feature = "zk")]
 use ark_r1cs_std::fields::fp::FpVar;
+#[cfg(feature = "zk")]
 use ark_r1cs_std::prelude::*;
+#[cfg(feature = "zk")]
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
+
+// Type aliases to reduce complexity
+type HashResult = Result<Option<(u64, [u8; 32])>, Box<dyn std::error::Error>>;
 use lazy_static::lazy_static;
 use log::{info, warn};
 use primitive_types::U256;
@@ -46,16 +54,14 @@ const SIMD_LANES: usize = 4; // Process 4 nonces simultaneously with AVX2
 // --- Type Aliases ---
 pub type Difficulty = u64;
 pub type Target = [u8; 32];
-#[allow(dead_code)]
-type HashResult = Result<Option<(u64, [u8; 32])>, Box<dyn std::error::Error>>;
 
 // --- Constants ---
-const TARGET_SLOT_TIME_SECS: u64 = 5;
-pub const DIFFICULTY_ADJUSTMENT_WINDOW: usize = 100;
+const TARGET_SLOT_TIME_SECS: u64 = 1; // Optimized for 32 BPS target
+pub const DIFFICULTY_ADJUSTMENT_WINDOW: usize = 32; // Optimized for 32 BPS target
 const DAMPING_FACTOR: u64 = 4;
 
 // Advanced difficulty adjustment parameters
-const SHORT_WINDOW: usize = 17; // For rapid adjustments
+const SHORT_WINDOW: usize = 8; // Faster convergence for 32 BPS // For rapid adjustments
 const LONG_WINDOW: usize = 144; // For stability
 const EMERGENCY_THRESHOLD: f64 = 4.0; // Emergency adjustment trigger
 const MAX_ADJUSTMENT_FACTOR: f64 = 4.0; // Maximum single adjustment
@@ -76,6 +82,111 @@ const CACHE_SIZE: usize = 1 << 12; // ~4K items (reduced for development)
 // --- GPU Context (Conditional Compilation) ---
 #[cfg(feature = "gpu")]
 pub use gpu_impl::{hash_batch, GpuContext, GPU_CONTEXT};
+
+// Metal GPU support for macOS
+#[cfg(target_os = "macos")]
+pub mod metal_gpu {
+    use super::*;
+    use crate::qanto_standalone::hash::QantoHash;
+    use lazy_static::lazy_static;
+    use log::warn;
+    use std::sync::Mutex;
+
+    pub struct MetalGpuContext {
+        // Placeholder for Metal implementation
+        // Real implementation would use Metal framework
+    }
+
+    impl MetalGpuContext {
+        pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+            // For now, return error as Metal requires external dependencies
+            Err(
+                "Metal GPU support requires Metal framework (not available in standalone build)"
+                    .into(),
+            )
+        }
+
+        pub fn hash_batch(
+            &self,
+            _header_hash: &QantoHash,
+            _start_nonce: u64,
+            _batch_size: usize,
+            _target: Target,
+        ) -> HashResult {
+            Err("Metal GPU not implemented in standalone build".into())
+        }
+    }
+
+    lazy_static! {
+        pub static ref METAL_GPU_CONTEXT: Mutex<Option<MetalGpuContext>> = {
+            warn!("[Qanhash-Metal] Metal GPU support disabled in standalone build");
+            Mutex::new(None)
+        };
+    }
+
+    pub fn is_metal_available() -> bool {
+        false // Disabled in standalone build
+    }
+
+    pub fn metal_hash_batch(
+        _header_hash: &QantoHash,
+        _start_nonce: u64,
+        _batch_size: usize,
+        _target: Target,
+    ) -> HashResult {
+        Err("Metal GPU not available in standalone build".into())
+    }
+}
+
+// CUDA GPU support
+#[cfg(feature = "cuda")]
+pub mod cuda_gpu {
+    use super::*;
+    use crate::qanto_standalone::hash::QantoHash;
+    use lazy_static::lazy_static;
+    use log::{info, warn};
+    use std::sync::Mutex;
+
+    pub struct CudaGpuContext {
+        // Placeholder for CUDA implementation
+    }
+
+    impl CudaGpuContext {
+        pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+            Err("CUDA GPU support requires CUDA runtime (not available in standalone build)".into())
+        }
+
+        pub fn hash_batch(
+            &self,
+            _header_hash: &QantoHash,
+            _start_nonce: u64,
+            _batch_size: usize,
+            _target: Target,
+        ) -> Result<Option<(u64, [u8; 32])>, Box<dyn std::error::Error>> {
+            Err("CUDA GPU not implemented in standalone build".into())
+        }
+    }
+
+    lazy_static! {
+        pub static ref CUDA_GPU_CONTEXT: Mutex<Option<CudaGpuContext>> = {
+            warn!("[Qanhash-CUDA] CUDA GPU support disabled in standalone build");
+            Mutex::new(None)
+        };
+    }
+
+    pub fn is_cuda_available() -> bool {
+        false // Disabled in standalone build
+    }
+
+    pub fn cuda_hash_batch(
+        _header_hash: &QantoHash,
+        _start_nonce: u64,
+        _batch_size: usize,
+        _target: Target,
+    ) -> Result<Option<(u64, [u8; 32])>, Box<dyn std::error::Error>> {
+        Err("CUDA GPU not available in standalone build".into())
+    }
+}
 
 #[cfg(feature = "gpu")]
 mod gpu_impl {
@@ -1028,10 +1139,35 @@ impl QanhashMiner {
             MiningDevice::Gpu => {
                 info!("[Qanhash] Starting GPU mining");
                 let batch_size = self.config.batch_size.unwrap_or(1024 * 1024); // 1M nonces
+
+                // Try different GPU backends in order of preference
+
+                // 1. Try Metal on macOS
+                #[cfg(target_os = "macos")]
+                if metal_gpu::is_metal_available() {
+                    match metal_gpu::metal_hash_batch(header_hash, start_nonce, batch_size, target)
+                    {
+                        Ok(Some(result)) => return Some(result),
+                        Ok(None) => {}
+                        Err(e) => warn!("[Qanhash] Metal GPU mining failed: {e}"),
+                    }
+                }
+
+                // 2. Try CUDA if available
+                #[cfg(feature = "cuda")]
+                if cuda_gpu::is_cuda_available() {
+                    match cuda_gpu::cuda_hash_batch(header_hash, start_nonce, batch_size, target) {
+                        Ok(Some(result)) => return Some(result),
+                        Ok(None) => {}
+                        Err(e) => warn!("[Qanhash] CUDA GPU mining failed: {e}"),
+                    }
+                }
+
+                // 3. Fall back to OpenCL
                 match hash_batch(header_hash, start_nonce, batch_size, target) {
                     Ok(result) => result,
                     Err(e) => {
-                        warn!("[Qanhash] GPU mining failed: {e}, falling back to CPU");
+                        warn!("[Qanhash] OpenCL GPU mining failed: {e}, falling back to CPU");
                         if let Some(ref cpu_miner) = self.cpu_miner {
                             cpu_miner.mine(
                                 header_hash,
@@ -1046,8 +1182,59 @@ impl QanhashMiner {
                 }
             }
             MiningDevice::Auto => {
-                // This case should not occur as select_mining_device() resolves Auto
-                unreachable!("Auto device should be resolved by select_mining_device")
+                // Auto mode: try GPU first, then CPU
+
+                // Try Metal on macOS first
+                #[cfg(target_os = "macos")]
+                if metal_gpu::is_metal_available() {
+                    match metal_gpu::metal_hash_batch(
+                        header_hash,
+                        start_nonce,
+                        self.config.batch_size.unwrap_or(1024 * 1024),
+                        target,
+                    ) {
+                        Ok(Some(result)) => return Some(result),
+                        Ok(None) => {}
+                        Err(_) => {} // Continue to next option
+                    }
+                }
+
+                // Try CUDA
+                #[cfg(feature = "cuda")]
+                if cuda_gpu::is_cuda_available() {
+                    match cuda_gpu::cuda_hash_batch(
+                        header_hash,
+                        start_nonce,
+                        self.config.batch_size.unwrap_or(1024 * 1024),
+                        target,
+                    ) {
+                        Ok(Some(result)) => return Some(result),
+                        Ok(None) => {}
+                        Err(_) => {} // Continue to next option
+                    }
+                }
+
+                // Try OpenCL GPU
+                #[cfg(feature = "gpu")]
+                if self.gpu_available {
+                    match hash_batch(
+                        header_hash,
+                        start_nonce,
+                        self.config.batch_size.unwrap_or(1024 * 1024),
+                        target,
+                    ) {
+                        Ok(Some(result)) => return Some(result),
+                        Ok(None) => {}
+                        Err(_) => {} // Fall back to CPU
+                    }
+                }
+
+                // Fall back to CPU
+                if let Some(ref cpu_miner) = self.cpu_miner {
+                    cpu_miner.mine(header_hash, start_nonce, target, self.config.max_iterations)
+                } else {
+                    None
+                }
             }
         }
     }
@@ -1162,17 +1349,21 @@ pub fn benchmark_mining(duration_secs: u64) -> MiningStats {
 }
 
 /// QanHash ZK-friendly hash function implementation
+#[cfg(feature = "zk")]
 impl Default for QanHashZK {
     fn default() -> Self {
         Self::new()
     }
 }
+
+#[cfg(feature = "zk")]
 pub struct QanHashZK {
     round_constants: [u64; 24],
     rotation_constants: [u32; 24],
     pi_lanes: [usize; 24],
 }
 
+#[cfg(feature = "zk")]
 impl QanHashZK {
     pub fn new() -> Self {
         let round_constants = [

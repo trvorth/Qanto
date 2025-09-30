@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: qanto-node
+  namespace: qanto
+spec:
+  serviceName: qanto-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qanto-node
+  template:
+    metadata:
+      labels:
+        app: qanto-node
+    spec:
+      securityContext:
+        fsGroup: 10001
+        runAsUser: 10001
+        runAsNonRoot: true
+      containers:
+        - name: qanto
+          image: qanto-node:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: CONFIG_PATH
+              value: /opt/qanto/config/config.toml
+            - name: WALLET_PATH
+              value: /opt/qanto/keys/wallet.key
+            - name: P2P_IDENTITY
+              value: /opt/qanto/keys/p2p_identity.key
+            - name: PEER_CACHE
+              value: /opt/qanto/keys/peer_cache.json
+            - name: LOG_DIR
+              value: /opt/qanto/logs
+            - name: WALLET_PASSWORD_FILE
+              value: /run/secrets/wallet_password
+          volumeMounts:
+            - name: config
+              mountPath: /opt/qanto/config
+              readOnly: true
+            - name: keys
+              mountPath: /opt/qanto/keys
+            - name: data
+              mountPath: /opt/qanto/data
+            - name: logs
+              mountPath: /opt/qanto/logs
+            - name: wallet-password
+              mountPath: /run/secrets
+              readOnly: true
+          ports:
+            - name: api
+              containerPort: 8080
+            - name: api-internal
+              containerPort: 8081
+            - name: p2p
+              containerPort: 8333
+          resources:
+            requests:
+              cpu: "1"
+              memory: "2Gi"
+            limits:
+              cpu: "4"
+              memory: "8Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: api-internal
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: api-internal
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: config
+          configMap:
+            name: qanto-config
+        - name: keys
+          secret:
+            secretName: qanto-keys
+            defaultMode: 0600
+        - name: wallet-password
+          secret:
+            secretName: qanto-wallet-password
+            items:
+              - key: password
+                path: wallet_password
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 100Gi
+    - metadata:
+        name: logs
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

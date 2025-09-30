@@ -6,14 +6,19 @@
 use colored::*;
 use std::env;
 use std::process;
-use tracing::{error, info};
+use std::time::Instant;
+use tokio::time::Duration;
+use tracing::{error, info, warn};
 
 use qanto::performance_validation::validate_performance_targets;
 
 #[tokio::main]
 async fn main() {
-    // Initialize logging
-    tracing_subscriber::fmt().with_env_filter("info").init();
+    // Initialize logging with proper async support
+    tracing_subscriber::fmt()
+        .with_env_filter("info")
+        .with_target(false)
+        .init();
 
     println!(
         "{}",
@@ -52,11 +57,30 @@ async fn main() {
     println!("🎯 Targets: 32 BPS | 10M+ TPS");
     println!();
 
-    // Run performance validation
+    // Start timing for overall test duration
+    let test_start = Instant::now();
+
+    // Pre-warm the system with a short async delay
+    info!("Pre-warming system components...");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Run performance validation with proper async timing
+    info!("Starting concurrent performance validation...");
     match validate_performance_targets(duration_secs).await {
         Ok(results) => {
+            let total_test_time = test_start.elapsed();
             println!();
-            info!("Performance validation completed successfully!");
+            info!(
+                "Performance validation completed in {:.2}s (target: {}s)",
+                total_test_time.as_secs_f64(),
+                duration_secs
+            );
+
+            // Log detailed performance metrics
+            info!(
+                "Achieved Performance - BPS: {:.2}, TPS: {:.0}, Avg Block Time: {:.2}ms",
+                results.bps_achieved, results.tps_achieved, results.avg_block_time_ms
+            );
 
             // Exit with appropriate code based on results
             if results.bps_target_met && results.tps_target_met {
@@ -64,6 +88,8 @@ async fn main() {
                     "{}",
                     "🎉 All performance targets achieved!".bright_green().bold()
                 );
+                info!("✅ BPS: {:.2} >= 32", results.bps_achieved);
+                info!("✅ TPS: {:.0} >= 10M", results.tps_achieved);
                 process::exit(0);
             } else {
                 println!(
@@ -73,10 +99,10 @@ async fn main() {
                         .bold()
                 );
                 if !results.bps_target_met {
-                    println!("   • BPS target missed: {:.2} < 32", results.bps_achieved);
+                    warn!("❌ BPS target missed: {:.2} < 32", results.bps_achieved);
                 }
                 if !results.tps_target_met {
-                    println!("   • TPS target missed: {:.0} < 10M", results.tps_achieved);
+                    warn!("❌ TPS target missed: {:.0} < 10M", results.tps_achieved);
                 }
                 process::exit(1);
             }

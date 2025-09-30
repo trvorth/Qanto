@@ -34,6 +34,7 @@ use tokio::sync::RwLock;
 
 // --- Simulation Logic (Corrected & Aligned with Current API) ---
 
+#[allow(dead_code)]
 async fn run_autonomous_simulation() -> Result<()> {
     println!(
         "{}",
@@ -249,12 +250,14 @@ async fn run_autonomous_simulation() -> Result<()> {
 
 // --- Interactive CLI Logic (Stylized & Implemented) ---
 
+#[allow(dead_code)]
 fn print_with_delay(text: ColoredString) {
     println!("{text}");
     io::stdout().flush().unwrap();
     thread::sleep(Duration::from_millis(100));
 }
 
+#[allow(dead_code)]
 fn run_analysis(risk_type: &str) {
     match risk_type {
         "centralization" => {
@@ -294,6 +297,7 @@ fn run_analysis(risk_type: &str) {
     }
 }
 
+#[allow(dead_code)]
 fn run_mock_governance_cycle() {
     print_with_delay(
         "+ Starting Sense-Think-Act loop for epoch governance...".truecolor(129, 140, 248),
@@ -313,6 +317,7 @@ fn run_mock_governance_cycle() {
     );
 }
 
+#[allow(dead_code)]
 async fn process_command(input: &str) {
     let parts: Vec<&str> = input.split_whitespace().collect();
     let command = parts.first().unwrap_or(&"");
@@ -426,44 +431,105 @@ async fn process_command(input: &str) {
 }
 
 #[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::ERROR)
-        .init();
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use clap::{Arg, Command};
+    use qanto::config::Config;
 
-    println!("{}", "--- SAGA Assistant Initialized ---".bold());
-    println!(
-        "{}",
-        "I am a standalone AI assistant for the Qanto network.".dimmed()
-    );
-    println!(
-        "{}",
-        "I can answer questions, analyze network risks, and run autonomous simulations.".dimmed()
-    );
-    println!("{}", "Type '/help' for a list of commands.".cyan());
+    let matches = Command::new("saga_assistant")
+        .about("Qanto Saga Assistant")
+        .arg(
+            Arg::new("config")
+                .short('c')
+                .long("config")
+                .value_name("FILE")
+                .help("Configuration file path")
+                .default_value("config.toml"),
+        )
+        .arg(
+            Arg::new("data-dir")
+                .short('d')
+                .long("data-dir")
+                .value_name("DIR")
+                .help("Data directory path (overrides config)"),
+        )
+        .arg(
+            Arg::new("db-path")
+                .long("db-path")
+                .value_name("PATH")
+                .help("Database path (overrides config)"),
+        )
+        .get_matches();
 
+    // Load configuration
+    let config_path = matches.get_one::<String>("config").unwrap();
+    let mut config = Config::load(config_path)?;
+
+    // Apply CLI overrides
+    config.apply_cli_overrides(
+        None, // wallet not needed for saga assistant
+        None, // p2p_identity not needed for saga assistant
+        matches.get_one::<String>("data-dir").cloned(),
+        matches.get_one::<String>("db-path").cloned(),
+        None, // log_file not needed for saga assistant
+        None, // tls_cert not needed for saga assistant
+        None, // tls_key not needed for saga assistant
+    );
+
+    let saga = PalletSaga::new(
+        #[cfg(feature = "infinite-strata")]
+        None, // No ISNM service for saga assistant
+    );
+
+    println!("Saga Assistant initialized with config from: {config_path}");
+    println!("Data directory: {}", config.data_dir);
+    println!("Database path: {}", config.db_path);
+
+    // Add your saga assistant logic here
+    // Start the saga assistant loop
+    println!("Starting SAGA Assistant...");
     loop {
-        print!("\n{} ", "SAGA >>".truecolor(129, 140, 248).bold());
-        io::stdout().flush().unwrap();
+        // Get analytics dashboard data
+        let dashboard_data = saga.get_analytics_dashboard_data().await;
 
-        let mut input = String::new();
-        if io::stdin().read_line(&mut input).is_err() {
-            eprintln!("{}", "Error reading input".red());
-            continue;
-        }
+        // Display key metrics
+        println!("\n=== SAGA Analytics Dashboard ===");
+        println!(
+            "Network Health: {} blocks processed",
+            dashboard_data
+                .network_health
+                .blocks_processed
+                .load(std::sync::atomic::Ordering::Relaxed)
+        );
+        println!(
+            "AI Model Accuracy: {:.2}%",
+            dashboard_data.ai_performance.neural_network_accuracy * 100.0
+        );
+        println!(
+            "Security Confidence: {:.2}%",
+            dashboard_data.security_insights.security_confidence * 100.0
+        );
+        println!(
+            "Total Transactions: {}",
+            dashboard_data
+                .network_health
+                .transactions_processed
+                .load(std::sync::atomic::Ordering::Relaxed)
+        );
+        println!(
+            "Current TPS: {:.2}",
+            dashboard_data
+                .network_health
+                .validation_time_ms
+                .load(std::sync::atomic::Ordering::Relaxed) as f64
+                / 1000.0
+        );
+        println!("================================\n");
 
-        let trimmed_input = input.trim();
-        if trimmed_input.is_empty() {
-            continue;
-        }
-        if trimmed_input == "exit" {
-            println!(
-                "{}",
-                "Deactivating assistant. Goodbye.".truecolor(244, 114, 182)
-            );
-            break;
-        }
-
-        process_command(trimmed_input).await;
+        // Sleep for 30 seconds before next update
+        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
     }
+
+    // This function never returns, so we need to handle the unreachable code warning
+    #[allow(unreachable_code)]
+    Ok(())
 }

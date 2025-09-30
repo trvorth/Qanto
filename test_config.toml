@@ -1,0 +1,41 @@
+p2p_address = "/ip4/127.0.0.1/tcp/8724"
+api_address = "0.0.0.0:8424"
+peers = []
+local_full_p2p_address = "/ip4/127.0.0.1/tcp/8724/p2p/12D3KooWRCW972H9VXDZPK7mSDDTaHiS9cmiszgoLZncikMdDFwy"
+network_id = "test-network"
+genesis_validator = "8200661343e6d675273822e59c4671c24674bf6b66a62c446634820a6d129c09"
+contract_address = "3456789012345678901234567890123456789012345678901234567890123456"
+target_block_time = 1000
+difficulty = 1
+max_amount = 21000000000
+use_gpu = false
+zk_enabled = false
+mining_threads = 4
+num_chains = 2
+mining_chain_id = 0
+mining_interval_ms = 100
+dummy_tx_interval_ms = 100
+dummy_tx_per_cycle = 10
+mempool_max_age_secs = 300
+mempool_max_size_bytes = 1048576
+mempool_batch_size = 100
+mempool_backpressure_threshold = 0.8
+tx_batch_size = 50
+adaptive_batch_threshold = 0.7
+memory_soft_limit = 8388608
+memory_hard_limit = 10485760
+data_dir = "/tmp/test_data"
+db_path = "/tmp/test_data/qanto.db"
+wallet_path = "/tmp/test_wallet.key"
+p2p_identity_path = "/tmp/test_p2p_identity.key"
+log_file_path = "/tmp/test_qanto.log"
+
+[logging]
+level = "info"
+
+[p2p]
+heartbeat_interval = 1000
+mesh_n_low = 4
+mesh_n = 6
+mesh_n_high = 12
+mesh_outbound_min = 2

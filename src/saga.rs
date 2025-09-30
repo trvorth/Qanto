@@ -35,7 +35,6 @@ use uuid::Uuid;
 
 use rand::{thread_rng, Rng};
 use serde_json;
-use std::sync::OnceLock;
 
 // --- AI Deep Learning Constants ---
 const NEURAL_NETWORK_LAYERS: usize = 6; // Deep architecture - used in network initialization
@@ -793,74 +792,66 @@ impl CognitiveAnalyticsEngine {
     }
 
     fn initialize_deep_network() -> SagaDeepNetwork {
-        // DEVELOPMENT OPTIMIZATION: Cache neural network to speed up startup
-        // TODO: Remove this caching for production deployment
-        static CACHED_NETWORK: OnceLock<SagaDeepNetwork> = OnceLock::new();
+        let mut layers = Vec::new();
 
-        CACHED_NETWORK
-            .get_or_init(|| {
-                let mut layers = Vec::new();
+        // Ensure we use exactly NEURAL_NETWORK_LAYERS layers
+        let total_layers = NEURAL_NETWORK_LAYERS;
 
-                // Ensure we use exactly NEURAL_NETWORK_LAYERS layers
-                let total_layers = NEURAL_NETWORK_LAYERS;
+        // Input layer
+        layers.push(Self::create_neural_layer(
+            INPUT_NEURONS,
+            HIDDEN_NEURONS[0],
+            ActivationFunction::ReLU,
+        ));
 
-                // Input layer
-                layers.push(Self::create_neural_layer(
-                    INPUT_NEURONS,
-                    HIDDEN_NEURONS[0],
-                    ActivationFunction::ReLU,
-                ));
+        // Hidden layers with different activation functions for diversity
+        for i in 0..HIDDEN_NEURONS.len() - 1 {
+            let activation = match i % 3 {
+                0 => ActivationFunction::ReLU,
+                1 => ActivationFunction::Swish,
+                _ => ActivationFunction::GELU,
+            };
+            layers.push(Self::create_neural_layer(
+                HIDDEN_NEURONS[i],
+                HIDDEN_NEURONS[i + 1],
+                activation,
+            ));
+        }
 
-                // Hidden layers with different activation functions for diversity
-                for i in 0..HIDDEN_NEURONS.len() - 1 {
-                    let activation = match i % 3 {
-                        0 => ActivationFunction::ReLU,
-                        1 => ActivationFunction::Swish,
-                        _ => ActivationFunction::GELU,
-                    };
-                    layers.push(Self::create_neural_layer(
-                        HIDDEN_NEURONS[i],
-                        HIDDEN_NEURONS[i + 1],
-                        activation,
-                    ));
-                }
+        // Output layer
+        layers.push(Self::create_neural_layer(
+            HIDDEN_NEURONS[HIDDEN_NEURONS.len() - 1],
+            OUTPUT_NEURONS,
+            ActivationFunction::Sigmoid,
+        ));
 
-                // Output layer
-                layers.push(Self::create_neural_layer(
-                    HIDDEN_NEURONS[HIDDEN_NEURONS.len() - 1],
-                    OUTPUT_NEURONS,
-                    ActivationFunction::Sigmoid,
-                ));
+        // Validate we have the correct number of layers
+        assert_eq!(
+            layers.len(),
+            total_layers,
+            "Network must have exactly {NEURAL_NETWORK_LAYERS} layers"
+        );
 
-                // Validate we have the correct number of layers
-                assert_eq!(
-                    layers.len(),
-                    total_layers,
-                    "Network must have exactly {NEURAL_NETWORK_LAYERS} layers"
-                );
-
-                SagaDeepNetwork {
-                    layers,
-                    learning_rate: LEARNING_RATE,
-                    momentum: MOMENTUM,
-                    training_history: Vec::with_capacity((RETRAIN_INTERVAL_EPOCHS * 10) as usize), // Use RETRAIN_INTERVAL_EPOCHS
-                    adaptive_lr_scheduler: AdaptiveLRScheduler {
-                        initial_lr: LEARNING_RATE,
-                        decay_rate: 0.95,
-                        patience: 5,
-                        min_lr: 1e-6,
-                        best_loss: f64::INFINITY,
-                        wait_count: 0,
-                    },
-                    regularization: RegularizationConfig {
-                        l1_lambda: 0.001,
-                        l2_lambda: 0.01,
-                        dropout_rate: DROPOUT_RATE,
-                        gradient_clipping: 1.0,
-                    },
-                }
-            })
-            .clone()
+        SagaDeepNetwork {
+            layers,
+            learning_rate: LEARNING_RATE,
+            momentum: MOMENTUM,
+            training_history: Vec::with_capacity((RETRAIN_INTERVAL_EPOCHS * 10) as usize), // Use RETRAIN_INTERVAL_EPOCHS
+            adaptive_lr_scheduler: AdaptiveLRScheduler {
+                initial_lr: LEARNING_RATE,
+                decay_rate: 0.95,
+                patience: 5,
+                min_lr: 1e-6,
+                best_loss: f64::INFINITY,
+                wait_count: 0,
+            },
+            regularization: RegularizationConfig {
+                l1_lambda: 0.001,
+                l2_lambda: 0.01,
+                dropout_rate: DROPOUT_RATE,
+                gradient_clipping: 1.0,
+            },
+        }
     }
 
     fn create_neural_layer(
@@ -908,59 +899,53 @@ impl CognitiveAnalyticsEngine {
     fn initialize_security_classifier() -> SecurityClassifier {
         // DEVELOPMENT OPTIMIZATION: Cache security classifier to speed up startup
         // TODO: Remove this caching for production deployment
-        static CACHED_CLASSIFIER: OnceLock<SecurityClassifier> = OnceLock::new();
+        let threat_detection_network = Self::initialize_deep_network();
+        let mut threat_patterns = HashMap::new();
 
-        CACHED_CLASSIFIER
-            .get_or_init(|| {
-                let threat_detection_network = Self::initialize_deep_network();
-                let mut threat_patterns = HashMap::new();
-
-                // Initialize threat patterns for different attack types
-                let attack_types = [
-                    "sybil",
-                    "spam",
-                    "centralization",
-                    "oracle_manipulation",
-                    "time_drift",
-                    "wash_trading",
-                    "collusion",
-                    "economic",
-                    "mempool_frontrun",
-                ];
-                for (i, attack_type) in attack_types.iter().enumerate() {
-                    threat_patterns.insert(
-                        attack_type.to_string(),
-                        ThreatPattern {
-                            pattern_id: {
-                                let mut pattern_id = String::with_capacity(8);
-                                pattern_id.push_str("threat_");
-                                pattern_id.push_str(&i.to_string());
-                                pattern_id
-                            },
-                            feature_weights: (0..INPUT_NEURONS)
-                                .map(|_| thread_rng().gen::<f64>())
-                                .collect(),
-                            severity_score: 0.5 + (i as f64 * 0.1),
-                            confidence_threshold: SECURITY_CONFIDENCE_THRESHOLD,
-                            last_updated: SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_secs(),
-                        },
-                    );
-                }
-
-                SecurityClassifier {
-                    threat_detection_network,
-                    anomaly_detection_threshold: 0.8,
-                    confidence_calibration: ConfidenceCalibration {
-                        temperature: 1.0,
-                        calibration_bins: Self::initialize_calibration_bins(),
+        // Initialize threat patterns for different attack types
+        let attack_types = [
+            "sybil",
+            "spam",
+            "centralization",
+            "oracle_manipulation",
+            "time_drift",
+            "wash_trading",
+            "collusion",
+            "economic",
+            "mempool_frontrun",
+        ];
+        for (i, attack_type) in attack_types.iter().enumerate() {
+            threat_patterns.insert(
+                attack_type.to_string(),
+                ThreatPattern {
+                    pattern_id: {
+                        let mut pattern_id = String::with_capacity(8);
+                        pattern_id.push_str("threat_");
+                        pattern_id.push_str(&i.to_string());
+                        pattern_id
                     },
-                    threat_patterns,
-                }
-            })
-            .clone()
+                    feature_weights: (0..INPUT_NEURONS)
+                        .map(|_| thread_rng().gen::<f64>())
+                        .collect(),
+                    severity_score: 0.5 + (i as f64 * 0.1),
+                    confidence_threshold: SECURITY_CONFIDENCE_THRESHOLD,
+                    last_updated: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                },
+            );
+        }
+
+        SecurityClassifier {
+            threat_detection_network,
+            anomaly_detection_threshold: 0.8,
+            confidence_calibration: ConfidenceCalibration {
+                temperature: 1.0,
+                calibration_bins: Self::initialize_calibration_bins(),
+            },
+            threat_patterns,
+        }
     }
 
     fn initialize_calibration_bins() -> Vec<CalibrationBin> {
@@ -3379,7 +3364,7 @@ impl PalletSaga {
         rules.insert(
             "base_reward".to_string(),
             EpochRule {
-                value: 50_000_000_000.0,
+                value: 150_000_000_000.0,
                 description: "Base QNTO reward per block (in smallest units) before modifiers."
                     .to_string(),
             },
@@ -3695,8 +3680,9 @@ impl PalletSaga {
         #[cfg(feature = "infinite-strata")]
         {
             if let Some(service) = &self.isnm_service {
-                let (multiplier, _redistributed_reward) = service.get_rewards().await;
-                return multiplier;
+                if let Ok((multiplier, _redistributed_reward)) = service.get_rewards().await {
+                    return multiplier;
+                }
             }
         }
         1.0
@@ -3711,7 +3697,7 @@ impl PalletSaga {
         let rules = self.economy.epoch_rules.read().await;
         let base_reward = rules
             .get("base_reward")
-            .map_or(50_000_000_000.0, |r| r.value);
+            .map_or(150_000_000_000.0, |r| r.value);
         let threat_modifier = rules
             .get("omega_threat_reward_modifier")
             .map_or(-0.25, |r| r.value);

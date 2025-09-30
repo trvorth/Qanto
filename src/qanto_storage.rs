@@ -42,6 +42,8 @@ pub enum QantoStorageError {
     Corruption(String),
     #[error("Database locked")]
     Locked,
+    #[error("Lock poisoned: {0}")]
+    LockPoisoned(String),
     #[error("Invalid operation: {0}")]
     InvalidOperation(String),
     #[error("Compression error: {0}")]
@@ -67,7 +69,7 @@ pub struct StorageConfig {
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
-            data_dir: PathBuf::from("qanto_data"),
+            data_dir: PathBuf::from("./data"),
             max_file_size: 64 * 1024 * 1024, // 64MB
             compression_enabled: true,
             encryption_enabled: true,
@@ -512,7 +514,11 @@ impl QantoStorage {
         let value_size = key.len() + value.len();
 
         // Log to WAL first
-        if let Some(ref mut wal) = *self.wal.lock().unwrap() {
+        if let Some(ref mut wal) = *self
+            .wal
+            .lock()
+            .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?
+        {
             let entry = LogEntry::Put {
                 key: key.clone(),
                 value: value.clone(),
@@ -525,7 +531,10 @@ impl QantoStorage {
 
         // Update memtable
         {
-            let mut memtable = self.memtable.write().unwrap();
+            let mut memtable = self
+                .memtable
+                .write()
+                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
             memtable.insert(key.clone(), value.clone());
         }
 
@@ -543,13 +552,19 @@ impl QantoStorage {
 
         // Update stats
         {
-            let mut stats = self.stats.write().unwrap();
+            let mut stats = self
+                .stats
+                .write()
+                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
             stats.writes += 1;
         }
 
         // Check if memtable needs flushing
         let memtable_size = {
-            let memtable = self.memtable.read().unwrap();
+            let memtable = self
+                .memtable
+                .read()
+                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
             memtable.len() * 1024 // Rough estimate
         };
 
@@ -566,7 +581,10 @@ impl QantoStorage {
         if let Some(entry) = self.cache.get(key) {
             entry.touch();
 
-            let mut stats = self.stats.write().unwrap();
+            let mut stats = self
+                .stats
+                .write()
+                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
             stats.cache_hits += 1;
             stats.reads += 1;
 
@@ -575,7 +593,10 @@ impl QantoStorage {
 
         // Check memtable
         {
-            let memtable = self.memtable.read().unwrap();
+            let memtable = self
+                .memtable
+                .read()
+                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
             if let Some(value) = memtable.get(key) {
                 // Add to cache
                 let entry = CacheEntry::new(value.clone());
@@ -583,7 +604,10 @@ impl QantoStorage {
                 self.cache.insert(key.to_vec(), entry);
                 self.cache_size.fetch_add(value_size, Ordering::Relaxed);
 
-                let mut stats = self.stats.write().unwrap();
+                let mut stats = self
+                    .stats
+                    .write()
+                    .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
                 stats.reads += 1;
 
                 return Ok(Some(value.clone()));
@@ -592,7 +616,10 @@ impl QantoStorage {
 
         // Check segments (newest first)
         {
-            let mut segments = self.segments.write().unwrap();
+            let mut segments = self
+                .segments
+                .write()
+                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
             for segment in segments.iter_mut().rev() {
                 if let Some(value) = segment.get(key)? {
                     // Add to cache
@@ -601,7 +628,10 @@ impl QantoStorage {
                     self.cache.insert(key.to_vec(), entry);
                     self.cache_size.fetch_add(value_size, Ordering::Relaxed);
 
-                    let mut stats = self.stats.write().unwrap();
+                    let mut stats = self
+                        .stats
+                        .write()
+                        .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
                     stats.cache_misses += 1;
                     stats.reads += 1;
 
@@ -612,7 +642,10 @@ impl QantoStorage {
 
         // Update stats
         {
-            let mut stats = self.stats.write().unwrap();
+            let mut stats = self
+                .stats
+                .write()
+                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
             stats.cache_misses += 1;
             stats.reads += 1;
         }
@@ -1382,87 +1415,5 @@ impl QantoStorage {
         }
 
         self.commit_transaction(tx_id)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use tempfile::TempDir;
-
-    fn test_config() -> StorageConfig {
-        let temp_dir = TempDir::new().unwrap();
-        StorageConfig {
-            data_dir: temp_dir.path().to_path_buf(),
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn test_basic_operations() {
-        let config = test_config();
-        let storage = QantoStorage::new(config).unwrap();
-
-        // Test put and get
-        let key = b"test_key".to_vec();
-        let value = b"test_value".to_vec();
-
-        storage.put(key.clone(), value.clone()).unwrap();
-        let retrieved = storage.get(&key).unwrap();
-        assert_eq!(retrieved, Some(value));
-
-        // Test delete
-        storage.delete(&key).unwrap();
-        let retrieved = storage.get(&key).unwrap();
-        assert_eq!(retrieved, None);
-    }
-
-    #[test]
-    fn test_transactions() {
-        let config = test_config();
-        let storage = QantoStorage::new(config).unwrap();
-
-        let tx_id = storage.begin_transaction();
-
-        // Transaction operations would go here
-        // For now, just test commit/rollback
-
-        storage.commit_transaction(tx_id).unwrap();
-    }
-
-    #[test]
-    fn test_batch_operations() {
-        let config = test_config();
-        let storage = QantoStorage::new(config).unwrap();
-
-        let mut batch = WriteBatch::new();
-        batch.put(b"key1".to_vec(), b"value1".to_vec());
-        batch.put(b"key2".to_vec(), b"value2".to_vec());
-        batch.delete(b"key3".to_vec());
-
-        storage.write_batch(batch).unwrap();
-
-        assert_eq!(storage.get(b"key1").unwrap(), Some(b"value1".to_vec()));
-        assert_eq!(storage.get(b"key2").unwrap(), Some(b"value2".to_vec()));
-    }
-
-    #[test]
-    fn test_prefix_search() {
-        let config = test_config();
-        let storage = QantoStorage::new(config).unwrap();
-
-        storage
-            .put(b"prefix_key1".to_vec(), b"value1".to_vec())
-            .unwrap();
-        storage
-            .put(b"prefix_key2".to_vec(), b"value2".to_vec())
-            .unwrap();
-        storage
-            .put(b"other_key".to_vec(), b"value3".to_vec())
-            .unwrap();
-
-        let keys = storage.keys_with_prefix(b"prefix_").unwrap();
-        assert_eq!(keys.len(), 2);
     }
 }

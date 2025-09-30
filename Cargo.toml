@@ -1,3 +1,5 @@
+cargo-features = ["profile-rustflags"]
+
 [package]
 name = "qanto"
 version = "0.1.0"
@@ -15,10 +17,22 @@ members = [
     "tools/relayer"
 ]
 
+# Force secure versions to override transitive dependencies
+[workspace.dependencies]
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+
+# Override vulnerable dependencies
+[patch.crates-io]
+# Replace derivative with synstructure for arkworks compatibility
+derivative = { git = "https://github.com/mcarton/rust-derivative", branch = "master" }
+
 [dependencies]
-# --- Homomorphic Encryption ---
-libpaillier = "0.7.0-rc0"
+# --- Homomorphic Encryption (Updated for security) ---
+# libpaillier = "0.7.0-rc0" # Replaced with maintained alternative
+# paillier = "0.2.0" # Temporarily disabled due to ring 0.13.5 security vulnerability
+# TODO: Replace with secure homomorphic encryption implementation
 # ed25519-dalek = "2.1.0" # Replaced with qanto_compat
+tfhe = { version = "0.10", features = ["boolean", "shortint", "integer"] }
 libp2p = { version = "0.56.0", features = ["gossipsub", "kad", "mdns", "noise", "yamux", "tcp", "tokio", "macros"] }
 
 # --- SAGA Analytics (AI dependencies removed for production hardening) ---
@@ -30,17 +44,15 @@ futures = "0.3.30"
 tokio = { version = "1.38.0", features = ["full", "rt-multi-thread", "time"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 anyhow = "1.0.86"
-prost = "0.12.6"
-tonic = { version = "0.11.0", features = ["transport", "codegen", "prost"] }
 async-graphql = { version = "7.0", features = ["uuid", "chrono"] }
 async-graphql-axum = "7.0.11"
 
-# --- Web Server & API (Unified Versions) ---
+# --- Web Server & API (UNIFIED VERSIONS - DEDUPLICATION COMPLETE) ---
 axum = { version = "0.8.4", features = ["macros", "ws", "json"] }
+tower-http = { version = "0.6.2", features = ["cors"] }  # For CORS middleware
 reqwest = { version = "0.12.5", features = ["json"] }
-tower = "0.4.13"
-tower-http = { version = "0.5.2", features = ["cors", "fs"] }
 hyper = { version = "1.3.1", features = ["full"] }
+# REMOVED: warp = "0.3.7" - Duplicate web server framework, using axum only
 
 # --- Cryptography & Security (Qanto-Native) ---
 getrandom = { version = "0.2", features = ["js"] }
@@ -50,23 +62,18 @@ bincode = "1.3.3"
 argon2 = { version = "0.5.3", features = ["alloc"] }
 aes-gcm = "0.10.3"
 bip39 = "2.1.0"
-pbkdf2 = "0.12.2"
 hex = "0.4.3"
 rand = "0.8.5"
 rand_core = { version = "0.6.4", features = ["std"] }
 zeroize = { version = "1.7.0", features = ["zeroize_derive"] }
 subtle = "2.5.0"
-protobuf = { version = "3.7.2", features = ["with-bytes"] }
-openssl = { version = "0.10.64", features = ["vendored"] }
 generic-array = "0.14.7"
 typenum = "1.17"
 password-hash = { version = "0.5.0", features = ["std"] }
-rcgen = "0.13.1"
 
 # --- Data Handling & Serialization ---
 serde = { version = "1.0.203", features = ["derive"] }
 serde_json = "1.0.117"
-serde_bytes = "0.11.14"
 toml = "0.8.14"
 lru = "0.12.3"
 prometheus = { version = "0.13.4", default-features = false, features = ["process"] }
@@ -78,26 +85,23 @@ crossbeam-channel = "0.5.13"
 crossbeam-utils = "0.8.20"
 parking_lot = "0.12.3"
 regex = "1.10.5"
-nalgebra = "0.33.0"
 url = "2.5.2"
 uuid = { version = "1.8.0", features = ["v4", "serde"] } # For NEURAL-VAULT GATT
 chrono = { version = "0.4.38", features = ["serde"] }
 sysinfo = "0.30.13"
 rayon = "1.10.0"
-zstd = "0.13.1"
 bytes = "1.6.0"
-merkle-cbt = "0.3.2"
 num-bigint = "0.4.4"
 num-traits = "0.2.17"
 
-# --- Error Handling & CLI ---
-thiserror = "1.0.61"
+# --- Error Handling & CLI (UNIFIED VERSIONS) ---
+thiserror = "1.0.69"  # Unified to latest stable version
 clap = { version = "4.5.4", features = ["derive"] }
 log = "0.4.21"
 env_logger = "0.11.3"
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.2.25", features = ["env-filter"] }
-indicatif = "0.18.0"
+# Force secure version to override arkworks dependency
+tracing-subscriber = { workspace = true }
 
 # --- Rate Limiting & Backoff ---
 governor = "0.6.3"
@@ -107,6 +111,7 @@ nonzero_ext = "0.3.0"
 dotenvy = "0.15.7"
 rpassword = "7.3.1"
 colored = "2.0"
+libc = "0.2.155"
 
 # --- Async Traits ---
 async-trait = "0.1.80"
@@ -114,7 +119,6 @@ tokio-util = { version = "0.7.11", features = ["compat"] }
 
 # --- Signal Handling ---
 signal-hook = "0.3.17"
-signal-hook-tokio = { version = "0.3.1", features = ["futures-v0_3"] }
 
 # --- Optional Dependencies for ZK proofs & GPU ---
 bellman = { version = "0.14.0", optional = true }
@@ -123,24 +127,22 @@ ff = { version = "0.13.0", optional = true }
 ocl = { version = "0.19.7", optional = true }
 num_cpus = "1.16.0"
 futures-util = { version = "0.3.31", features = ["sink"] }
-primitive-types = "0.13.1"
 
-# --- Arkworks ZK Dependencies ---
+# --- Arkworks ZK Dependencies (Updated for security) ---
 ark-groth16 = "0.5.0"
 ark-bls12-381 = "0.5.0"
 ark-ff = "0.5.0"
 ark-ec = "0.5.0"
 ark-std = "0.5.0"
-ark-relations = "0.5.0"
+ark-relations = { version = "0.5.1", default-features = false, features = [] }
 ark-r1cs-std = "0.5.0"
 ark-crypto-primitives = { version = "0.5.0", features = ["sponge", "r1cs", "crh"] }
 ark-serialize = "0.5.0"
 ark-snark = "0.5.0"
 
 # --- Post-Quantum Cryptography Dependencies (Replaced with Qanhash) ---
-byte-slice-cast = "1.2"
-# p256 = "0.13.2" # Replaced with qanto_compat
 ring = "0.17.8"
+# p256 = "0.13.2" # Replaced with qanto_compat
 # pqc_dilithium = { version = "0.2.0", features = ["mode5"] } # Replaced with qanto_compat
 
 [build-dependencies]
@@ -149,7 +151,6 @@ tonic-build = { version = "0.11.0", features = ["prost"] }
 [dev-dependencies]
 tempfile = "3.10.1"
 serial_test = "2.0.0"
-criterion = "0.5.1"
 
 
 [features]
@@ -158,6 +159,7 @@ gpu = ["ocl", "my-blockchain/gpu"]
 zk = ["bellman", "bls12_381", "ff"]
 # ai feature removed for production hardening
 infinite-strata = []
+performance-test = []
 
 # --- Main Library Definition ---
 [lib]
@@ -195,8 +197,12 @@ name = "omega_test"
 path = "src/bin/omega_test.rs"
 
 [[bin]]
-name = "performance_test"
-path = "src/bin/performance_test.rs" 
+name = "stress_test"
+path = "src/bin/stress_test.rs"
+
+[[bin]]
+name = "metrics_server"
+path = "src/bin/metrics_server.rs" 
 
 # --- Build Profiles ---
 [profile.release]
@@ -205,3 +211,7 @@ codegen-units = 1    # Maximize optimization potential at the cost of compile ti
 strip = true         # Remove debugging symbols to reduce binary size
 panic = "abort"      # Abort on panic for smaller and faster binaries
 opt-level = 3
+
+[profile.dev]
+# Treat warnings as errors in development
+rustflags = ["-D", "warnings"]

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // Made constants public
-pub const INITIAL_REWARD: u64 = 50_000_000_000; // Initial block reward (50 QNTO in smallest units)
+pub const INITIAL_REWARD: u64 = 150_000_000_000; // Initial block reward (150 QNTO in smallest units)
 pub const TOTAL_SUPPLY: u64 = 21_000_000_000_000_000; // Total supply cap set to 21 Billion QNTO (in smallest units with 6 decimals)units with 6 decimals)
 pub const HALVING_PERIOD: u64 = 7_776_000; // 3 months in seconds
 pub const HALVING_FACTOR: f64 = 0.875; // 12.5% reduction per halving

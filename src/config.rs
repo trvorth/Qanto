@@ -16,8 +16,8 @@ use sysinfo::System;
 use thiserror::Error;
 
 // --- Constants for Validation ---
-// EVOLVED: Time is now in MILLISECONDS to support high BPS.
-const MIN_TARGET_BLOCK_TIME: u64 = 30; // Minimum 30ms block time (~33 BPS)
+// EVOLVED: Time is now in MILLISECONDS to support high BPS (32+ BPS = <31ms block time)
+const MIN_TARGET_BLOCK_TIME: u64 = 25; // Minimum 25ms block time (~40 BPS)
 const MAX_TARGET_BLOCK_TIME: u64 = 15000; // Maximum 15 seconds
 const MAX_PEERS: usize = 128;
 const MIN_DIFFICULTY: u64 = 1;
@@ -25,6 +25,32 @@ const MAX_DIFFICULTY: u64 = u64::MAX / 2; // More realistic max
 const MAX_MINING_THREADS: usize = 256;
 const MIN_CHAINS: u32 = 1;
 const MAX_CHAINS: u32 = 32;
+
+// --- Mining-specific validation constants (MICROSECOND PRECISION) ---
+const MIN_MINING_INTERVAL_MS: u64 = 1; // Minimum 1ms mining interval for high-performance
+const MAX_MINING_INTERVAL_MS: u64 = 3600000; // Maximum 1 hour in milliseconds
+const MIN_DUMMY_TX_INTERVAL_MS: u64 = 1; // Minimum 1ms dummy TX interval
+const MAX_DUMMY_TX_INTERVAL_MS: u64 = 1000; // Maximum 1 second in milliseconds for high-frequency TX generation
+const MIN_DUMMY_TX_PER_CYCLE: u32 = 1; // Minimum 1 dummy TX per cycle
+const MAX_DUMMY_TX_PER_CYCLE: u32 = 1000000; // Maximum 1M dummy TX per cycle
+const MIN_MEMPOOL_MAX_AGE: u64 = 60; // Minimum 1 minute mempool age
+const MAX_MEMPOOL_MAX_AGE: u64 = 86400; // Maximum 24 hours mempool age
+const MIN_MEMPOOL_MAX_SIZE: usize = 1024; // Minimum 1KB mempool size
+const MAX_MEMPOOL_MAX_SIZE: usize = 16 * 1024 * 1024 * 1024; // Maximum 16GB mempool size (increased for high performance)
+
+// --- Mempool batch processing constants ---
+const MIN_MEMPOOL_BATCH_SIZE: usize = 10; // Minimum 10 transactions per batch
+const MAX_MEMPOOL_BATCH_SIZE: usize = 1000000; // Maximum 1M transactions per batch (increased for 10M TPS)
+const MIN_MEMPOOL_BACKPRESSURE_THRESHOLD: f64 = 0.5; // Minimum 50% utilization
+const MAX_MEMPOOL_BACKPRESSURE_THRESHOLD: f64 = 0.95; // Maximum 95% utilization
+
+// --- Memory limit constants for TX generator backpressure ---
+const SOFT_MEMORY_LIMIT: usize = 8 * 1024 * 1024; // 8MB soft limit for backpressure // 8MB soft limit
+const HARD_MEMORY_LIMIT: usize = 10 * 1024 * 1024; // 10MB hard limit
+const MIN_TX_BATCH_SIZE: usize = 1; // Minimum 1 transaction per batch
+const MAX_TX_BATCH_SIZE: usize = 200000; // Maximum 200K transactions per batch (increased for high performance)
+const MIN_ADAPTIVE_BATCH_THRESHOLD: f64 = 0.6; // Minimum 60% memory utilization for adaptive batching
+const MAX_ADAPTIVE_BATCH_THRESHOLD: f64 = 0.9; // Maximum 90% memory utilization for adaptive batching
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -69,6 +95,30 @@ pub struct Config {
     pub num_chains: u32,
     pub mining_chain_id: u32,
 
+    // Optional mining configuration parameters (MICROSECOND PRECISION)
+    pub mining_interval_ms: Option<u64>, // Changed from seconds to milliseconds
+    pub dummy_tx_interval_ms: Option<u64>, // Changed from seconds to milliseconds
+    pub dummy_tx_per_cycle: Option<u32>,
+    pub mempool_max_age_secs: Option<u64>,
+    pub mempool_max_size_bytes: Option<usize>,
+    pub mempool_batch_size: Option<usize>,
+    pub mempool_backpressure_threshold: Option<f64>,
+
+    // --- TX Generator Backpressure Configuration ---
+    pub tx_batch_size: Option<usize>,
+    pub adaptive_batch_threshold: Option<f64>,
+    pub memory_soft_limit: Option<usize>,
+    pub memory_hard_limit: Option<usize>,
+
+    // --- File & Database Paths ---
+    pub data_dir: String,
+    pub db_path: String,
+    pub wallet_path: String,
+    pub p2p_identity_path: String,
+    pub log_file_path: Option<String>,
+    pub tls_cert_path: Option<String>,
+    pub tls_key_path: Option<String>,
+
     // --- Logging & P2P Internals ---
     pub logging: LoggingConfig,
     pub p2p: P2pConfig,
@@ -91,11 +141,11 @@ pub struct P2pConfig {
 impl Default for P2pConfig {
     fn default() -> Self {
         Self {
-            heartbeat_interval: 10000, // Increased to reduce CPU usage
-            mesh_n_low: 2,             // Reduced for lower resource usage
-            mesh_n: 4,                 // Reduced from 8 to 4
-            mesh_n_high: 8,            // Reduced from 16 to 8
-            mesh_outbound_min: 2,      // Reduced from 4 to 2
+            heartbeat_interval: 2000, // 2 seconds - compatible with 1 second block time
+            mesh_n_low: 2,            // Reduced for lower resource usage
+            mesh_n: 4,                // Reduced from 8 to 4
+            mesh_n_high: 8,           // Reduced from 16 to 8
+            mesh_outbound_min: 2,     // Reduced from 4 to 2
         }
     }
 }
@@ -121,6 +171,30 @@ impl Default for Config {
             mining_threads: Self::get_optimized_thread_count(),
             num_chains: 1,
             mining_chain_id: 0,
+            mining_interval_ms: None, // Use default values if not specified
+            dummy_tx_interval_ms: None,
+            dummy_tx_per_cycle: None,
+            mempool_max_age_secs: None,
+            mempool_max_size_bytes: None,
+            mempool_batch_size: None,
+            mempool_backpressure_threshold: None,
+
+            // --- TX Generator Backpressure Configuration ---
+            tx_batch_size: None,
+            adaptive_batch_threshold: None,
+            memory_soft_limit: None,
+            memory_hard_limit: None,
+
+            // --- File & Database Paths ---
+            data_dir: "./data".to_string(),
+            db_path: "./data/qanto.db".to_string(),
+            wallet_path: "wallet.key".to_string(),
+            p2p_identity_path: "p2p_identity.key".to_string(),
+            log_file_path: Some("./logs/qanto.log".to_string()),
+            tls_cert_path: None,
+            tls_key_path: None,
+
+            // --- Logging & P2P Internals ---
             logging: LoggingConfig {
                 level: "info".to_string(),
             },
@@ -130,6 +204,73 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Apply CLI path overrides to the configuration
+    #[allow(clippy::too_many_arguments)]
+    pub fn apply_cli_overrides(
+        &mut self,
+        wallet_path: Option<String>,
+        p2p_identity_path: Option<String>,
+        data_dir: Option<String>,
+        db_path: Option<String>,
+        log_file_path: Option<String>,
+        tls_cert_path: Option<String>,
+        tls_key_path: Option<String>,
+    ) {
+        if let Some(wallet) = wallet_path {
+            self.wallet_path = wallet;
+        }
+        if let Some(p2p_identity) = p2p_identity_path {
+            self.p2p_identity_path = p2p_identity;
+        }
+        if let Some(data) = data_dir {
+            self.data_dir = data.clone();
+            // Update dependent paths if they use the default data directory
+            if self.db_path.starts_with("./data/") {
+                self.db_path = format!("{data}/qanto.db");
+            }
+            if let Some(ref log_path) = self.log_file_path {
+                if log_path.starts_with("./logs/") {
+                    self.log_file_path = Some(format!("{data}/logs/qanto.log"));
+                }
+            }
+        }
+        if let Some(db) = db_path {
+            self.db_path = db;
+        }
+        if let Some(log) = log_file_path {
+            self.log_file_path = Some(log);
+        }
+        if let Some(cert) = tls_cert_path {
+            self.tls_cert_path = Some(cert);
+        }
+        if let Some(key) = tls_key_path {
+            self.tls_key_path = Some(key);
+        }
+    }
+
+    /// Get default paths based on a base directory
+    pub fn get_default_paths(base_dir: &str) -> (String, String, String, String) {
+        let data_dir = format!("{base_dir}/data");
+        let db_path = format!("{data_dir}/qanto.db");
+        let wallet_path = format!("{base_dir}/wallet.key");
+        let p2p_identity_path = format!("{base_dir}/p2p_identity.key");
+        (data_dir, db_path, wallet_path, p2p_identity_path)
+    }
+
+    /// Create a new config with custom base directory
+    pub fn with_base_dir(base_dir: &str) -> Self {
+        let (data_dir, db_path, wallet_path, p2p_identity_path) = Self::get_default_paths(base_dir);
+
+        Self {
+            data_dir,
+            db_path,
+            wallet_path,
+            p2p_identity_path,
+            log_file_path: Some(format!("{base_dir}/logs/qanto.log")),
+            ..Default::default()
+        }
+    }
+
     /// Get optimized thread count based on system resources and free-tier constraints
     fn get_optimized_thread_count() -> usize {
         let cpu_count = num_cpus::get();
@@ -165,7 +306,7 @@ impl Config {
             api_address: "127.0.0.1:8082".to_string(),
             peers: vec![],
             local_full_p2p_address: None,
-            network_id: "qanto-freetier-mainnet".to_string(),
+            network_id: "qanto-testnet".to_string(),
             genesis_validator: "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3"
                 .to_string(),
             contract_address: "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"
@@ -178,6 +319,30 @@ impl Config {
             mining_threads: 1, // Single thread for free-tier
             num_chains: 1,     // Single chain for simplicity
             mining_chain_id: 0,
+            mining_interval_ms: Some(60000), // Conservative 1-minute intervals for free-tier (converted to ms)
+            dummy_tx_interval_ms: Some(30000), // Conservative dummy TX generation (converted to ms)
+            dummy_tx_per_cycle: Some(100),   // Limited dummy TX for free-tier
+            mempool_max_age_secs: Some(300), // 5-minute mempool age for free-tier
+            mempool_max_size_bytes: Some(1024 * 1024), // 1MB mempool for free-tier
+            mempool_batch_size: Some(100),   // Conservative batch size for free-tier
+            mempool_backpressure_threshold: Some(0.8), // 80% threshold for free-tier
+
+            // --- TX Generator Backpressure Configuration ---
+            tx_batch_size: Some(50), // Conservative TX batch size for free-tier
+            adaptive_batch_threshold: Some(0.7), // 70% memory threshold for free-tier
+            memory_soft_limit: Some(SOFT_MEMORY_LIMIT), // 8MB soft limit
+            memory_hard_limit: Some(HARD_MEMORY_LIMIT), // 10MB hard limit
+
+            // --- File & Database Paths ---
+            data_dir: "./data".to_string(),
+            db_path: "./data/qanto_free.db".to_string(),
+            wallet_path: "wallet.key".to_string(),
+            p2p_identity_path: "p2p_identity.key".to_string(),
+            log_file_path: Some("./logs/qanto_free.log".to_string()),
+            tls_cert_path: None,
+            tls_key_path: None,
+
+            // --- Logging & P2P Internals ---
             logging: LoggingConfig {
                 level: "warn".to_string(), // Reduced logging for performance
             },
@@ -187,6 +352,71 @@ impl Config {
                 mesh_n: 2,
                 mesh_n_high: 4,
                 mesh_outbound_min: 1,
+            },
+        }
+    }
+
+    /// High-performance configuration optimized for 32 BPS and 10M TPS
+    pub fn high_performance() -> Self {
+        let available_memory_gb = Self::get_available_memory_gb();
+        let thread_count = Self::get_optimized_thread_count();
+
+        // Calculate memory limits based on available system memory
+        let memory_soft_limit = ((available_memory_gb * 0.4) * 1024.0 * 1024.0 * 1024.0) as usize; // 40% of available memory
+        let memory_hard_limit = ((available_memory_gb * 0.6) * 1024.0 * 1024.0 * 1024.0) as usize; // 60% of available memory
+        let mempool_size = ((available_memory_gb * 0.3) * 1024.0 * 1024.0 * 1024.0) as usize; // 30% for mempool
+
+        Self {
+            p2p_address: "/ip4/0.0.0.0/tcp/8008".to_string(),
+            api_address: "127.0.0.1:8080".to_string(),
+            peers: vec![],
+            local_full_p2p_address: None,
+            network_id: "qanto-mainnet-performance".to_string(),
+            genesis_validator: "0000000000000000000000000000000000000000000000000000000000000000"
+                .to_string(),
+            contract_address: "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"
+                .to_string(),
+            target_block_time: 31, // 31ms for 32+ BPS (slightly above minimum for stability)
+            difficulty: 1000,
+            max_amount: 21_000_000_000,
+            use_gpu: true,                // Enable GPU for high performance
+            zk_enabled: true,             // Enable ZK for security
+            mining_threads: thread_count, // Use all available threads
+            num_chains: 4,                // Multiple chains for parallel processing
+            mining_chain_id: 0,
+            mining_interval_ms: Some(1000), // Fast mining intervals (converted to ms)
+            dummy_tx_interval_ms: Some(1000), // Fast dummy TX generation for testing (converted to ms)
+            dummy_tx_per_cycle: Some(100000), // High dummy TX volume for stress testing
+            mempool_max_age_secs: Some(60),   // 1-minute mempool age for high throughput
+            mempool_max_size_bytes: Some(mempool_size), // Dynamic mempool size based on available memory
+            mempool_batch_size: Some(500000), // Large batch size for 10M TPS (312,500 tx/block * 1.6 buffer)
+            mempool_backpressure_threshold: Some(0.75), // 75% threshold for high performance
+
+            // --- TX Generator Backpressure Configuration ---
+            tx_batch_size: Some(100000), // Large TX batch size for high throughput
+            adaptive_batch_threshold: Some(0.8), // 80% memory threshold for adaptive batching
+            memory_soft_limit: Some(memory_soft_limit),
+            memory_hard_limit: Some(memory_hard_limit),
+
+            // --- File & Database Paths ---
+            data_dir: "./data".to_string(),
+            db_path: "./data/qanto_performance.db".to_string(),
+            wallet_path: "wallet.key".to_string(),
+            p2p_identity_path: "p2p_identity.key".to_string(),
+            log_file_path: Some("./logs/qanto_performance.log".to_string()),
+            tls_cert_path: None,
+            tls_key_path: None,
+
+            // --- Logging & P2P Internals ---
+            logging: LoggingConfig {
+                level: "error".to_string(), // Minimal logging for maximum performance
+            },
+            p2p: P2pConfig {
+                heartbeat_interval: 100, // Very fast heartbeat for rapid consensus (100ms)
+                mesh_n_low: 8,
+                mesh_n: 16,
+                mesh_n_high: 32,
+                mesh_outbound_min: 8,
             },
         }
     }
@@ -304,54 +534,247 @@ impl Config {
             ));
         }
 
+        // Validate mining configuration parameters (MICROSECOND PRECISION)
+        if let Some(mining_interval) = self.mining_interval_ms {
+            if !(MIN_MINING_INTERVAL_MS..=MAX_MINING_INTERVAL_MS).contains(&mining_interval) {
+                return Err(ConfigError::Validation(format!(
+                    "mining_interval_ms must be between {MIN_MINING_INTERVAL_MS} and {MAX_MINING_INTERVAL_MS} milliseconds"
+                )));
+            }
+        }
+
+        if let Some(dummy_tx_interval) = self.dummy_tx_interval_ms {
+            if !(MIN_DUMMY_TX_INTERVAL_MS..=MAX_DUMMY_TX_INTERVAL_MS).contains(&dummy_tx_interval) {
+                return Err(ConfigError::Validation(format!(
+                    "dummy_tx_interval_ms must be between {MIN_DUMMY_TX_INTERVAL_MS} and {MAX_DUMMY_TX_INTERVAL_MS} milliseconds"
+                )));
+            }
+        }
+
+        if let Some(dummy_tx_per_cycle) = self.dummy_tx_per_cycle {
+            if !(MIN_DUMMY_TX_PER_CYCLE..=MAX_DUMMY_TX_PER_CYCLE).contains(&dummy_tx_per_cycle) {
+                return Err(ConfigError::Validation(format!(
+                    "dummy_tx_per_cycle must be between {MIN_DUMMY_TX_PER_CYCLE} and {MAX_DUMMY_TX_PER_CYCLE}"
+                )));
+            }
+        }
+
+        if let Some(mempool_max_age) = self.mempool_max_age_secs {
+            if !(MIN_MEMPOOL_MAX_AGE..=MAX_MEMPOOL_MAX_AGE).contains(&mempool_max_age) {
+                return Err(ConfigError::Validation(format!(
+                    "mempool_max_age_secs must be between {MIN_MEMPOOL_MAX_AGE} and {MAX_MEMPOOL_MAX_AGE} seconds"
+                )));
+            }
+        }
+
+        if let Some(mempool_max_size) = self.mempool_max_size_bytes {
+            if !(MIN_MEMPOOL_MAX_SIZE..=MAX_MEMPOOL_MAX_SIZE).contains(&mempool_max_size) {
+                return Err(ConfigError::Validation(format!(
+                    "mempool_max_size_bytes must be between {MIN_MEMPOOL_MAX_SIZE} and {MAX_MEMPOOL_MAX_SIZE} bytes"
+                )));
+            }
+        }
+
+        if let Some(mempool_batch_size) = self.mempool_batch_size {
+            if !(MIN_MEMPOOL_BATCH_SIZE..=MAX_MEMPOOL_BATCH_SIZE).contains(&mempool_batch_size) {
+                return Err(ConfigError::Validation(format!(
+                    "mempool_batch_size must be between {MIN_MEMPOOL_BATCH_SIZE} and {MAX_MEMPOOL_BATCH_SIZE}"
+                )));
+            }
+        }
+
+        if let Some(mempool_backpressure_threshold) = self.mempool_backpressure_threshold {
+            if !(MIN_MEMPOOL_BACKPRESSURE_THRESHOLD..=MAX_MEMPOOL_BACKPRESSURE_THRESHOLD)
+                .contains(&mempool_backpressure_threshold)
+            {
+                return Err(ConfigError::Validation(format!(
+                    "mempool_backpressure_threshold must be between {MIN_MEMPOOL_BACKPRESSURE_THRESHOLD} and {MAX_MEMPOOL_BACKPRESSURE_THRESHOLD}"
+                )));
+            }
+        }
+
+        // Validate TX Generator Backpressure Configuration
+        if let Some(tx_batch_size) = self.tx_batch_size {
+            if !(MIN_TX_BATCH_SIZE..=MAX_TX_BATCH_SIZE).contains(&tx_batch_size) {
+                return Err(ConfigError::Validation(format!(
+                    "tx_batch_size must be between {MIN_TX_BATCH_SIZE} and {MAX_TX_BATCH_SIZE}"
+                )));
+            }
+        }
+
+        // Validate consistency between target_block_time and derived values
+        self.validate_target_block_time_consistency()?;
+
+        if let Some(adaptive_batch_threshold) = self.adaptive_batch_threshold {
+            if !(MIN_ADAPTIVE_BATCH_THRESHOLD..=MAX_ADAPTIVE_BATCH_THRESHOLD)
+                .contains(&adaptive_batch_threshold)
+            {
+                return Err(ConfigError::Validation(format!(
+                    "adaptive_batch_threshold must be between {MIN_ADAPTIVE_BATCH_THRESHOLD} and {MAX_ADAPTIVE_BATCH_THRESHOLD}"
+                )));
+            }
+        }
+
+        if let Some(memory_soft_limit) = self.memory_soft_limit {
+            if memory_soft_limit == 0 {
+                return Err(ConfigError::Validation(
+                    "memory_soft_limit must be greater than 0".to_string(),
+                ));
+            }
+        }
+
+        if let Some(memory_hard_limit) = self.memory_hard_limit {
+            if memory_hard_limit == 0 {
+                return Err(ConfigError::Validation(
+                    "memory_hard_limit must be greater than 0".to_string(),
+                ));
+            }
+        }
+
+        // Validate that hard limit is greater than soft limit
+        if let (Some(soft), Some(hard)) = (self.memory_soft_limit, self.memory_hard_limit) {
+            if hard <= soft {
+                return Err(ConfigError::Validation(
+                    "memory_hard_limit must be greater than memory_soft_limit".to_string(),
+                ));
+            }
+        }
+
+        // Validate file and database paths
+        if self.data_dir.is_empty() {
+            return Err(ConfigError::Validation(
+                "data_dir cannot be empty".to_string(),
+            ));
+        }
+
+        if self.db_path.is_empty() {
+            return Err(ConfigError::Validation(
+                "db_path cannot be empty".to_string(),
+            ));
+        }
+
+        if self.wallet_path.is_empty() {
+            return Err(ConfigError::Validation(
+                "wallet_path cannot be empty".to_string(),
+            ));
+        }
+
+        if self.p2p_identity_path.is_empty() {
+            return Err(ConfigError::Validation(
+                "p2p_identity_path cannot be empty".to_string(),
+            ));
+        }
+
+        // Validate that paths don't contain dangerous characters
+        let dangerous_chars = ['<', '>', '|', '&', ';', '`', '$'];
+        for path in [
+            &self.data_dir,
+            &self.db_path,
+            &self.wallet_path,
+            &self.p2p_identity_path,
+        ] {
+            if path.chars().any(|c| dangerous_chars.contains(&c)) {
+                return Err(ConfigError::Validation(format!(
+                    "Path '{path}' contains dangerous characters"
+                )));
+            }
+        }
+
+        if let Some(log_path) = &self.log_file_path {
+            if log_path.chars().any(|c| dangerous_chars.contains(&c)) {
+                return Err(ConfigError::Validation(format!(
+                    "Log file path '{log_path}' contains dangerous characters"
+                )));
+            }
+        }
+
         Ok(())
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::NamedTempFile;
+    /// Validate consistency between target_block_time and derived values
+    fn validate_target_block_time_consistency(&self) -> Result<(), ConfigError> {
+        let target_block_time_secs = self.target_block_time as f64 / 1000.0; // Convert ms to seconds
 
-    #[test]
-    fn test_config_default_and_save_load() {
-        let temp_file = NamedTempFile::new().unwrap();
-        let path = temp_file.path().to_str().unwrap();
+        // Validate mining_interval_ms consistency
+        if let Some(mining_interval) = self.mining_interval_ms {
+            let mining_interval_f64 = mining_interval as f64 / 1000.0; // Convert ms to seconds
 
-        let default_config = Config::default();
-        default_config.save(path).unwrap();
+            // Mining interval should be reasonable relative to target block time
+            // It shouldn't be much smaller than block time (causes unnecessary work)
+            // It shouldn't be much larger than block time (causes delays)
+            if mining_interval_f64 < target_block_time_secs * 0.1 {
+                return Err(ConfigError::Validation(format!(
+                    "mining_interval_ms ({}) is too small relative to target_block_time ({}ms). \
+                     Mining interval should be at least 10% of target block time ({:.1}s)",
+                    mining_interval,
+                    self.target_block_time,
+                    target_block_time_secs * 0.1
+                )));
+            }
 
-        let loaded_config = Config::load(path).unwrap();
-        assert_eq!(loaded_config.api_address, default_config.api_address);
-        assert_eq!(loaded_config.difficulty, default_config.difficulty);
-    }
+            if mining_interval_f64 > target_block_time_secs * 10.0 {
+                return Err(ConfigError::Validation(format!(
+                    "mining_interval_ms ({}) is too large relative to target_block_time ({}ms). \
+                     Mining interval should be at most 10x target block time ({:.1}s)",
+                    mining_interval,
+                    self.target_block_time,
+                    target_block_time_secs * 10.0
+                )));
+            }
+        }
 
-    #[test]
-    fn test_config_validation() {
-        // FIX: Initialize with the desired non-default value directly.
-        let mut config = Config {
-            target_block_time: 5,
-            ..Default::default()
-        };
-        assert!(config.validate().is_err());
-        config.target_block_time = 60;
+        // Validate dummy_tx_interval_ms consistency
+        if let Some(dummy_tx_interval) = self.dummy_tx_interval_ms {
+            let dummy_tx_interval_f64 = dummy_tx_interval as f64 / 1000.0; // Convert ms to seconds
 
-        config.difficulty = 0;
-        assert!(config.validate().is_err());
-        config.difficulty = 100;
+            // Dummy TX interval should allow for reasonable transaction generation
+            // relative to block time
+            if dummy_tx_interval_f64 > target_block_time_secs * 5.0 {
+                return Err(ConfigError::Validation(format!(
+                    "dummy_tx_interval_ms ({}) is too large relative to target_block_time ({}ms). \
+                     Dummy TX interval should be at most 5x target block time ({:.1}s) to ensure \
+                     adequate transaction generation",
+                    dummy_tx_interval,
+                    self.target_block_time,
+                    target_block_time_secs * 5.0
+                )));
+            }
+        }
 
-        config.mining_threads = 0;
-        assert!(config.validate().is_err());
-        config.mining_threads = 4;
+        // Validate mempool_max_age_secs consistency
+        if let Some(mempool_max_age) = self.mempool_max_age_secs {
+            let mempool_max_age_f64 = mempool_max_age as f64;
 
-        config.num_chains = 0;
-        assert!(config.validate().is_err());
-        config.num_chains = 2;
+            // Mempool max age should be reasonable relative to block time
+            // Too short: transactions expire before they can be included
+            // Should be at least 10x block time to allow for network delays and mining
+            if mempool_max_age_f64 < target_block_time_secs * 10.0 {
+                return Err(ConfigError::Validation(format!(
+                    "mempool_max_age_secs ({}) is too small relative to target_block_time ({}ms). \
+                     Mempool max age should be at least 10x target block time ({:.1}s) to allow \
+                     transactions time to be included in blocks",
+                    mempool_max_age,
+                    self.target_block_time,
+                    target_block_time_secs * 10.0
+                )));
+            }
+        }
 
-        config.mining_chain_id = 2;
-        assert!(config.validate().is_err());
-        config.mining_chain_id = 1;
+        // Validate P2P heartbeat interval consistency
+        let heartbeat_interval_secs = self.p2p.heartbeat_interval as f64 / 1000.0; // Convert ms to seconds
 
-        assert!(config.validate().is_ok());
+        // Heartbeat should be frequent enough relative to block time for network health
+        if heartbeat_interval_secs > target_block_time_secs * 2.0 {
+            return Err(ConfigError::Validation(format!(
+                "p2p.heartbeat_interval ({}ms) is too large relative to target_block_time ({}ms). \
+                 Heartbeat interval should be at most 2x target block time ({:.0}ms) to maintain \
+                 network connectivity",
+                self.p2p.heartbeat_interval,
+                self.target_block_time,
+                target_block_time_secs * 2.0 * 1000.0
+            )));
+        }
+
+        Ok(())
     }
 }

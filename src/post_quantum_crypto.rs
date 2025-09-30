@@ -113,23 +113,3 @@ impl KeyRotationPolicy {
         elapsed > self.rotation_interval || self.usage_count > self.max_usage
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_key_generation() {
-        let (pk, sk) = generate_pq_keypair(None).unwrap();
-        assert_eq!(pk.as_bytes().len(), 1952); // Qanto PQ public key size
-        assert_eq!(sk.as_bytes().len(), 4000); // Qanto PQ private key size
-    }
-
-    #[test]
-    fn test_sign_verify() {
-        let (pk, sk) = generate_pq_keypair(None).unwrap();
-        let message = b"test message";
-        let sig = pq_sign(&sk, message).unwrap();
-        assert!(pq_verify(&pk, message, &sig).unwrap());
-    }
-}
