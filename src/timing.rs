@@ -10,19 +10,20 @@
 //! - Continuous mining synchronization
 
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tokio::time::{interval_at, Interval, MissedTickBehavior};
+use tokio::time::{interval_at, Instant as TokioInstant, Interval, MissedTickBehavior};
 use tracing::{debug, error, info, warn};
 
 /// Microsecond precision timing constants
 pub const MICROSECOND_PRECISION: u64 = 1_000; // 1ms = 1000 microseconds
-pub const TARGET_BLOCK_TIME_US: u64 = 31_000; // 31ms in microseconds
-pub const MIN_BLOCK_TIME_US: u64 = 25_000; // 25ms minimum
-pub const MAX_BLOCK_TIME_US: u64 = 50_000; // 50ms maximum for emergency
-pub const MINING_TICK_PRECISION_US: u64 = 100; // 100μs mining tick precision
-pub const TX_PROCESSING_QUANTUM_US: u64 = 50; // 50μs transaction processing quantum
+pub const TARGET_BLOCK_TIME_US: u64 = 28_000; // 28ms in microseconds (35.7 BPS)
+pub const MIN_BLOCK_TIME_US: u64 = 20_000; // 20ms minimum (50 BPS max)
+pub const MAX_BLOCK_TIME_US: u64 = 40_000; // 40ms maximum for emergency (25 BPS min)
+pub const MINING_TICK_PRECISION_US: u64 = 50; // 50μs mining tick precision (improved)
+pub const TX_PROCESSING_QUANTUM_US: u64 = 25; // 25μs transaction processing quantum (improved)
 
 /// High-precision timing metrics
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,9 +44,11 @@ pub struct MicrosecondTimer {
     start_time: Instant,
     target_interval_us: AtomicU64,
     actual_intervals_us: Arc<std::sync::Mutex<Vec<u64>>>,
-    drift_correction_us: AtomicU64,
     is_running: AtomicBool,
     tick_count: AtomicU64,
+    // New: High-precision interval timer
+    interval_handle: Arc<std::sync::Mutex<Option<Interval>>>,
+    last_tick_time: Arc<std::sync::Mutex<Option<Instant>>>,
 }
 
 impl MicrosecondTimer {
@@ -55,55 +58,81 @@ impl MicrosecondTimer {
             start_time: Instant::now(),
             target_interval_us: AtomicU64::new(target_interval_us),
             actual_intervals_us: Arc::new(std::sync::Mutex::new(Vec::new())),
-            drift_correction_us: AtomicU64::new(0),
             is_running: AtomicBool::new(false),
             tick_count: AtomicU64::new(0),
+            interval_handle: Arc::new(std::sync::Mutex::new(None)),
+            last_tick_time: Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
-    /// Start the timer with drift correction
+    /// Start the timer with high-precision interval
     pub fn start(&self) {
         self.is_running.store(true, Ordering::Relaxed);
+        let target_us = self.target_interval_us.load(Ordering::Relaxed);
+
+        // Create high-precision interval timer
+        let start_time = TokioInstant::now() + Duration::from_micros(target_us);
+        let mut interval = interval_at(start_time, Duration::from_micros(target_us));
+        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+        if let Ok(mut handle) = self.interval_handle.lock() {
+            *handle = Some(interval);
+        }
+
         debug!(
-            "MicrosecondTimer started with target interval: {}μs",
-            self.target_interval_us.load(Ordering::Relaxed)
+            "MicrosecondTimer started with high-precision interval: {}μs",
+            target_us
         );
     }
 
     /// Stop the timer
     pub fn stop(&self) {
         self.is_running.store(false, Ordering::Relaxed);
+
+        // Clear interval handle
+        if let Ok(mut handle) = self.interval_handle.lock() {
+            *handle = None;
+        }
+
         debug!(
             "MicrosecondTimer stopped after {} ticks",
             self.tick_count.load(Ordering::Relaxed)
         );
     }
 
-    /// Get precise tick with drift correction
+    /// Get precise tick using tokio::time::interval for zero-drift timing
+    /// High-precision tick with microsecond accuracy
     pub async fn tick(&self) -> Duration {
-        if !self.is_running.load(Ordering::Relaxed) {
-            return Duration::from_micros(0);
-        }
-
         let tick_start = Instant::now();
-        let target_us = self.target_interval_us.load(Ordering::Relaxed);
-        let drift_correction = self.drift_correction_us.load(Ordering::Relaxed);
-        let tick_count = self.tick_count.load(Ordering::Relaxed);
 
-        // Apply drift correction
-        let adjusted_target_us = if drift_correction > 0 {
-            target_us.saturating_sub(drift_correction)
-        } else {
-            target_us
+        // Use high-precision interval timer instead of sleep
+        let should_use_interval = {
+            let handle = self.interval_handle.lock().unwrap();
+            handle.is_some()
         };
 
-        // High-precision sleep
-        tokio::time::sleep(Duration::from_micros(adjusted_target_us)).await;
+        if should_use_interval {
+            let mut interval_opt = {
+                let mut handle = self.interval_handle.lock().unwrap();
+                handle.take()
+            };
+
+            if let Some(ref mut interval) = interval_opt {
+                interval.tick().await;
+                // Put the interval back
+                let mut handle = self.interval_handle.lock().unwrap();
+                *handle = Some(interval_opt.unwrap());
+            }
+        } else {
+            // Fallback to sleep if interval not initialized
+            let target_us = self.target_interval_us.load(Ordering::Relaxed);
+            tokio::time::sleep(Duration::from_micros(target_us)).await;
+        }
 
         let actual_duration = tick_start.elapsed();
         let actual_us = actual_duration.as_micros() as u64;
 
-        // Record actual interval for drift analysis
+        // Record actual interval for performance monitoring
         if let Ok(mut intervals) = self.actual_intervals_us.lock() {
             intervals.push(actual_us);
             // Keep only last 1000 intervals for analysis
@@ -112,35 +141,56 @@ impl MicrosecondTimer {
             }
         }
 
-        // Only update drift correction if this wasn't an immediate tick reset
-        // This prevents overwriting the immediate tick correction
-        if tick_count > 0 {
-            // Update drift correction
-            let drift = actual_us as i64 - target_us as i64;
-            if drift.abs() > 10 {
-                // Only correct if drift > 10μs
-                self.drift_correction_us.store(
-                    (drift / 4).max(0) as u64, // Gradual correction
-                    Ordering::Relaxed,
-                );
-            }
-        } else {
-            // This was an immediate tick, clear the drift correction for next time
-            self.drift_correction_us.store(0, Ordering::Relaxed);
+        // Update last tick time for drift analysis
+        if let Ok(mut last_tick) = self.last_tick_time.lock() {
+            *last_tick = Some(tick_start);
         }
 
         self.tick_count.fetch_add(1, Ordering::Relaxed);
         actual_duration
     }
 
-    /// Reset timer for immediate tick (used when block is mined)
+    /// Reset timer for immediate tick with interval recreation
     pub fn reset_for_immediate_tick(&self) {
-        // Set drift correction to the full target interval to make next tick immediate
         let target_us = self.target_interval_us.load(Ordering::Relaxed);
-        self.drift_correction_us.store(target_us, Ordering::Relaxed);
-        // Reset tick count to indicate this is an immediate reset
+
+        // Recreate interval for immediate next tick
+        let immediate_start = TokioInstant::now();
+        let mut interval = interval_at(immediate_start, Duration::from_micros(target_us));
+        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+        if let Ok(mut handle) = self.interval_handle.lock() {
+            *handle = Some(interval);
+        }
+
+        // Reset tick count to indicate immediate reset
         self.tick_count.store(0, Ordering::Relaxed);
-        debug!("Timer reset for immediate tick after block mining - next tick will be immediate");
+        debug!(
+            "Timer reset for immediate tick with interval recreation - next tick will be immediate"
+        );
+    }
+
+    /// Update target interval dynamically
+    pub fn update_target_interval(&self, new_target_us: u64) {
+        let old_target = self
+            .target_interval_us
+            .swap(new_target_us, Ordering::Relaxed);
+
+        // Recreate interval with new target if running
+        if self.is_running.load(Ordering::Relaxed) {
+            let start_time = TokioInstant::now() + Duration::from_micros(new_target_us);
+            let mut interval = interval_at(start_time, Duration::from_micros(new_target_us));
+            interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+            if let Ok(mut handle) = self.interval_handle.lock() {
+                *handle = Some(interval);
+            }
+        }
+
+        debug!(
+            "Timer target interval updated: {}μs -> {}μs",
+            old_target, new_target_us
+        );
     }
 
     /// Get timing statistics
@@ -214,6 +264,17 @@ pub struct BlockTimingCoordinator {
     last_block_time: AtomicU64,
     target_bps: AtomicU64,
     actual_bps: AtomicU64,
+    // Adaptive timing fields
+    load_factor: AtomicU64, // 0-100 representing system load percentage
+    adaptive_interval_us: AtomicU64, // Current adaptive interval
+    performance_history: Arc<std::sync::Mutex<VecDeque<f64>>>, // BPS history for trend analysis
+    last_adjustment_time: AtomicU64,
+    // New: Predictive scheduling fields
+    moving_average_window: Arc<std::sync::Mutex<VecDeque<u64>>>, // Block time moving average
+    predicted_next_block_time: AtomicU64, // Predicted optimal next block time
+    difficulty_adjustment_factor: Arc<std::sync::Mutex<f64>>, // Dynamic difficulty multiplier
+    consecutive_fast_blocks: AtomicU64,   // Counter for consecutive fast blocks
+    consecutive_slow_blocks: AtomicU64,   // Counter for consecutive slow blocks
 }
 
 impl Default for BlockTimingCoordinator {
@@ -223,7 +284,7 @@ impl Default for BlockTimingCoordinator {
 }
 
 impl BlockTimingCoordinator {
-    /// Create new timing coordinator for 32+ BPS
+    /// Create new timing coordinator for 32+ BPS with predictive scheduling
     pub fn new() -> Self {
         Self {
             block_timer: MicrosecondTimer::new(TARGET_BLOCK_TIME_US),
@@ -232,12 +293,22 @@ impl BlockTimingCoordinator {
             last_block_time: AtomicU64::new(0),
             target_bps: AtomicU64::new(32), // 32+ BPS target
             actual_bps: AtomicU64::new(0),
+            load_factor: AtomicU64::new(50), // Start at 50% load
+            adaptive_interval_us: AtomicU64::new(TARGET_BLOCK_TIME_US),
+            performance_history: Arc::new(std::sync::Mutex::new(VecDeque::with_capacity(100))),
+            last_adjustment_time: AtomicU64::new(0),
+            // Initialize predictive scheduling
+            moving_average_window: Arc::new(std::sync::Mutex::new(VecDeque::with_capacity(20))),
+            predicted_next_block_time: AtomicU64::new(TARGET_BLOCK_TIME_US),
+            difficulty_adjustment_factor: Arc::new(std::sync::Mutex::new(1.0)),
+            consecutive_fast_blocks: AtomicU64::new(0),
+            consecutive_slow_blocks: AtomicU64::new(0),
         }
     }
 
-    /// Start all timing systems
+    /// Start all timing systems with predictive scheduling
     pub async fn start(&self) {
-        info!("Starting BlockTimingCoordinator for 32+ BPS performance");
+        info!("Starting BlockTimingCoordinator for 32+ BPS with predictive scheduling and adaptive difficulty");
         self.block_timer.start();
         self.mining_timer.start();
         self.tx_processing_timer.start();
@@ -247,6 +318,296 @@ impl BlockTimingCoordinator {
         tokio::spawn(async move {
             coordinator.monitor_bps().await;
         });
+
+        // Start adaptive timing adjustment task
+        let coordinator_adaptive = self.clone();
+        tokio::spawn(async move {
+            coordinator_adaptive.adaptive_timing_loop().await;
+        });
+
+        // Start predictive scheduling task
+        let coordinator_predictive = self.clone();
+        tokio::spawn(async move {
+            coordinator_predictive.predictive_scheduling_loop().await;
+        });
+    }
+
+    /// Predictive scheduling loop using moving averages
+    async fn predictive_scheduling_loop(&self) {
+        let mut interval = tokio::time::interval(Duration::from_millis(100)); // Update every 100ms
+        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+        loop {
+            interval.tick().await;
+            self.update_predictive_scheduling().await;
+        }
+    }
+    /// Safe weighted average calculation to prevent overflow
+    fn weighted_average(values: &[u64], weights: &[f64]) -> Option<f64> {
+        if values.is_empty() || weights.is_empty() || values.len() != weights.len() {
+            return None;
+        }
+
+        let mut weighted_sum = 0.0;
+        let mut weight_sum = 0.0;
+
+        for (&value, &weight) in values.iter().zip(weights.iter()) {
+            if weight < 0.0 || !weight.is_finite() {
+                continue; // Skip invalid weights
+            }
+            weighted_sum += value as f64 * weight;
+            weight_sum += weight;
+        }
+
+        if weight_sum > 0.0 {
+            Some(weighted_sum / weight_sum)
+        } else {
+            None
+        }
+    }
+
+    /// Safe trend calculation using f64 arithmetic
+    fn calculate_safe_trend(recent_values: &[u64], older_values: &[u64]) -> Option<f64> {
+        if recent_values.is_empty() || older_values.is_empty() {
+            return None;
+        }
+
+        let recent_avg =
+            recent_values.iter().map(|&x| x as f64).sum::<f64>() / recent_values.len() as f64;
+        let older_avg =
+            older_values.iter().map(|&x| x as f64).sum::<f64>() / older_values.len() as f64;
+
+        if older_avg > 0.0 && recent_avg.is_finite() && older_avg.is_finite() {
+            Some(recent_avg / older_avg)
+        } else {
+            None
+        }
+    }
+
+    /// Update predictive scheduling based on recent block times
+    async fn update_predictive_scheduling(&self) {
+        // Compute prediction while holding the lock, but ensure we drop the guard before any await
+        let mut has_enough_samples = false;
+
+        if let Ok(window) = self.moving_average_window.lock() {
+            if window.len() < 5 {
+                // Not enough samples, return early (no await involved while holding the lock)
+                return;
+            }
+            has_enough_samples = true;
+
+            // Calculate weighted moving average using safe f64 arithmetic
+            let values: Vec<u64> = window.iter().copied().collect();
+            let weights: Vec<f64> = (1..=values.len()).map(|i| i as f64).collect();
+
+            if let Some(predicted_time_f64) = Self::weighted_average(&values, &weights) {
+                let predicted_time = predicted_time_f64.round() as u64;
+
+                // Apply trend analysis for better prediction using safe calculations
+                if window.len() >= 10 {
+                    let recent_values: Vec<u64> = window.iter().rev().take(5).copied().collect();
+                    let older_values: Vec<u64> =
+                        window.iter().rev().skip(5).take(5).copied().collect();
+
+                    if let Some(trend_factor) = Self::calculate_safe_trend(&recent_values, &older_values)
+                    {
+                        let trend_adjusted_time_f64 = predicted_time as f64 * trend_factor;
+                        if trend_adjusted_time_f64.is_finite() {
+                            let trend_adjusted_time = trend_adjusted_time_f64.round() as u64;
+                            let clamped =
+                                trend_adjusted_time.clamp(MIN_BLOCK_TIME_US, MAX_BLOCK_TIME_US);
+                            self.predicted_next_block_time
+                                .store(clamped, Ordering::Relaxed);
+                        } else {
+                            self.predicted_next_block_time
+                                .store(predicted_time, Ordering::Relaxed);
+                        }
+                    } else {
+                        self.predicted_next_block_time
+                            .store(predicted_time, Ordering::Relaxed);
+                    }
+                } else {
+                    self.predicted_next_block_time
+                        .store(predicted_time, Ordering::Relaxed);
+                }
+            }
+        }
+
+        // Drop lock before awaiting to keep future Send
+        if has_enough_samples {
+            // The call below performs .await without holding any MutexGuard
+            self.update_difficulty_adjustment().await;
+        }
+    }
+
+    /// Update difficulty adjustment factor based on block timing patterns
+    async fn update_difficulty_adjustment(&self) {
+        let target_time = TARGET_BLOCK_TIME_US;
+        let predicted_time = self.predicted_next_block_time.load(Ordering::Relaxed);
+        let fast_blocks = self.consecutive_fast_blocks.load(Ordering::Relaxed);
+        let slow_blocks = self.consecutive_slow_blocks.load(Ordering::Relaxed);
+
+        if let Ok(mut difficulty_factor) = self.difficulty_adjustment_factor.lock() {
+            // Adjust difficulty based on consecutive fast/slow blocks
+            if fast_blocks >= 3 {
+                // Too many fast blocks - increase difficulty
+                *difficulty_factor = (*difficulty_factor * 1.05).min(2.0);
+                self.consecutive_fast_blocks.store(0, Ordering::Relaxed);
+                debug!(
+                    "Increased difficulty factor to {:.3} due to {} consecutive fast blocks",
+                    *difficulty_factor, fast_blocks
+                );
+            } else if slow_blocks >= 3 {
+                // Too many slow blocks - decrease difficulty
+                *difficulty_factor = (*difficulty_factor * 0.95).max(0.5);
+                self.consecutive_slow_blocks.store(0, Ordering::Relaxed);
+                debug!(
+                    "Decreased difficulty factor to {:.3} due to {} consecutive slow blocks",
+                    *difficulty_factor, slow_blocks
+                );
+            }
+
+            // Fine-tune based on prediction vs target
+            let prediction_ratio = predicted_time as f64 / target_time as f64;
+            if prediction_ratio > 1.2 {
+                // Predicted time too slow
+                *difficulty_factor *= 0.98;
+            } else if prediction_ratio < 0.8 {
+                // Predicted time too fast
+                *difficulty_factor *= 1.02;
+            }
+
+            *difficulty_factor = difficulty_factor.clamp(0.5, 2.0);
+        }
+    }
+
+    /// Get current difficulty adjustment factor for mining
+    pub fn get_difficulty_adjustment_factor(&self) -> f64 {
+        self.difficulty_adjustment_factor
+            .lock()
+            .map(|f| *f)
+            .unwrap_or(1.0)
+    }
+
+    /// Get predicted next block time for optimization
+    pub fn get_predicted_block_time(&self) -> u64 {
+        self.predicted_next_block_time.load(Ordering::Relaxed)
+    }
+
+    /// Adaptive timing adjustment loop
+    async fn adaptive_timing_loop(&self) {
+        let mut interval = tokio::time::interval(Duration::from_millis(250)); // Adjust every 250ms for faster response
+        interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+        loop {
+            interval.tick().await;
+            self.adjust_timing_based_on_load().await;
+        }
+    }
+
+    /// Adjust timing intervals based on current system load and performance
+    async fn adjust_timing_based_on_load(&self) {
+        let current_bps = self.actual_bps.load(Ordering::Relaxed) as f64;
+        let target_bps = self.target_bps.load(Ordering::Relaxed) as f64;
+        let load_factor = self.load_factor.load(Ordering::Relaxed) as f64 / 100.0;
+
+        // Update performance history
+        if let Ok(mut history) = self.performance_history.lock() {
+            history.push_back(current_bps);
+            if history.len() > 100 {
+                history.pop_front();
+            }
+        }
+
+        // Calculate performance ratio and trend
+        let performance_ratio = if target_bps > 0.0 {
+            current_bps / target_bps
+        } else {
+            0.0
+        };
+        let trend = self.calculate_performance_trend();
+
+        // Determine new adaptive interval based on multiple factors
+        let current_interval = self.adaptive_interval_us.load(Ordering::Relaxed);
+        let mut new_interval = current_interval;
+
+        // Adaptive logic: 15-35ms range based on load and performance (more aggressive)
+        if performance_ratio < 0.85 {
+            // Performance below 85% of target - reduce interval (faster blocks)
+            let reduction_factor = 0.92 - (load_factor * 0.12); // More aggressive reduction
+            new_interval = ((current_interval as f64) * reduction_factor) as u64;
+            new_interval = new_interval.max(15_000); // Min 15ms (66.7 BPS)
+        } else if performance_ratio > 1.15 && trend > 0.08 {
+            // Performance above 115% and trending up - can increase interval slightly
+            let increase_factor = 1.03 + (load_factor * 0.02); // More conservative increase
+            new_interval = ((current_interval as f64) * increase_factor) as u64;
+            new_interval = new_interval.min(35_000); // Max 35ms (28.6 BPS)
+        }
+
+        // Apply load-based fine-tuning (more aggressive)
+        if load_factor > 0.85 {
+            // High load - be more conservative
+            new_interval = new_interval.max(30_000); // At least 30ms under high load
+        } else if load_factor < 0.25 {
+            // Low load - can be very aggressive
+            new_interval = new_interval.min(20_000); // At most 20ms under low load (50 BPS)
+        }
+
+        // Only adjust if change is significant (>3% or >1ms) - more responsive
+        let change_threshold = (current_interval as f64 * 0.03).max(1000.0) as u64;
+        if (new_interval as i64 - current_interval as i64).abs() > change_threshold as i64 {
+            self.adaptive_interval_us
+                .store(new_interval, Ordering::Relaxed);
+            self.block_timer
+                .target_interval_us
+                .store(new_interval, Ordering::Relaxed);
+
+            let now_us = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_micros() as u64;
+            self.last_adjustment_time.store(now_us, Ordering::Relaxed);
+
+            debug!(
+                "Adaptive timing adjustment: {}μs -> {}μs (load: {:.1}%, BPS: {:.2}, trend: {:.3})",
+                current_interval,
+                new_interval,
+                load_factor * 100.0,
+                current_bps,
+                trend
+            );
+        }
+    }
+
+    /// Calculate performance trend from recent history
+    fn calculate_performance_trend(&self) -> f64 {
+        if let Ok(history) = self.performance_history.lock() {
+            if history.len() < 10 {
+                return 0.0;
+            }
+
+            let recent_avg: f64 = history.iter().rev().take(5).sum::<f64>() / 5.0;
+            let older_avg: f64 = history.iter().rev().skip(5).take(5).sum::<f64>() / 5.0;
+
+            if older_avg > 0.0 {
+                (recent_avg - older_avg) / older_avg
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        }
+    }
+
+    /// Update system load factor (0-100)
+    pub fn update_load_factor(&self, load_percentage: u64) {
+        let clamped_load = load_percentage.min(100);
+        self.load_factor.store(clamped_load, Ordering::Relaxed);
+    }
+
+    /// Get current adaptive interval
+    pub fn get_adaptive_interval_us(&self) -> u64 {
+        self.adaptive_interval_us.load(Ordering::Relaxed)
     }
 
     /// Wait for next block timing window
@@ -373,6 +734,27 @@ impl Clone for BlockTimingCoordinator {
             last_block_time: AtomicU64::new(self.last_block_time.load(Ordering::Relaxed)),
             target_bps: AtomicU64::new(self.target_bps.load(Ordering::Relaxed)),
             actual_bps: AtomicU64::new(self.actual_bps.load(Ordering::Relaxed)),
+            load_factor: AtomicU64::new(self.load_factor.load(Ordering::Relaxed)),
+            adaptive_interval_us: AtomicU64::new(self.adaptive_interval_us.load(Ordering::Relaxed)),
+            performance_history: Arc::new(std::sync::Mutex::new(VecDeque::with_capacity(100))),
+            last_adjustment_time: AtomicU64::new(self.last_adjustment_time.load(Ordering::Relaxed)),
+            // Clone predictive scheduling fields
+            moving_average_window: Arc::new(std::sync::Mutex::new(VecDeque::with_capacity(20))),
+            predicted_next_block_time: AtomicU64::new(
+                self.predicted_next_block_time.load(Ordering::Relaxed),
+            ),
+            difficulty_adjustment_factor: Arc::new(std::sync::Mutex::new(
+                self.difficulty_adjustment_factor
+                    .lock()
+                    .map(|f| *f)
+                    .unwrap_or(1.0),
+            )),
+            consecutive_fast_blocks: AtomicU64::new(
+                self.consecutive_fast_blocks.load(Ordering::Relaxed),
+            ),
+            consecutive_slow_blocks: AtomicU64::new(
+                self.consecutive_slow_blocks.load(Ordering::Relaxed),
+            ),
         }
     }
 }
