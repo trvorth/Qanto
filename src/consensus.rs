@@ -78,6 +78,22 @@ impl Consensus {
         Self { saga }
     }
 
+    /// **CANONICAL POW VALIDATION FUNCTION**
+    /// 
+    /// This is the single source of truth for Proof-of-Work validation.
+    /// Both the miner and DAG validation logic MUST use this function to ensure consistency.
+    /// 
+    /// # Arguments
+    /// * `hash_bytes` - The block hash as raw bytes
+    /// * `difficulty` - The target difficulty as a floating-point number
+    /// 
+    /// # Returns
+    /// * `true` if the hash meets the difficulty target, `false` otherwise
+    pub fn is_pow_valid(hash_bytes: &[u8], difficulty: f64) -> bool {
+        let target_hash = crate::miner::Miner::calculate_target_from_difficulty(difficulty);
+        crate::miner::Miner::hash_meets_target(hash_bytes, &target_hash)
+    }
+
     /// The primary validation function. It checks a block against all consensus rules,
     /// prioritizing Proof-of-Work as the primary finality mechanism.
     pub async fn validate_block(
@@ -159,7 +175,10 @@ impl Consensus {
             );
         }
 
-        debug!("All consensus checks passed for block {}", block.id);
+        debug!(
+            "All consensus checks passed for block {block_id}",
+            block_id = block.id
+        );
         Ok(())
     }
 
@@ -277,16 +296,11 @@ impl Consensus {
             return Err(ConsensusError::ProofOfWorkFailed(msg));
         }
 
-        // Now uses a deterministic, integer-based calculation internally.
-        let target_hash =
-            crate::miner::Miner::calculate_target_from_difficulty(effective_difficulty);
-        let block_pow_hash = hex::decode(block.hash()).map_err(|_| {
-            ConsensusError::StateError("Failed to decode block PoW hash".to_string())
-        })?;
-
-        if !crate::miner::Miner::hash_meets_target(&block_pow_hash, &target_hash) {
+        // Use the canonical PoW validation function (using nonce-including PoW hash)
+        let block_pow_hash = block.hash_for_pow();
+        if !Self::is_pow_valid(block_pow_hash.as_bytes(), effective_difficulty) {
             return Err(ConsensusError::ProofOfWorkFailed(
-                "Block hash does not meet PoSe difficulty target.".to_string(),
+                "Block PoW hash does not meet PoSe difficulty target.".to_string(),
             ));
         }
 
@@ -301,15 +315,18 @@ impl Consensus {
     /// This is the core of PoSe, where SAGA's intelligence modifies the base PoW.
     pub async fn get_effective_difficulty(&self, miner_address: &str) -> f64 {
         let rules = self.saga.economy.epoch_rules.read().await;
-        
+
         // Debug logging to see what's in the rules HashMap
         debug!("Available rules: {:?}", rules.keys().collect::<Vec<_>>());
-        
+
         let base_difficulty = rules.get("base_difficulty").map_or(10.0, |r| {
-            debug!("Found base_difficulty rule with value: {}", r.value);
+            debug!(
+                "Found base_difficulty rule with value: {value}",
+                value = r.value
+            );
             r.value
         });
-        
+
         if !rules.contains_key("base_difficulty") {
             debug!("base_difficulty rule not found, using fallback value of 10.0");
         }
@@ -326,8 +343,10 @@ impl Consensus {
         let difficulty_modifier = 1.0 - (scs - 0.5);
         let effective_difficulty = base_difficulty * difficulty_modifier;
 
-        debug!("Calculated effective difficulty: {} (base: {}, modifier: {})", 
-               effective_difficulty, base_difficulty, difficulty_modifier);
+        debug!(
+            "Calculated effective difficulty: {} (base: {}, modifier: {})",
+            effective_difficulty, base_difficulty, difficulty_modifier
+        );
 
         // Clamp the difficulty within a reasonable range (e.g., 50% to 200% of base).
         effective_difficulty.clamp(base_difficulty / 2.0, base_difficulty * 2.0)

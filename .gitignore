@@ -25,11 +25,11 @@
 node*/cert.pem
 /filter_sensitive_commits.py
 /integrate_isnm.sh
-/K8s
-/helm
+/.wrangler
 /data
 /logs
 /monitoring
+/.trae
 
 # --- IDE & Editor Files ---
 .idea/
@@ -99,12 +99,15 @@ node*/*.txt
 # --- Production Configuration Files ---
 /config.bootnode.toml
 /config.performance.toml
-/config.toml.production
+/config.toml.mainnet
 /mining_rig_config.toml
 /wrangler.toml
 /config.toml
+/config.toml.mainnet
+/test_config.toml
 /.cargo/config.toml
 /hydra_manifest.toml
+/test_config.toml
 
 # --- Generated Project Files ---
 /header.tex
@@ -134,6 +137,7 @@ node*/*.txt
 /stress_test.sh
 /deployment/Kubernetes/secrets.yaml
 /deployment/website
+/deployment
 /DEPENDENCY_MIGRATION.md
 /DUPLICATION_AUDIT_REPORT.md
 /instance
@@ -152,6 +156,7 @@ cleanup-*.log
 /lighthouse-audit.json
 /package.json
 /package-lock.json
+/cargo-flamegraph.trace
 
 # --- Language & Framework Specific ---
 # Python
@@ -238,7 +243,9 @@ out/
 # Package manager lock files (keep package-lock.json for consistency)
 yarn.lock
 pnpm-lock.yaml
-/profile.json.gz
+/profile.json.
+/package.json
+/package-lock.json
 
 
 /web/dist/
@@ -252,12 +259,14 @@ yarn-error.log*
 
 
 # --- Cargo & Rust Specific ---
+/benchmark_data
 
 # --- Documentation ---
 /docs/whitepaper/assets/diagrams/*.svg
 /docs/whitepaper/Qanto-whitepaper.docx
 /docs/whitepaper/~$nto-whitepaper.docx
 /docs/audits
+/qanto-docs
 # --- Local Scripts ---
 /scripts/run_local_net.sh
 /myblockchain/testnet_debug.sh
@@ -353,7 +362,7 @@ web/.next/
 web/.nuxt/
 web/.turbo/
 web/.vite/
-
+/worker.js
 # Rust tooling & perf outputs
 .cargo/
 flamegraph.svg

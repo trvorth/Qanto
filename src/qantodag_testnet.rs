@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         hex::encode(signing_key.to_bytes())
     });
     let wallet = Wallet::from_private_key(&private_key_hex)?;
-    info!("Testnet node wallet address: {}", wallet.address());
+    info!("Testnet node wallet address: {address}", address = wallet.address());
 
     let config = Config {
         p2p_address: "/ip4/127.0.0.1/tcp/0".to_string(),
@@ -39,6 +39,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mining_chain_id: 0,
         logging: qanto::config::LoggingConfig {
             level: "info".to_string(),
+            enable_block_celebrations: true, // Enable celebrations in testnet
+            celebration_log_level: "info".to_string(),
+            celebration_throttle_per_min: None,
         },
         p2p: qanto::config::P2pConfig::default(),
     };

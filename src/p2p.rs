@@ -13,7 +13,7 @@
 use crate::config::P2pConfig;
 use crate::mempool::Mempool;
 use crate::node::PeerCache;
-use crate::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey};
+use qanto_core::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey};
 use crate::qantodag::{QantoBlock, QantoDAG};
 use crate::saga::CarbonOffsetCredential;
 use crate::transaction::Transaction;
@@ -328,6 +328,50 @@ impl P2PServer {
             Self::subscribe_to_topics(config.topic_prefix, &mut swarm.behaviour_mut().gossipsub)?;
 
         Self::listen_on_addresses(&mut swarm, &config.listen_addresses, &local_peer_id)?;
+
+        // Attempt to load peers from cache and connect to them at startup
+        if let Ok(cache_json) = fs::read_to_string(&config.peer_cache_path) {
+            match serde_json::from_str::<PeerCache>(&cache_json) {
+                Ok(cache) => {
+                    for addr_str in cache.peers.iter() {
+                        if let Ok(multiaddr) = addr_str.parse::<Multiaddr>() {
+                            // Add to Kademlia routing table if PeerId is present
+                            if let Some(peer_id) = multiaddr.iter().find_map(|p| {
+                                if let libp2p::multiaddr::Protocol::P2p(id) = p {
+                                    Some(id)
+                                } else {
+                                    None
+                                }
+                            }) {
+                                swarm
+                                    .behaviour_mut()
+                                    .kademlia
+                                    .add_address(&peer_id, multiaddr.clone());
+                                info!(
+                                    "Loaded cached peer into Kademlia: {} at {}",
+                                    peer_id, multiaddr
+                                );
+                            }
+                            // Try dialing regardless, to establish connection
+                            if let Err(e) = swarm.dial(multiaddr.clone()) {
+                                warn!("Failed to dial cached peer {multiaddr}: {e}");
+                            }
+                        } else {
+                            warn!("Invalid multiaddr in peer cache: {}", addr_str);
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to parse peer cache at {}: {}",
+                        &config.peer_cache_path, e
+                    );
+                }
+            }
+        } else {
+            info!("Peer cache file not found at {}", &config.peer_cache_path);
+        }
+
         if !config.initial_peers.is_empty() {
             Self::dial_initial_peers(&mut swarm, &config.initial_peers).await;
         }

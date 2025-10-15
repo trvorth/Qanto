@@ -66,9 +66,7 @@ impl MmapDagStorage {
         // Create memory mapping
         let mmap = unsafe { MmapOptions::new().len(initial_size).map_mut(&file)? };
 
-        info!(
-            "MEMORY OPTIMIZATION: Created mmap DAG storage with {max_size_gb}GB capacity"
-        );
+        info!("MEMORY OPTIMIZATION: Created mmap DAG storage with {max_size_gb}GB capacity");
 
         Ok(Self {
             mmap,
@@ -253,9 +251,7 @@ impl TransactionArena {
         // Allocate initial chunk
         arena.allocate_new_chunk()?;
 
-        info!(
-            "MEMORY OPTIMIZATION: Created transaction arena with {chunk_size_mb}MB chunks"
-        );
+        info!("MEMORY OPTIMIZATION: Created transaction arena with {chunk_size_mb}MB chunks");
 
         Ok(arena)
     }
@@ -434,7 +430,7 @@ impl ArenaMempool {
         transaction: Transaction,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let start_time = Instant::now();
-        
+
         // Create prioritized transaction
         let prioritized_tx = PrioritizedTransaction {
             tx: transaction.clone(),
@@ -456,14 +452,15 @@ impl ArenaMempool {
         };
 
         let tx_size = std::mem::size_of_val(&prioritized_tx);
-        
+
         // Check memory limits
         if self.current_memory_bytes.load(Ordering::Relaxed) + tx_size > self.max_memory_bytes {
             return Err("Memory limit exceeded".into());
         }
 
         // Store transaction
-        self.transactions.insert(transaction.id.clone(), prioritized_tx);
+        self.transactions
+            .insert(transaction.id.clone(), prioritized_tx);
 
         // Update priority queue
         {

@@ -357,6 +357,10 @@ impl MutationRoot {
             receiver: input.to.clone(),
             amount: input.amount as u64,
             fee: input.fee.unwrap_or(1000.0) as u64,
+            gas_limit: 21000,
+            gas_used: 0,
+            gas_price: 1,
+            priority_fee: 0,
             inputs: vec![],
             outputs: vec![],
             signature: crate::types::QuantumResistantSignature {
@@ -368,6 +372,7 @@ impl MutationRoot {
                 .unwrap()
                 .as_secs(),
             metadata: std::collections::HashMap::new(),
+            fee_breakdown: None,
         };
 
         // Submit to mempool

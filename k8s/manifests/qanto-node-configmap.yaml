@@ -1,0 +1,162 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qanto-node-config
+  namespace: qanto
+  labels:
+    app: qanto-node
+    component: config
+data:
+  config.toml: |
+    # Qanto Node Configuration
+    
+    [network]
+    name = "qanto-mainnet"
+    chain_spec = "mainnet"
+    bootnodes = [
+      "/dns4/bootnode-1.qanto.network/tcp/30333/p2p/12D3KooWBootnode1",
+      "/dns4/bootnode-2.qanto.network/tcp/30333/p2p/12D3KooWBootnode2"
+    ]
+    
+    [rpc]
+    host = "0.0.0.0"
+    port = 8080
+    cors = ["*"]
+    max_connections = 100
+    max_request_size = 15728640  # 15MB
+    max_response_size = 15728640  # 15MB
+    
+    [websocket]
+    host = "0.0.0.0"
+    port = 9944
+    max_connections = 100
+    
+    [p2p]
+    port = 30333
+    max_peers = 50
+    discovery_enabled = true
+    mdns_enabled = false
+    
+    [metrics]
+    enabled = true
+    host = "0.0.0.0"
+    port = 8081
+    
+    [storage]
+    path = "/data"
+    cache_size = 1024  # MB
+    state_pruning = "archive"
+    blocks_pruning = "archive"
+    
+    [logging]
+    level = "info"
+    targets = [
+      "qanto=info",
+      "runtime=info",
+      "consensus=info",
+      "network=info"
+    ]
+    
+    [consensus]
+    algorithm = "proof-of-stake"
+    block_time = 6000  # 6 seconds
+    epoch_duration = 2400  # blocks
+    
+    [telemetry]
+    enabled = true
+    endpoints = [
+      "wss://telemetry.qanto.network/submit 0"
+    ]
+    
+    [database]
+    backend = "rocksdb"
+    cache_size = 512  # MB
+    
+    [transaction_pool]
+    max_transactions = 8192
+    max_per_sender = 16
+    
+    [offchain_worker]
+    enabled = true
+    indexing_enabled = true
+  
+  genesis.json: |
+    {
+      "name": "Qanto Mainnet",
+      "id": "qanto-mainnet",
+      "chainType": "Live",
+      "bootNodes": [
+        "/dns4/bootnode-1.qanto.network/tcp/30333/p2p/12D3KooWBootnode1",
+        "/dns4/bootnode-2.qanto.network/tcp/30333/p2p/12D3KooWBootnode2"
+      ],
+      "telemetryEndpoints": [
+        ["wss://telemetry.qanto.network/submit", 0]
+      ],
+      "protocolId": "qanto",
+      "properties": {
+        "tokenDecimals": 18,
+        "tokenSymbol": "QANTO"
+      },
+      "consensusEngine": "qanto-pos",
+      "genesis": {
+        "runtime": {
+          "system": {
+            "code": "0x"
+          },
+          "balances": {
+            "balances": []
+          },
+          "session": {
+            "keys": []
+          },
+          "staking": {
+            "validatorCount": 100,
+            "minimumValidatorCount": 4,
+            "stakers": [],
+            "invulnerables": [],
+            "forceEra": "NotForcing",
+            "slashRewardFraction": 1000000000,
+            "canceledPayout": 0,
+            "historyDepth": 84,
+            "currentEra": 0,
+            "currentPlannedSession": 0,
+            "offendingValidators": []
+          }
+        }
+      }
+    }
+  
+  logging.yml: |
+    # Logging configuration
+    appenders:
+      stdout:
+        kind: console
+        encoder:
+          pattern: "{d(%Y-%m-%d %H:%M:%S)} [{l}] {M} - {m}{n}"
+      
+      file:
+        kind: file
+        path: "/data/logs/qanto.log"
+        encoder:
+          pattern: "{d(%Y-%m-%d %H:%M:%S)} [{l}] {t} {M} - {m}{n}"
+        append: true
+        
+      metrics:
+        kind: file
+        path: "/data/logs/metrics.log"
+        encoder:
+          pattern: "{d(%Y-%m-%d %H:%M:%S)} {m}{n}"
+        append: true
+    
+    root:
+      level: info
+      appenders:
+        - stdout
+        - file
+    
+    loggers:
+      qanto::metrics:
+        level: debug
+        appenders:
+          - metrics
+        additive: false

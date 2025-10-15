@@ -9,7 +9,7 @@
 
 **Repository for the official Rust implementation of the Qanto Protocol**  
 
-**Author**: trvorth
+**Author**: trvorth (trvorth@qanto.org)
 
 Visit [qanto.org](https://qanto.org)  | Follow [X] (https://x.com/QantoLayer0) | Join [Discord](https://discord.gg/curfp5FKWV)
 

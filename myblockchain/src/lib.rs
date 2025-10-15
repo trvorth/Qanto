@@ -17,9 +17,11 @@
 //!   `qanto_standalone` module for portability and security.
 
 // --- Module Declarations ---
+pub mod error;
 pub mod jsonrpc_server;
 pub mod qanhash;
 pub mod qanhash32x;
+pub use error::QanhashError;
 
 // --- Re-exports for Crate Root ---
 pub use crate::qanhash::{difficulty_to_target, is_solution_valid, Difficulty};

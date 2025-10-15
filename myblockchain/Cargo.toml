@@ -12,33 +12,32 @@ repository = "https://github.com/trvorth/qanto"
 exclude = ["target/", "tests/data/"]
 
 [dependencies]
-# Core 
+
+# Core utilities
 anyhow = "1.0.86"
-bincode = "1.3.3"
-num-bigint = "0.4"
-serde-big-array = "0.5"
-tokio = { version = "1.45.0", features = ["rt-multi-thread", "full", "time", "macros"] }
-# REMOVED: warp = "0.3" - Duplicate web server framework, using axum in main crate
-log = "0.4.22"
-env_logger = "0.11.8"
-hex = "0.4.3"
-nalgebra = "0.33.0"
-regex = "1.10.6"
-lru = "0.12.5"
+thiserror = "1.0.69"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.132"
-chrono = "0.4.38"
-prometheus = { version = "0.14.0", optional = true }
-tracing = "0.1.40"
-tracing-subscriber = { workspace = true }
+bincode = "1.3.3"
+hex = "0.4.3"
+uuid = { version = "1.10.0", features = ["v4", "serde"] }
+chrono = { version = "0.4.38", features = ["serde"] }
 lazy_static = "1.5.0"
-# atomic-shim = "0.1"  # Removed due to outdated crossbeam dependency with security vulnerabilities
-num_cpus = "1.16.0"
-thiserror = "1.0.69"  # Unified to match main crate version
+once_cell = "1.20.2"
+parking_lot = "0.12.3"
+crossbeam = "0.8.4"
+dashmap = "6.1.0"
+log = "0.4.21"
+tracing = "0.1.40"
+tokio = { version = "1.38.0", features = ["full"] }
+lru = "0.12.3"
+memmap2 = "0.9.8"
 primitive-types = "0.12.2"
-bytemuck = { version = "1.15.0", features = ["derive"] }
+num_cpus = "1.16.0"
+bytemuck = "1.14.0"
+env_logger = "0.11.3"
 
-# Cryptography & Hashing
+# Cryptography & Hashing - Using external for now, will be replaced with native implementations
 ed25519-dalek = { version = "2.2.0", features = ["rand_core", "batch", "serde"] }
 rand = { version = "0.8.5", features = ["small_rng"] }
 
@@ -48,7 +47,6 @@ rocksdb = { version = "0.22.0", default-features = false, features = ["multi-thr
 # Parallelism & Concurrency
 crossbeam-channel = "0.5.13"
 crossbeam-utils = "0.8.21"
-dashmap = "6.0.1"
 rayon = "1.10.0"
 
 # P2P Networking
@@ -78,7 +76,8 @@ opencl3 = { version = "0.9.3", optional = true, features = ["CL_VERSION_1_2"] }
 
 # Rate limiting and backoff
 governor = "0.10.0"
-retry = "2.0.0" 
+retry = "2.0.0"
+prometheus = { version = "0.14.0", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports", "async_tokio"] }
@@ -91,7 +90,7 @@ name = "main"
 harness = false
 
 [features]
-default = []
+default = ["zk"]
 zk = [
     "bellman",
     "bls12_381",
@@ -109,7 +108,3 @@ metrics = ["prometheus"]
 
 [lib]
 crate-type = ["rlib"]
-
-[[bin]]
-name = "qanto-node"
-path = "src/blockchain_node.rs"

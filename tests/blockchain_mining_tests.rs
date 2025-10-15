@@ -14,17 +14,15 @@ mod tests {
 
         // Test mining with very low difficulty
         let target = [0xff; 32]; // Very easy target
-        let mut nonce = 0u64;
         let mut found_solution = false;
 
         // Try up to 1000 nonces to find a solution
-        for _ in 0..1000 {
+        for (nonce, _) in (0..1000).enumerate() {
             let hash = qanto_hash(&nonce.to_le_bytes());
             if is_solution_valid(hash.as_bytes(), target) {
                 found_solution = true;
                 break;
             }
-            nonce += 1;
         }
 
         assert!(
@@ -50,8 +48,7 @@ mod tests {
 
         println!("✅ RPC mining status test passed");
         println!(
-            "Mining: {}, Difficulty: {}, Hash Rate: {}, Block Count: {}",
-            is_mining, difficulty, hash_rate, block_count
+            "Mining: {is_mining}, Difficulty: {difficulty}, Hash Rate: {hash_rate}, Block Count: {block_count}"
         );
     }
 
@@ -69,7 +66,7 @@ mod tests {
             // Try to mine a block
             while attempts < 1000 && !found_solution {
                 attempts += 1;
-                let nonce_data = format!("block_{}_nonce_{}", i, attempts);
+                let nonce_data = format!("block_{i}_nonce_{attempts}");
                 let hash = qanto_hash(nonce_data.as_bytes());
 
                 if is_solution_valid(hash.as_bytes(), target) {

@@ -1,8 +1,8 @@
 /**
  * @file kernel.cl
- * @author Trevor (trvorth@gmail.com)
+ * @author Trevor (trvorth@qanto.org)
  * @brief High-performance OpenCL kernel for the Qanhash algorithm.
- * @version 0.2.0
+ * @version 0.1.0
  *
  * @copyright Copyright (c) 2025
  *

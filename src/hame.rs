@@ -26,7 +26,7 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 
 // --- Cryptographic Primitives ---
-use crate::qanto_compat::p256_compat::ecdsa::{
+use crate::qanto_compat::ecdsa::{
     signature::Signer, signature::Verifier, Signature, SigningKey, VerifyingKey,
 };
 use my_blockchain::qanto_hash;
@@ -37,7 +37,7 @@ use my_blockchain::qanto_hash;
 
 /// A unique, cryptographically derived identifier for a Sovereign Identity.
 pub type SovereignId = [u8; 32];
-/// Represents a quantity of the native $QNTO currency.
+/// Represents a quantity of the native $QAN currency.
 pub type Amount = u128;
 /// Represents a multi-dimensional reputation score.
 pub type ReputationScore = f64;
@@ -188,15 +188,15 @@ pub struct MetaValue {
 // FULFILLS: Innovation #4 - Integrated with the Concurrent MRVE
 // ---
 
-/// Represents the state of the dynamically adjusting $QNTO currency.
-#[derive(Debug, Clone)]
-pub struct DynamicQntoCurrency {
+/// Represents the state of the dynamically adjusting $QAN currency.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DynamicQanCurrency {
     pub total_supply: Amount,
     pub interest_rate: f64,
     pub transaction_fee_basis_points: u16,
 }
 
-impl DynamicQntoCurrency {
+impl DynamicQanCurrency {
     /// Runs an economic simulation against the live MRVE state to rebalance currency parameters.
     pub async fn rebalance(&mut self, engine: &MetaReflexiveValueEngine) -> Result<(), HameError> {
         let state = engine.get_read_only_state().await;

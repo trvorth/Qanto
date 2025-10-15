@@ -79,7 +79,7 @@ mod tests {
     #[test]
     fn test_env_var_deterministic_nonce() {
         std::env::set_var(DETERMINISTIC_MINING_SEED_ENV, "42");
-        
+
         // Create a new generator each time to simulate different calls
         let nonce1 = {
             let mut gen = DeterministicNonceGenerator::new(42);
@@ -89,16 +89,16 @@ mod tests {
             let mut gen = DeterministicNonceGenerator::new(42);
             gen.next_nonce()
         };
-        
+
         // Same seed should produce same first nonce
         assert_eq!(nonce1, nonce2);
-        
+
         // But different calls to the same generator should produce different nonces
         let mut gen = DeterministicNonceGenerator::new(42);
         let first = gen.next_nonce();
         let second = gen.next_nonce();
         assert_ne!(first, second);
-        
+
         std::env::remove_var(DETERMINISTIC_MINING_SEED_ENV);
     }
 }

@@ -102,7 +102,7 @@ impl Default for HistoricalData {
 }
 
 /// Real-time alert system
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Alert {
     pub id: String,
     pub timestamp: u64,
@@ -528,6 +528,9 @@ impl AnalyticsDashboard {
             relayer_packets_relayed: AtomicU64::new(0),
             relayer_last_active: AtomicU64::new(current_time),
 
+            // RSS memory tracking
+            qanto_rss_bytes: AtomicU64::new(0),
+
             // Interoperability metrics
             total_channels: AtomicU64::new(0),
             open_channels: AtomicU64::new(0),
@@ -547,6 +550,28 @@ impl AnalyticsDashboard {
             quantum_proofs_generated: AtomicU64::new(0),
             average_stability_score: AtomicU64::new(9800), // 98%
             threat_level_escalations: AtomicU64::new(0),
+
+            // Mining metrics
+            mining_attempts: AtomicU64::new(
+                crate::metrics::get_global_metrics()
+                    .mining_attempts
+                    .load(Ordering::Relaxed),
+            ),
+            hash_rate_thousandths: AtomicU64::new(
+                crate::metrics::get_global_metrics()
+                    .hash_rate_thousandths
+                    .load(Ordering::Relaxed),
+            ),
+            last_hash_attempts: AtomicU64::new(
+                crate::metrics::get_global_metrics()
+                    .last_hash_attempts
+                    .load(Ordering::Relaxed),
+            ),
+            hash_rate_last_sample_ms: AtomicU64::new(
+                crate::metrics::get_global_metrics()
+                    .hash_rate_last_sample_ms
+                    .load(Ordering::Relaxed),
+            ),
 
             // Timestamp for metrics collection
             last_updated: AtomicU64::new(current_time),

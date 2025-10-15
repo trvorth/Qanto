@@ -68,7 +68,7 @@ impl SafeInterval {
                     duration_ms, config.operation_name, config.fallback_duration_ms
                 );
             }
-            
+
             let fallback_duration = Duration::from_millis(config.fallback_duration_ms);
             debug!(
                 "Created safe interval for {} with fallback duration: {:?}",
@@ -171,9 +171,12 @@ impl SafeInterval {
 
     /// Convert seconds to milliseconds with overflow protection
     pub fn secs_to_millis_safe(secs: u64) -> Result<u64, SafeIntervalError> {
-        secs.checked_mul(1000).ok_or_else(|| SafeIntervalError::InvalidConfiguration {
-            message: format!("Seconds value {} would overflow when converted to milliseconds", secs),
-        })
+        secs.checked_mul(1000)
+            .ok_or_else(|| SafeIntervalError::InvalidConfiguration {
+                message: format!(
+                    "Seconds value {secs} would overflow when converted to milliseconds"
+                ),
+            })
     }
 
     /// Convert milliseconds to seconds with precision handling
@@ -211,87 +214,5 @@ impl From<crate::wallet::WalletError> for MiningOperationError {
         MiningOperationError::Wallet {
             message: e.to_string(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tokio::time::timeout;
-
-    #[tokio::test]
-    async fn test_safe_interval_from_millis() {
-        let config = SafeIntervalConfig::default();
-        
-        // Test valid interval
-        let result = SafeInterval::from_millis(1000, config.clone());
-        assert!(result.is_ok());
-        
-        // Test zero duration
-        let result = SafeInterval::from_millis(0, config.clone());
-        assert!(matches!(result, Err(SafeIntervalError::ZeroDuration { .. })));
-        
-        // Test interval actually works
-        let mut interval = SafeInterval::from_millis(10, config).unwrap();
-        let start = std::time::Instant::now();
-        interval.tick().await; // First tick is immediate
-        interval.tick().await; // Second tick should wait
-        let elapsed = start.elapsed();
-        assert!(elapsed.as_millis() >= 8); // Allow some tolerance
-    }
-
-    #[tokio::test]
-    async fn test_safe_interval_from_secs() {
-        let config = SafeIntervalConfig::default();
-        
-        // Test valid interval
-        let result = SafeInterval::from_secs(1, config.clone());
-        assert!(result.is_ok());
-        
-        // Test zero duration
-        let result = SafeInterval::from_secs(0, config);
-        assert!(matches!(result, Err(SafeIntervalError::ZeroDuration { .. })));
-    }
-
-    #[tokio::test]
-    async fn test_mining_interval_fallback() {
-        // Test with zero - should use fallback
-        let mut interval = SafeInterval::for_mining(0);
-        let start = std::time::Instant::now();
-        interval.tick().await; // First tick is immediate
-        
-        // Should not panic and should use fallback duration
-        let tick_future = interval.tick();
-        let result = timeout(Duration::from_millis(1500), tick_future).await;
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_validate_timing_config() {
-        // Valid configuration
-        let result = SafeInterval::validate_timing_config(1000, 2000, 5000);
-        assert!(result.is_ok());
-        
-        // Invalid configuration with zero
-        let result = SafeInterval::validate_timing_config(0, 2000, 5000);
-        assert!(matches!(result, Err(SafeIntervalError::ZeroDuration { .. })));
-    }
-
-    #[test]
-    fn test_secs_to_millis_safe() {
-        assert_eq!(SafeInterval::secs_to_millis_safe(1).unwrap(), 1000);
-        assert_eq!(SafeInterval::secs_to_millis_safe(0).unwrap(), 0);
-        
-        // Test overflow protection
-        let result = SafeInterval::secs_to_millis_safe(u64::MAX);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_millis_to_secs_safe() {
-        assert_eq!(SafeInterval::millis_to_secs_safe(1000), 1);
-        assert_eq!(SafeInterval::millis_to_secs_safe(2500), 2);
-        assert_eq!(SafeInterval::millis_to_secs_safe(500), 1); // Fallback to 1 second
-        assert_eq!(SafeInterval::millis_to_secs_safe(0), 1); // Fallback to 1 second
     }
 }

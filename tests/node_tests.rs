@@ -36,7 +36,11 @@ mod tests {
         let temp_peer_cache_path = format!("./temp_peer_cache_{rand_id}.json");
 
         // Create a default config for the test.
-        let test_config = Config::default();
+        // Initialize config with desired genesis validator using struct update to avoid reassign after Default
+        let test_config = Config {
+            genesis_validator: wallet_arc.address(),
+            ..Default::default()
+        };
         test_config
             .save(&temp_config_path)
             .map_err(|e| format!("Failed to save initial temp config for test: {e}"))?;

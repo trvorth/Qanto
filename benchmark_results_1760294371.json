@@ -1,0 +1,60 @@
+{
+  "config": {
+    "duration_secs": 60,
+    "num_workers": 8,
+    "transactions_per_second": 10000,
+    "transaction_size_bytes": 250,
+    "warmup_duration_secs": 10,
+    "target_block_time": 1000,
+    "num_chains": 4,
+    "mempool_max_size": 1000000,
+    "data_dir": "./benchmark_data",
+    "enable_elite_mempool": true
+  },
+  "start_time": {
+    "secs_since_epoch": 1760294301,
+    "nanos_since_epoch": 131045000
+  },
+  "end_time": {
+    "secs_since_epoch": 1760294371,
+    "nanos_since_epoch": 142732000
+  },
+  "total_duration_secs": 70.011687,
+  "overall_metrics": {
+    "timestamp": 1760294371,
+    "transactions_per_second": 7760.833333333333,
+    "total_transactions": 465650,
+    "memory_usage_mb": 0.0,
+    "cpu_usage_percent": 0.0,
+    "disk_io_read_mb": 0.0,
+    "disk_io_write_mb": 0.0,
+    "network_rx_mb": 0.0,
+    "network_tx_mb": 0.0,
+    "error_count": 145758,
+    "success_rate": 68.69794910340384,
+    "elite_mempool_tps": 43344834.0,
+    "elite_mempool_processed": 924874,
+    "elite_mempool_validated": 463735,
+    "elite_mempool_rejected": 0,
+    "elite_mempool_avg_latency_ns": 6500
+  },
+  "detailed_metrics": [],
+  "targets_met": {
+    "low_error_rate": false,
+    "target_tps": false,
+    "success_rate": false,
+    "elite_mempool_performance": true
+  },
+  "recommendations": [
+    "Consider increasing worker count or optimizing transaction processing",
+    "High error rate detected - investigate mempool capacity or validation issues"
+  ],
+  "system_info": {
+    "cpu_cores": 8,
+    "total_memory_gb": 0.0,
+    "available_memory_gb": 0.0,
+    "disk_space_gb": 0.0,
+    "os_info": "macos",
+    "rust_version": "0.1.0"
+  }
+}

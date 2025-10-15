@@ -126,21 +126,115 @@ impl MetalGpuContext {
         command_buffer.wait_until_completed();
         
         // Check results
-        unsafe {
-            let found_ptr = result_found_buffer.contents() as *const u32;
-            if *found_ptr != 0 {
-                let nonce_ptr = result_nonce_buffer.contents() as *const u64;
-                let hash_ptr = result_hash_buffer.contents() as *const [u8; 32];
-                
-                let winning_nonce = *nonce_ptr;
-                let final_hash = *hash_ptr;
-                
-                return Ok(Some((winning_nonce, final_hash)));
-            }
+    unsafe {
+        let found_ptr = result_found_buffer.contents() as *const u32;
+        if *found_ptr != 0 {
+            let nonce_ptr = result_nonce_buffer.contents() as *const u64;
+            let hash_ptr = result_hash_buffer.contents() as *const [u8; 32];
+            let winning_nonce = *nonce_ptr;
+            let final_hash = *hash_ptr;
+            return Ok(Some((winning_nonce, final_hash)));
         }
-        
-        Ok(None)
     }
+    Ok(None)
+}
+
+pub fn hash_batch_with_dag(
+    &self,
+    header_hash: &QantoHash,
+    start_nonce: u64,
+    batch_size: usize,
+    target: Target,
+    dag: &Vec<[u8; MIX_BYTES]>,
+) -> Result<Option<(u64, [u8; 32])>, Box<dyn std::error::Error>> {
+    let dag_len_mask = dag.len() - 1;
+
+    // Create Metal buffers
+    let header_buffer = self.device.new_buffer_with_data(
+        header_hash.as_bytes().as_ptr() as *const std::ffi::c_void,
+        header_hash.as_bytes().len() as u64,
+        MTLResourceOptions::StorageModeShared,
+    );
+
+    let dag_buffer = self.device.new_buffer_with_data(
+        dag.as_ptr() as *const std::ffi::c_void,
+        (dag.len() * MIX_BYTES) as u64,
+        MTLResourceOptions::StorageModeShared,
+    );
+
+    let target_buffer = self.device.new_buffer_with_data(
+        target.as_ptr() as *const std::ffi::c_void,
+        target.len() as u64,
+        MTLResourceOptions::StorageModeShared,
+    );
+
+    // Result buffers
+    let result_nonce_buffer = self.device.new_buffer(
+        8, // u64 size
+        MTLResourceOptions::StorageModeShared,
+    );
+
+    let result_hash_buffer = self.device.new_buffer(
+        32, // 32 bytes for hash
+        MTLResourceOptions::StorageModeShared,
+    );
+
+    let result_found_buffer = self.device.new_buffer(
+        4, // u32 size for found flag
+        MTLResourceOptions::StorageModeShared,
+    );
+
+    // Initialize result buffers
+    unsafe {
+        let found_ptr = result_found_buffer.contents() as *mut u32;
+        *found_ptr = 0; // Not found initially
+    }
+
+    // Create command buffer and encoder
+    let command_buffer = self.command_queue.new_command_buffer();
+    let encoder = command_buffer.new_compute_command_encoder();
+
+    encoder.set_compute_pipeline_state(&self.compute_pipeline);
+
+    // Set arguments
+    encoder.set_buffer(0, Some(&header_buffer), 0);
+    encoder.set_bytes(1, 8, &start_nonce.to_le_bytes() as *const _ as *const std::ffi::c_void);
+    encoder.set_buffer(2, Some(&dag_buffer), 0);
+    encoder.set_bytes(3, 8, &(dag_len_mask as u64).to_le_bytes() as *const _ as *const std::ffi::c_void);
+    encoder.set_buffer(4, Some(&target_buffer), 0);
+    encoder.set_buffer(5, Some(&result_nonce_buffer), 0);
+    encoder.set_buffer(6, Some(&result_hash_buffer), 0);
+    encoder.set_buffer(7, Some(&result_found_buffer), 0);
+
+    // Calculate thread group sizes
+    let threads_per_group = MTLSize::new(256, 1, 1);
+    let thread_groups = MTLSize::new(
+        (batch_size + 255) / 256, // Round up division
+        1,
+        1,
+    );
+
+    encoder.dispatch_thread_groups(thread_groups, threads_per_group);
+    encoder.end_encoding();
+
+    // Execute and wait
+    command_buffer.commit();
+    command_buffer.wait_until_completed();
+
+    // Check results
+    unsafe {
+        let found_ptr = result_found_buffer.contents() as *const u32;
+        if *found_ptr != 0 {
+            let nonce_ptr = result_nonce_buffer.contents() as *const u64;
+            let hash_ptr = result_hash_buffer.contents() as *const [u8; 32];
+            let winning_nonce = *nonce_ptr;
+            let final_hash = *hash_ptr;
+            return Ok(Some((winning_nonce, final_hash)));
+        }
+    }
+
+    Ok(None)
+}
     
     pub fn get_device_info(&self) -> String {
         format!("Metal GPU: {}", self.device.name())

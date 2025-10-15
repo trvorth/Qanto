@@ -7,11 +7,13 @@
 //!   from mempool transactions *before* calling SAGA's reward calculation,
 //!   ensuring the final reward includes both the base amount and fees.
 
+use crate::config::LoggingConfig;
+use qanto_core::mining_celebration::LoggingConfig as CoreLoggingConfig;
 use crate::emission::Emission;
 use crate::mempool::Mempool;
 use crate::metrics::QantoMetrics;
 use crate::miner::Miner;
-use crate::mining_celebration::{celebrate_mining_success, MiningCelebrationParams};
+use qanto_core::mining_celebration::{on_block_mined, MiningCelebrationParams};
 use crate::mining_metrics::{MiningFailureType, MiningMetrics};
 use crate::performance_monitoring::{PerformanceMonitor, PerformanceMonitoringConfig};
 use crate::saga::{
@@ -23,6 +25,7 @@ use my_blockchain::{qanhash, qanto_hash};
 
 // This import is required for the `#[from]` attribute in QantoDAGError.
 // The compiler may incorrectly flag it as unused, but it is necessary.
+use crate::optimized_qdag::{OptimizedQDagConfig, OptimizedQDagGenerator};
 use crate::post_quantum_crypto::{
     pq_sign, pq_verify, PQError, QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature,
 };
@@ -55,17 +58,18 @@ use uuid::Uuid;
 
 // --- High-Throughput Constants ---
 // To achieve ~10M TPS at 32 BPS, each block must hold ~312,500 transactions.
-// Increased to 1M transactions per block for better TPS scaling
-pub const MAX_TRANSACTIONS_PER_BLOCK: usize = 1_000_000;
+// Set to 312,500 transactions per block for precise 10M+ TPS target
+pub const MAX_TRANSACTIONS_PER_BLOCK: usize = 312_500;
 // Increased block size to accommodate the higher transaction count.
-pub const MAX_BLOCK_SIZE: usize = 1_048_576; // 1 MB (1024 * 1024)
+pub const MAX_BLOCK_SIZE: usize = 33_554_432; // 32 MB (32 * 1024 * 1024)
+pub const MAX_TRANSACTION_SIZE: usize = 102_400; // 100 KB per transaction
 
 // --- Network & Economic Constants ---
 pub const DEV_ADDRESS: &str = "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3";
 pub const CONTRACT_ADDRESS: &str =
     "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394";
-pub const INITIAL_BLOCK_REWARD: u64 = 150_000_000_000; // In smallest units (assuming 10^9 per QNTO)
-const SMALLEST_UNITS_PER_QNTO: u64 = 1_000_000_000;
+pub const INITIAL_BLOCK_REWARD: u64 = 50_000_000_000; // In smallest units (assuming 10^9 per QAN)
+const SMALLEST_UNITS_PER_QAN: u64 = 1_000_000_000;
 const FINALIZATION_DEPTH: u64 = 8;
 const SHARD_THRESHOLD: u32 = 2;
 const TEMPORAL_CONSENSUS_WINDOW: u64 = 600;
@@ -82,7 +86,13 @@ const INITIAL_DIFFICULTY: f64 = 1.0; // Difficulty is now a float managed by SAG
 
 // High-Performance Optimization Constants - Optimized for 32 BPS / 10M+ TPS / <31ms latency
 const PARALLEL_VALIDATION_BATCH_SIZE: usize = 50000; // Massive increase for 10M+ TPS
+#[cfg(feature = "performance-test")]
+const BLOCK_PROCESSING_WORKERS: usize = 8; // Reduced for test stability
+#[cfg(not(feature = "performance-test"))]
 const BLOCK_PROCESSING_WORKERS: usize = 256; // Doubled for extreme parallelism
+#[cfg(feature = "performance-test")]
+const TRANSACTION_VALIDATION_WORKERS: usize = 4; // Reduced for test stability
+#[cfg(not(feature = "performance-test"))]
 const TRANSACTION_VALIDATION_WORKERS: usize = 128; // 4x increase for signature verification
 const FAST_SYNC_BATCH_SIZE: usize = 5000; // 5x increase for faster sync
 const BLOCK_CACHE_TTL_SECS: u64 = 3600; // Reduced for memory efficiency
@@ -352,8 +362,8 @@ impl fmt::Display for QantoBlock {
         writeln!(f, "║ 💪 Effort:         {} hashes", self.effort)?;
         writeln!(
             f,
-            "║ 💰 Block Reward:    {:.9} $QNTO (from SAGA)",
-            self.reward as f64 / SMALLEST_UNITS_PER_QNTO as f64
+            "║ 💰 Block Reward:    {:.9} $QAN (from SAGA)",
+            self.reward as f64 / SMALLEST_UNITS_PER_QAN as f64
         )?;
         writeln!(f, "╚{border}╝")?;
         Ok(())
@@ -551,8 +561,98 @@ impl QantoBlock {
         let header_hash = qanto_hash(&header_data);
 
         // Use qanhash algorithm for mining hash
-        let qanhash_result = qanhash::hash(&header_hash, self.nonce);
+        let qanhash_result = qanhash::hash(&header_hash, self.nonce, self.height);
         hex::encode(qanhash_result)
+    }
+
+    /// **CANONICAL PROOF-OF-WORK HASH METHOD - SINGLE SOURCE OF TRUTH**
+    ///
+    /// This method generates the definitive hash that is subject to the Proof-of-Work challenge.
+    /// It serves as the ONLY way to compute PoW hashes across the entire codebase, ensuring
+    /// perfect consistency between mining and validation code paths.
+    ///
+    /// ## Field Serialization Order (Big-Endian):
+    /// 1. `timestamp` (u64) - Block creation timestamp
+    /// 2. `chain_id` (u32) - Chain identifier  
+    /// 3. `height` (u64) - Block height in the chain
+    /// 4. `difficulty` (f64) - Mining difficulty as IEEE 754 double
+    /// 5. `merkle_root` (String) - Merkle root of transactions as UTF-8 bytes
+    /// 6. `validator` (String) - Validator address as UTF-8 bytes
+    /// 7. `miner` (String) - Miner address as UTF-8 bytes
+    /// 8. `nonce` (u64) - Mining nonce value
+    /// 9. `parents` (Vec<String>) - Parent block hashes as UTF-8 bytes (in order)
+    ///
+    /// ## Algorithm:
+    /// 1. Serialize all fields in the specified order using big-endian byte representation
+    /// 2. Create header hash using `qanto_hash(&header_data)`
+    /// 3. Apply qanhash algorithm: `qanhash::hash(header_hash, nonce, height)`
+    /// 4. Return as `QantoHash` type for type safety
+    ///
+    /// ## Performance Notes:
+    /// - Zero-allocation design for 31ms target block time
+    /// - Excludes block's own `id` field to prevent non-deterministic hashing
+    /// - Uses pre-allocated Vec with capacity hint for optimal memory usage
+    ///
+    /// ## Critical:
+    /// This method MUST be used for ALL PoW operations. Any deviation will cause
+    /// mining/validation inconsistencies and 100% block rejection.
+    pub fn hash_for_pow(&self) -> my_blockchain::qanto_standalone::hash::QantoHash {
+        // Pre-allocate header data with estimated capacity to avoid reallocations
+        // Estimated size: 8+4+8+8+64+64+64+8+(parents*64) ≈ 288 + (parents*64) bytes
+        let estimated_capacity = 288 + (self.parents.len() * 64);
+        let mut header_data = Vec::with_capacity(estimated_capacity);
+
+        // Serialize all fields in canonical order using big-endian representation
+        header_data.extend_from_slice(&self.timestamp.to_be_bytes());
+        header_data.extend_from_slice(&self.chain_id.to_be_bytes());
+        header_data.extend_from_slice(&self.height.to_be_bytes());
+        header_data.extend_from_slice(&self.difficulty.to_be_bytes());
+        header_data.extend_from_slice(self.merkle_root.as_bytes());
+        header_data.extend_from_slice(self.validator.as_bytes());
+        header_data.extend_from_slice(self.miner.as_bytes());
+        header_data.extend_from_slice(&self.nonce.to_be_bytes());
+
+        // Add parent hashes in deterministic order
+        for parent in &self.parents {
+            header_data.extend_from_slice(parent.as_bytes());
+        }
+
+        // Create header hash using qanto_hash
+        let header_hash = qanto_hash(&header_data);
+
+        // Apply qanhash algorithm - this is the canonical PoW hash
+        let qanhash_result = qanhash::hash(&header_hash, self.nonce, self.height);
+
+        // Return as QantoHash type for type safety and consistency
+        my_blockchain::qanto_standalone::hash::QantoHash::new(qanhash_result)
+    }
+
+    /// Legacy method - DEPRECATED: Use hash_for_pow() instead
+    ///
+    /// This method is maintained for backward compatibility but will be removed.
+    /// All new code MUST use hash_for_pow() as the canonical PoW hash method.
+    #[deprecated(
+        since = "1.0.0",
+        note = "Use hash_for_pow() instead for canonical PoW hashing"
+    )]
+    pub fn pow_hash(&self) -> my_blockchain::qanto_standalone::hash::QantoHash {
+        // Delegate to the canonical method to ensure consistency
+        self.hash_for_pow()
+    }
+
+    /// Canonical Proof-of-Work validity check - single source of truth
+    /// Uses the canonical PoW hash and the global Consensus difficulty check
+    pub fn is_pow_valid(&self) -> bool {
+        let pow_hash = self.hash_for_pow();
+        crate::consensus::Consensus::is_pow_valid(pow_hash.as_bytes(), self.difficulty)
+    }
+
+    /// Optimized Proof-of-Work validity check using a precomputed PoW hash to avoid recomputation
+    pub fn is_pow_valid_with_pow_hash(
+        &self,
+        pow_hash: my_blockchain::qanto_standalone::hash::QantoHash,
+    ) -> bool {
+        crate::consensus::Consensus::is_pow_valid(pow_hash.as_bytes(), self.difficulty)
     }
 }
 
@@ -609,6 +709,9 @@ pub struct QantoDAG {
     pub timing_coordinator: Arc<BlockTimingCoordinator>, // Microsecond-precision timing for 32+ BPS
     #[allow(dead_code)]
     pub performance_monitor: Arc<PerformanceMonitor>, // Comprehensive performance monitoring and adaptive tuning
+    pub logging_config: LoggingConfig,
+    /// Optimized Q-DAG generator for caching DAGs by epoch to prevent repeated generations
+    pub qdag_generator: Arc<OptimizedQDagGenerator>, // Configuration for celebration logging
 }
 
 /// Helper struct to track mining state
@@ -634,6 +737,7 @@ impl QantoDAG {
         config: QantoDagConfig,
         saga: Arc<PalletSaga>,
         db: QantoStorage,
+        logging_config: LoggingConfig,
     ) -> Result<Arc<Self>, QantoDAGError> {
         let genesis_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
@@ -701,6 +805,8 @@ impl QantoDAG {
             performance_monitor: Arc::new(PerformanceMonitor::new(
                 PerformanceMonitoringConfig::default(),
             )),
+            logging_config,
+            qdag_generator: Arc::new(OptimizedQDagGenerator::new(OptimizedQDagConfig::default())),
         };
 
         info!(
@@ -815,20 +921,24 @@ impl QantoDAG {
 
         // Spawn a separate task for dummy transaction generation with safe interval handling
         tokio::spawn(async move {
-            // Safe interval creation to prevent zero-duration panic
+            // Optimized interval creation with reduced default for better TPS
             let dummy_tx_duration = if dummy_tx_interval_secs == 0 {
-                warn!("SOLO MINER: Dummy transaction interval is zero, using default 1 second");
-                tokio::time::Duration::from_secs(1)
+                warn!(
+                    "SOLO MINER: Dummy transaction interval is zero, using optimized default 500ms"
+                );
+                tokio::time::Duration::from_millis(500) // Reduced from 1 second
             } else {
-                tokio::time::Duration::from_secs(dummy_tx_interval_secs)
+                // Cap minimum interval at 100ms for stability, use milliseconds for precision
+                let interval_ms = std::cmp::max(dummy_tx_interval_secs * 1000 / 2, 100);
+                tokio::time::Duration::from_millis(interval_ms)
             };
 
             let mut dummy_tx_interval = tokio::time::interval(dummy_tx_duration);
             dummy_tx_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             dummy_tx_interval.tick().await; // Initial tick
 
-            debug!("SOLO MINER: Starting dummy transaction generation loop with interval {}s, {} tx per cycle.", 
-                   dummy_tx_interval_secs, dummy_tx_per_cycle);
+            debug!("SOLO MINER: Starting optimized dummy transaction generation loop with interval {:?}, {} tx per cycle.", 
+                   dummy_tx_duration, dummy_tx_per_cycle);
 
             loop {
                 tokio::select! {
@@ -852,101 +962,114 @@ impl QantoDAG {
                         };
 
                         // Generate transactions in batches for better performance
-                        // Check mempool capacity before generating transactions (backpressure)
+                        // Check mempool capacity with optimized thresholds
                         let mempool_capacity_check = {
                             let mempool_guard = mempool_clone.read().await;
                             let current_size = mempool_guard.get_current_size_bytes();
-                            let max_size = mempool_max_size_bytes;
-                            let utilization = (current_size as f64) / (max_size as f64);
+                            let mempool_utilization = (current_size as f64 / mempool_max_size_bytes as f64) * 100.0;
 
-                            // Calculate thresholds based on configurable backpressure threshold
-                            let backpressure_threshold = (mempool_backpressure_threshold as f64) / (max_size as f64);
-                            let critical_threshold = backpressure_threshold + 0.05; // 5% above backpressure threshold
-                            let reduction_start_threshold = backpressure_threshold - 0.2; // Start reducing 20% before backpressure threshold
+                            // Optimized backpressure with gradual reduction instead of complete stop
+                            if mempool_utilization > (mempool_backpressure_threshold as f64 * 0.8) {
+                                // Apply gradual backpressure based on utilization
+                                let reduction_factor = (mempool_utilization - (mempool_backpressure_threshold as f64 * 0.8)) / 20.0;
+                                let reduced_count = (dummy_tx_per_cycle as f64 * (1.0 - reduction_factor.min(0.9))) as usize;
 
-                            // Implement adaptive generation based on mempool utilization
-                            if utilization > critical_threshold {
-                                // Only log when utilization is critical to reduce spam
-                                if utilization > critical_threshold + 0.05 {
-                                    warn!("SOLO MINER: Mempool utilization critical ({:.1}%), skipping dummy transaction generation", utilization * 100.0);
+                                if reduced_count < dummy_tx_per_cycle / 4 {
+                                    info!("High backpressure applied: mempool utilization {:.1}% exceeds threshold {}%",
+                                          mempool_utilization, mempool_backpressure_threshold);
+                                    0 // Stop generation when severely overloaded
+                                } else {
+                                    reduced_count // Gradual reduction for better flow control
                                 }
-                                0 // Skip generation when mempool exceeds critical threshold
-                            } else if utilization > reduction_start_threshold {
-                                // Reduce generation when approaching backpressure threshold
-                                let reduction_factor = (critical_threshold - utilization) / (critical_threshold - reduction_start_threshold);
-                                (dummy_tx_per_cycle as f64 * reduction_factor) as usize
                             } else {
-                                dummy_tx_per_cycle // Full generation when mempool is below reduction threshold
+                                dummy_tx_per_cycle // Full generation when mempool is healthy
                             }
                         };
 
-                        if mempool_capacity_check == 0 {
-                            // Reduced logging frequency - only log occasionally
-                            if rand::random::<u8>() < 5 { // ~2% chance to log
-                                debug!("SOLO MINER: Skipping dummy transaction generation due to mempool backpressure");
-                            }
-                            continue;
-                        }
-
-                        let batch_size = mempool_batch_size;
+                        // Optimized batch processing with pre-allocation
                         let mut total_generated = 0;
                         let mut total_failed = 0;
-                        let adjusted_transactions = mempool_capacity_check;
+                        let mut current_batch_size = dummy_tx_per_cycle;
 
-                        for batch_start in (0..adjusted_transactions).step_by(batch_size) {
-                            let batch_end = std::cmp::min(batch_start + batch_size, adjusted_transactions);
-                            let mut batch_transactions = Vec::with_capacity(batch_end - batch_start);
-                            let mut batch_failed = 0;
+                        if mempool_capacity_check > 0 {
+                            let batch_size = mempool_batch_size;
+                            let adjusted_transactions = mempool_capacity_check;
 
-                            // Generate batch of transactions
-                            for _ in batch_start..batch_end {
-                                match Transaction::new_dummy_signed(&signing_key, &public_key) {
-                                    Ok(tx) => batch_transactions.push(tx),
-                                    Err(_) => {
-                                        batch_failed += 1;
-                                        // Only log failures occasionally to reduce spam
-                                        if batch_failed == 1 || batch_failed % 100 == 0 {
-                                            debug!("SOLO MINER: Failed to create {} dummy signed transactions in batch", batch_failed);
+                            for batch_start in (0..adjusted_transactions).step_by(batch_size) {
+                                let batch_end = std::cmp::min(batch_start + batch_size, adjusted_transactions);
+                                // Pre-allocate transaction vector for better performance
+                                let mut batch_transactions = Vec::with_capacity(batch_end - batch_start);
+                                let mut batch_failed = 0;
+
+                                // Generate batch of transactions with optimized creation
+                                for _ in batch_start..batch_end {
+                                    match Transaction::new_dummy_signed(&signing_key, &public_key) {
+                                        Ok(tx) => batch_transactions.push(tx),
+                                        Err(_) => {
+                                            batch_failed += 1;
+                                            // Only log failures occasionally to reduce spam
+                                            if batch_failed == 1 || batch_failed % 100 == 0 {
+                                                debug!("SOLO MINER: Failed to create {} dummy signed transactions in batch", batch_failed);
+                                            }
+                                            continue;
                                         }
-                                        continue;
                                     }
                                 }
-                            }
 
-                            total_failed += batch_failed;
+                                total_failed += batch_failed;
 
-                            // Add batch to mempool with proper synchronization and backpressure handling
-                            {
-                                let mempool_guard = mempool_clone.write().await;
-                                let utxos_guard = utxos_clone.read().await;
-                                let mut _batch_added = 0;
-                                let mut batch_mempool_full = 0;
-                                let mut batch_other_errors = 0;
+                                // Batch add transactions to mempool with optimized synchronization
+                                {
+                                    let mempool_guard = mempool_clone.write().await;
+                                    let utxos_guard = utxos_clone.read().await;
+                                    let mut batch_added = 0;
+                                    let mut batch_mempool_full = 0;
+                                    let mut batch_other_errors = 0;
 
-                                for dummy_tx in batch_transactions {
-                                    match mempool_guard.add_transaction(dummy_tx, &utxos_guard, &self_clone).await {
-                                        Ok(()) => {
-                                            _batch_added += 1;
-                                            total_generated += 1;
-                                            // Record transaction processing for performance monitoring
-                                            self_clone.performance_monitor.record_transactions_processed(1);
-                                        }
-                                        Err(crate::mempool::MempoolError::MempoolFull) => {
-                                            batch_mempool_full += 1;
-                                            // Only log the first mempool full error to avoid spam
-                                            if batch_mempool_full == 1 {
-                                                debug!("SOLO MINER: Mempool full, stopping dummy transaction generation for this cycle");
+                                    for dummy_tx in batch_transactions {
+                                        match mempool_guard.add_transaction(dummy_tx, &utxos_guard, &self_clone).await {
+                                            Ok(()) => {
+                                                batch_added += 1;
+                                                total_generated += 1;
+                                                // Record transaction processing for performance monitoring
+                                                self_clone.performance_monitor.record_transactions_processed(1);
                                             }
-                                            break; // Stop adding more transactions when mempool is full
-                                        }
-                                        Err(_) => {
-                                            batch_other_errors += 1;
-                                            // Only log errors occasionally
-                                            if batch_other_errors == 1 || batch_other_errors % 50 == 0 {
-                                                debug!("SOLO MINER: {} transactions failed to add to mempool in batch", batch_other_errors);
+                                            Err(crate::mempool::MempoolError::MempoolFull) => {
+                                                batch_mempool_full += 1;
+                                                // Only log the first mempool full error to avoid spam
+                                                if batch_mempool_full == 1 {
+                                                    debug!("SOLO MINER: Mempool full, stopping dummy transaction generation for this cycle");
+                                                }
+                                                break; // Stop adding more transactions when mempool is full
+                                            }
+                                            Err(_) => {
+                                                batch_other_errors += 1;
+                                                // Only log errors occasionally
+                                                if batch_other_errors == 1 || batch_other_errors % 50 == 0 {
+                                                    debug!("SOLO MINER: {} transactions failed to add to mempool in batch", batch_other_errors);
+                                                }
                                             }
                                         }
                                     }
+
+                                    // Log batch results for monitoring
+                                    if batch_added > 0 {
+                                        debug!("SOLO MINER: Batch processed - added: {}, failed: {}, mempool_full: {}",
+                                               batch_added, batch_other_errors, batch_mempool_full);
+                                    }
+                                }
+
+                                // Break early if mempool is full to avoid unnecessary work
+                                let batch_mempool_full = {
+                                    let mempool_guard = mempool_clone.read().await;
+                                    let current_size = mempool_guard.get_current_size_bytes();
+                                    let max_size = mempool_max_size_bytes;
+                                    let pressure_ratio = (current_size as f64) / (max_size as f64);
+                                    pressure_ratio > 0.9 // 90% full threshold
+                                };
+
+                                if batch_mempool_full {
+                                    break;
                                 }
                             }
 
@@ -971,7 +1094,7 @@ impl QantoDAG {
                             }
 
                             // Adaptive batch sizing based on system memory and mempool usage
-                            let current_batch_size = {
+                            current_batch_size = {
                                 // Initialize system monitor for memory tracking
                                 let mut system = System::new_all();
                                 system.refresh_memory();
@@ -1036,7 +1159,7 @@ impl QantoDAG {
                         // Summarized logging instead of per-transaction logging
                         if total_generated > 0 || total_failed > 0 {
                             info!("SOLO MINER: Batch complete - generated: {}, failed: {}, target: {}",
-                                  total_generated, total_failed, adjusted_transactions);
+                                  total_generated, total_failed, current_batch_size);
                         }
                     }
                 }
@@ -1122,9 +1245,11 @@ impl QantoDAG {
                     let mining_cycle_result = async {
                         self_mining.log_heartbeat_if_needed(&mut mining_state, target_block_time_us / 1_000_000);
 
-                        let emission = self_mining.emission.read().await;
                         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-                        let estimated_reward = emission.calculate_reward(now).unwrap_or(0);
+                        let estimated_reward = {
+                            let emission = self_mining.emission.read().await;
+                            emission.calculate_reward(now).unwrap_or(0)
+                        }; // Drop emission read lock here
                         let current_difficulty = self_mining.get_current_difficulty().await;
 
                         // Only log mining status every 10 cycles to reduce verbosity
@@ -1132,7 +1257,7 @@ impl QantoDAG {
                             let mempool_guard = mempool.read().await;
                             let pending_txs = mempool_guard.len().await;
                             info!(
-                                "Mining Status: Cycle {}, Difficulty: {:.4}, Reward: {} QANTO, Pending TXs: {}, Memory: {:.1}%",
+                                "Mining Status: Cycle {}, Difficulty: {:.4}, Reward: {} QAN, Pending TXs: {}, Memory: {:.1}%",
                                 mining_state.cycles, current_difficulty, estimated_reward, pending_txs, memory_usage_percent
                             );
                         }
@@ -1146,131 +1271,57 @@ impl QantoDAG {
 
                         debug!("SOLO MINER: Preparing to create candidate block");
 
-                        // Retry logic with exponential backoff
-                        let mut retry_count = 0;
-                        const MAX_RETRIES: u32 = 3;
-                        const BASE_DELAY_MS: u64 = 100;
+                        // CRITICAL FIX: Remove exponential backoff delays and implement parallel mining
+                        // This eliminates the 418ms→878ms→1619ms→3251ms delays that kill BPS performance
+                        let mut candidate_block = self_mining
+                            .create_mining_candidate(&wallet, &mempool, &utxos, &miner)
+                            .await?;
+                        let mining_result = self_mining
+                            .execute_parallel_mining(&miner, &mut candidate_block, &shutdown_token)
+                            .await;
 
-                        loop {
-                            let candidate_block_result = self_mining.create_mining_candidate(&wallet, &mempool, &utxos).await;
+                        match mining_result {
+                            Ok((mined_block, mining_duration)) => {
+                                debug!("SOLO MINER: Parallel mining completed in {:?}", mining_duration);
 
-                            match candidate_block_result {
-                                Ok(mut candidate_block) => {
-                                    debug!("SOLO MINER: Candidate block created successfully with {} transactions",
-                                           candidate_block.transactions.len());
+                                mining_state.blocks_mined += 1;
 
-                                    let mining_result = self_mining.execute_mining_pow(&miner, &mut candidate_block, &shutdown_token).await;
+                                // Record successful block mining for performance monitoring
+                                self_mining.performance_monitor.record_block_processed();
+                                self_mining.performance_monitor.update_resource_usage("blocks_mined", mining_state.blocks_mined);
 
-                                    match mining_result {
-                                        Ok((mined_block, mining_duration)) => {
-                                            debug!("SOLO MINER: POW mining completed in {:?}", mining_duration);
+                                // Process the mined block with immediate retry (no delays)
+                                let process_result = self_mining.process_mined_block(
+                                    mined_block.clone(),
+                                    &mempool,
+                                    &utxos,
+                                    mining_state.blocks_mined,
+                                    mining_duration,
+                                ).await;
 
-                                            mining_state.blocks_mined += 1;
+                                match process_result {
+                                    Ok(_) => {
+                                        info!(
+                                            "SOLO MINER: Successfully mined and processed block #{} in {:?}. Total blocks: {}",
+                                            mining_state.blocks_mined, mining_duration, mining_state.blocks_mined
+                                        );
+                                        // Signal timing coordinator for metrics, but don't wait for it
+                                        timing_coordinator.signal_block_mined();
 
-                                            // Record successful block mining for performance monitoring
-                                            self_mining.performance_monitor.record_block_processed();
-                                            self_mining.performance_monitor.update_resource_usage("blocks_mined", mining_state.blocks_mined);
-
-                                            // Process the mined block with retry logic
-                                            let mut process_retry_count = 0;
-                                            loop {
-                                                let process_result = self_mining.process_mined_block(
-                                                    mined_block.clone(),
-                                                    &mempool,
-                                                    &utxos,
-                                                    mining_state.blocks_mined,
-                                                    mining_duration,
-                                                ).await;
-
-                                                match process_result {
-                                                    Ok(_) => {
-                                                        info!(
-                                                            "SOLO MINER: Successfully mined and processed block #{} in {:?}. Total blocks: {}",
-                                                            mining_state.blocks_mined, mining_duration, mining_state.blocks_mined
-                                                        );
-                                                        // Signal timing coordinator for metrics, but don't wait for it
-                                                        timing_coordinator.signal_block_mined();
-
-                                                        // Reset timing to allow immediate next mining if mempool has transactions
-                                                        last_timing_check = Instant::now() - timing_check_interval;
-                                                        break; // Success, exit retry loop
-                                                    }
-                                                    Err(e) => {
-                                                        process_retry_count += 1;
-                                                        if process_retry_count >= MAX_RETRIES {
-                                                            warn!(
-                                                                "SOLO MINER: Failed to process mined block after {} retries: {}. Continuing to next cycle.",
-                                                                MAX_RETRIES, e
-                                                            );
-                                                            break;
-                                                        }
-
-                                                        let delay_ms = BASE_DELAY_MS * (2_u64.pow(process_retry_count - 1));
-                                                        warn!(
-                                                            "SOLO MINER: Failed to process mined block (attempt {}): {}. Retrying in {}ms...",
-                                                            process_retry_count, e, delay_ms
-                                                        );
-                                                        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
-                                                    }
-                                                }
-                                            }
-                                            break; // Exit main retry loop on successful mining
-                                        }
-                                        Err(should_break) => {
-                                            if should_break {
-                                                debug!("SOLO MINER: POW mining cancelled due to shutdown signal");
-                                                return Err(QantoDAGError::Generic("Mining cancelled".to_string()));
-                                            }
-
-                                            retry_count += 1;
-                                            if retry_count >= MAX_RETRIES {
-                                                debug!("SOLO MINER: POW mining failed after {} retries, continuing to next cycle", MAX_RETRIES);
-                                                break;
-                                            }
-
-                                            let delay_ms = BASE_DELAY_MS * (2_u64.pow(retry_count - 1));
-                                            debug!("SOLO MINER: POW mining failed (attempt {}), retrying in {}ms...", retry_count, delay_ms);
-                                            tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
-                                        }
+                                        // Reset timing to allow immediate next mining if mempool has transactions
+                                        last_timing_check = Instant::now() - timing_check_interval;
+                                    }
+                                    Err(e) => {
+                                        warn!("SOLO MINER: Failed to process mined block: {}. Continuing to next cycle.", e);
                                     }
                                 }
-                                Err(e) => {
-                                    retry_count += 1;
-                                    if retry_count >= MAX_RETRIES {
-                                        warn!("SOLO MINER: Failed to create candidate block after {} retries: {}. Trying with reduced transaction set...", MAX_RETRIES, e);
-
-                                        // Try with reduced transaction set as fallback
-                                        let reduced_candidate_result = self_mining.create_mining_candidate_reduced(&wallet, &mempool, &utxos).await;
-                                        match reduced_candidate_result {
-                                            Ok(mut reduced_candidate) => {
-                                                debug!("SOLO MINER: Reduced candidate block created with {} transactions", reduced_candidate.transactions.len());
-
-                                                let mining_result = self_mining.execute_mining_pow(&miner, &mut reduced_candidate, &shutdown_token).await;
-                                                if let Ok((mined_block, mining_duration)) = mining_result {
-                                                    mining_state.blocks_mined += 1;
-                                                    self_mining.performance_monitor.record_block_processed();
-                                                    self_mining.performance_monitor.update_resource_usage("blocks_mined", mining_state.blocks_mined);
-
-                                                    let _ = self_mining.process_mined_block(
-                                                        mined_block,
-                                                        &mempool,
-                                                        &utxos,
-                                                        mining_state.blocks_mined,
-                                                        mining_duration,
-                                                    ).await;
-                                                }
-                                            }
-                                            Err(reduced_e) => {
-                                                warn!("SOLO MINER: Failed to create reduced candidate block: {}. Continuing to next cycle.", reduced_e);
-                                            }
-                                        }
-                                        break;
-                                    }
-
-                                    let delay_ms = BASE_DELAY_MS * (2_u64.pow(retry_count - 1));
-                                    warn!("SOLO MINER: Failed to create candidate block (attempt {}): {}. Retrying in {}ms...", retry_count, e, delay_ms);
-                                    tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                            }
+                            Err(should_break) => {
+                                if should_break {
+                                    debug!("SOLO MINER: Parallel mining cancelled due to shutdown signal");
+                                    return Err(QantoDAGError::Generic("Mining cancelled".to_string()));
                                 }
+                                debug!("SOLO MINER: Parallel mining failed, continuing to next cycle");
                             }
                         }
                         Ok(())
@@ -1326,48 +1377,12 @@ impl QantoDAG {
     }
 
     /// Create a candidate block for mining
-    async fn create_mining_candidate_reduced(
-        &self,
-        wallet: &Arc<Wallet>,
-        mempool: &Arc<RwLock<Mempool>>,
-        utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
-    ) -> Result<QantoBlock, QantoDAGError> {
-        // Create a reduced candidate block with fewer transactions for fallback
-        let validator_address = wallet.address();
-
-        let chain_id = self.get_id().await;
-        let private_key = self.get_private_key().await?;
-        let (_, public_key) = wallet
-            .get_keypair()
-            .map_err(|e| QantoDAGError::WalletError(format!("Failed to get public key: {e}")))?;
-
-        // Select only a small subset of high-priority transactions (max 100)
-        let max_transactions = 100;
-        let selected_transactions = self
-            .select_high_priority_transactions(mempool, max_transactions)
-            .await?;
-
-        info!(
-            "MINING: Creating reduced candidate block with {} transactions",
-            selected_transactions.len()
-        );
-
-        self.create_candidate_block(
-            &private_key,
-            &public_key,
-            &validator_address,
-            mempool,
-            utxos,
-            chain_id,
-        )
-        .await
-    }
-
     async fn create_mining_candidate(
         &self,
         wallet: &Arc<Wallet>,
         mempool: &Arc<RwLock<Mempool>>,
         utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
+        miner: &Arc<Miner>,
     ) -> Result<QantoBlock, QantoDAGError> {
         let miner_address = wallet.address();
         let chain_id_to_mine: u32 = 0;
@@ -1382,6 +1397,7 @@ impl QantoDAG {
             QantoDAGError::WalletError(format!("Failed to get keypair from wallet: {e}"))
         })?;
 
+        let homomorphic_public_key = miner.get_homomorphic_public_key();
         match self
             .create_candidate_block(
                 &qr_signing_key,
@@ -1390,6 +1406,8 @@ impl QantoDAG {
                 mempool,
                 utxos,
                 chain_id_to_mine,
+                miner,
+                homomorphic_public_key,
             )
             .await
         {
@@ -1416,179 +1434,130 @@ impl QantoDAG {
     }
 
     /// Execute proof-of-work mining
-    async fn execute_mining_pow(
+    /// Execute parallel proof-of-work mining with 4 concurrent miners
+    /// Eliminates exponential backoff delays for maximum BPS performance
+    async fn execute_parallel_mining(
         &self,
         miner: &Arc<Miner>,
         candidate_block: &mut QantoBlock,
         shutdown_token: &tokio_util::sync::CancellationToken,
     ) -> Result<(QantoBlock, std::time::Duration), bool> {
         info!(
-            "SOLO MINER: Starting proof-of-work for candidate block {} with difficulty {}",
+            "SOLO MINER: Starting parallel proof-of-work for candidate block {} with difficulty {}",
             candidate_block.id, candidate_block.difficulty
         );
 
-        const MAX_RETRIES: u32 = 3;
-        const BASE_DELAY_MS: u64 = 100;
-        const POW_TIMEOUT_SECS: u64 = 10; // 10 second timeout for PoW operations
+        // Parallel mining constants - optimized for 32+ BPS
+        const PARALLEL_MINERS: usize = 4;
+        const NONCE_RANGE_SIZE: u64 = u64::MAX / PARALLEL_MINERS as u64;
+        const MINING_TIMEOUT_MS: u64 = 2000; // Updated to allow more time for DAG-integrated mining // Never exceed 25ms for 32+ BPS
 
         let pow_start = std::time::Instant::now();
-        let mut retry_count = 0;
+        let (result_tx, mut result_rx) = tokio::sync::mpsc::channel::<QantoBlock>(PARALLEL_MINERS);
+        let mut mining_tasks = Vec::with_capacity(PARALLEL_MINERS);
 
-        loop {
-            if shutdown_token.is_cancelled() {
-                info!("SOLO MINER: Mining cancelled due to shutdown.");
-                return Err(true);
-            }
+        // Shared flag to ensure only one "PoW solved" message is logged
+        let solution_found = Arc::new(AtomicBool::new(false));
+
+        // Launch 4 parallel miners on different nonce ranges
+        for miner_id in 0..PARALLEL_MINERS {
+            let nonce_start = miner_id as u64 * NONCE_RANGE_SIZE;
+            let nonce_end = if miner_id == PARALLEL_MINERS - 1 {
+                u64::MAX
+            } else {
+                ((miner_id + 1) as u64 * NONCE_RANGE_SIZE).saturating_sub(1)
+            };
 
             let miner_clone = miner.clone();
             let shutdown_clone = shutdown_token.clone();
             let mut candidate_clone = candidate_block.clone();
+            let result_tx_clone = result_tx.clone();
+            let solution_found_clone = solution_found.clone();
 
             debug!(
-                "SOLO MINER: Starting POW mining task (attempt {})",
-                retry_count + 1
+                "SOLO MINER: Launching parallel miner {} (nonce range: {} - {})",
+                miner_id, nonce_start, nonce_end
             );
 
-            // Add timeout wrapper around mining operation
-            let mining_task = tokio::task::spawn_blocking(move || {
-                // Wrap mining operation in catch_unwind for panic protection
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    miner_clone
-                        .solve_pow_with_cancellation(&mut candidate_clone, shutdown_clone)
-                        .map(|_| candidate_clone)
-                }))
-                .unwrap_or_else(|panic_info| {
-                    let panic_msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
-                        s.to_string()
-                    } else if let Some(s) = panic_info.downcast_ref::<String>() {
-                        s.clone()
-                    } else {
-                        "Unknown panic occurred during mining".to_string()
-                    };
-                    Err(crate::miner::MiningError::EmissionError(format!(
-                        "Mining panic: {panic_msg}"
-                    )))
-                })
+            let mining_task = tokio::task::spawn(async move {
+                // Set starting nonce for this miner's range
+                candidate_clone.nonce = nonce_start;
+
+                // Mine within the assigned nonce range
+                let mut current_nonce = nonce_start;
+                while current_nonce <= nonce_end && !shutdown_clone.is_cancelled() {
+                    candidate_clone.nonce = current_nonce;
+
+                    // Attempt mining with cancellation support
+                    match miner_clone
+                        .solve_pow_with_cancellation(&mut candidate_clone, shutdown_clone.clone())
+                    {
+                        Ok(_) => {
+                            // Only log if this is the first solution found
+                            if !solution_found_clone.swap(true, Ordering::SeqCst) {
+                                info!(
+                                    "SOLO MINER: Parallel miner {} found valid nonce: {}",
+                                    miner_id, candidate_clone.nonce
+                                );
+                            }
+                            // Send result immediately - first valid solution wins
+                            let _ = result_tx_clone.send(candidate_clone).await;
+                            return;
+                        }
+                        Err(_) => {
+                            // Continue to next nonce in range
+                            current_nonce = current_nonce.saturating_add(1000); // Jump by 1000 for better coverage
+                        }
+                    }
+                }
+
+                debug!(
+                    "SOLO MINER: Parallel miner {} completed range without finding solution",
+                    miner_id
+                );
             });
 
-            // Apply timeout to mining operation
-            let mining_result = tokio::time::timeout(
-                std::time::Duration::from_secs(POW_TIMEOUT_SECS),
-                mining_task,
-            )
-            .await;
+            mining_tasks.push(mining_task);
+        }
 
-            let mining_duration = pow_start.elapsed();
+        // Drop the original sender to ensure channel closes when all miners finish
+        drop(result_tx);
 
-            match mining_result {
-                Ok(Ok(Ok(block))) => {
-                    // Record successful mining
-                    self.mining_metrics
-                        .record_success(mining_duration, retry_count)
-                        .await;
+        // Wait for first valid solution or timeout
+        let mining_result = tokio::time::timeout(
+            std::time::Duration::from_millis(MINING_TIMEOUT_MS),
+            result_rx.recv(),
+        )
+        .await;
+
+        // Cancel all remaining mining tasks
+        for task in mining_tasks {
+            task.abort();
+        }
+
+        match mining_result {
+            Ok(Some(mined_block)) => {
+                let mining_duration = pow_start.elapsed();
+                // Only log success summary if no individual miner already logged
+                if !solution_found.load(Ordering::SeqCst) {
                     info!(
-                        "SOLO MINER: Proof-of-work completed in {:?}, nonce: {} (attempt {})",
-                        mining_duration,
-                        block.nonce,
-                        retry_count + 1
+                        "SOLO MINER: Parallel mining succeeded in {:?} (nonce: {})",
+                        mining_duration, mined_block.nonce
                     );
-                    return Ok((block, mining_duration));
                 }
-                Ok(Ok(Err(e))) => {
-                    if shutdown_token.is_cancelled() {
-                        // Record cancellation as mining error
-                        self.mining_metrics
-                            .record_failure(MiningFailureType::MiningError)
-                            .await;
-                        info!("SOLO MINER: Mining cancelled due to shutdown.");
-                        return Err(true);
-                    }
-
-                    retry_count += 1;
-                    if retry_count >= MAX_RETRIES {
-                        // Record final failure after retries
-                        self.mining_metrics
-                            .record_failure(MiningFailureType::MiningError)
-                            .await;
-                        warn!(
-                            "SOLO MINER: Mining failed after {} retries and {:?}: {}",
-                            MAX_RETRIES, mining_duration, e
-                        );
-                        return Err(false);
-                    }
-
-                    // Record retry attempt
-                    self.mining_metrics
-                        .record_failure(MiningFailureType::MiningError)
-                        .await;
-
-                    // Exponential backoff with jitter
-                    let delay_ms =
-                        BASE_DELAY_MS * (1 << retry_count) + rand::thread_rng().gen_range(0..50);
-                    warn!(
-                        "SOLO MINER: Mining attempt {} failed: {}. Retrying in {}ms...",
-                        retry_count, e, delay_ms
-                    );
-                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                }
-                Ok(Err(e)) => {
-                    retry_count += 1;
-                    if retry_count >= MAX_RETRIES {
-                        // Record final panic after retries
-                        self.mining_metrics
-                            .record_failure(MiningFailureType::TaskPanic)
-                            .await;
-                        error!(
-                            "SOLO MINER: Mining task panicked after {} retries: {}",
-                            MAX_RETRIES, e
-                        );
-                        return Err(false);
-                    }
-
-                    // Record panic attempt
-                    self.mining_metrics
-                        .record_failure(MiningFailureType::TaskPanic)
-                        .await;
-
-                    // Exponential backoff for panic recovery
-                    let delay_ms =
-                        BASE_DELAY_MS * (1 << retry_count) + rand::thread_rng().gen_range(0..100);
-                    error!(
-                        "SOLO MINER: Mining task panicked (attempt {}): {}. Recovering in {}ms...",
-                        retry_count, e, delay_ms
-                    );
-                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                }
-                Err(_timeout_error) => {
-                    retry_count += 1;
-                    if retry_count >= MAX_RETRIES {
-                        // Record final timeout after retries
-                        self.mining_metrics
-                            .record_failure(MiningFailureType::MiningError)
-                            .await;
-                        warn!(
-                            "SOLO MINER: Mining timed out after {} retries and {:?}. Giving up.",
-                            MAX_RETRIES, mining_duration
-                        );
-                        return Err(false);
-                    }
-
-                    // Record timeout attempt
-                    self.mining_metrics
-                        .record_failure(MiningFailureType::MiningError)
-                        .await;
-
-                    // Exponential backoff for timeout recovery
-                    let delay_ms =
-                        BASE_DELAY_MS * (1 << retry_count) + rand::thread_rng().gen_range(0..100);
-                    warn!(
-                        "SOLO MINER: Mining timed out after {:?} (attempt {}). Retrying in {}ms...",
-                        std::time::Duration::from_secs(POW_TIMEOUT_SECS),
-                        retry_count,
-                        delay_ms
-                    );
-                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                }
+                *candidate_block = mined_block;
+                Ok((candidate_block.clone(), mining_duration))
+            }
+            Ok(None) => {
+                warn!("SOLO MINER: All parallel miners completed without finding solution");
+                Err(false) // Mining failed, not shutdown
+            }
+            Err(_) => {
+                warn!(
+                    "SOLO MINER: Parallel mining timeout after {}ms - difficulty may be too high",
+                    MINING_TIMEOUT_MS
+                );
+                Err(false) // Mining timeout, not shutdown
             }
         }
     }
@@ -1607,23 +1576,15 @@ impl QantoDAG {
         let block_id = mined_block.id.clone();
         let tx_count = mined_block.transactions.len();
 
-        celebrate_mining_success(MiningCelebrationParams {
-            block_height,
-            block_hash: mined_block.hash(),
-            nonce: mined_block.nonce,
-            difficulty: mined_block.difficulty,
-            transactions_count: tx_count,
-            mining_time,
-            effort: mined_block.effort,
-            total_blocks_mined,
-            chain_id: mined_block.chain_id,
-            block_reward: mined_block.reward,
-            compact: false,
-        });
+        // Pre-calculate values for potential celebration
+        let block_hash_hex = mined_block.hash();
+        let _total_fees: u64 = mined_block.transactions.iter().map(|tx| tx.fee).sum();
 
+        // Log current DAG state before adding block
+        let current_block_count = self.get_block_count().await;
         info!(
-            "SOLO MINER: Successfully mined block #{} with ID: {} (Total blocks mined: {})",
-            total_blocks_mined, block_id, total_blocks_mined
+            "📊 Current DAG block count before adding: {}",
+            current_block_count
         );
 
         tokio::task::yield_now().await;
@@ -1633,9 +1594,52 @@ impl QantoDAG {
         let mut add_retry_count = 0;
 
         loop {
+            info!(
+                "🔄 Attempting to add block {} to DAG (attempt {}/{})",
+                block_id,
+                add_retry_count + 1,
+                MAX_ADD_RETRIES
+            );
+
             match self.add_block(mined_block.clone(), utxos).await {
                 Ok(true) => {
-                    info!("SOLO MINER: Successfully added new block to the QantoDAG.");
+                    let new_block_count = self.get_block_count().await;
+                    info!(
+                        "✅ Block {} successfully added to DAG! Block count: {} -> {}",
+                        block_id, current_block_count, new_block_count
+                    );
+
+                    // NOW celebrate - block has been successfully validated and added to DAG
+                    on_block_mined(
+                        MiningCelebrationParams {
+                            block_height,
+                            block_hash: mined_block.hash(),
+                            nonce: mined_block.nonce,
+                            difficulty: mined_block.difficulty,
+                            transactions_count: tx_count,
+                            mining_time,
+                            effort: mined_block.effort,
+                            total_blocks_mined,
+                            chain_id: mined_block.chain_id,
+                            block_reward: mined_block.reward,
+                            compact: false,
+                        },
+                        &to_core_logging(&self.logging_config),
+                    );
+
+                    // Enhanced celebratory logging with comprehensive block details - FULL HASH
+                    println!("{mined_block}");
+
+                    // Additional detailed logging for operational monitoring
+                    debug!(
+                        "Block Details - Full Hash: {} | Parent: {} | Merkle Root: {} | Chain ID: {} | Epoch: {} | Effort: {}",
+                        block_hash_hex,
+                        mined_block.parents.first().unwrap_or(&"genesis".to_string()),
+                        mined_block.merkle_root,
+                        mined_block.chain_id,
+                        mined_block.epoch,
+                        mined_block.effort
+                    );
 
                     // Remove transactions from mempool with error handling
                     match tokio::time::timeout(
@@ -1657,7 +1661,21 @@ impl QantoDAG {
                     break;
                 }
                 Ok(false) => {
-                    warn!("SOLO MINER: Mined block was rejected by the DAG (already exists?).");
+                    let final_block_count = self.get_block_count().await;
+                    warn!(
+                        "⚠️ Block {} already exists or was rejected (attempt {}/{}). Block count: {} -> {}",
+                        block_id, add_retry_count + 1, MAX_ADD_RETRIES, current_block_count, final_block_count
+                    );
+
+                    // Check if block actually exists in DAG
+                    if let Some(existing_block) = self.get_block(&block_id).await {
+                        info!(
+                            "🔍 Block {} already exists in DAG with height {}",
+                            existing_block.id, existing_block.height
+                        );
+                    } else {
+                        error!("❌ Block {} was rejected but doesn't exist in DAG! This indicates a validation failure.", block_id);
+                    }
                     break;
                 }
                 Err(e) => {
@@ -1806,6 +1824,8 @@ impl QantoDAG {
             error_msg.push_str("Block ");
             error_msg.push_str(&block.id);
             error_msg.push_str(" failed validation in add_block");
+            error!("SOLO MINER: Block validation failed for block {}: height={}, parents={:?}, transactions={}, validator={}, miner={}", 
+                   block.id, block.height, block.parents, block.transactions.len(), block.validator, block.miner);
             return Err(QantoDAGError::InvalidBlock(error_msg));
         }
 
@@ -1889,22 +1909,53 @@ impl QantoDAG {
 
         drop(utxos_write_guard);
 
+        info!(
+            "SOLO MINER: Starting database write for block {}",
+            block_for_db.id
+        );
         let db_clone = self.db.clone();
         let id_bytes = block_for_db.id.as_bytes().to_vec();
         let block_bytes = serde_json::to_vec(&block_for_db)?;
+        info!(
+            "SOLO MINER: Serialized block {} for database write",
+            block_for_db.id
+        );
 
-        task::spawn_blocking(move || db_clone.put(id_bytes, block_bytes))
-            .await
-            .map_err(QantoDAGError::JoinError)?
-            .map_err(QantoDAGError::Storage)?;
+        info!(
+            "SOLO MINER: Spawning blocking task for database write of block {}",
+            block_for_db.id
+        );
+        task::spawn_blocking(move || {
+            info!("SOLO MINER: Inside blocking task, writing block to database");
+            db_clone.put(id_bytes, block_bytes)
+        })
+        .await
+        .map_err(QantoDAGError::JoinError)?
+        .map_err(QantoDAGError::Storage)?;
+        info!(
+            "SOLO MINER: Database write completed for block {}",
+            block_for_db.id
+        );
 
+        info!(
+            "SOLO MINER: Updating emission supply for block {}",
+            block_for_db.id
+        );
         let mut emission = self.emission.write().await;
         emission
             .update_supply(block_for_db.reward)
             .map_err(QantoDAGError::EmissionError)?;
+        info!(
+            "SOLO MINER: Emission supply updated for block {}",
+            block_for_db.id
+        );
 
         BLOCKS_PROCESSED.inc();
         TRANSACTIONS_PROCESSED.inc_by(block_for_db.transactions.len() as u64);
+        info!(
+            "SOLO MINER: Block {} successfully added to DAG",
+            block_for_db.id
+        );
         Ok(true)
     }
 
@@ -2005,15 +2056,17 @@ impl QantoDAG {
         Ok(contract_id)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_candidate_block(
         &self,
-
         _qr_signing_key: &QantoPQPrivateKey,
         _qr_public_key: &QantoPQPublicKey,
         validator_address: &str,
         mempool_arc: &Arc<RwLock<Mempool>>,
         _utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
         chain_id_val: u32,
+        miner: &Arc<Miner>,
+        homomorphic_public_key: Option<&[u8]>,
     ) -> Result<QantoBlock, QantoDAGError> {
         {
             let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
@@ -2062,42 +2115,16 @@ impl QantoDAG {
                 .select_transactions(MAX_TRANSACTIONS_PER_BLOCK)
                 .await
         };
-        let parent_tips: Vec<String> = match self.get_tips(chain_id_val).await {
-            Some(tips) => tips,
-            None => {
-                // Chain doesn't exist in tips map yet - this can happen during initialization
-                // or if the chain hasn't been properly initialized. Let's check if we have
-                // any blocks for this chain and initialize tips if needed.
+        let parent_tips: Vec<String> = match self.get_fast_tips(chain_id_val).await {
+            Ok(tips) => tips,
+            Err(_) => {
+                // Chain doesn't exist in fast tips cache yet - this is a genesis case
+                // Return empty vector to be handled as genesis below
                 debug!(
-                    "No tips found for chain_id {}, checking for existing blocks",
+                    "No fast tips found for chain_id {}, treating as genesis case",
                     chain_id_val
                 );
-
-                // Look for any blocks in this chain to initialize tips
-                let mut chain_tips = HashSet::new();
-                for entry in self.blocks.iter() {
-                    let block = entry.value();
-                    if block.chain_id == chain_id_val {
-                        // This is a block in our chain, check if it's a tip
-                        let is_tip = !self.blocks.iter().any(|other_entry| {
-                            let other_block = other_entry.value();
-                            other_block.parents.contains(&block.id)
-                        });
-                        if is_tip {
-                            chain_tips.insert(block.id.clone());
-                        }
-                    }
-                }
-
-                if !chain_tips.is_empty() {
-                    // We found tips, update the tips map
-                    self.tips.insert(chain_id_val, chain_tips.clone());
-                    chain_tips.into_iter().collect()
-                } else {
-                    // No blocks found for this chain, return empty vector
-                    // This will be handled below as a genesis case
-                    Vec::new()
-                }
+                Vec::new()
             }
         };
 
@@ -2146,20 +2173,27 @@ impl QantoDAG {
         let total_fees = selected_transactions.iter().map(|tx| tx.fee).sum::<u64>();
 
         // Create temporary block with actual selected transactions for accurate reward calculation
-        let (paillier_pk, _) = HomomorphicEncrypted::generate_keypair();
+        let paillier_pk = homomorphic_public_key
+            .map(|key| key.to_vec())
+            .unwrap_or_else(|| {
+                let (pk, _) = HomomorphicEncrypted::generate_keypair();
+                pk
+            });
         let temp_block_for_reward_calc = QantoBlock::new(QantoBlockCreationData {
             chain_id: chain_id_val,
             parents: parent_tips.clone(),
             transactions: selected_transactions.clone(),
             difficulty: current_difficulty,
             validator: validator_address.to_string(),
-            miner: validator_address.to_string(),
+            miner: miner
+                .get_address()
+                .unwrap_or_else(|| validator_address.to_string()),
             validator_private_key: QantoPQPrivateKey::new_dummy(),
 
             timestamp: new_timestamp,
             current_epoch: epoch,
             height,
-            paillier_pk,
+            paillier_pk: paillier_pk.clone(),
         })?;
 
         let self_arc_strong = self
@@ -2172,7 +2206,12 @@ impl QantoDAG {
             .await?;
 
         // Generate proper homomorphic encryption keys for coinbase output
-        let (public_key_material, _private_key_material) = HomomorphicEncrypted::generate_keypair();
+        let public_key_material = homomorphic_public_key
+            .map(|key| key.to_vec())
+            .unwrap_or_else(|| {
+                let (pk, _) = HomomorphicEncrypted::generate_keypair();
+                pk
+            });
         let coinbase_outputs = vec![Output {
             address: validator_address.to_string(),
             amount: reward,
@@ -2206,12 +2245,14 @@ impl QantoDAG {
             transactions: transactions_for_block,
             difficulty: current_difficulty,
             validator: validator_address.to_string(),
-            miner: validator_address.to_string(),
+            miner: miner
+                .get_address()
+                .unwrap_or_else(|| validator_address.to_string()),
 
             timestamp: new_timestamp,
             current_epoch: epoch,
             height,
-            paillier_pk,
+            paillier_pk: paillier_pk.clone(),
         })?;
         block.cross_chain_references = cross_chain_references;
         block.reward = reward;
@@ -2243,7 +2284,42 @@ impl QantoDAG {
         }
 
         let serialized_size = serde_json::to_vec(&block)?.len();
-        if block.transactions.len() > MAX_TRANSACTIONS_PER_BLOCK || serialized_size > MAX_BLOCK_SIZE
+        // Dynamic block size limit based on chain congestion, clamped to [8MB, MAX_BLOCK_SIZE]
+        let dynamic_max_size = {
+            let total_load: u64 = self
+                .chain_loads
+                .iter()
+                .map(|entry| entry.value().load(Ordering::Relaxed))
+                .sum();
+            let num_chains_val = *self.num_chains.read().await;
+            let avg_load = if num_chains_val > 0 {
+                total_load as f64 / num_chains_val as f64
+            } else {
+                0.0
+            };
+            let this_load = self
+                .chain_loads
+                .get(&block.chain_id)
+                .map(|entry| entry.value().load(Ordering::Relaxed))
+                .unwrap_or(0);
+            let congestion_ratio = if avg_load > 0.0 {
+                this_load as f64 / avg_load
+            } else {
+                1.0
+            };
+            // Reduce allowed size modestly under congestion; no increase above MAX_BLOCK_SIZE
+            let scale = if congestion_ratio > 1.0 {
+                let reduction = ((congestion_ratio - 1.0) / 3.0).min(0.5);
+                1.0 - reduction
+            } else {
+                1.0
+            };
+            let computed = (MAX_BLOCK_SIZE as f64 * scale) as usize;
+            computed.clamp(8_388_608, MAX_BLOCK_SIZE)
+        };
+
+        if block.transactions.len() > MAX_TRANSACTIONS_PER_BLOCK
+            || serialized_size > dynamic_max_size
         {
             let mut error_msg = String::with_capacity(64);
             error_msg.push_str("Block exceeds size limits: ");
@@ -2262,26 +2338,29 @@ impl QantoDAG {
             return Err(QantoDAGError::QuantumSignature(PQError::VerificationError));
         }
 
-        let target_hash_bytes = Miner::calculate_target_from_difficulty(block.difficulty);
-        let block_pow_hash = block.hash();
-        let block_pow_hash_bytes = hex::decode(&block_pow_hash).map_err(QantoDAGError::HexError)?;
+        // Proof-of-Work validation using canonical function
+        let block_pow_hash = block.hash_for_pow();
 
-        // Debug prints for PoW validation
+        // Calculate target hash for enhanced diagnostics
+        let target_hash = crate::miner::Miner::calculate_target_from_difficulty(block.difficulty);
+
+        // Enhanced debug prints for PoW validation
         println!("DEBUG PoW Validation:");
         println!("  Block ID: {}", block.id);
         println!("  Block difficulty: {}", block.difficulty);
         println!("  Block nonce: {}", block.nonce);
-        println!("  Block hash: {block_pow_hash}");
-        println!("  Target hash: {}", hex::encode(&target_hash_bytes));
-        println!(
-            "  Hash meets target: {}",
-            Miner::hash_meets_target(&block_pow_hash_bytes, &target_hash_bytes)
-        );
+        println!("  Calculated Hash: {block_pow_hash}");
+        println!("  Target Hash: {}", hex::encode(target_hash));
 
-        if !Miner::hash_meets_target(&block_pow_hash_bytes, &target_hash_bytes) {
-            return Err(QantoDAGError::InvalidBlock(
-                "Proof-of-Work not satisfied".to_string(),
-            ));
+        if !block.is_pow_valid_with_pow_hash(block_pow_hash) {
+            // Enhanced error message with all diagnostic information
+            let error_msg = format!(
+                "Proof-of-Work not satisfied - Block ID: {}, Calculated Hash: {}, Target Hash: {}",
+                block.id,
+                block_pow_hash,
+                hex::encode(target_hash)
+            );
+            return Err(QantoDAGError::InvalidBlock(error_msg));
         }
 
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
@@ -2365,16 +2444,35 @@ impl QantoDAG {
             .skip(1)
             .map(|tx| tx.fee)
             .sum::<u64>();
+
+        debug!(
+            "Block {} reward validation: total_fees={}, total_coinbase_output={}, block.reward={}",
+            block.id, total_fees, total_coinbase_output, block.reward
+        );
+
         let expected_reward = self
             .saga
             .calculate_dynamic_reward(block, &self_arc_strong, total_fees)
             .await?;
 
+        debug!(
+            "Block {} SAGA calculated expected_reward={}, block.reward={}",
+            block.id, expected_reward, block.reward
+        );
+
         if block.reward != expected_reward {
+            error!(
+                "Block {} reward mismatch: expected {}, got {}",
+                block.id, expected_reward, block.reward
+            );
             return Err(QantoDAGError::RewardMismatch(expected_reward, block.reward));
         }
 
         if total_coinbase_output != block.reward {
+            error!(
+                "Block {} coinbase output mismatch: block.reward={}, total_coinbase_output={}",
+                block.id, block.reward, total_coinbase_output
+            );
             return Err(QantoDAGError::RewardMismatch(
                 block.reward,
                 total_coinbase_output,
@@ -2403,7 +2501,7 @@ impl QantoDAG {
         Ok(true)
     }
 
-    /// Validates block size to enforce 1MB cap and prevent serialization issues
+    /// Validates block size to enforce MAX_BLOCK_SIZE cap and prevent serialization issues
     pub fn validate_block_size(block: &QantoBlock) -> Result<(), QantoDAGError> {
         // Check individual transaction sizes first
         for (i, tx) in block.transactions.iter().enumerate() {
@@ -2412,7 +2510,7 @@ impl QantoDAG {
                 .len();
 
             // Individual transaction size limit (100KB)
-            if tx_size > 102_400 {
+            if tx_size > MAX_TRANSACTION_SIZE {
                 return Err(QantoDAGError::InvalidBlock(format!(
                     "Transaction {i} exceeds 100KB limit: {tx_size} bytes"
                 )));
@@ -2425,7 +2523,7 @@ impl QantoDAG {
 
         if block_size > MAX_BLOCK_SIZE {
             return Err(QantoDAGError::InvalidBlock(format!(
-                "Block size {block_size} bytes exceeds 1MB limit"
+                "Block size {block_size} bytes exceeds {MAX_BLOCK_SIZE} limit"
             )));
         }
 
@@ -3335,6 +3433,262 @@ impl QantoDAG {
                 .load(Ordering::Relaxed),
         )
     }
+
+    /// Enhanced high-priority transaction selection for 10M+ TPS
+    pub async fn select_high_priority_transactions_enhanced(
+        &self,
+        mempool_arc: &Arc<RwLock<Mempool>>,
+        max_transactions: usize,
+    ) -> Result<Vec<Transaction>, QantoDAGError> {
+        let mempool = mempool_arc.read().await;
+
+        // Use parallel processing to select transactions
+        let all_transactions = mempool.get_transactions().await;
+        let transactions: Vec<Transaction> = self.work_stealing_pool.install(|| {
+            all_transactions
+                .values()
+                .collect::<Vec<_>>()
+                .par_iter()
+                .take(max_transactions)
+                .cloned()
+                .cloned()
+                .collect()
+        });
+
+        Ok(transactions)
+    }
+
+    /// Process transaction batch with sharding for 10M+ TPS
+    pub async fn process_transaction_batch_sharded(
+        &self,
+        transactions: Vec<Transaction>,
+        shard_count: usize,
+    ) -> Result<Vec<bool>, QantoDAGError> {
+        if transactions.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Shard transactions for parallel processing
+        let chunk_size = transactions.len().div_ceil(shard_count);
+        let sharded_results: Vec<Vec<bool>> = self.work_stealing_pool.install(|| {
+            transactions
+                .par_chunks(chunk_size)
+                .map(|chunk| {
+                    chunk
+                        .iter()
+                        .map(|tx| {
+                            // Fast validation for each transaction
+                            self.validate_transaction_fast(tx)
+                        })
+                        .collect()
+                })
+                .collect()
+        });
+
+        // Flatten results
+        let results: Vec<bool> = sharded_results.into_iter().flatten().collect();
+        Ok(results)
+    }
+
+    /// Calculate transaction shard based on hash
+    #[allow(dead_code)]
+    fn calculate_transaction_shard(&self, tx: &Transaction, shard_count: usize) -> usize {
+        let tx_hash = qanto_hash(serde_json::to_string(tx).unwrap_or_default().as_bytes());
+        let hash_bytes = hex::decode(tx_hash).unwrap_or_default();
+        if hash_bytes.is_empty() {
+            0
+        } else {
+            hash_bytes[0] as usize % shard_count
+        }
+    }
+
+    /// Fast transaction validation for high throughput
+    fn validate_transaction_fast(&self, tx: &Transaction) -> bool {
+        // Basic validation checks
+        if tx.inputs.is_empty() || tx.outputs.is_empty() {
+            return false;
+        }
+
+        // Check transaction size
+        if let Ok(serialized) = serde_json::to_string(tx) {
+            if serialized.len() > MAX_TRANSACTION_SIZE {
+                return false;
+            }
+        }
+
+        // Additional fast checks can be added here
+        true
+    }
+
+    /// Enhanced mempool processing for 1M+ capacity
+    pub async fn process_mempool_enhanced(
+        &self,
+        mempool_arc: &Arc<RwLock<Mempool>>,
+        batch_size: usize,
+    ) -> Result<Vec<Transaction>, QantoDAGError> {
+        let mempool = mempool_arc.read().await;
+
+        // Get high-priority transactions in parallel
+        let all_transactions_map = mempool.get_transactions().await;
+        let all_transactions: Vec<Transaction> = all_transactions_map.into_values().collect();
+        let transactions: Vec<Transaction> = self.work_stealing_pool.install(|| {
+            all_transactions
+                .par_iter()
+                .take(batch_size)
+                .filter(|tx| self.validate_transaction_fast(tx))
+                .cloned()
+                .collect()
+        });
+
+        // Process transactions in shards
+        let shard_count = 16; // Configurable shard count
+        let _validation_results = self
+            .process_transaction_batch_sharded(transactions.clone(), shard_count)
+            .await?;
+
+        Ok(transactions)
+    }
+
+    /// Parallel block validation with enhanced performance
+    pub async fn validate_blocks_parallel_enhanced(
+        &self,
+        blocks: Vec<QantoBlock>,
+        _utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
+    ) -> Result<Vec<(QantoBlock, bool)>, QantoDAGError> {
+        if blocks.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Use work-stealing thread pool for maximum parallelism
+        let validation_results: Vec<(QantoBlock, bool)> = self.work_stealing_pool.install(|| {
+            blocks
+                .into_par_iter()
+                .map(|block| {
+                    // Fast block validation
+                    let is_valid = self.validate_block_fast(&block);
+                    (block, is_valid)
+                })
+                .collect()
+        });
+
+        Ok(validation_results)
+    }
+
+    /// Fast block validation for high throughput
+    fn validate_block_fast(&self, block: &QantoBlock) -> bool {
+        // Basic block validation checks
+        if block.transactions.is_empty() {
+            return false;
+        }
+
+        // Check block size
+        if let Ok(serialized) = serde_json::to_string(block) {
+            if serialized.len() > MAX_BLOCK_SIZE {
+                return false;
+            }
+        }
+
+        // Validate transaction count
+        if block.transactions.len() > MAX_TRANSACTIONS_PER_BLOCK {
+            return false;
+        }
+
+        // Additional fast validation checks
+        true
+    }
+
+    /// Batch process transactions with enhanced parallelism
+    pub async fn batch_process_transactions_enhanced(
+        &self,
+        transactions: Vec<Transaction>,
+        _utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
+    ) -> Result<Vec<bool>, QantoDAGError> {
+        if transactions.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Process in parallel batches
+        let batch_size = PARALLEL_VALIDATION_BATCH_SIZE;
+        let results: Vec<Vec<bool>> = self.work_stealing_pool.install(|| {
+            transactions
+                .par_chunks(batch_size)
+                .map(|chunk| {
+                    chunk
+                        .iter()
+                        .map(|tx| self.validate_transaction_fast(tx))
+                        .collect()
+                })
+                .collect()
+        });
+
+        // Flatten results
+        let flattened_results: Vec<bool> = results.into_iter().flatten().collect();
+        Ok(flattened_results)
+    }
+
+    /// Get enhanced performance metrics for 10M+ TPS monitoring
+    pub fn get_enhanced_performance_metrics(&self) -> HashMap<String, u64> {
+        let mut metrics = HashMap::new();
+
+        metrics.insert(
+            "blocks_processed".to_string(),
+            self.performance_metrics
+                .blocks_processed
+                .load(Ordering::Relaxed),
+        );
+        metrics.insert(
+            "transactions_processed".to_string(),
+            self.performance_metrics
+                .transactions_processed
+                .load(Ordering::Relaxed),
+        );
+        metrics.insert(
+            "validation_time_ms".to_string(),
+            self.performance_metrics
+                .validation_time_ms
+                .load(Ordering::Relaxed),
+        );
+        metrics.insert(
+            "block_creation_time_ms".to_string(),
+            self.performance_metrics
+                .block_creation_time_ms
+                .load(Ordering::Relaxed),
+        );
+        metrics.insert(
+            "cache_hits".to_string(),
+            self.performance_metrics.cache_hits.load(Ordering::Relaxed),
+        );
+        metrics.insert(
+            "cache_misses".to_string(),
+            self.performance_metrics
+                .cache_misses
+                .load(Ordering::Relaxed),
+        );
+        metrics.insert(
+            "throughput_bps".to_string(),
+            self.performance_metrics
+                .throughput_bps
+                .load(Ordering::Relaxed),
+        );
+        metrics.insert(
+            "current_epoch".to_string(),
+            self.current_epoch.load(Ordering::Relaxed),
+        );
+        metrics.insert("total_blocks".to_string(), self.blocks.len() as u64);
+        metrics.insert("total_validators".to_string(), self.validators.len() as u64);
+        metrics.insert("total_tips".to_string(), self.tips.len() as u64);
+        metrics.insert("mempool_size".to_string(), self.memory_pool.len() as u64);
+        metrics.insert(
+            "validation_cache_size".to_string(),
+            self.validation_cache.len() as u64,
+        );
+        metrics.insert(
+            "processing_blocks_count".to_string(),
+            self.processing_blocks.len() as u64,
+        );
+
+        metrics
+    }
 }
 
 impl Clone for QantoDAG {
@@ -3367,6 +3721,7 @@ impl Clone for QantoDAG {
             processing_blocks: self.processing_blocks.clone(),
             performance_metrics: self.performance_metrics.clone(),
             mining_metrics: self.mining_metrics.clone(),
+            logging_config: self.logging_config.clone(),
             // Advanced performance optimization fields
             simd_processor: self.simd_processor.clone(),
             lock_free_tx_queue: Arc::new(crossbeam::queue::SegQueue::new()),
@@ -3378,6 +3733,7 @@ impl Clone for QantoDAG {
             batch_processor: self.batch_processor.clone(),
             timing_coordinator: self.timing_coordinator.clone(),
             performance_monitor: self.performance_monitor.clone(),
+            qdag_generator: self.qdag_generator.clone(),
         }
     }
 }
@@ -3416,6 +3772,7 @@ impl QantoDAGOptimizations for QantoDAG {
         use crate::saga::PalletSaga;
         use std::sync::Arc;
 
+        use crate::optimized_qdag::{OptimizedQDagConfig, OptimizedQDagGenerator};
         use crossbeam::channel::bounded;
         use std::sync::Weak;
 
@@ -3487,6 +3844,15 @@ impl QantoDAGOptimizations for QantoDAG {
             performance_monitor: Arc::new(PerformanceMonitor::new(
                 PerformanceMonitoringConfig::default(),
             )),
+            qdag_generator: Arc::new(OptimizedQDagGenerator::new(OptimizedQDagConfig::default())),
+            logging_config: LoggingConfig::default(),
         }
+    }
+}
+fn to_core_logging(cfg: &LoggingConfig) -> CoreLoggingConfig {
+    CoreLoggingConfig {
+        enable_block_celebrations: cfg.enable_block_celebrations,
+        celebration_log_level: cfg.celebration_log_level.clone(),
+        celebration_throttle_per_min: cfg.celebration_throttle_per_min,
     }
 }

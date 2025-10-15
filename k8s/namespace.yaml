@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: qanto
+  labels:
+    name: qanto
+    app.kubernetes.io/name: qanto
+    app.kubernetes.io/instance: qanto
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: blockchain
+    app.kubernetes.io/part-of: qanto-blockchain
+    app.kubernetes.io/managed-by: helm
+  annotations:
+    description: "Qanto blockchain namespace for all components"
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: qanto-resource-quota
+  namespace: qanto
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    persistentvolumeclaims: "10"
+    services: "10"
+    secrets: "20"
+    configmaps: "20"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: qanto-limit-range
+  namespace: qanto
+spec:
+  limits:
+  - default:
+      cpu: "1"
+      memory: "2Gi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "256Mi"
+    type: Container
+  - default:
+      storage: "10Gi"
+    type: PersistentVolumeClaim

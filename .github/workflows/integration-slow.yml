@@ -1,0 +1,123 @@
+name: Slow Integration Tests
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main", "develop"]
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # Deterministic test environment
+  QANTO_TEST_MINING_SEED: 42
+  RUST_LOG: debug
+
+jobs:
+  slow-integration-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-slow-tests-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-slow-tests-
+            ${{ runner.os }}-cargo-
+
+      - name: Install cargo-nextest
+        run: cargo install cargo-nextest --locked
+
+      - name: Build project (release mode for performance)
+        run: cargo build --release --all-features
+
+      - name: Run fast unit tests with nextest
+        run: cargo nextest run --all-features --release --no-capture
+        timeout-minutes: 10
+
+      - name: Run slow integration tests with nextest
+        run: cargo nextest run --all-features --release --no-capture -- --ignored
+        timeout-minutes: 25
+        env:
+          # Extended timeout for individual tests
+          NEXTEST_TEST_TIMEOUT: 300s
+          # Deterministic mining for reproducible results
+          QANTO_TEST_MINING_SEED: 42
+
+      - name: Generate test report
+        if: always()
+        run: |
+          echo "## Slow Integration Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "- Build completed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "- Fast tests: $(cargo nextest list --all-features | wc -l) tests" >> $GITHUB_STEP_SUMMARY
+          echo "- Slow tests: $(cargo nextest list --all-features -- --ignored | wc -l) tests" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: Deterministic (seed=42)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slow-test-logs
+          path: |
+            target/nextest/*/junit.xml
+            target/nextest/*/test-output.log
+          retention-days: 7
+
+  performance-profiling:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: slow-integration-tests
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install flamegraph dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y linux-perf
+          cargo install flamegraph --locked
+
+      - name: Build release for profiling
+        run: cargo build --release --all-features
+
+      - name: Generate flamegraphs for mining tests
+        run: |
+          mkdir -p diagnostics/flamegraphs
+          # Profile basic mining test
+          QANTO_TEST_MINING_SEED=42 cargo flamegraph \
+            --test integration_smoke_tests --release \
+            --output diagnostics/flamegraphs/ci_basic_mining.svg \
+            -- test_basic_mining --ignored --exact
+        env:
+          QANTO_TEST_MINING_SEED: 42
+
+      - name: Upload flamegraph artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-flamegraphs
+          path: diagnostics/flamegraphs/
+          retention-days: 30

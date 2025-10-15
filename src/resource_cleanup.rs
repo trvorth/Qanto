@@ -6,6 +6,7 @@ use thiserror::Error;
 use tokio::sync::{RwLock, Semaphore};
 use tokio::task::JoinSet;
 use tokio::time::timeout;
+use tokio_graceful_shutdown::{SubsystemBuilder, Toplevel};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
@@ -27,22 +28,26 @@ pub enum CleanupError {
 /// Enhanced resource cleanup coordinator for graceful shutdown
 #[derive(Clone)]
 pub struct ResourceCleanup {
-    /// Shutdown flag
+    /// Atomic flag to track if shutdown has been requested
     shutdown_requested: Arc<AtomicBool>,
-    /// Cleanup timeout
+    /// Atomic flag to track if shutdown is currently in progress
+    shutdown_in_progress: Arc<AtomicBool>,
+    /// Maximum time to wait for cleanup operations
     cleanup_timeout: Duration,
-    /// Active tasks counter
+    /// Semaphore to limit concurrent active tasks
     active_tasks: Arc<Semaphore>,
-    /// Resource registry
+    /// List of registered resources for cleanup
     resources: Arc<RwLock<Vec<CleanupResource>>>,
-    /// Cleanup hooks
+    /// List of cleanup hooks to execute during shutdown
     cleanup_hooks: Arc<RwLock<Vec<CleanupHook>>>,
     /// Cancellation token for coordinated shutdown
     cancellation_token: CancellationToken,
-    /// Task registry for managed tasks
+    /// Registry for managed async tasks
     task_registry: Arc<RwLock<JoinSet<Result<(), CleanupError>>>>,
-    /// Runtime shutdown hooks
+    /// Runtime shutdown hooks for async cleanup
     runtime_hooks: Arc<RwLock<Vec<RuntimeShutdownHook>>>,
+    /// Optional tokio-graceful-shutdown toplevel handle
+    toplevel: Arc<RwLock<Option<Toplevel>>>,
 }
 
 /// Cleanup resource descriptor
@@ -92,6 +97,7 @@ impl ResourceCleanup {
     pub fn new(cleanup_timeout: Duration) -> Self {
         Self {
             shutdown_requested: Arc::new(AtomicBool::new(false)),
+            shutdown_in_progress: Arc::new(AtomicBool::new(false)),
             cleanup_timeout,
             active_tasks: Arc::new(Semaphore::new(1000)), // Allow up to 1000 concurrent tasks
             resources: Arc::new(RwLock::new(Vec::new())),
@@ -99,7 +105,80 @@ impl ResourceCleanup {
             cancellation_token: CancellationToken::new(),
             task_registry: Arc::new(RwLock::new(JoinSet::new())),
             runtime_hooks: Arc::new(RwLock::new(Vec::new())),
+            toplevel: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// Create a new ResourceCleanup instance with tokio-graceful-shutdown integration
+    pub fn new_with_graceful_shutdown(cleanup_timeout: Duration) -> Self {
+        let toplevel = Toplevel::new(|s| async move {
+            s.start(SubsystemBuilder::new("resource_cleanup", |_| async {
+                Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
+            }));
+        });
+
+        let mut instance = Self::new(cleanup_timeout);
+        instance.toplevel = Arc::new(RwLock::new(Some(toplevel)));
+
+        instance
+    }
+
+    /// Initialize signal handling for graceful shutdown
+    pub async fn setup_signal_handling(&self) -> Result<()> {
+        let cleanup = self.clone();
+
+        tokio::spawn(async move {
+            #[cfg(unix)]
+            {
+                use tokio::signal::unix::{signal, SignalKind};
+
+                let mut sigterm =
+                    signal(SignalKind::terminate()).expect("Failed to register SIGTERM handler");
+                let mut sigint =
+                    signal(SignalKind::interrupt()).expect("Failed to register SIGINT handler");
+
+                tokio::select! {
+                    _ = sigterm.recv() => {
+                        info!("Received SIGTERM, initiating graceful shutdown");
+                        if let Err(e) = cleanup.graceful_shutdown().await {
+                            error!("Graceful shutdown failed: {}", e);
+                        }
+                    }
+                    _ = sigint.recv() => {
+                        info!("Received SIGINT, initiating graceful shutdown");
+                        if let Err(e) = cleanup.graceful_shutdown().await {
+                            error!("Graceful shutdown failed: {}", e);
+                        }
+                    }
+                }
+            }
+
+            #[cfg(windows)]
+            {
+                use tokio::signal::windows;
+
+                let mut ctrl_c = windows::ctrl_c().expect("Failed to register Ctrl+C handler");
+                let mut ctrl_break =
+                    windows::ctrl_break().expect("Failed to register Ctrl+Break handler");
+
+                tokio::select! {
+                    _ = ctrl_c.recv() => {
+                        info!("Received Ctrl+C, initiating graceful shutdown");
+                        if let Err(e) = cleanup.graceful_shutdown().await {
+                            error!("Graceful shutdown failed: {}", e);
+                        }
+                    }
+                    _ = ctrl_break.recv() => {
+                        info!("Received Ctrl+Break, initiating graceful shutdown");
+                        if let Err(e) = cleanup.graceful_shutdown().await {
+                            error!("Graceful shutdown failed: {}", e);
+                        }
+                    }
+                }
+            }
+        });
+
+        Ok(())
     }
 
     /// Get cancellation token for coordinated shutdown
@@ -147,33 +226,253 @@ impl ResourceCleanup {
         self.shutdown_requested.load(Ordering::Relaxed)
     }
 
-    /// Request graceful shutdown
+    /// Request graceful shutdown - now idempotent
     pub async fn graceful_shutdown(&self) -> Result<()> {
-        if self.shutdown_requested.swap(true, Ordering::SeqCst) {
-            return Err(CleanupError::ShutdownInProgress.into());
+        // Check if shutdown is already in progress - if so, wait for it to complete
+        if self.shutdown_in_progress.load(Ordering::Acquire) {
+            info!("Shutdown already in progress, waiting for completion");
+            return self.wait_for_shutdown_completion().await;
         }
 
-        info!("Initiating graceful shutdown sequence");
+        // Atomically check and set shutdown_in_progress
+        if self
+            .shutdown_in_progress
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::Acquire)
+            .is_err()
+        {
+            // Another thread beat us to it, wait for completion
+            info!("Shutdown initiated by another thread, waiting for completion");
+            return self.wait_for_shutdown_completion().await;
+        }
+
+        // Set shutdown_requested flag
+        self.shutdown_requested.store(true, Ordering::SeqCst);
+
+        let shutdown_start = std::time::Instant::now();
+        info!(
+            "Initiating graceful shutdown sequence with timeout {:?}",
+            self.cleanup_timeout
+        );
 
         // Cancel all managed tasks
         self.cancellation_token.cancel();
 
-        // Execute shutdown sequence with timeout
-        match timeout(self.cleanup_timeout, self.perform_shutdown_sequence()).await {
-            Ok(result) => result,
-            Err(_) => {
-                error!(
-                    "Shutdown sequence timed out after {:?}",
-                    self.cleanup_timeout
-                );
-                Err(CleanupError::Timeout {
-                    timeout_ms: self.cleanup_timeout.as_millis() as u64,
-                }
-                .into())
-            }
+        // Execute shutdown sequence with per-phase timeouts instead of single timeout
+        let result = self.perform_shutdown_sequence_with_timeouts().await;
+
+        // Mark shutdown as no longer in progress
+        self.shutdown_in_progress.store(false, Ordering::SeqCst);
+
+        let shutdown_duration = shutdown_start.elapsed();
+        info!("Shutdown sequence completed in {:?}", shutdown_duration);
+
+        if shutdown_duration > Duration::from_millis(200) {
+            warn!(
+                "Shutdown took longer than expected: {:?}",
+                shutdown_duration
+            );
         }
+
+        result
     }
 
+    /// Wait for an ongoing shutdown to complete
+    async fn wait_for_shutdown_completion(&self) -> Result<()> {
+        let mut attempts = 0;
+        const MAX_ATTEMPTS: u32 = 100;
+        const POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+        while self.shutdown_in_progress.load(Ordering::Acquire) && attempts < MAX_ATTEMPTS {
+            tokio::time::sleep(POLL_INTERVAL).await;
+            attempts += 1;
+        }
+
+        if attempts >= MAX_ATTEMPTS {
+            warn!("Timeout waiting for shutdown completion");
+            return Err(CleanupError::Timeout {
+                timeout_ms: (MAX_ATTEMPTS as u64) * POLL_INTERVAL.as_millis() as u64,
+            }
+            .into());
+        }
+
+        info!("Shutdown completed successfully");
+        Ok(())
+    }
+
+    /// Perform shutdown sequence with per-phase timeouts for better control
+    async fn perform_shutdown_sequence_with_timeouts(&self) -> Result<()> {
+        let shutdown_start = std::time::Instant::now();
+        info!("Starting graceful shutdown sequence with per-phase timeouts");
+
+        // Phase 1: Execute runtime hooks (100ms timeout)
+        let phase_start = std::time::Instant::now();
+        info!("Phase 1/5: Executing runtime hooks");
+        match timeout(Duration::from_millis(100), self.execute_runtime_hooks()).await {
+            Ok(Ok(_)) => {
+                let phase_duration = phase_start.elapsed();
+                info!("Phase 1 completed successfully in {:?}", phase_duration);
+                if phase_duration > Duration::from_millis(200) {
+                    warn!(
+                        "Phase 1 (runtime hooks) took longer than expected: {:?}",
+                        phase_duration
+                    );
+                }
+            }
+            Ok(Err(e)) => {
+                let phase_duration = phase_start.elapsed();
+                warn!("Phase 1 failed after {:?}: {}", phase_duration, e);
+                return Err(e);
+            }
+            Err(_) => {
+                let phase_duration = phase_start.elapsed();
+                warn!("Phase 1 timed out after {:?}", phase_duration);
+                return Err(CleanupError::Timeout { timeout_ms: 100 }.into());
+            }
+        }
+
+        // Phase 2: Wait for managed tasks (200ms timeout, with forced abort)
+        let phase_start = std::time::Instant::now();
+        info!("Phase 2/5: Waiting for managed tasks");
+        match timeout(
+            Duration::from_millis(200),
+            self.wait_for_managed_tasks_quick(),
+        )
+        .await
+        {
+            Ok(Ok(_)) => {
+                let phase_duration = phase_start.elapsed();
+                info!("Phase 2 completed successfully in {:?}", phase_duration);
+                if phase_duration > Duration::from_millis(200) {
+                    warn!(
+                        "Phase 2 (managed tasks) took longer than expected: {:?}",
+                        phase_duration
+                    );
+                }
+            }
+            Ok(Err(e)) => {
+                let phase_duration = phase_start.elapsed();
+                warn!("Phase 2 failed after {:?}: {}", phase_duration, e);
+                // Force abort remaining tasks and continue
+                if let Err(abort_err) = self.cancel_all_tasks().await {
+                    warn!("Failed to abort remaining tasks: {}", abort_err);
+                }
+                warn!("Continuing shutdown despite task management issues");
+            }
+            Err(_) => {
+                let phase_duration = phase_start.elapsed();
+                warn!(
+                    "Phase 2 timed out after {:?}, forcing task abort",
+                    phase_duration
+                );
+                // Force abort remaining tasks and continue
+                if let Err(abort_err) = self.cancel_all_tasks().await {
+                    warn!("Failed to abort remaining tasks: {}", abort_err);
+                }
+            }
+        }
+
+        // Phase 3: Execute synchronous cleanup hooks (50ms timeout)
+        let phase_start = std::time::Instant::now();
+        info!("Phase 3/5: Executing synchronous cleanup hooks");
+        match timeout(Duration::from_millis(50), self.execute_cleanup_hooks()).await {
+            Ok(Ok(_)) => {
+                let phase_duration = phase_start.elapsed();
+                info!("Phase 3 completed successfully in {:?}", phase_duration);
+                if phase_duration > Duration::from_millis(200) {
+                    warn!(
+                        "Phase 3 (cleanup hooks) took longer than expected: {:?}",
+                        phase_duration
+                    );
+                }
+            }
+            Ok(Err(e)) => {
+                let phase_duration = phase_start.elapsed();
+                warn!("Phase 3 failed after {:?}: {}", phase_duration, e);
+                // Continue with shutdown for non-critical hook failures
+            }
+            Err(_) => {
+                let phase_duration = phase_start.elapsed();
+                warn!(
+                    "Phase 3 timed out after {:?}, continuing shutdown",
+                    phase_duration
+                );
+            }
+        }
+
+        // Phase 4: Clean up resources by priority (100ms timeout)
+        let phase_start = std::time::Instant::now();
+        info!("Phase 4/5: Cleaning up resources by priority");
+        match timeout(
+            Duration::from_millis(100),
+            self.cleanup_resources_by_priority(),
+        )
+        .await
+        {
+            Ok(Ok(_)) => {
+                let phase_duration = phase_start.elapsed();
+                info!("Phase 4 completed successfully in {:?}", phase_duration);
+                if phase_duration > Duration::from_millis(200) {
+                    warn!(
+                        "Phase 4 (resource cleanup) took longer than expected: {:?}",
+                        phase_duration
+                    );
+                }
+            }
+            Ok(Err(e)) => {
+                let phase_duration = phase_start.elapsed();
+                warn!("Phase 4 failed after {:?}: {}", phase_duration, e);
+                // Continue with final cleanup even if some resources failed
+            }
+            Err(_) => {
+                let phase_duration = phase_start.elapsed();
+                warn!(
+                    "Phase 4 timed out after {:?}, continuing to final cleanup",
+                    phase_duration
+                );
+            }
+        }
+
+        // Phase 5: Final cleanup (50ms timeout)
+        let phase_start = std::time::Instant::now();
+        info!("Phase 5/5: Performing final cleanup");
+        match timeout(Duration::from_millis(50), self.final_cleanup()).await {
+            Ok(Ok(_)) => {
+                let phase_duration = phase_start.elapsed();
+                info!("Phase 5 completed successfully in {:?}", phase_duration);
+                if phase_duration > Duration::from_millis(200) {
+                    warn!(
+                        "Phase 5 (final cleanup) took longer than expected: {:?}",
+                        phase_duration
+                    );
+                }
+            }
+            Ok(Err(e)) => {
+                let phase_duration = phase_start.elapsed();
+                warn!("Phase 5 failed after {:?}: {}", phase_duration, e);
+            }
+            Err(_) => {
+                let phase_duration = phase_start.elapsed();
+                warn!("Phase 5 timed out after {:?}", phase_duration);
+            }
+        }
+
+        let total_duration = shutdown_start.elapsed();
+        info!(
+            "Graceful shutdown sequence completed in {:?}",
+            total_duration
+        );
+
+        if total_duration > Duration::from_millis(1000) {
+            warn!(
+                "Total shutdown took longer than expected: {:?}",
+                total_duration
+            );
+        }
+
+        Ok(())
+    }
+
+    #[allow(dead_code)]
     async fn perform_shutdown_sequence(&self) -> Result<()> {
         info!("Starting shutdown sequence");
 
@@ -233,6 +532,46 @@ impl ResourceCleanup {
     }
 
     /// Wait for all managed tasks to complete
+    /// Quick version of wait_for_managed_tasks with shorter timeout for graceful shutdown
+    async fn wait_for_managed_tasks_quick(&self) -> Result<()> {
+        let mut registry = self.task_registry.write().await;
+
+        info!(
+            "Waiting for {} managed tasks to complete (quick mode)",
+            registry.len()
+        );
+
+        // Use shorter timeout for quick shutdown
+        let task_timeout = Duration::from_millis(150); // 150ms timeout for quick mode
+        let start_time = std::time::Instant::now();
+
+        while !registry.is_empty() {
+            if start_time.elapsed() > task_timeout {
+                warn!("Quick task cleanup timeout reached, aborting remaining tasks");
+                registry.abort_all();
+                break;
+            }
+
+            match timeout(Duration::from_millis(50), registry.join_next()).await {
+                Ok(Some(result)) => match result {
+                    Ok(task_result) => {
+                        if let Err(e) = task_result {
+                            warn!("Managed task failed during shutdown: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Task join error: {}", e);
+                    }
+                },
+                Ok(None) => break,  // No more tasks
+                Err(_) => continue, // Timeout, continue waiting
+            }
+        }
+
+        Ok(())
+    }
+
+    #[allow(dead_code)]
     async fn wait_for_managed_tasks(&self) -> Result<()> {
         let mut registry = self.task_registry.write().await;
 
@@ -275,11 +614,23 @@ impl ResourceCleanup {
         }
 
         info!("Executing {} cleanup hooks", hooks.len());
+        let mut critical_failures = 0;
 
         for (i, hook) in hooks.iter().enumerate() {
             match hook() {
                 Ok(_) => debug!("Cleanup hook {} executed successfully", i),
-                Err(e) => warn!("Cleanup hook {} failed: {}", i, e),
+                Err(e) => {
+                    warn!("Cleanup hook {} failed: {}", i, e);
+                    critical_failures += 1;
+                    // Early return if too many hooks fail to prevent timeout
+                    if critical_failures > hooks.len() / 2 {
+                        warn!(
+                            "Too many cleanup hooks failed ({}), continuing with shutdown",
+                            critical_failures
+                        );
+                        break;
+                    }
+                }
             }
         }
 
@@ -310,17 +661,61 @@ impl ResourceCleanup {
 
     /// Clean up a specific resource
     async fn cleanup_resource(&self, resource: &CleanupResource) -> Result<()> {
-        debug!(
-            "Cleaning up resource: {} (type: {:?})",
-            resource.name, resource.resource_type
+        let start = std::time::Instant::now();
+        info!(
+            "Cleaning up resource: {} (priority: {:?})",
+            resource.name, resource.priority
         );
 
+        // Use resource-specific timeout with early return on failure
         match timeout(resource.timeout, self.cleanup_by_type(resource)).await {
-            Ok(result) => result,
-            Err(_) => Err(CleanupError::Timeout {
-                timeout_ms: resource.timeout.as_millis() as u64,
+            Ok(Ok(_)) => {
+                let duration = start.elapsed();
+                debug!(
+                    "Resource {} cleaned up successfully in {:?}",
+                    resource.name, duration
+                );
+                Ok(())
             }
-            .into()),
+            Ok(Err(e)) => {
+                let duration = start.elapsed();
+                warn!(
+                    "Resource {} cleanup failed after {:?}: {}",
+                    resource.name, duration, e
+                );
+                // For non-critical resources, continue with shutdown instead of failing
+                match resource.priority {
+                    CleanupPriority::Critical => Err(e),
+                    _ => {
+                        warn!(
+                            "Non-critical resource {} cleanup failed, continuing shutdown",
+                            resource.name
+                        );
+                        Ok(())
+                    }
+                }
+            }
+            Err(_) => {
+                let duration = start.elapsed();
+                warn!(
+                    "Resource {} cleanup timed out after {:?}",
+                    resource.name, duration
+                );
+                // For non-critical resources, continue with shutdown instead of failing
+                match resource.priority {
+                    CleanupPriority::Critical => Err(CleanupError::Timeout {
+                        timeout_ms: resource.timeout.as_millis() as u64,
+                    }
+                    .into()),
+                    _ => {
+                        warn!(
+                            "Non-critical resource {} timed out, continuing shutdown",
+                            resource.name
+                        );
+                        Ok(())
+                    }
+                }
+            }
         }
     }
 
@@ -340,8 +735,15 @@ impl ResourceCleanup {
             ResourceType::FileHandle => {
                 info!("Closing file handles and flushing buffers");
                 // File handles are closed when dropped, but we can force a sync
-                if std::process::Command::new("sync").output().is_ok() {
-                    debug!("Filesystem sync completed");
+                // Use async command with timeout to avoid blocking
+                match timeout(Duration::from_millis(200), async {
+                    tokio::process::Command::new("sync").output().await
+                })
+                .await
+                {
+                    Ok(Ok(_)) => debug!("Filesystem sync completed"),
+                    Ok(Err(e)) => warn!("Filesystem sync failed: {}", e),
+                    Err(_) => warn!("Filesystem sync timed out after 200ms"),
                 }
             }
             ResourceType::ThreadPool => {
@@ -478,6 +880,7 @@ impl ResourceCleanup {
 
         ShutdownStats {
             is_shutdown_requested: self.is_shutdown_requested(),
+            is_shutdown_in_progress: self.shutdown_in_progress.load(Ordering::Relaxed),
             active_tasks: 1000 - self.active_tasks.available_permits(),
             registered_resources: resources.len(),
             registered_hooks: hooks.len(),
@@ -592,6 +995,7 @@ pub async fn create_standard_cleanup() -> Result<ResourceCleanup> {
 #[derive(Debug, Clone)]
 pub struct ShutdownStats {
     pub is_shutdown_requested: bool,
+    pub is_shutdown_in_progress: bool,
     pub active_tasks: usize,
     pub registered_resources: usize,
     pub registered_hooks: usize,

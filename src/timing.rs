@@ -409,7 +409,8 @@ impl BlockTimingCoordinator {
                     let older_values: Vec<u64> =
                         window.iter().rev().skip(5).take(5).copied().collect();
 
-                    if let Some(trend_factor) = Self::calculate_safe_trend(&recent_values, &older_values)
+                    if let Some(trend_factor) =
+                        Self::calculate_safe_trend(&recent_values, &older_values)
                     {
                         let trend_adjusted_time_f64 = predicted_time as f64 * trend_factor;
                         if trend_adjusted_time_f64.is_finite() {

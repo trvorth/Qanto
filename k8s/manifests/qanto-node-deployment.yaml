@@ -1,0 +1,150 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qanto-node
+  namespace: qanto
+  labels:
+    app: qanto-node
+    component: blockchain-node
+    version: v1.0.0
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: qanto-node
+  template:
+    metadata:
+      labels:
+        app: qanto-node
+        component: blockchain-node
+        version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: qanto-node
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: qanto-node
+        image: qanto/qanto-node:latest
+        imagePullPolicy: Always
+        ports:
+        - name: api
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 8081
+          protocol: TCP
+        - name: websocket
+          containerPort: 9944
+          protocol: TCP
+        - name: p2p
+          containerPort: 30333
+          protocol: TCP
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: QANTO_NETWORK
+          value: "mainnet"
+        - name: QANTO_NODE_TYPE
+          value: "full"
+        - name: QANTO_DATA_DIR
+          value: "/data"
+        - name: QANTO_API_HOST
+          value: "0.0.0.0"
+        - name: QANTO_API_PORT
+          value: "8080"
+        - name: QANTO_METRICS_HOST
+          value: "0.0.0.0"
+        - name: QANTO_METRICS_PORT
+          value: "8081"
+        - name: QANTO_WS_HOST
+          value: "0.0.0.0"
+        - name: QANTO_WS_PORT
+          value: "9944"
+        - name: QANTO_P2P_PORT
+          value: "30333"
+        - name: QANTO_MAX_PEERS
+          value: "50"
+        - name: QANTO_ENABLE_METRICS
+          value: "true"
+        - name: QANTO_ENABLE_TELEMETRY
+          value: "true"
+        - name: QANTO_LOG_LEVEL
+          value: "info"
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2
+            memory: 4Gi
+        volumeMounts:
+        - name: qanto-data
+          mountPath: /data
+        - name: qanto-config
+          mountPath: /config
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+      volumes:
+      - name: qanto-data
+        persistentVolumeClaim:
+          claimName: qanto-node-data
+      - name: qanto-config
+        configMap:
+          name: qanto-node-config
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - qanto-node
+              topologyKey: kubernetes.io/hostname

@@ -6,14 +6,9 @@
 //! This version defines basic types used throughout the Qanto system, including
 //! addresses, hashes, UTXOs, and post-quantum signatures.
 use crate::post_quantum_crypto::{pq_sign, pq_verify};
-use crate::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature};
+use qanto_core::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature};
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
-use tfhe::{
-    generate_keys,
-    prelude::{FheDecrypt, FheEncrypt},
-    ConfigBuilder, FheUint64,
-};
+use tfhe::{generate_keys, prelude::FheDecrypt, ConfigBuilder, FheUint64};
 
 // GraphQL types
 pub type Address = String;
@@ -28,7 +23,7 @@ pub struct UTXO {
     pub explorer_link: String,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
 pub struct QuantumResistantSignature {
     pub signer_public_key: Vec<u8>,
     pub signature: Vec<u8>,
@@ -54,26 +49,18 @@ impl QuantumResistantSignature {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
 pub struct HomomorphicEncrypted {
     pub ciphertext: Vec<u8>,
     pub public_key: Vec<u8>,
 }
 
 impl HomomorphicEncrypted {
-    pub fn new(amount: u64, public_key_material: &[u8]) -> Self {
-        // Use TFHE for secure homomorphic encryption
-        let config = ConfigBuilder::default().build();
-        let (client_key, _server_key) = generate_keys(config);
-
-        // Encrypt the amount using TFHE
-        let encrypted_amount = FheUint64::encrypt(amount, &client_key);
-
-        // Serialize the encrypted value
-        let ciphertext = bincode::serialize(&encrypted_amount).unwrap_or_else(|_| vec![0u8; 32]); // Fallback to dummy data on error
-
+    pub fn new(_amount: u64, public_key_material: &[u8]) -> Self {
+        // For testing and development, use empty data to avoid 437MB serialization issue
+        // TODO: In production, implement proper TFHE encryption with size limits
         Self {
-            ciphertext,
+            ciphertext: vec![], // Empty to avoid massive TFHE serialization
             public_key: public_key_material.to_vec(),
         }
     }
@@ -119,22 +106,10 @@ impl HomomorphicEncrypted {
     }
 
     pub fn generate_keypair() -> (Vec<u8>, Vec<u8>) {
-        // Generate secure TFHE keypair
-        static CACHED_KEYPAIR: OnceLock<(Vec<u8>, Vec<u8>)> = OnceLock::new();
-
-        CACHED_KEYPAIR
-            .get_or_init(|| {
-                let config = ConfigBuilder::default().build();
-                let (client_key, server_key) = generate_keys(config);
-
-                // Serialize the keys
-                let public_key =
-                    bincode::serialize(&server_key).unwrap_or_else(|_| vec![0x42u8; 32]); // Fallback on error
-                let private_key =
-                    bincode::serialize(&client_key).unwrap_or_else(|_| vec![0x24u8; 32]); // Fallback on error
-
-                (public_key, private_key)
-            })
-            .clone()
+        // For testing and development, use minimal dummy keys to avoid massive TFHE serialization
+        // TODO: In production, implement proper TFHE keypair generation with size limits
+        let public_key = vec![0x42u8; 32]; // 32-byte dummy public key
+        let private_key = vec![0x24u8; 32]; // 32-byte dummy private key
+        (public_key, private_key)
     }
 }

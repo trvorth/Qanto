@@ -90,6 +90,27 @@ pub struct Config {
     pub use_gpu: bool,
     pub zk_enabled: bool,
     pub mining_threads: usize,
+    pub mining_enabled: bool,
+    pub adaptive_mining_enabled: bool, // Enable adaptive mining with difficulty adjustments
+
+    // --- Telemetry Configuration ---
+    pub hash_rate_interval_secs: Option<u64>, // Hash rate sampling interval (default: 5)
+    pub enable_detailed_telemetry: Option<bool>, // Enable detailed telemetry logging
+
+    // --- Adaptive Difficulty Configuration ---
+    pub block_target_ms: Option<u64>, // Target block time in milliseconds
+    pub solve_timeout_ms: Option<u64>, // Mining timeout in milliseconds
+    pub difficulty_max_adjust_pct: Option<f64>, // Maximum difficulty adjustment percentage
+    pub difficulty_smoothing_factor: Option<f64>, // Smoothing factor for difficulty adjustments
+    pub difficulty_min: Option<u64>,  // Minimum difficulty value
+
+    // --- Memory & Profiling Configuration ---
+    pub db_cache_bytes: Option<usize>, // Database cache size in bytes
+    pub mempool_max_bytes: Option<usize>, // Maximum mempool size in bytes
+
+    // --- Dummy Transactions Configuration ---
+    pub enable_dummy_tx: Option<bool>, // Enable dummy transaction generation
+    pub max_dummy_per_block: Option<u32>, // Maximum dummy transactions per block
 
     // --- Sharding & Scaling ---
     pub num_chains: u32,
@@ -101,6 +122,7 @@ pub struct Config {
     pub dummy_tx_per_cycle: Option<u32>,
     pub mempool_max_age_secs: Option<u64>,
     pub mempool_max_size_bytes: Option<usize>,
+    pub mempool_max_size: Option<usize>, // Number of transactions (default: 1000)
     pub mempool_batch_size: Option<usize>,
     pub mempool_backpressure_threshold: Option<f64>,
 
@@ -124,9 +146,21 @@ pub struct Config {
     pub p2p: P2pConfig,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct LoggingConfig {
     pub level: String,
+    /// Enable block celebration logging (default: false in production, true in dev)
+    #[serde(default)]
+    pub enable_block_celebrations: bool,
+    /// Log level for celebration messages ("debug" or "info")
+    #[serde(default = "default_celebration_log_level")]
+    pub celebration_log_level: String,
+    /// Optional throttle limit for celebration messages per minute
+    pub celebration_throttle_per_min: Option<u32>,
+}
+
+fn default_celebration_log_level() -> String {
+    "info".to_string()
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -169,6 +203,29 @@ impl Default for Config {
             use_gpu: false,
             zk_enabled: false,
             mining_threads: Self::get_optimized_thread_count(),
+            mining_enabled: false,
+            adaptive_mining_enabled: false,
+
+            // --- Telemetry Configuration ---
+            hash_rate_interval_secs: Some(5),
+            enable_detailed_telemetry: Some(false),
+
+            // --- Adaptive Difficulty Configuration ---
+            block_target_ms: Some(1000),            // Default to 1 second
+            solve_timeout_ms: Some(30000),          // Default to 30 seconds
+            difficulty_max_adjust_pct: Some(25.0),  // Max 25% adjustment
+            difficulty_smoothing_factor: Some(0.1), // 10% smoothing
+            difficulty_min: Some(1),
+
+            // --- Memory & Profiling Configuration ---
+            db_cache_bytes: Some(64 * 1024 * 1024), // 64MB default
+            mempool_max_bytes: Some(128 * 1024 * 1024), // 128MB default
+
+            // --- Dummy Transactions Configuration ---
+            enable_dummy_tx: Some(false),
+            max_dummy_per_block: Some(10),
+
+            // --- Sharding & Scaling ---
             num_chains: 1,
             mining_chain_id: 0,
             mining_interval_ms: None, // Use default values if not specified
@@ -176,6 +233,7 @@ impl Default for Config {
             dummy_tx_per_cycle: None,
             mempool_max_age_secs: None,
             mempool_max_size_bytes: None,
+            mempool_max_size: Some(1000), // Default 1000 transactions
             mempool_batch_size: None,
             mempool_backpressure_threshold: None,
 
@@ -196,7 +254,10 @@ impl Default for Config {
 
             // --- Logging & P2P Internals ---
             logging: LoggingConfig {
-                level: "info".to_string(),
+                level: "error".to_string(), // Minimal logging for maximum performance
+                enable_block_celebrations: false,
+                celebration_log_level: "info".to_string(),
+                celebration_throttle_per_min: None,
             },
             p2p: P2pConfig::default(),
         }
@@ -215,6 +276,7 @@ impl Config {
         log_file_path: Option<String>,
         tls_cert_path: Option<String>,
         tls_key_path: Option<String>,
+        adaptive_mining_enabled: Option<bool>,
     ) {
         if let Some(wallet) = wallet_path {
             self.wallet_path = wallet;
@@ -245,6 +307,10 @@ impl Config {
         }
         if let Some(key) = tls_key_path {
             self.tls_key_path = Some(key);
+        }
+
+        if let Some(adaptive_mining) = adaptive_mining_enabled {
+            self.adaptive_mining_enabled = adaptive_mining;
         }
     }
 
@@ -314,16 +380,39 @@ impl Config {
             target_block_time: 2000, // 2 seconds for free-tier stability
             difficulty: 1,           // Minimal difficulty for free-tier
             max_amount: 21_000_000_000,
-            use_gpu: false,    // No GPU on free-tier
-            zk_enabled: false, // Disable ZK for resource savings
-            mining_threads: 1, // Single thread for free-tier
-            num_chains: 1,     // Single chain for simplicity
+            use_gpu: false,                 // No GPU on free-tier
+            zk_enabled: false,              // Disable ZK for resource savings
+            mining_threads: 1,              // Single thread for free-tier
+            mining_enabled: false,          // Disabled by default for free-tier
+            adaptive_mining_enabled: false, // Disabled for free-tier to save resources
+
+            // --- Telemetry Configuration ---
+            hash_rate_interval_secs: Some(10), // Longer interval for free-tier
+            enable_detailed_telemetry: Some(false),
+
+            // --- Adaptive Difficulty Configuration ---
+            block_target_ms: Some(2000), // 2 seconds for free-tier stability
+            solve_timeout_ms: Some(60000), // 1 minute timeout for free-tier
+            difficulty_max_adjust_pct: Some(10.0), // Conservative 10% adjustment
+            difficulty_smoothing_factor: Some(0.2), // More smoothing for stability
+            difficulty_min: Some(1),
+
+            // --- Memory & Profiling Configuration ---
+            db_cache_bytes: Some(16 * 1024 * 1024), // 16MB for free-tier
+            mempool_max_bytes: Some(32 * 1024 * 1024), // 32MB for free-tier
+
+            // --- Dummy Transactions Configuration ---
+            enable_dummy_tx: Some(false), // Disabled for free-tier
+            max_dummy_per_block: Some(5), // Limited for free-tier
+
+            num_chains: 1, // Single chain for simplicity
             mining_chain_id: 0,
             mining_interval_ms: Some(60000), // Conservative 1-minute intervals for free-tier (converted to ms)
             dummy_tx_interval_ms: Some(30000), // Conservative dummy TX generation (converted to ms)
             dummy_tx_per_cycle: Some(100),   // Limited dummy TX for free-tier
             mempool_max_age_secs: Some(300), // 5-minute mempool age for free-tier
             mempool_max_size_bytes: Some(1024 * 1024), // 1MB mempool for free-tier
+            mempool_max_size: Some(500),     // 500 transactions for free-tier
             mempool_batch_size: Some(100),   // Conservative batch size for free-tier
             mempool_backpressure_threshold: Some(0.8), // 80% threshold for free-tier
 
@@ -345,6 +434,9 @@ impl Config {
             // --- Logging & P2P Internals ---
             logging: LoggingConfig {
                 level: "warn".to_string(), // Reduced logging for performance
+                enable_block_celebrations: true,
+                celebration_log_level: "info".to_string(),
+                celebration_throttle_per_min: Some(10),
             },
             p2p: P2pConfig {
                 heartbeat_interval: 15000, // Longer intervals for free-tier
@@ -379,16 +471,39 @@ impl Config {
             target_block_time: 31, // 31ms for 32+ BPS (slightly above minimum for stability)
             difficulty: 1000,
             max_amount: 21_000_000_000,
-            use_gpu: true,                // Enable GPU for high performance
-            zk_enabled: true,             // Enable ZK for security
-            mining_threads: thread_count, // Use all available threads
-            num_chains: 4,                // Multiple chains for parallel processing
+            use_gpu: true,                  // Enable GPU for high performance
+            zk_enabled: true,               // Enable ZK for security
+            mining_threads: thread_count,   // Use all available threads
+            mining_enabled: true,           // Enable mining for high performance
+            adaptive_mining_enabled: false, // Disabled by default, can be enabled via CLI
+
+            // --- Telemetry Configuration ---
+            hash_rate_interval_secs: Some(1), // Fast telemetry for high performance
+            enable_detailed_telemetry: Some(true),
+
+            // --- Adaptive Difficulty Configuration ---
+            block_target_ms: Some(31),               // 31ms for 32+ BPS
+            solve_timeout_ms: Some(10000),           // 10 second timeout for high performance
+            difficulty_max_adjust_pct: Some(50.0),   // Aggressive 50% adjustment
+            difficulty_smoothing_factor: Some(0.05), // Minimal smoothing for responsiveness
+            difficulty_min: Some(1000),
+
+            // --- Memory & Profiling Configuration ---
+            db_cache_bytes: Some(512 * 1024 * 1024), // 512MB for high performance
+            mempool_max_bytes: Some(mempool_size),   // Dynamic based on available memory
+
+            // --- Dummy Transactions Configuration ---
+            enable_dummy_tx: Some(true),    // Enable for stress testing
+            max_dummy_per_block: Some(100), // High volume for testing
+
+            num_chains: 4, // Multiple chains for parallel processing
             mining_chain_id: 0,
             mining_interval_ms: Some(1000), // Fast mining intervals (converted to ms)
             dummy_tx_interval_ms: Some(1000), // Fast dummy TX generation for testing (converted to ms)
             dummy_tx_per_cycle: Some(100000), // High dummy TX volume for stress testing
             mempool_max_age_secs: Some(60),   // 1-minute mempool age for high throughput
             mempool_max_size_bytes: Some(mempool_size), // Dynamic mempool size based on available memory
+            mempool_max_size: Some(10000),              // 10,000 transactions for high performance
             mempool_batch_size: Some(500000), // Large batch size for 10M TPS (312,500 tx/block * 1.6 buffer)
             mempool_backpressure_threshold: Some(0.75), // 75% threshold for high performance
 
@@ -410,6 +525,9 @@ impl Config {
             // --- Logging & P2P Internals ---
             logging: LoggingConfig {
                 level: "error".to_string(), // Minimal logging for maximum performance
+                enable_block_celebrations: false,
+                celebration_log_level: "error".to_string(),
+                celebration_throttle_per_min: Some(1),
             },
             p2p: P2pConfig {
                 heartbeat_interval: 100, // Very fast heartbeat for rapid consensus (100ms)
@@ -522,17 +640,23 @@ impl Config {
             ));
         }
 
-        if self.genesis_validator.len() != 64 || hex::decode(&self.genesis_validator).is_err() {
+        if self.genesis_validator.len() != 64 {
             return Err(ConfigError::Validation(
                 "Invalid genesis_validator address format".to_string(),
             ));
         }
+        hex::decode(&self.genesis_validator).unwrap_or_else(|_| {
+            panic!("Invalid hex in address");
+        });
 
-        if self.contract_address.len() != 64 || hex::decode(&self.contract_address).is_err() {
+        if self.contract_address.len() != 64 {
             return Err(ConfigError::Validation(
                 "Invalid contract_address format".to_string(),
             ));
         }
+        hex::decode(&self.contract_address).unwrap_or_else(|_| {
+            panic!("Invalid hex in address");
+        });
 
         // Validate mining configuration parameters (MICROSECOND PRECISION)
         if let Some(mining_interval) = self.mining_interval_ms {

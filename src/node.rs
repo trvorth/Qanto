@@ -20,13 +20,16 @@
 //! - Analytics Dashboard: Includes a real-time analytics dashboard for monitoring
 //!   node performance and network activity.
 
+use crate::adaptive_mining::AdaptiveMiningLoop;
 use crate::analytics_dashboard::{AnalyticsDashboard, DashboardConfig};
 use crate::config::{Config, ConfigError};
+use crate::elite_mempool::EliteMempool;
 use crate::graphql_server::{create_graphql_router, create_graphql_schema, GraphQLContext};
 use crate::mempool::Mempool;
 use crate::miner::{Miner, MinerConfig, MiningError};
 use crate::omega::reflect_on_action;
 use crate::p2p::{P2PCommand, P2PConfig, P2PError, P2PServer};
+use crate::qanto_net::QantoNetServer;
 use crate::performance_optimizations::{OptimizedBlockBuilder, OptimizedMempool};
 use crate::qanto_compat::sp_core::H256;
 use crate::qanto_storage::{QantoStorage, QantoStorageError, StorageConfig};
@@ -123,6 +126,8 @@ pub enum NodeError {
     Database(#[from] QantoStorageError),
     #[error("Node initialization error: {0}")]
     NodeInitialization(String),
+    #[error("Elite mempool error: {0}")]
+    EliteMempool(#[from] crate::elite_mempool::EliteMempoolError),
 }
 
 impl From<NodeError> for String {
@@ -172,6 +177,7 @@ pub struct Node {
     pub miner: Arc<Miner>,
     wallet: Arc<Wallet>,
     pub mempool: Arc<RwLock<Mempool>>,
+    pub elite_mempool: Arc<EliteMempool>,
     pub utxos: Arc<RwLock<HashMap<String, UTXO>>>,
     pub proposals: Arc<RwLock<Vec<QantoBlock>>>,
     peer_cache_path: String,
@@ -315,7 +321,7 @@ impl Node {
         info!("QantoDagConfig configured successfully");
 
         info!("Creating QantoDAG instance");
-        let dag_arc = QantoDAG::new(dag_config, saga_pallet.clone(), db)?;
+        let dag_arc = QantoDAG::new(dag_config, saga_pallet.clone(), db, config.logging.clone())?;
         info!("QantoDAG instance created successfully");
         info!("QantoDAG initialized.");
 
@@ -324,7 +330,7 @@ impl Node {
         let utxos = Arc::new(RwLock::new(HashMap::with_capacity(MAX_UTXOS)));
         let proposals = Arc::new(RwLock::new(Vec::with_capacity(MAX_PROPOSALS)));
 
-        // Create genesis UTXO with the entire 21 billion QNTO supply allocated to contract address
+        // Create genesis UTXO with the entire 21 billion QAN supply allocated to contract address
         // Clear any existing UTXOs first to ensure clean state
         {
             let mut utxos_lock = utxos.write().await;
@@ -335,7 +341,7 @@ impl Node {
                 genesis_utxo_id.clone(),
                 UTXO {
                     address: config.contract_address.clone(),
-                    amount: 21_000_000_000_000_000, // Entire 21 billion QNTO supply in smallest units with 6 decimals
+                    amount: 21_000_000_000_000_000, // Entire 21 billion QAN supply in smallest units with 6 decimals
                     tx_id: "genesis_total_supply_tx".to_string(),
                     output_index: 0,
                     explorer_link: {
@@ -348,7 +354,7 @@ impl Node {
                 },
             );
             info!(
-                "Genesis UTXO created with 21 billion QNTO allocated to contract address: {}",
+                "Genesis UTXO created with 21 billion QAN allocated to contract address: {}",
                 config.contract_address
             );
             info!("UTXO state reset - only contract address has balance now");
@@ -363,6 +369,7 @@ impl Node {
             use_gpu: config.use_gpu,
             zk_enabled: config.zk_enabled,
             threads: config.mining_threads,
+            logging_config: config.logging.clone(),
         };
         let miner_instance = Miner::new(miner_config)?;
         let miner = Arc::new(miner_instance);
@@ -375,6 +382,14 @@ impl Node {
         let optimized_mempool = OptimizedMempool::new(10_000_000, 3600); // 10MB, 1 hour TTL
         let optimized_block_builder = Arc::new(OptimizedBlockBuilder::new(optimized_mempool));
 
+        // Initialize elite mempool for ultra-high performance (10M+ TPS)
+        let elite_mempool = Arc::new(EliteMempool::new(
+            1_000_000,          // max_transactions
+            1024 * 1024 * 1024, // max_size_bytes (1GB)
+            num_cpus::get(),    // shard_count
+            num_cpus::get(),    // worker_count
+        )?);
+
         // Initialize ResourceCleanup for graceful shutdown with timeout and task abortion
         let resource_cleanup = Arc::new(ResourceCleanup::new(Duration::from_secs(30)));
 
@@ -386,6 +401,7 @@ impl Node {
             miner,
             wallet,
             mempool,
+            elite_mempool,
             utxos,
             proposals,
             peer_cache_path,
@@ -479,13 +495,28 @@ impl Node {
                     match command {
                         P2PCommand::BroadcastBlock(block) => {
                             info!("\n{}", block);
-                            let add_result = dag_clone.add_block(block, &utxos_clone).await;
+                            debug!("P2P received BroadcastBlock command for block {}", block.id);
 
-                            if matches!(add_result, Ok(true)) {
-                                debug!("Running periodic maintenance after adding new block.");
-                                dag_clone.run_periodic_maintenance(mempool_batch_size).await;
-                            } else if let Err(e) = add_result {
-                                warn!("Block failed validation or processing: {}", e);
+                            let add_result = dag_clone.add_block(block.clone(), &utxos_clone).await;
+
+                            match add_result {
+                                Ok(true) => {
+                                    info!(
+                                        "✅ Block {} successfully added to DAG via P2P",
+                                        block.id
+                                    );
+                                    debug!("Running periodic maintenance after adding new block.");
+                                    dag_clone.run_periodic_maintenance(mempool_batch_size).await;
+                                }
+                                Ok(false) => {
+                                    warn!("⚠️ Block {} was not added to DAG (already exists or rejected)", block.id);
+                                }
+                                Err(e) => {
+                                    error!(
+                                        "❌ Block {} failed validation or processing: {}",
+                                        block.id, e
+                                    );
+                                }
                             }
                         }
                         P2PCommand::BroadcastTransaction(tx) => {
@@ -706,93 +737,148 @@ impl Node {
                     Ok(())
                 })
                 .await?;
-        } else {
-            info!("No peers found. Running in single-node mode. Spawning solo miner...");
-            let miner_dag_clone = self.dag.clone();
-            let miner_wallet_clone = self.wallet.clone();
-            let miner_mempool_clone = self.mempool.clone();
-            let miner_utxos_clone = self.utxos.clone();
-            let miner_clone = self.miner.clone();
-            let miner_shutdown_token = shutdown_token.clone();
-            let optimized_block_builder_clone = self.optimized_block_builder.clone();
+        } else if self.config.mining_enabled {
+            if self.config.adaptive_mining_enabled {
+                info!("No peers found. Running in single-node mode. Spawning adaptive miner...");
 
-            // Convert target_block_time from milliseconds to seconds for mining interval
-            #[cfg(feature = "performance-test")]
-            let mining_interval_secs = if self.config.target_block_time < 1000 {
-                // For performance testing with sub-second intervals, use at least 1 second
-                // but log the actual target for reference
-                info!("Performance test mode: target_block_time {} ms, using 1 second mining interval", 
-                      self.config.target_block_time);
-                1
-            } else {
-                (self.config.target_block_time as f64 / 1000.0) as u64
-            };
+                // Create adaptive mining configuration
+                let adaptive_config = crate::adaptive_mining::TestnetMiningConfig::default();
 
-            #[cfg(not(feature = "performance-test"))]
-            let mining_interval_secs = {
-                // Calculate mining interval from target_block_time without forcing minimum
-                // Allow sub-second intervals for high-performance mining (e.g., 200ms target)
-                let target_secs = self.config.target_block_time as f64 / 1000.0;
-                if target_secs < 1.0 {
-                    // For sub-second intervals, use 0 to indicate millisecond precision
-                    0
-                } else {
-                    target_secs as u64
-                }
-            };
+                // Create mining metrics for adaptive mining
+                let mining_metrics = Arc::new(crate::mining_metrics::MiningMetrics::new());
 
-            info!(
-                "Using mining interval: {} seconds (from target_block_time: {} ms)",
-                mining_interval_secs, self.config.target_block_time
-            );
+                // Create adaptive mining loop
+                let mut adaptive_loop = AdaptiveMiningLoop::new(
+                    adaptive_config,
+                    None, // diagnostics
+                    mining_metrics,
+                );
 
-            let dummy_tx_interval_secs = self.config.dummy_tx_interval_ms.unwrap_or(30000) / 1000;
-            let dummy_tx_per_cycle = self.config.dummy_tx_per_cycle.unwrap_or(100) as usize;
-            let mempool_max_size_bytes = self.config.mempool_max_size_bytes.unwrap_or(1024 * 1024);
-            let mempool_batch_size = self.config.mempool_batch_size.unwrap_or(40000);
-            let mempool_backpressure_threshold =
-                self.config.mempool_backpressure_threshold.unwrap_or(0.8)
-                    * (mempool_max_size_bytes as f64);
+                // Clone necessary components for the adaptive mining task
+                let adaptive_dag_clone = self.dag.clone();
+                let adaptive_wallet_clone = self.wallet.clone();
+                let adaptive_miner_clone = self.miner.clone();
+                let adaptive_mempool_clone = self.mempool.clone();
+                let adaptive_utxos_clone = self.utxos.clone();
+                let adaptive_shutdown_token = shutdown_token.clone();
 
-            // TX generator backpressure configuration
-            let tx_batch_size = self.config.tx_batch_size.unwrap_or(100);
-            let adaptive_batch_threshold = self.config.adaptive_batch_threshold.unwrap_or(0.85);
-            let memory_soft_limit = self.config.memory_soft_limit.unwrap_or(8 * 1024 * 1024); // 8MB default
-            let memory_hard_limit = self.config.memory_hard_limit.unwrap_or(10 * 1024 * 1024); // 10MB default
-
-            let _solo_miner_task_handle = join_set.spawn(async move {
-                debug!("[DEBUG] Spawning solo miner task");
-                miner_dag_clone
-                    .run_solo_miner(
-                        miner_wallet_clone,
-                        miner_mempool_clone,
-                        miner_utxos_clone,
-                        miner_clone,
-                        optimized_block_builder_clone,
-                        mining_interval_secs,
-                        dummy_tx_interval_secs,
-                        dummy_tx_per_cycle,
-                        mempool_max_size_bytes,
-                        mempool_batch_size,
-                        mempool_backpressure_threshold as usize,
-                        tx_batch_size,
-                        adaptive_batch_threshold,
-                        memory_soft_limit,
-                        memory_hard_limit,
-                        miner_shutdown_token,
-                    )
-                    .await
-                    .map_err(|e| NodeError::DAG(e.to_string()))
-            });
-
-            // Register the solo miner task with resource cleanup
-            self.resource_cleanup
-                .register_task(|_token| async move {
-                    // Note: solo_miner_task_handle is an AbortHandle, not awaitable
-                    // The task will be aborted when the cancellation token is triggered
+                let _adaptive_miner_task_handle = join_set.spawn(async move {
+                    debug!("[DEBUG] Spawning adaptive mining task");
+                    if let Err(e) = adaptive_loop
+                        .run_adaptive_mining_loop(
+                            adaptive_dag_clone,
+                            adaptive_wallet_clone,
+                            adaptive_miner_clone,
+                            adaptive_mempool_clone,
+                            adaptive_utxos_clone,
+                            adaptive_shutdown_token,
+                        )
+                        .await
+                    {
+                        error!("Adaptive mining loop failed: {}", e);
+                        return Err(NodeError::QantoDAG(e));
+                    }
                     Ok(())
-                })
-                .await?;
+                });
+
+                // Register the adaptive miner task with resource cleanup
+                self.resource_cleanup
+                    .register_task(|_token| async move {
+                        // Note: adaptive_miner_task_handle is an AbortHandle, not awaitable
+                        // The task will be aborted when the cancellation token is triggered
+                        Ok(())
+                    })
+                    .await?;
+            } else {
+                info!("No peers found. Running in single-node mode. Spawning solo miner...");
+                let miner_dag_clone = self.dag.clone();
+                let miner_wallet_clone = self.wallet.clone();
+                let miner_mempool_clone = self.mempool.clone();
+                let miner_utxos_clone = self.utxos.clone();
+                let miner_clone = self.miner.clone();
+                let miner_shutdown_token = shutdown_token.clone();
+                let optimized_block_builder_clone = self.optimized_block_builder.clone();
+
+                // Convert target_block_time from milliseconds to seconds for mining interval
+                #[cfg(feature = "performance-test")]
+                let mining_interval_secs = if self.config.target_block_time < 1000 {
+                    // For performance testing with sub-second intervals, use at least 1 second
+                    // but log the actual target for reference
+                    info!("Performance test mode: target_block_time {} ms, using 1 second mining interval", 
+                          self.config.target_block_time);
+                    1
+                } else {
+                    (self.config.target_block_time as f64 / 1000.0) as u64
+                };
+
+                #[cfg(not(feature = "performance-test"))]
+                let mining_interval_secs = {
+                    // Calculate mining interval from target_block_time without forcing minimum
+                    // Allow sub-second intervals for high-performance mining (e.g., 200ms target)
+                    let target_secs = self.config.target_block_time as f64 / 1000.0;
+                    if target_secs < 1.0 {
+                        // For sub-second intervals, use 0 to indicate millisecond precision
+                        0
+                    } else {
+                        target_secs as u64
+                    }
+                };
+
+                info!(
+                    "Using mining interval: {} seconds (from target_block_time: {} ms)",
+                    mining_interval_secs, self.config.target_block_time
+                );
+
+                let dummy_tx_interval_secs =
+                    self.config.dummy_tx_interval_ms.unwrap_or(30000) / 1000;
+                let dummy_tx_per_cycle = self.config.dummy_tx_per_cycle.unwrap_or(100) as usize;
+                let mempool_max_size_bytes =
+                    self.config.mempool_max_size_bytes.unwrap_or(1024 * 1024);
+                let mempool_batch_size = self.config.mempool_batch_size.unwrap_or(40000);
+                let mempool_backpressure_threshold =
+                    self.config.mempool_backpressure_threshold.unwrap_or(0.8)
+                        * (mempool_max_size_bytes as f64);
+
+                // TX generator backpressure configuration
+                let tx_batch_size = self.config.tx_batch_size.unwrap_or(100);
+                let adaptive_batch_threshold = self.config.adaptive_batch_threshold.unwrap_or(0.85);
+                let memory_soft_limit = self.config.memory_soft_limit.unwrap_or(8 * 1024 * 1024); // 8MB default
+                let memory_hard_limit = self.config.memory_hard_limit.unwrap_or(10 * 1024 * 1024); // 10MB default
+
+                let _solo_miner_task_handle = join_set.spawn(async move {
+                    debug!("[DEBUG] Spawning solo miner task");
+                    miner_dag_clone
+                        .run_solo_miner(
+                            miner_wallet_clone,
+                            miner_mempool_clone,
+                            miner_utxos_clone,
+                            miner_clone,
+                            optimized_block_builder_clone,
+                            mining_interval_secs,
+                            dummy_tx_interval_secs,
+                            dummy_tx_per_cycle,
+                            mempool_max_size_bytes,
+                            mempool_batch_size,
+                            mempool_backpressure_threshold as usize,
+                            tx_batch_size,
+                            adaptive_batch_threshold,
+                            memory_soft_limit,
+                            memory_hard_limit,
+                            miner_shutdown_token,
+                        )
+                        .await
+                        .map_err(|e| NodeError::DAG(e.to_string()))
+                });
+
+                // Register the solo miner task with resource cleanup
+                self.resource_cleanup
+                    .register_task(|_token| async move {
+                        // Note: solo_miner_task_handle is an AbortHandle, not awaitable
+                        // The task will be aborted when the cancellation token is triggered
+                        Ok(())
+                    })
+                    .await?;
+            }
         }
 
         // --- WebSocket Server State ---
@@ -880,7 +966,7 @@ impl Node {
             })
             .await?;
 
-        // --- API Server Task ---
+        // --- Prepare API Server Components ---
         // Clone all necessary data outside the async block to avoid lifetime issues
         let app_state = AppState {
             dag: self.dag.clone(),
@@ -890,6 +976,7 @@ impl Node {
             p2p_command_sender: tx_p2p_commands.clone(),
             saga: self.saga_pallet.clone(),
             websocket_state: websocket_state.clone(),
+            native_network: None,
         };
 
         // Create GraphQL context outside the async block
@@ -904,6 +991,7 @@ impl Node {
                 miner: self.miner.clone(),
                 wallet: self.wallet.clone(),
                 mempool: self.mempool.clone(),
+                elite_mempool: self.elite_mempool.clone(),
                 utxos: self.utxos.clone(),
                 proposals: self.proposals.clone(),
                 peer_cache_path: self.peer_cache_path.clone(),
@@ -918,77 +1006,8 @@ impl Node {
             transaction_sender,
         };
 
-        let server_task_fut = async move {
-            // Set up a rate limiter for the API to prevent abuse.
-            let rate_limiter: Arc<DirectApiRateLimiter> =
-                Arc::new(RateLimiter::direct(Quota::per_second(nonzero!(50u32))));
-
-            // Define the API routes using Axum router.
-            let api_routes = Router::new()
-                .route("/info", get(info_handler))
-                .route("/balance/{address}", get(get_balance))
-                .route("/utxos/{address}", get(get_utxos))
-                .route("/transaction", post(submit_transaction))
-                .route("/block/{id}", get(get_block))
-                .route("/dag", get(get_dag))
-                .route("/blocks", get(get_block_ids))
-                .route("/health", get(health_check))
-                .route("/mempool", get(mempool_handler))
-                .route("/publish-readiness", get(publish_readiness_handler))
-                .route("/analytics/dashboard", get(analytics_dashboard_handler))
-                // /saga/ask route removed for production hardening
-                .route("/p2p_getConnectedPeers", get(get_connected_peers_handler))
-                .layer(middleware::from_fn_with_state(
-                    rate_limiter,
-                    rate_limit_layer,
-                ))
-                .with_state(app_state.clone());
-
-            // Use the pre-created GraphQL context
-            let graphql_schema = create_graphql_schema();
-
-            // Create WebSocket routes
-            let websocket_routes = create_websocket_router((*app_state.websocket_state).clone());
-
-            // Create GraphQL routes
-            let graphql_routes = create_graphql_router(graphql_schema);
-
-            // Combine API, WebSocket, and GraphQL routes
-            let app = api_routes.merge(websocket_routes).merge(graphql_routes);
-
-            let addr: SocketAddr = app_state.api_address.parse().map_err(|e| {
-                NodeError::Config(ConfigError::Validation(format!("Invalid API address: {e}")))
-            })?;
-            let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
-                NodeError::ServerExecution(format!("Failed to bind to API address {addr}: {e}"))
-            })?;
-            match listener.local_addr() {
-                Ok(addr) => info!("API server listening on {}", addr),
-                Err(e) => warn!("Could not get listener address: {}", e),
-            }
-
-            // Start the Axum server.
-            if let Err(e) = axum::serve(listener, app.into_make_service()).await {
-                error!("API server failed: {e}");
-                return Err(NodeError::ServerExecution(format!(
-                    "API server failed: {e}"
-                )));
-            }
-            Ok(())
-        };
-        let _server_task_handle = join_set.spawn(server_task_fut);
-
-        // Register the API server task with resource cleanup
-        self.resource_cleanup
-            .register_task(|_token| async move {
-                // Note: server_task_handle is an AbortHandle, not awaitable
-                // The task will be aborted when the cancellation token is triggered
-                Ok(())
-            })
-            .await?;
-
-        // --- Main Shutdown Handler ---
-        // Waits for either a Ctrl+C signal or for a critical task to fail.
+        // --- Main Event Loop with Concurrent Task Management ---
+        // Uses tokio::select! to concurrently run critical tasks and handle failures gracefully
         tokio::select! {
             biased;
             _ = signal::ctrl_c() => {
@@ -1002,6 +1021,87 @@ impl Node {
 
                 warn!("Node shutdown initiated by Ctrl+C.");
             },
+            // API Server Task - handles binding failures gracefully
+            api_result = async {
+                // Set up a rate limiter for the API to prevent abuse.
+                let rate_limiter: Arc<DirectApiRateLimiter> =
+                    Arc::new(RateLimiter::direct(Quota::per_second(nonzero!(50u32))));
+
+                // Define the API routes using Axum router.
+                let api_routes = Router::new()
+                    .route("/info", get(info_handler))
+                    .route("/balance/{address}", get(get_balance))
+                    .route("/utxos/{address}", get(get_utxos))
+                    .route("/transaction", post(submit_transaction))
+                    .route("/block/{id}", get(get_block))
+                    .route("/dag", get(get_dag))
+                    .route("/blocks", get(get_block_ids))
+                    .route("/health", get(health_check))
+                    .route("/mempool", get(mempool_handler))
+                    .route("/publish-readiness", get(publish_readiness_handler))
+                    .route("/analytics/dashboard", get(analytics_dashboard_handler))
+                    // /saga/ask route removed for production hardening
+                    .route("/p2p_getConnectedPeers", get(get_connected_peers_handler))
+                    .layer(middleware::from_fn_with_state(
+                        rate_limiter,
+                        rate_limit_layer,
+                    ))
+                    .with_state(app_state.clone());
+
+                // Use the pre-created GraphQL context
+                let graphql_schema = create_graphql_schema();
+
+                // Create WebSocket routes
+                let websocket_routes = create_websocket_router((*app_state.websocket_state).clone());
+
+                // Create GraphQL routes
+                let graphql_routes = create_graphql_router(graphql_schema);
+
+                // Combine API, WebSocket, and GraphQL routes
+                let app = api_routes.merge(websocket_routes).merge(graphql_routes);
+
+                let addr: SocketAddr = app_state.api_address.parse().map_err(|e| {
+                    NodeError::Config(ConfigError::Validation(format!("Invalid API address: {e}")))
+                })?;
+
+                // Attempt to bind to the API address - this can fail gracefully now
+                let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
+                    NodeError::ServerExecution(format!("Failed to bind to API address {addr}: {e}"))
+                })?;
+
+                match listener.local_addr() {
+                    Ok(addr) => info!("API server listening on {}", addr),
+                    Err(e) => warn!("Could not get listener address: {}", e),
+                }
+
+                // Start the Axum server.
+                if let Err(e) = axum::serve(listener, app.into_make_service()).await {
+                    error!("API server failed: {e}");
+                    return Err(NodeError::ServerExecution(format!(
+                        "API server failed: {e}"
+                    )));
+                }
+                Ok(())
+            } => {
+                match api_result {
+                    Ok(_) => {
+                        warn!("API server completed unexpectedly");
+                    }
+                    Err(e) => {
+                        error!("API server failed: {}", e);
+                        self.resource_cleanup.request_shutdown();
+
+                        // Wait for graceful shutdown with timeout
+                        if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
+                            warn!("Graceful shutdown failed: {}, forcing shutdown", e);
+                        }
+
+                        warn!("Node shutdown initiated by API server failure.");
+                        return Err(e);
+                    }
+                }
+            },
+            // Monitor spawned tasks for failures
             Some(res) = join_set.join_next() => {
                 match res {
                     Ok(Err(e)) => {
@@ -1014,6 +1114,7 @@ impl Node {
                         }
 
                         warn!("Node shutdown initiated by critical task failure.");
+                        return Err(e);
                     }
                     Err(e) => {
                         error!("A critical node task panicked: {}", e);
@@ -1025,6 +1126,7 @@ impl Node {
                         }
 
                         warn!("Node shutdown initiated by critical task panic.");
+                        return Err(NodeError::Join(e));
                     }
                     _ => {
                         warn!("Node shutdown initiated by unknown task completion.");
@@ -1153,6 +1255,8 @@ struct AppState {
     #[allow(dead_code)]
     saga: Arc<PalletSaga>,
     websocket_state: Arc<WebSocketServerState>,
+    // Optional native networking server; used when available
+    native_network: Option<Arc<QantoNetServer>>,
 }
 
 // --- API Error Handling ---
@@ -1443,9 +1547,16 @@ async fn health_check() -> Result<Json<serde_json::Value>, StatusCode> {
 async fn get_connected_peers_handler(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<String>>, StatusCode> {
-    let (response_sender, response_receiver) = oneshot::channel();
+    // Prefer native networking if available
+    if let Some(native) = &state.native_network {
+        let peer_ids = native.get_connected_peers().await;
+        let peers: Vec<String> = peer_ids.into_iter().map(|p| p.to_string()).collect();
+        info!("Retrieved {} connected peers (native)", peers.len());
+        return Ok(Json(peers));
+    }
 
-    // Send command to P2P server to get connected peers
+    // Fallback to legacy P2P server
+    let (response_sender, response_receiver) = oneshot::channel();
     if let Err(e) = state
         .p2p_command_sender
         .send(P2PCommand::GetConnectedPeers { response_sender })
@@ -1458,10 +1569,9 @@ async fn get_connected_peers_handler(
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    // Wait for response from P2P server
     match response_receiver.await {
         Ok(peers) => {
-            info!("Retrieved {} connected peers", peers.len());
+            info!("Retrieved {} connected peers (legacy)", peers.len());
             Ok(Json(peers))
         }
         Err(e) => {

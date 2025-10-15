@@ -1,0 +1,62 @@
+# Nextest configuration for Qanto blockchain node
+# https://nexte.st/book/configuration.html
+
+[profile.default]
+# Default test timeout (5 minutes for mining tests)
+slow-timeout = "300s"
+# Retry flaky tests once
+retries = 1
+# Show test output for failures
+failure-output = "immediate-final"
+# Show test output for slow tests
+slow-timeout-grace-period = "30s"
+
+[profile.ci]
+# CI profile with stricter timeouts
+slow-timeout = "180s"
+retries = 0
+failure-output = "final"
+# Fail fast on first failure in CI
+fail-fast = false
+
+[profile.slow-integration]
+# Profile specifically for slow integration tests
+slow-timeout = "600s"  # 10 minutes for complex mining operations
+retries = 2
+failure-output = "immediate-final"
+# Don't fail fast - run all slow tests
+fail-fast = false
+
+# Test groups for better organization
+[test-groups.mining]
+max-threads = 4  # Limit mining test concurrency to avoid resource contention
+
+[test-groups.integration]
+max-threads = 2  # Even more conservative for integration tests
+
+# Override settings for specific tests
+[[profile.default.overrides]]
+filter = "test_basic_mining"
+slow-timeout = "300s"
+test-group = "mining"
+
+[[profile.default.overrides]]
+filter = "test_integration_flow"
+slow-timeout = "400s"
+test-group = "integration"
+
+[[profile.default.overrides]]
+filter = "test_cancellation_responsiveness"
+slow-timeout = "120s"
+test-group = "mining"
+
+# Fast unit tests should complete quickly
+[[profile.default.overrides]]
+filter = "not test(integration) and not test(mining) and not test(slow)"
+slow-timeout = "30s"
+
+# Environment variables for deterministic testing
+[profile.default.env]
+QANTO_TEST_MINING_SEED = "42"
+RUST_LOG = "debug"
+RUST_BACKTRACE = "1"

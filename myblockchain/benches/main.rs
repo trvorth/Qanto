@@ -38,7 +38,11 @@ fn qanhash_op_benchmark(c: &mut Criterion) {
         b.iter_with_large_drop(|| {
             let mut res = [0u8; 32];
             for i in 0..10000 {
-                res = qanhash::hash(black_box(&header_hash), black_box(start_nonce + i));
+                res = qanhash::hash(
+                    black_box(&header_hash),
+                    black_box(start_nonce + i),
+                    black_box(i as u64),
+                );
             }
             res
         })
@@ -69,7 +73,7 @@ fn mine_cpu_benchmark(c: &mut Criterion) {
     c.bench_function("Block Mining/CPU Hash Rate (1k Hashes)", |b| {
         b.iter(|| {
             for _ in 0..1000 {
-                black_box(qanhash::hash(&header_hash, nonce));
+                black_box(qanhash::hash(&header_hash, nonce, nonce));
                 nonce = nonce.wrapping_add(1);
             }
         })

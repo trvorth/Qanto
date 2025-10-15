@@ -44,6 +44,10 @@ pub struct QantoMetrics {
     #[serde(with = "atomic_serde")]
     pub network_bytes_received: AtomicU64,
 
+    // Memory metrics
+    #[serde(with = "atomic_serde")]
+    pub qanto_rss_bytes: AtomicU64, // Resident Set Size in bytes
+
     // Performance optimization metrics
     pub simd_operations: AtomicU64,
     pub lock_free_operations: AtomicU64,
@@ -133,6 +137,16 @@ pub struct QantoMetrics {
     pub average_stability_score: AtomicU64, // Stored as percentage * 100
     pub threat_level_escalations: AtomicU64,
 
+    // Mining metrics
+    #[serde(with = "atomic_serde")]
+    pub mining_attempts: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub hash_rate_thousandths: AtomicU64, // stored as H/s * 1000 for precision
+    #[serde(with = "atomic_serde")]
+    pub last_hash_attempts: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub hash_rate_last_sample_ms: AtomicU64,
+
     // Timestamp for metrics collection
     pub last_updated: AtomicU64,
 }
@@ -156,6 +170,7 @@ impl Default for QantoMetrics {
             disk_io_ops: AtomicU64::new(0),
             network_bytes_sent: AtomicU64::new(0),
             network_bytes_received: AtomicU64::new(0),
+            qanto_rss_bytes: AtomicU64::new(0),
 
             // Performance optimization metrics
             simd_operations: AtomicU64::new(0),
@@ -246,6 +261,12 @@ impl Default for QantoMetrics {
             average_stability_score: AtomicU64::new(0),
             threat_level_escalations: AtomicU64::new(0),
 
+            // Mining metrics
+            mining_attempts: AtomicU64::new(0),
+            hash_rate_thousandths: AtomicU64::new(0),
+            last_hash_attempts: AtomicU64::new(0),
+            hash_rate_last_sample_ms: AtomicU64::new(0),
+
             // Timestamp for metrics collection
             last_updated: AtomicU64::new(0),
         }
@@ -278,6 +299,7 @@ impl Clone for QantoMetrics {
             network_bytes_received: AtomicU64::new(
                 self.network_bytes_received.load(Ordering::Relaxed),
             ),
+            qanto_rss_bytes: AtomicU64::new(self.qanto_rss_bytes.load(Ordering::Relaxed)),
             simd_operations: AtomicU64::new(self.simd_operations.load(Ordering::Relaxed)),
             lock_free_operations: AtomicU64::new(self.lock_free_operations.load(Ordering::Relaxed)),
             pipeline_stages_completed: AtomicU64::new(
@@ -390,6 +412,15 @@ impl Clone for QantoMetrics {
             ),
             threat_level_escalations: AtomicU64::new(
                 self.threat_level_escalations.load(Ordering::Relaxed),
+            ),
+            // Mining metrics
+            mining_attempts: AtomicU64::new(self.mining_attempts.load(Ordering::Relaxed)),
+            hash_rate_thousandths: AtomicU64::new(
+                self.hash_rate_thousandths.load(Ordering::Relaxed),
+            ),
+            last_hash_attempts: AtomicU64::new(self.last_hash_attempts.load(Ordering::Relaxed)),
+            hash_rate_last_sample_ms: AtomicU64::new(
+                self.hash_rate_last_sample_ms.load(Ordering::Relaxed),
             ),
             last_updated: AtomicU64::new(self.last_updated.load(Ordering::Relaxed)),
         }
@@ -590,6 +621,30 @@ impl QantoMetrics {
                 let real_time_tps = metrics.calculate_real_time_tps();
                 metrics.set_tps(real_time_tps);
 
+                // Calculate and update real-time hash rate (H/s)
+                let current_attempts = metrics.mining_attempts.load(Ordering::Relaxed);
+                let previous_attempts = metrics.last_hash_attempts.load(Ordering::Relaxed);
+                metrics
+                    .last_hash_attempts
+                    .store(current_attempts, Ordering::Relaxed);
+
+                // Use actual elapsed milliseconds for precision
+                let now_ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let prev_ms = metrics
+                    .hash_rate_last_sample_ms
+                    .swap(now_ms, Ordering::Relaxed);
+                let interval_ms = if prev_ms == 0 {
+                    1000 // bootstrap interval for the first sample to avoid epoch-based duration
+                } else {
+                    now_ms.saturating_sub(prev_ms)
+                };
+                let delta_attempts = current_attempts.saturating_sub(previous_attempts);
+                let hps = QantoMetrics::compute_hash_rate(delta_attempts, interval_ms);
+                metrics.set_hash_rate_hps(hps);
+
                 std::thread::sleep(std::time::Duration::from_secs(1));
             }
         })
@@ -618,10 +673,24 @@ impl QantoMetrics {
             self.get_average_latency()
         ));
 
+        // Mining metrics
+        output.push_str(&format!(
+            "qanto_mining_attempts_total {}\n",
+            self.mining_attempts.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_hash_rate_hps {:.2}\n",
+            self.get_hash_rate_hps()
+        ));
+
         // Resource utilization
         output.push_str(&format!(
             "qanto_memory_utilization_percent {:.2}\n",
             self.get_memory_utilization()
+        ));
+        output.push_str(&format!(
+            "qanto_rss_bytes {}\n",
+            self.qanto_rss_bytes.load(Ordering::Relaxed)
         ));
         output.push_str(&format!(
             "qanto_cpu_utilization_percent {:.2}\n",
@@ -646,6 +715,10 @@ impl QantoMetrics {
             "qanto_queue_depth {}\n",
             self.queue_depth.load(Ordering::Relaxed)
         ));
+        output.push_str(&format!(
+            "qanto_mempool_size {}\n",
+            self.mempool_size.load(Ordering::Relaxed)
+        ));
 
         // Optimization metrics
         output.push_str(&format!(
@@ -662,6 +735,43 @@ impl QantoMetrics {
         ));
 
         output
+    }
+
+    /// Add hash rate getter/setter and computation helpers
+    /// Compute hash rate in H/s given the number of attempts over an interval in milliseconds
+    pub fn compute_hash_rate(attempts_delta: u64, interval_ms: u64) -> f64 {
+        if interval_ms == 0 {
+            return 0.0;
+        }
+        let interval_seconds = interval_ms as f64 / 1000.0;
+        attempts_delta as f64 / interval_seconds
+    }
+
+    /// Format hash rate into human-friendly units (H/s, kH/s, MH/s, GH/s, TH/s, PH/s)
+    pub fn format_hash_rate(hps: f64) -> String {
+        let mut value = hps;
+        if !value.is_finite() || value < 0.0 {
+            value = 0.0;
+        }
+        let units = ["H/s", "kH/s", "MH/s", "GH/s", "TH/s", "PH/s"];
+        let mut unit_idx = 0;
+        while value >= 1000.0 && unit_idx < units.len() - 1 {
+            value /= 1000.0;
+            unit_idx += 1;
+        }
+        format!("{:.2} {}", value, units[unit_idx])
+    }
+
+    /// Get the current hash rate in H/s
+    pub fn get_hash_rate_hps(&self) -> f64 {
+        self.hash_rate_thousandths.load(Ordering::Relaxed) as f64 / 1000.0
+    }
+
+    /// Set the current hash rate in H/s
+    pub fn set_hash_rate_hps(&self, value: f64) {
+        self.hash_rate_thousandths
+            .store((value * 1000.0) as u64, Ordering::Relaxed);
+        self.touch();
     }
 
     /// Get finality time in milliseconds
@@ -840,6 +950,7 @@ impl QantoMetrics {
         metrics.insert("cache_hit_ratio".to_string(), self.get_cache_hit_ratio());
         metrics.insert("tps".to_string(), self.get_tps());
         metrics.insert("finality_ms".to_string(), self.get_finality_ms() as f64);
+        metrics.insert("rss_bytes".to_string(), self.get_rss_bytes() as f64);
         metrics.insert(
             "validator_count".to_string(),
             self.validator_count.load(Ordering::Relaxed) as f64,
@@ -855,6 +966,23 @@ impl QantoMetrics {
         metrics.insert("stability_index".to_string(), self.get_stability_index());
 
         metrics
+    }
+
+    /// Get RSS memory usage in bytes
+    pub fn get_rss_bytes(&self) -> u64 {
+        self.qanto_rss_bytes.load(Ordering::Relaxed)
+    }
+
+    /// Set RSS memory usage in bytes
+    pub fn set_rss_bytes(&self, bytes: u64) {
+        self.qanto_rss_bytes.store(bytes, Ordering::Relaxed);
+    }
+
+    /// Update RSS memory usage from system
+    pub fn update_rss_memory(&self) {
+        if let Ok(rss_bytes) = get_rss_memory_bytes() {
+            self.set_rss_bytes(rss_bytes);
+        }
     }
 
     /// Reset all metrics to zero
@@ -931,7 +1059,62 @@ impl QantoMetrics {
     }
 }
 
-/// Global metrics instance
+/// Get RSS memory usage in bytes from the system
+pub fn get_rss_memory_bytes() -> Result<u64, Box<dyn std::error::Error>> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::fs;
+        let status = fs::read_to_string("/proc/self/status")?;
+        for line in status.lines() {
+            if line.starts_with("VmRSS:") {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    let kb: u64 = parts[1].parse()?;
+                    return Ok(kb * 1024); // Convert KB to bytes
+                }
+            }
+        }
+        Err("VmRSS not found in /proc/self/status".into())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::mem;
+
+        // Use mach_task_basic_info to get memory usage on macOS
+        let mut info: libc::mach_task_basic_info = unsafe { mem::zeroed() };
+        let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
+
+        let result = unsafe {
+            #[allow(deprecated)]
+            libc::task_info(
+                libc::mach_task_self(),
+                libc::MACH_TASK_BASIC_INFO,
+                &mut info as *mut _ as *mut i32,
+                &mut count,
+            )
+        };
+
+        if result == libc::KERN_SUCCESS {
+            Ok(info.resident_size)
+        } else {
+            Err("Failed to get task info on macOS".into())
+        }
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        // Fallback for other platforms - use sysinfo
+        let mut system = System::new();
+        system.refresh_process(sysinfo::get_current_pid().unwrap());
+        if let Some(process) = system.process(sysinfo::get_current_pid().unwrap()) {
+            Ok(process.memory() * 1024) // sysinfo returns KB, convert to bytes
+        } else {
+            Err("Failed to get process memory info".into())
+        }
+    }
+}
+
 pub static GLOBAL_METRICS: once_cell::sync::Lazy<Arc<QantoMetrics>> =
     once_cell::sync::Lazy::new(|| Arc::new(QantoMetrics::new()));
 
@@ -982,5 +1165,30 @@ mod atomic_serde {
     {
         let value = <u64 as Deserialize>::deserialize(deserializer)?;
         Ok(AtomicU64::new(value))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::QantoMetrics;
+
+    #[test]
+    fn test_compute_hash_rate() {
+        // 1000 attempts over 1 second -> 1000 H/s
+        assert!((QantoMetrics::compute_hash_rate(1000, 1000) - 1000.0).abs() < 1e-6);
+        // 500 attempts over 2 seconds -> 250 H/s
+        assert!((QantoMetrics::compute_hash_rate(500, 2000) - 250.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_format_hash_rate_units() {
+        assert_eq!(QantoMetrics::format_hash_rate(0.0), "0.00 H/s");
+        assert_eq!(QantoMetrics::format_hash_rate(999.0), "999.00 H/s");
+        assert_eq!(QantoMetrics::format_hash_rate(1000.0), "1.00 kH/s");
+        assert_eq!(QantoMetrics::format_hash_rate(12_345.0), "12.35 kH/s");
+        assert_eq!(QantoMetrics::format_hash_rate(1_000_000.0), "1.00 MH/s");
+        assert_eq!(QantoMetrics::format_hash_rate(12_345_678.0), "12.35 MH/s");
+        assert_eq!(QantoMetrics::format_hash_rate(1_234_567_890.0), "1.23 GH/s");
+        assert_eq!(QantoMetrics::format_hash_rate(-5.0), "0.00 H/s"); // clamp negatives
     }
 }

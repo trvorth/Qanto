@@ -12,12 +12,12 @@ pub fn setup_deterministic_test_env() {
     if env::var(DETERMINISTIC_MINING_SEED).is_err() {
         env::set_var(DETERMINISTIC_MINING_SEED, "42");
     }
-    
+
     // Set deterministic time seed if not already set
     if env::var(DETERMINISTIC_TIME_SEED).is_err() {
         env::set_var(DETERMINISTIC_TIME_SEED, "1234567890");
     }
-    
+
     // Ensure single-threaded execution for deterministic behavior
     env::set_var("RUST_TEST_THREADS", "1");
 }
@@ -36,11 +36,11 @@ mod tests {
     #[test]
     fn test_setup_deterministic_env() {
         setup_deterministic_test_env();
-        
+
         assert_eq!(env::var(DETERMINISTIC_MINING_SEED).unwrap(), "42");
         assert_eq!(env::var(DETERMINISTIC_TIME_SEED).unwrap(), "1234567890");
         assert_eq!(env::var("RUST_TEST_THREADS").unwrap(), "1");
-        
+
         cleanup_deterministic_test_env();
     }
 }

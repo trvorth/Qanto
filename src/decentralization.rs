@@ -16,7 +16,15 @@ use crate::consensus::{Consensus, ConsensusError};
 use crate::metrics::QantoMetrics;
 
 use crate::qanto_net::{NetworkMessage, PeerId, QantoNetServer};
-use crate::qantodag::{QantoBlock, QantoDAG};
+use crate::qantodag::{QantoBlock as DagBlock, QantoDAG};
+use qanto_core::qanto_net as core_net;
+
+fn to_core_block(block: &DagBlock) -> core_net::QantoBlock {
+    core_net::QantoBlock {
+        id: block.id.clone(),
+        data: serde_json::to_vec(block).unwrap_or_default(),
+    }
+}
 use crate::saga::{GovernanceProposal, PalletSaga};
 use crate::transaction::Transaction;
 use crate::zkp::{ZKProof, ZKProofSystem};
@@ -90,7 +98,7 @@ pub type ValidatorMetrics = QantoMetrics;
 pub struct ConsensusRound {
     pub round_id: String,
     pub epoch: u64,
-    pub proposed_block: Option<QantoBlock>,
+    pub proposed_block: Option<DagBlock>,
     pub validator_votes: HashMap<PeerId, ValidatorVote>,
     pub status: ConsensusStatus,
     pub start_time: u64,
@@ -105,6 +113,7 @@ pub struct ValidatorVote {
     pub vote_type: VoteType,
     pub signature: Vec<u8>,
     pub timestamp: u64,
+    #[cfg(feature = "zk")]
     pub zk_proof: Option<ZKProof>,
 }
 
@@ -144,6 +153,7 @@ pub struct CrossShardMessage {
     pub message_type: CrossShardMessageType,
     pub payload: Vec<u8>,
     pub timestamp: u64,
+    #[cfg(feature = "zk")]
     pub proof: Option<ZKProof>,
 }
 
@@ -272,6 +282,7 @@ pub struct DecentralizationEngine {
     pub peer_discovery: Arc<PeerDiscoveryService>,
     pub consensus_engine: Arc<Consensus>,
     pub saga: Arc<PalletSaga>,
+    #[cfg(feature = "zk")]
     pub zkp_system: Arc<ZKProofSystem>,
     pub network_server: Arc<QantoNetServer>,
 }
@@ -292,6 +303,7 @@ pub struct VotingRecord {
     pub vote: VoteChoice,
     pub voting_power: f64,
     pub timestamp: u64,
+    #[cfg(feature = "zk")]
     pub zk_proof: Option<ZKProof>,
 }
 
@@ -373,7 +385,7 @@ impl DecentralizationEngine {
     pub fn new(
         consensus_engine: Arc<Consensus>,
         saga: Arc<PalletSaga>,
-        zkp_system: Arc<ZKProofSystem>,
+        #[cfg(feature = "zk")] zkp_system: Arc<ZKProofSystem>,
         network_server: Arc<QantoNetServer>,
     ) -> Self {
         let shard_coordinator = Arc::new(ShardCoordinator::new());
@@ -388,6 +400,7 @@ impl DecentralizationEngine {
             peer_discovery,
             consensus_engine,
             saga,
+            #[cfg(feature = "zk")]
             zkp_system,
             network_server,
         }
@@ -516,7 +529,7 @@ impl DecentralizationEngine {
     /// Start a new consensus round for block validation
     pub async fn start_consensus_round(
         &self,
-        block: QantoBlock,
+        block: DagBlock,
         _dag: &Arc<QantoDAG>,
         shard_id: usize,
     ) -> Result<String, DecentralizationError> {
@@ -557,7 +570,7 @@ impl DecentralizationEngine {
         &self,
         round_id: &str,
         shard_id: usize,
-        block: &QantoBlock,
+        block: &DagBlock,
     ) -> Result<(), DecentralizationError> {
         let shards = self.shard_coordinator.shards.read().await;
 
@@ -566,7 +579,7 @@ impl DecentralizationEngine {
                 // Send consensus message to validator
                 let _message = NetworkMessage::Consensus {
                     round_id: round_id.to_string(),
-                    block: block.clone(),
+                    block: to_core_block(block),
                     shard_id,
                 };
 
@@ -737,7 +750,7 @@ impl DecentralizationEngine {
     /// Apply a validated block to a shard
     async fn apply_block_to_shard(
         &self,
-        block: &QantoBlock,
+        block: &DagBlock,
         shard_id: usize,
     ) -> Result<(), DecentralizationError> {
         let mut shards = self.shard_coordinator.shards.write().await;
@@ -1090,7 +1103,7 @@ impl DecentralizationEngine {
         proposal_id: &str,
         voter_id: PeerId,
         vote: VoteChoice,
-        zk_proof: Option<ZKProof>,
+        #[cfg(feature = "zk")] zk_proof: Option<ZKProof>,
     ) -> Result<(), DecentralizationError> {
         let mut governance = self.governance_system.write().await;
 
@@ -1105,6 +1118,7 @@ impl DecentralizationEngine {
         let voting_power = self.calculate_voting_power(&voter_id).await?;
 
         // Verify ZK proof if provided (for anonymous voting)
+        #[cfg(feature = "zk")]
         if let Some(proof) = &zk_proof {
             let verification_result = self.zkp_system.verify_proof(proof).await.map_err(|e| {
                 DecentralizationError::Anyhow(anyhow!("ZK proof verification failed: {e}"))
@@ -1127,6 +1141,7 @@ impl DecentralizationEngine {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
+            #[cfg(feature = "zk")]
             zk_proof,
         };
 

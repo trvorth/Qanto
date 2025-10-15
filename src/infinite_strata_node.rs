@@ -23,7 +23,7 @@
 //! - `NodeRegistry`: Maintains a registry of all nodes in the network.
 
 use crate::post_quantum_crypto::{generate_pq_keypair, pq_verify};
-use crate::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature};
+use qanto_core::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature};
 use anyhow::{anyhow, Result};
 use my_blockchain::qanto_hash;
 use num_bigint::BigUint;
@@ -56,20 +56,15 @@ const MAX_RESOURCE_SAMPLES_SIZE: usize = 500; // Limit resource samples
 const EPOCH_PERFORMANCE_LOG_INTERVAL: u64 = 100; // Log every 100 epochs
 
 /// TestnetMode enum to control VDF and proof complexity for testing
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum TestnetMode {
     /// Easy mode: Minimal VDF iterations, simplified proofs
     Easy,
     /// Normal mode: Standard VDF iterations for testnet
     Normal,
     /// Production mode: Full VDF complexity (default)
+    #[default]
     Production,
-}
-
-impl Default for TestnetMode {
-    fn default() -> Self {
-        TestnetMode::Production
-    }
 }
 
 impl TestnetMode {
@@ -428,10 +423,11 @@ impl Default for VDFState {
 impl VDFState {
     /// Create a new VDFState with specified testnet mode
     pub fn with_testnet_mode(testnet_mode: TestnetMode) -> Self {
-        let mut vdf = Self::default();
-        vdf.testnet_mode = testnet_mode;
-        vdf.difficulty_factor = testnet_mode.difficulty_factor();
-        vdf
+        Self {
+            testnet_mode,
+            difficulty_factor: testnet_mode.difficulty_factor(),
+            ..Self::default()
+        }
     }
 
     /// Performs the heavy VDF computation. This is a pure function designed to be run in a blocking context.
@@ -718,7 +714,7 @@ impl InfiniteStrataNode {
         self.collect_epoch_performance_metrics(epoch - 1).await?;
 
         // Log performance metrics periodically
-        if epoch % EPOCH_PERFORMANCE_LOG_INTERVAL == 0 {
+        if epoch.rem_euclid(EPOCH_PERFORMANCE_LOG_INTERVAL) == 0 {
             self.log_epoch_performance_summary(epoch).await?;
         }
 
@@ -978,7 +974,7 @@ impl InfiniteStrataNode {
             let avg_performance: f64 =
                 performance_history.iter().sum::<f64>() / performance_history.len() as f64;
             let mut cached_multiplier = self.cached_reward_multiplier.write().await;
-            *cached_multiplier = (avg_performance / 100.0).max(0.1).min(2.0); // Clamp between 0.1 and 2.0
+            *cached_multiplier = (avg_performance / 100.0).clamp(0.1, 2.0); // Clamp between 0.1 and 2.0
         }
 
         Ok(())

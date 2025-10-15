@@ -1,0 +1,17 @@
+apiVersion: v2
+name: qanto-node
+description: A Helm chart for Qanto blockchain node
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - blockchain
+  - cryptocurrency
+  - qanto
+  - node
+home: https://github.com/qanto/qanto
+sources:
+  - https://github.com/qanto/qanto
+maintainers:
+  - name: Qanto Team
+    email: trvorth@qanto.org

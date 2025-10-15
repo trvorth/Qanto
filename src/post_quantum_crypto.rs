@@ -1,7 +1,7 @@
 // post_quantum_crypto.rs
 // Qanto's post-quantum cryptography module using native qanhash implementation
 
-pub use crate::qanto_native_crypto::{
+pub use qanto_core::qanto_native_crypto::{
     QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature, QantoSignatureAlgorithm,
 };
 use rand::rngs::OsRng;

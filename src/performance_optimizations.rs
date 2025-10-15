@@ -32,8 +32,11 @@ use tracing::{debug, info, warn};
 #[cfg(feature = "performance-test")]
 use tracing::{info, warn};
 
-// Performance constants optimized for 10M+ TPS
+// Performance optimization constants
 const OPTIMAL_BATCH_SIZE: usize = 100000; // Massively increased for 10M+ TPS
+#[cfg(feature = "performance-test")]
+const MAX_PARALLEL_WORKERS: usize = 8; // Reduced for test stability
+#[cfg(not(feature = "performance-test"))]
 const MAX_PARALLEL_WORKERS: usize = 256; // Doubled for maximum parallelism
 const PIPELINE_STAGES: usize = 4;
 
@@ -61,9 +64,6 @@ pub struct OptimizedTransactionProcessor {
     cache_misses: CachePadded<AtomicU64>,
     #[allow(dead_code)]
     batch_count: CachePadded<AtomicU64>,
-    // Custom thread pool for CPU-intensive operations
-    #[allow(dead_code)]
-    thread_pool: rayon::ThreadPool,
 }
 
 impl Default for OptimizedTransactionProcessor {
@@ -76,13 +76,6 @@ impl OptimizedTransactionProcessor {
     /// Create new optimized transaction processor
     pub fn new() -> Self {
         let (tx_sender, tx_receiver) = bounded(OPTIMAL_BATCH_SIZE);
-
-        // Create custom thread pool with optimal configuration
-        let thread_pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(MAX_PARALLEL_WORKERS)
-            .thread_name(|i| format!("qanto-processor-{i}"))
-            .build()
-            .expect("Failed to create thread pool");
 
         // Create pipeline stages
         let pipeline_stages: Vec<Arc<Semaphore>> = (0..PIPELINE_STAGES)
@@ -102,7 +95,6 @@ impl OptimizedTransactionProcessor {
             cache_hits: CachePadded::new(AtomicU64::new(0)),
             cache_misses: CachePadded::new(AtomicU64::new(0)),
             batch_count: CachePadded::new(AtomicU64::new(0)),
-            thread_pool,
         }
     }
 

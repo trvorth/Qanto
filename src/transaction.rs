@@ -16,6 +16,7 @@
 //!   while maintaining low latency.
 //! - **Privacy**: Ensures user privacy by keeping transaction details confidential.
 
+use crate::gas_fee_model::{FeeBreakdown, GasFeeError, GasFeeModel, StorageDuration};
 use crate::omega;
 use crate::qantodag::QantoDAG;
 use crate::types::{HomomorphicEncrypted, QuantumResistantSignature, UTXO};
@@ -40,15 +41,15 @@ const MAX_METADATA_KEY_LEN: usize = 64;
 const MAX_METADATA_VALUE_LEN: usize = 256;
 
 // --- New Dynamic Fee Structure ---
-// Thresholds are defined in the smallest units of QNTO for precision.
-/// The number of smallest units in one QNTO.
-pub const SMALLEST_UNITS_PER_QNTO: u64 = 1_000_000_000;
-/// The threshold for the first fee tier (under 1,000,000 QNTO).
-pub const FEE_TIER1_THRESHOLD: u64 = 1_000_000 * SMALLEST_UNITS_PER_QNTO;
-/// The threshold for the second fee tier (1M to 10M QNTO).
-pub const FEE_TIER2_THRESHOLD: u64 = 10_000_000 * SMALLEST_UNITS_PER_QNTO;
-/// The threshold for the third fee tier (10M to 100M QNTO).
-pub const FEE_TIER3_THRESHOLD: u64 = 100_000_000 * SMALLEST_UNITS_PER_QNTO;
+// Thresholds are defined in the smallest units of QAN for precision.
+/// The number of smallest units in one QAN.
+pub const SMALLEST_UNITS_PER_QAN: u64 = 1_000_000_000;
+/// The threshold for the first fee tier (under 1,000,000 QAN).
+pub const FEE_TIER1_THRESHOLD: u64 = 1_000_000 * SMALLEST_UNITS_PER_QAN;
+/// The threshold for the second fee tier (1M to 10M QAN).
+pub const FEE_TIER2_THRESHOLD: u64 = 10_000_000 * SMALLEST_UNITS_PER_QAN;
+/// The threshold for the third fee tier (10M to 100M QAN).
+pub const FEE_TIER3_THRESHOLD: u64 = 100_000_000 * SMALLEST_UNITS_PER_QAN;
 /// The fee rate for the first tier (0%).
 pub const FEE_RATE_TIER1: f64 = 0.00;
 /// The fee rate for the second tier (1%).
@@ -86,6 +87,8 @@ pub enum TransactionError {
     InvalidMetadata(String),
     #[error("Post-quantum crypto error: {0}")]
     PqCrypto(String),
+    #[error("Gas fee error: {0}")]
+    GasFee(#[from] GasFeeError),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
@@ -94,7 +97,7 @@ pub struct Input {
     pub output_index: u32,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Output {
     pub address: String,
     pub amount: u64,
@@ -106,6 +109,9 @@ pub struct TransactionConfig {
     pub receiver: String,
     pub amount: u64,
     pub fee: u64,
+    pub gas_limit: u64,
+    pub gas_price: u64,
+    pub priority_fee: u64,
     pub inputs: Vec<Input>,
     pub outputs: Vec<Output>,
     pub metadata: Option<HashMap<String, String>>,
@@ -124,31 +130,37 @@ struct TransactionSigningPayload<'a> {
     timestamp: u64,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
 pub struct Transaction {
     pub id: String,
     pub sender: String,
     pub receiver: String,
     pub amount: u64,
     pub fee: u64,
+    pub gas_limit: u64,
+    pub gas_used: u64,
+    pub gas_price: u64,
+    pub priority_fee: u64,
     pub inputs: Vec<Input>,
     pub outputs: Vec<Output>,
     pub timestamp: u64,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, String>,
     pub signature: QuantumResistantSignature,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_breakdown: Option<FeeBreakdown>,
 }
 
 /// Calculates the transaction fee based on the new tiered structure.
 pub fn calculate_dynamic_fee(amount: u64) -> u64 {
     let rate = if amount < FEE_TIER1_THRESHOLD {
-        FEE_RATE_TIER1 // 0% fee for amounts under 1,000,000 QNTO
+        FEE_RATE_TIER1 // 0% fee for amounts under 1,000,000 QAN
     } else if amount < FEE_TIER2_THRESHOLD {
-        FEE_RATE_TIER2 // 1% fee for amounts between 1M and 10M QNTO
+        FEE_RATE_TIER2 // 1% fee for amounts between 1M and 10M QAN
     } else if amount < FEE_TIER3_THRESHOLD {
-        FEE_RATE_TIER3 // 2% fee for amounts between 10M and 100M QNTO
+        FEE_RATE_TIER3 // 2% fee for amounts between 10M and 100M QAN
     } else {
-        FEE_RATE_TIER4 // 3% for amounts over 100M QNTO
+        FEE_RATE_TIER4 // 3% for amounts over 100M QAN
     };
     (amount as f64 * rate).round() as u64
 }
@@ -168,10 +180,14 @@ impl Transaction {
             receiver: hex::encode(dummy_receiver),
             amount: 100, // Dummy amount
             fee: 0,
+            gas_limit: 50000,
+            gas_used: 0,
+            gas_price: 1,
+            priority_fee: 0,
             inputs: vec![],
             outputs: vec![Output {
                 address: "dummy_miner_address".to_string(),
-                amount: 150_000_000_000, // Example mining reward (150 QNTO)
+                amount: 50_000_000_000, // Example mining reward (50 QAN)
                 homomorphic_encrypted: HomomorphicEncrypted {
                     ciphertext: vec![],
                     public_key: vec![],
@@ -186,6 +202,7 @@ impl Transaction {
                 signer_public_key: vec![],
                 signature: vec![],
             },
+            fee_breakdown: None,
         }
     }
 
@@ -229,10 +246,14 @@ impl Transaction {
             receiver: receiver_str,
             amount: 100,
             fee: 0,
+            gas_limit: 50000,
+            gas_used: 0,
+            gas_price: 1,
+            priority_fee: 0,
             inputs: vec![],
             outputs: vec![Output {
                 address: "dummy_miner_address".to_string(),
-                amount: 150_000_000_000, // Example mining reward (150 QNTO)
+                amount: 50_000_000_000, // Example mining reward (50 QAN)
                 homomorphic_encrypted: HomomorphicEncrypted {
                     ciphertext: vec![],
                     public_key: vec![],
@@ -241,6 +262,7 @@ impl Transaction {
             timestamp,
             metadata: HashMap::new(),
             signature: signature_obj,
+            fee_breakdown: None,
         })
     }
 
@@ -318,12 +340,17 @@ impl Transaction {
             receiver: config.receiver,
             amount: config.amount,
             fee: config.fee,
+            gas_limit: config.gas_limit,
+            gas_used: 0, // Will be set during execution
+            gas_price: config.gas_price,
+            priority_fee: config.priority_fee,
             inputs: config.inputs,
             outputs: config.outputs,
             timestamp,
             metadata,
             signature: QuantumResistantSignature::sign(signing_key, &signature_data)
                 .map_err(|_| TransactionError::QuantumSignatureVerification)?,
+            fee_breakdown: None, // Will be calculated by gas fee model
         };
         tx.id = tx.compute_hash();
         let mut timestamps_guard = config.tx_timestamps.write().await;
@@ -367,11 +394,16 @@ impl Transaction {
             receiver,
             amount: reward,
             fee: 0,
+            gas_limit: 0, // Coinbase transactions don't use gas
+            gas_used: 0,
+            gas_price: 0,
+            priority_fee: 0,
             inputs: vec![],
             outputs,
             timestamp,
             metadata,
             signature: signature_obj,
+            fee_breakdown: None,
         };
         tx.id = tx.compute_hash();
         Ok(tx)
@@ -854,6 +886,65 @@ impl Transaction {
             tx_id: self.id.clone(),
             output_index: index,
             explorer_link,
+        }
+    }
+
+    /// Calculates and sets the fee breakdown using the gas fee model
+    pub fn calculate_gas_fee(
+        &mut self,
+        gas_fee_model: &GasFeeModel,
+    ) -> Result<(), TransactionError> {
+        let storage_duration = StorageDuration::ShortTerm; // Default to short-term storage
+
+        let fee_breakdown = gas_fee_model.calculate_transaction_fee(
+            self,
+            self.gas_limit,
+            self.priority_fee,
+            storage_duration,
+        )?;
+
+        self.fee = fee_breakdown.total_fee;
+        self.fee_breakdown = Some(fee_breakdown);
+        Ok(())
+    }
+
+    /// Updates gas usage after transaction execution
+    pub fn update_gas_usage(&mut self, gas_used: u64) -> Result<(), TransactionError> {
+        if gas_used > self.gas_limit {
+            return Err(TransactionError::GasFee(
+                crate::gas_fee_model::GasFeeError::GasLimitExceeded {
+                    used: gas_used,
+                    limit: self.gas_limit,
+                },
+            ));
+        }
+        self.gas_used = gas_used;
+        Ok(())
+    }
+
+    /// Validates gas parameters before transaction execution
+    pub fn validate_gas_parameters(&self) -> Result<(), TransactionError> {
+        if self.gas_limit == 0 && !self.is_coinbase() {
+            return Err(TransactionError::InvalidStructure(
+                "Gas limit cannot be zero for non-coinbase transactions".to_string(),
+            ));
+        }
+
+        if self.gas_price == 0 && !self.is_coinbase() {
+            return Err(TransactionError::InvalidStructure(
+                "Gas price cannot be zero for non-coinbase transactions".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Gets the effective fee rate (fee per gas unit)
+    pub fn get_effective_fee_rate(&self) -> f64 {
+        if self.gas_used == 0 {
+            0.0
+        } else {
+            self.fee as f64 / self.gas_used as f64
         }
     }
 }

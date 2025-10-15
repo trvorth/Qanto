@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qanto-node-data
+  namespace: qanto
+  labels:
+    app: qanto-node
+    component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: gp3
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: qanto-fast-ssd
+  labels:
+    app: qanto
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  iops: "3000"
+  throughput: "125"
+  encrypted: "true"
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qanto-node-logs
+  namespace: qanto
+  labels:
+    app: qanto-node
+    component: logs
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: gp3
+---
+# StatefulSet for nodes that need persistent identity
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: qanto-validator
+  namespace: qanto
+  labels:
+    app: qanto-validator
+    component: validator
+spec:
+  serviceName: qanto-validator-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: qanto-validator
+  template:
+    metadata:
+      labels:
+        app: qanto-validator
+        component: validator
+    spec:
+      serviceAccountName: qanto-node
+      containers:
+      - name: qanto-validator
+        image: qanto/qanto-node:latest
+        env:
+        - name: QANTO_NODE_TYPE
+          value: "validator"
+        - name: QANTO_VALIDATOR_KEY
+          valueFrom:
+            secretKeyRef:
+              name: qanto-validator-keys
+              key: validator-key
+        ports:
+        - name: api
+          containerPort: 8080
+        - name: metrics
+          containerPort: 8081
+        - name: p2p
+          containerPort: 30333
+        volumeMounts:
+        - name: qanto-validator-data
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 1
+            memory: 2Gi
+          limits:
+            cpu: 4
+            memory: 8Gi
+  volumeClaimTemplates:
+  - metadata:
+      name: qanto-validator-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: qanto-fast-ssd
+      resources:
+        requests:
+          storage: 200Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qanto-validator-headless
+  namespace: qanto
+  labels:
+    app: qanto-validator
+spec:
+  clusterIP: None
+  selector:
+    app: qanto-validator
+  ports:
+  - name: p2p
+    port: 30333
+    targetPort: 30333

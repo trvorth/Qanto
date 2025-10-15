@@ -18,7 +18,7 @@ chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
 anyhow = "1.0"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { workspace = true }
 my-blockchain = { path = "../../myblockchain" }
 qanto = { path = "../../" }
 

@@ -36,7 +36,7 @@ mod wallet_tests {
     fn test_wallet_address() {
         let wallet = Wallet::new().unwrap();
         let address = wallet.address();
-        assert!(address.len() > 0);
+        assert!(!address.is_empty());
     }
 }
 
@@ -54,6 +54,10 @@ mod transaction_basic_tests {
             receiver: "receiver".to_string(),
             amount: 100,
             fee: 10,
+            gas_limit: 21000,
+            gas_used: 0,
+            gas_price: 1,
+            priority_fee: 0,
             inputs: vec![],
             outputs: vec![],
             timestamp: 0,
@@ -62,6 +66,7 @@ mod transaction_basic_tests {
                 signer_public_key: vec![],
                 signature: vec![],
             },
+            fee_breakdown: None,
         };
         assert_eq!(tx.amount, 100);
         assert_eq!(tx.fee, 10);

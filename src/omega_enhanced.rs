@@ -1131,7 +1131,12 @@ pub mod enhanced_simulation {
         let mock_storage = QantoStorage::new(storage_config)
             .map_err(|e| anyhow::anyhow!("Failed to create test storage: {e}"))?;
 
-        let dag_result = QantoDAG::new(mock_config, mock_saga, mock_storage)?;
+        let dag_result = QantoDAG::new(
+            mock_config,
+            mock_saga,
+            mock_storage,
+            crate::config::LoggingConfig::default(),
+        )?;
         let dag = Arc::try_unwrap(dag_result)
             .map_err(|_| anyhow::anyhow!("Failed to unwrap Arc<QantoDAG>"))?;
         let dag = Arc::new(RwLock::new(dag));
@@ -1326,12 +1331,12 @@ pub mod enhanced_simulation {
         let mut transaction_count = 0;
 
         // Gradually increase threat level during simulation
-        let mut threat_escalation_counter = 0;
+        let mut threat_escalation_counter: u32 = 0;
 
         while start_time.elapsed() < simulation_duration {
             // Escalate threat level periodically
             threat_escalation_counter += 1;
-            if threat_escalation_counter % 20 == 0 {
+            if threat_escalation_counter.is_multiple_of(20) {
                 let current_threat = get_threat_level().await;
                 match current_threat {
                     ThreatLevel::Nominal => set_threat_level(ThreatLevel::Guarded),

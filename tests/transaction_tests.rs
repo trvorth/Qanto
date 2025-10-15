@@ -29,11 +29,15 @@ const VERIFICATION_TIMEOUT_SECS: u64 = 10;
 /// Create a minimal test transaction for fast processing
 fn create_minimal_transaction(id: usize) -> Transaction {
     Transaction {
-        id: format!("tx_{}", id),
+        id: format!("tx_{id}"),
         sender: "test_sender".to_string(),
         receiver: "test_receiver".to_string(),
         amount: 1000,
         fee: 10,
+        gas_limit: 21000,
+        gas_used: 0,
+        gas_price: 1,
+        priority_fee: 0,
         inputs: vec![Input {
             tx_id: "0".repeat(64),
             output_index: 0,
@@ -55,6 +59,7 @@ fn create_minimal_transaction(id: usize) -> Transaction {
             signer_public_key: vec![],
             signature: vec![],
         },
+        fee_breakdown: None,
     }
 }
 
@@ -83,10 +88,7 @@ async fn test_small_batch_verification() -> Result<()> {
         let _processed = processor.process_batch_parallel_sync(transactions);
         let processing_time = start_time.elapsed();
 
-        info!(
-            "Processed {} transactions in {:?}",
-            SMALL_BATCH_SIZE, processing_time
-        );
+        info!("Processed {SMALL_BATCH_SIZE} transactions in {processing_time:?}");
         assert!(processing_time < Duration::from_secs(5));
 
         Ok::<(), anyhow::Error>(())
@@ -227,7 +229,7 @@ async fn test_parallel_batch_processing() -> Result<()> {
             let processing_time = start_time.elapsed();
 
             assert_eq!(processed.len(), size);
-            info!("Batch size {}: processed in {:?}", size, processing_time);
+            info!("Batch size {size}: processed in {processing_time:?}");
 
             // Ensure processing time scales reasonably
             assert!(processing_time < Duration::from_millis(size as u64 * 10));
@@ -302,9 +304,9 @@ async fn test_transaction_processing_metrics() -> Result<()> {
 
         info!("Performance metrics:");
         info!("  Total transactions: {}", processed.len());
-        info!("  Total time: {:?}", total_time);
-        info!("  TPS: {:.2}", tps);
-        info!("  Avg time per transaction: {:.2} μs", avg_time_per_tx);
+        info!("  Total time: {total_time:?}");
+        info!("  TPS: {tps:.2}");
+        info!("  Avg time per transaction: {avg_time_per_tx:.2} μs");
 
         // Performance assertions
         assert!(tps > 100.0); // At least 100 TPS
@@ -361,7 +363,7 @@ fn test_transaction_batch_creation() {
     assert_eq!(batch.len(), 5);
 
     for (i, tx) in batch.iter().enumerate() {
-        assert_eq!(tx.id, format!("tx_{}", i));
+        assert_eq!(tx.id, format!("tx_{i}"));
         assert!(tx.fee > 0);
         assert!(!tx.inputs.is_empty());
         assert!(!tx.outputs.is_empty());

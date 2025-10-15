@@ -135,7 +135,9 @@ pub struct ConfidentialTransaction {
     pub transaction_id: String,
     pub encrypted_inputs: Vec<EncryptedInput>,
     pub encrypted_outputs: Vec<EncryptedOutput>,
+    #[cfg(feature = "zk")]
     pub range_proofs: Vec<ZKProof>,
+    #[cfg(feature = "zk")]
     pub balance_proof: ZKProof,
     pub ring_signature: RingSignature,
     pub stealth_addresses: Vec<StealthAddress>,
@@ -149,6 +151,7 @@ pub struct EncryptedInput {
     pub nullifier: Vec<u8>,
     pub encrypted_amount: Vec<u8>,
     pub encrypted_blinding_factor: Vec<u8>,
+    #[cfg(feature = "zk")]
     pub membership_proof: ZKProof,
 }
 
@@ -158,6 +161,7 @@ pub struct EncryptedOutput {
     pub encrypted_amount: Vec<u8>,
     pub encrypted_blinding_factor: Vec<u8>,
     pub stealth_address: StealthAddress,
+    #[cfg(feature = "zk")]
     pub range_proof: ZKProof,
 }
 
@@ -167,7 +171,9 @@ pub struct MixingProof {
     pub rounds_completed: usize,
     pub anonymity_set_size: usize,
     pub mixing_tree_root: Vec<u8>,
+    #[cfg(feature = "zk")]
     pub inclusion_proofs: Vec<ZKProof>,
+    #[cfg(feature = "zk")]
     pub non_membership_proofs: Vec<ZKProof>,
 }
 
@@ -199,8 +205,10 @@ pub struct AnonymousVote {
     pub proposal_id: String,
     pub encrypted_vote: Vec<u8>,
     pub nullifier: Vec<u8>,
+    #[cfg(feature = "zk")]
     pub membership_proof: ZKProof,
     pub vote_commitment: Vec<u8>,
+    #[cfg(feature = "zk")]
     pub anonymity_proof: ZKProof,
     pub timestamp: u64,
 }
@@ -221,6 +229,7 @@ pub struct MixingParticipant {
     pub participant_id: String,
     pub input_commitment: Vec<u8>,
     pub output_commitment: Vec<u8>,
+    #[cfg(feature = "zk")]
     pub mixing_proof: Option<ZKProof>,
     pub joined_at: u64,
 }
@@ -231,6 +240,7 @@ pub struct MixingRound {
     pub round_number: usize,
     pub inputs: Vec<Vec<u8>>,
     pub outputs: Vec<Vec<u8>>,
+    #[cfg(feature = "zk")]
     pub shuffle_proof: ZKProof,
     pub completed_at: u64,
 }
@@ -258,6 +268,7 @@ pub struct PrivacyAnalytics {
 /// Main privacy engine coordinating all untraceability features
 #[derive(Debug)]
 pub struct PrivacyEngine {
+    #[cfg(feature = "zk")]
     pub zkp_system: Arc<ZKProofSystem>,
     pub mixing_pools: Arc<RwLock<HashMap<String, MixingPool>>>,
     pub stealth_addresses: Arc<RwLock<HashMap<String, StealthAddress>>>,
@@ -398,8 +409,9 @@ pub struct QuantumResistantCrypto {
 }
 
 impl PrivacyEngine {
-    pub fn new(zkp_system: Arc<ZKProofSystem>) -> Self {
+    pub fn new(#[cfg(feature = "zk")] zkp_system: Arc<ZKProofSystem>) -> Self {
         Self {
+            #[cfg(feature = "zk")]
             zkp_system,
             mixing_pools: Arc::new(RwLock::new(HashMap::new())),
             stealth_addresses: Arc::new(RwLock::new(HashMap::new())),
@@ -467,9 +479,13 @@ impl PrivacyEngine {
 
         // Generate range proofs
         let range_proofs = self.generate_range_proofs(&outputs).await?;
-        let utxos = HashMap::new(); // Placeholder - would need actual UTXO lookup
+        // Snapshot UTXOs from the engine to use for balance proof, avoiding holding the lock across awaits
+        let utxos_snapshot = {
+            let utxos_guard = self.utxos.read().await;
+            utxos_guard.clone()
+        };
         let balance_proof = self
-            .generate_balance_proof(&inputs, &outputs, &utxos)
+            .generate_balance_proof(&inputs, &outputs, &utxos_snapshot)
             .await?;
 
         // Create mixing proof if required

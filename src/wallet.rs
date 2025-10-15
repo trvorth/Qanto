@@ -16,14 +16,13 @@ use crate::qanto_compat::ed25519_dalek::{
     Signer, SigningKey as Ed25519SigningKey, VerifyingKey as Ed25519VerifyingKey,
 };
 use aes_gcm::aead::{Aead, AeadCore, OsRng};
-use aes_gcm::{aead::generic_array, Aes256Gcm, Key, KeyInit};
+use aes_gcm::{Aes256Gcm, Key, KeyInit, Nonce};
 use anyhow::Result;
 use argon2::{password_hash::SaltString, Argon2};
 use bip39::Mnemonic;
 use rand::Rng;
 use secrecy::{ExposeSecret, Secret, SecretVec};
 use serde::{Deserialize, Serialize};
-use std::convert::TryInto;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -285,7 +284,7 @@ impl Wallet {
             )
             .map_err(|e| WalletError::Passphrase(e.to_string()))?;
 
-        let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+        let key: &Key<Aes256Gcm> = (&key_bytes).into();
         let cipher = Aes256Gcm::new(key);
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         let ciphertext = cipher
@@ -299,7 +298,7 @@ impl Wallet {
         file_contents.push(WALLET_FILE_VERSION);
         file_contents.extend_from_slice(&salt_len);
         file_contents.extend_from_slice(salt_bytes);
-        file_contents.extend_from_slice(nonce.as_slice());
+        file_contents.extend_from_slice(&nonce);
         file_contents.extend_from_slice(&ciphertext);
 
         let path_ref = path.as_ref();
@@ -366,7 +365,7 @@ impl Wallet {
         let salt_string = SaltString::from_b64(salt_str)
             .map_err(|e| WalletError::Passphrase(format!("Invalid salt format: {e}")))?;
 
-        let nonce = generic_array::GenericArray::from_slice(&file_contents[salt_end..nonce_end]);
+        let nonce: &Nonce<<Aes256Gcm as AeadCore>::NonceSize> = (&file_contents[salt_end..nonce_end]).into();
         let ciphertext = &file_contents[nonce_end..];
 
         let mut key_bytes = [0u8; 32];
@@ -379,7 +378,7 @@ impl Wallet {
             )
             .map_err(|_| WalletError::Passphrase("Password verification failed.".to_string()))?;
 
-        let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
+        let key: &Key<Aes256Gcm> = (&key_bytes).into();
         let cipher = Aes256Gcm::new(key);
 
         let plaintext = cipher.decrypt(nonce, ciphertext).map_err(|_| {

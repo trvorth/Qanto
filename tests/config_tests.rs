@@ -11,7 +11,7 @@ fn main() {
             println!("   - mining_threads: {}", config.mining_threads);
         }
         Err(e) => {
-            println!("❌ Config validation failed: {}", e);
+            println!("❌ Config validation failed: {e}");
             process::exit(1);
         }
     }

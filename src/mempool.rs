@@ -3,6 +3,7 @@
 //!
 //! This version implements a basic mempool with transaction prioritization
 //! and UTXO tracking.
+use crate::memory_optimization::TransactionArena;
 use crate::qantodag::QantoDAG;
 use crate::transaction::{Transaction, TransactionError};
 use crate::types::UTXO;
@@ -32,20 +33,24 @@ pub enum MempoolError {
 }
 
 // A wrapper to make transactions orderable by fee-per-byte and track their age.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PrioritizedTransaction {
-    tx: Transaction,
-    fee_per_byte: u64,
-    timestamp: u64,
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrioritizedTransaction {
+    pub tx: Transaction,
+    pub fee_per_byte: u64,
+    pub timestamp: u64,
 }
+
+// Custom Eq implementation that ignores floating-point fields in Transaction
+impl Eq for PrioritizedTransaction {}
 
 impl Ord for PrioritizedTransaction {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // Primary: Compare by fee per byte (higher is better)
+        // For eviction priority: lower fee per byte should be evicted first
+        // Since we use Reverse in BinaryHeap, we want lower fees to have "higher" priority for eviction
         match self.fee_per_byte.cmp(&other.fee_per_byte) {
             std::cmp::Ordering::Equal => {
                 // Secondary: Compare by age (older is better for eviction)
-                other.timestamp.cmp(&self.timestamp)
+                self.timestamp.cmp(&other.timestamp)
             }
             other => other,
         }
@@ -97,6 +102,381 @@ struct PriorityEntry {
     tx_id: String,
 }
 
+/// Enhanced mempool for 1M+ transaction capacity with optimized performance
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct EnhancedMempool {
+    transactions: DashMap<String, PrioritizedTransaction>,
+    priority_queue: Arc<RwLock<BinaryHeap<Reverse<PrioritizedTransaction>>>>,
+    max_age: Duration,
+    max_size_bytes: usize,
+    current_size_bytes: Arc<std::sync::atomic::AtomicUsize>,
+    max_transactions: usize,
+    tx_counter: Arc<AtomicUsize>,
+    last_log_time: Arc<RwLock<Instant>>,
+    log_interval: Duration,
+    backpressure_threshold: f64,
+    backpressure_active: Arc<std::sync::atomic::AtomicBool>,
+    rejected_tx_counter: Arc<AtomicUsize>,
+    // Enhanced fields for 1M+ capacity
+    shard_count: usize,
+    sharded_queues: Vec<Arc<RwLock<BinaryHeap<Reverse<PrioritizedTransaction>>>>>,
+    performance_metrics: Arc<MempoolPerformanceMetrics>,
+    // Arena allocator for efficient transaction management
+    tx_arena: Arc<TransactionArena>,
+}
+
+#[derive(Debug)]
+pub struct MempoolPerformanceMetrics {
+    pub total_transactions_processed: Arc<AtomicUsize>,
+    pub total_transactions_rejected: Arc<AtomicUsize>,
+    pub average_processing_time_us: Arc<AtomicUsize>,
+    pub peak_memory_usage_bytes: Arc<AtomicUsize>,
+    pub cache_hit_ratio: Arc<AtomicUsize>,
+}
+
+impl EnhancedMempool {
+    pub fn new_enhanced(
+        max_age: Duration,
+        max_size_bytes: usize,
+        max_transactions: usize,
+        backpressure_threshold: f64,
+        shard_count: usize,
+    ) -> Self {
+        let sharded_queues: Vec<Arc<RwLock<BinaryHeap<Reverse<PrioritizedTransaction>>>>> = (0
+            ..shard_count)
+            .map(|_| Arc::new(RwLock::new(BinaryHeap::new())))
+            .collect();
+
+        Self {
+            transactions: DashMap::new(),
+            priority_queue: Arc::new(RwLock::new(BinaryHeap::new())),
+            max_age,
+            max_size_bytes,
+            current_size_bytes: Arc::new(AtomicUsize::new(0)),
+            max_transactions,
+            tx_counter: Arc::new(AtomicUsize::new(0)),
+            last_log_time: Arc::new(RwLock::new(Instant::now())),
+            log_interval: Duration::from_secs(30),
+            backpressure_threshold,
+            backpressure_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            rejected_tx_counter: Arc::new(AtomicUsize::new(0)),
+            shard_count,
+            sharded_queues,
+            performance_metrics: Arc::new(MempoolPerformanceMetrics {
+                total_transactions_processed: Arc::new(AtomicUsize::new(0)),
+                total_transactions_rejected: Arc::new(AtomicUsize::new(0)),
+                average_processing_time_us: Arc::new(AtomicUsize::new(0)),
+                peak_memory_usage_bytes: Arc::new(AtomicUsize::new(0)),
+                cache_hit_ratio: Arc::new(AtomicUsize::new(0)),
+            }),
+            tx_arena: Arc::new(TransactionArena::new(2).unwrap()), // 2MB arena for enhanced mempool
+        }
+    }
+
+    /// Calculate shard index for a transaction
+    fn calculate_shard_index(&self, tx_id: &str) -> usize {
+        let hash = tx_id
+            .bytes()
+            .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+        (hash as usize) % self.shard_count
+    }
+
+    /// Add transaction with enhanced sharding
+    pub async fn add_transaction_enhanced(
+        &self,
+        transaction: Transaction,
+    ) -> Result<(), MempoolError> {
+        let start_time = Instant::now();
+        let tx_id = transaction.id.clone();
+
+        // Check if transaction already exists
+        if self.transactions.contains_key(&tx_id) {
+            return Ok(());
+        }
+
+        // Enhanced transaction size calculation
+        let tx_size = self.calculate_enhanced_transaction_size(&transaction);
+        let current_size = self.current_size_bytes.load(Ordering::Relaxed);
+        let projected_size = current_size + tx_size;
+        let capacity_ratio = projected_size as f64 / self.max_size_bytes as f64;
+
+        // Enhanced backpressure with adaptive thresholds
+        if capacity_ratio >= self.backpressure_threshold {
+            self.backpressure_active.store(true, Ordering::Relaxed);
+
+            let min_fee_threshold = self.calculate_adaptive_fee_threshold().await;
+            let fee_per_byte = if tx_size > 0 {
+                (transaction.fee * 1000) / (tx_size as u64) // Scale by 1000 for precision
+            } else {
+                0
+            };
+
+            if fee_per_byte < min_fee_threshold {
+                self.rejected_tx_counter.fetch_add(1, Ordering::Relaxed);
+                self.performance_metrics
+                    .total_transactions_rejected
+                    .fetch_add(1, Ordering::Relaxed);
+                return Err(MempoolError::BackpressureActive(
+                    format!("Transaction fee {fee_per_byte}/1000byte below threshold {min_fee_threshold}/1000byte")
+                ));
+            }
+        } else {
+            self.backpressure_active.store(false, Ordering::Relaxed);
+        }
+
+        let fee_per_byte = if tx_size > 0 {
+            (transaction.fee * 1000) / (tx_size as u64)
+        } else {
+            0
+        };
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let prioritized_tx = PrioritizedTransaction {
+            tx: transaction,
+            fee_per_byte,
+            timestamp,
+        };
+
+        // Add to main storage
+        self.transactions
+            .insert(tx_id.clone(), prioritized_tx.clone());
+        self.current_size_bytes
+            .fetch_add(tx_size, Ordering::Relaxed);
+        self.tx_counter.fetch_add(1, Ordering::Relaxed);
+
+        // Add to appropriate shard
+        let shard_index = self.calculate_shard_index(&tx_id);
+        let mut shard_queue = self.sharded_queues[shard_index].write().await;
+        shard_queue.push(Reverse(prioritized_tx.clone()));
+        drop(shard_queue);
+
+        // Add to main priority queue
+        let mut queue = self.priority_queue.write().await;
+        queue.push(Reverse(prioritized_tx));
+        drop(queue);
+
+        // Update performance metrics
+        let processing_time = start_time.elapsed().as_micros() as usize;
+        self.performance_metrics
+            .total_transactions_processed
+            .fetch_add(1, Ordering::Relaxed);
+        self.performance_metrics
+            .average_processing_time_us
+            .store(processing_time, Ordering::Relaxed);
+
+        let current_memory = self.current_size_bytes.load(Ordering::Relaxed);
+        let peak_memory = self
+            .performance_metrics
+            .peak_memory_usage_bytes
+            .load(Ordering::Relaxed);
+        if current_memory > peak_memory {
+            self.performance_metrics
+                .peak_memory_usage_bytes
+                .store(current_memory, Ordering::Relaxed);
+        }
+
+        Ok(())
+    }
+
+    /// Enhanced transaction size calculation
+    fn calculate_enhanced_transaction_size(&self, tx: &Transaction) -> usize {
+        // More accurate size calculation
+        let base_size = std::mem::size_of::<Transaction>();
+        let id_size = tx.id.len();
+        let sender_size = tx.sender.len();
+        let receiver_size = tx.receiver.len();
+        let inputs_size = tx.inputs.len() * 64; // Estimated UTXO reference size
+        let outputs_size = tx.outputs.len() * 128; // Estimated output size
+        let signature_size = 64; // Standard signature size
+
+        base_size
+            + id_size
+            + sender_size
+            + receiver_size
+            + inputs_size
+            + outputs_size
+            + signature_size
+    }
+
+    /// Adaptive fee threshold calculation
+    async fn calculate_adaptive_fee_threshold(&self) -> u64 {
+        let current_size = self.current_size_bytes.load(Ordering::Relaxed);
+        let capacity_ratio = current_size as f64 / self.max_size_bytes as f64;
+
+        // Base threshold increases exponentially with capacity usage
+        let base_threshold = 100u64; // Base fee per 1000 bytes
+        let multiplier = if capacity_ratio > 0.9 {
+            10.0
+        } else if capacity_ratio > 0.8 {
+            5.0
+        } else if capacity_ratio > 0.7 {
+            2.0
+        } else {
+            1.0
+        };
+
+        (base_threshold as f64 * multiplier) as u64
+    }
+
+    /// Get prioritized transactions from shards
+    pub async fn get_prioritized_transactions_sharded(&self, max_count: usize) -> Vec<Transaction> {
+        let mut all_transactions = Vec::new();
+        let per_shard_count = max_count.div_ceil(self.shard_count);
+
+        // Collect from each shard in parallel
+        let shard_futures: Vec<_> = (0..self.shard_count)
+            .map(|i| async move {
+                let queue = self.sharded_queues[i].read().await;
+                queue
+                    .iter()
+                    .take(per_shard_count)
+                    .map(|reverse_tx| reverse_tx.0.tx.clone())
+                    .collect::<Vec<Transaction>>()
+            })
+            .collect();
+
+        // Execute all shard queries concurrently
+        for shard_txs in futures::future::join_all(shard_futures).await {
+            all_transactions.extend(shard_txs);
+        }
+
+        // Sort by priority and take top transactions
+        all_transactions.into_iter().take(max_count).collect()
+    }
+
+    /// Enhanced pruning with parallel processing
+    pub async fn prune_old_transactions_enhanced(&self) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let old_txs: Vec<String> = self
+            .transactions
+            .iter()
+            .filter_map(|entry| {
+                let (tx_id, prioritized_tx) = entry.pair();
+                if now.saturating_sub(prioritized_tx.timestamp) > self.max_age.as_secs() {
+                    Some(tx_id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Remove old transactions in parallel
+        for tx_id in old_txs {
+            if let Some((_, prioritized_tx)) = self.transactions.remove(&tx_id) {
+                let tx_size = self.calculate_enhanced_transaction_size(&prioritized_tx.tx);
+                self.current_size_bytes
+                    .fetch_sub(tx_size, Ordering::Relaxed);
+
+                // Remove from appropriate shard
+                let shard_index = self.calculate_shard_index(&tx_id);
+                let mut shard_queue = self.sharded_queues[shard_index].write().await;
+                shard_queue.retain(|reverse_tx| reverse_tx.0.tx.id != tx_id);
+            }
+        }
+
+        // Rebuild priority queues
+        self.rebuild_all_queues().await;
+    }
+
+    /// Rebuild all priority queues
+    async fn rebuild_all_queues(&self) {
+        // Rebuild main queue
+        let mut main_queue = self.priority_queue.write().await;
+        main_queue.clear();
+
+        // Rebuild shard queues
+        for shard_queue in &self.sharded_queues {
+            let mut queue = shard_queue.write().await;
+            queue.clear();
+        }
+
+        // Repopulate queues
+        for entry in self.transactions.iter() {
+            let (tx_id, prioritized_tx) = entry.pair();
+
+            // Add to main queue
+            main_queue.push(Reverse(prioritized_tx.clone()));
+
+            // Add to appropriate shard
+            let shard_index = self.calculate_shard_index(tx_id);
+            let mut shard_queue = self.sharded_queues[shard_index].write().await;
+            shard_queue.push(Reverse(prioritized_tx.clone()));
+            drop(shard_queue);
+        }
+    }
+
+    /// Get enhanced performance metrics
+    pub fn get_enhanced_performance_metrics(&self) -> HashMap<String, u64> {
+        let mut metrics = HashMap::new();
+
+        metrics.insert(
+            "total_transactions".to_string(),
+            self.transactions.len() as u64,
+        );
+        metrics.insert(
+            "current_size_bytes".to_string(),
+            self.current_size_bytes.load(Ordering::Relaxed) as u64,
+        );
+        metrics.insert("max_size_bytes".to_string(), self.max_size_bytes as u64);
+        metrics.insert(
+            "backpressure_active".to_string(),
+            self.backpressure_active.load(Ordering::Relaxed) as u64,
+        );
+        metrics.insert(
+            "rejected_transactions".to_string(),
+            self.rejected_tx_counter.load(Ordering::Relaxed) as u64,
+        );
+        metrics.insert("shard_count".to_string(), self.shard_count as u64);
+        metrics.insert(
+            "total_processed".to_string(),
+            self.performance_metrics
+                .total_transactions_processed
+                .load(Ordering::Relaxed) as u64,
+        );
+        metrics.insert(
+            "total_rejected".to_string(),
+            self.performance_metrics
+                .total_transactions_rejected
+                .load(Ordering::Relaxed) as u64,
+        );
+        metrics.insert(
+            "avg_processing_time_us".to_string(),
+            self.performance_metrics
+                .average_processing_time_us
+                .load(Ordering::Relaxed) as u64,
+        );
+        metrics.insert(
+            "peak_memory_bytes".to_string(),
+            self.performance_metrics
+                .peak_memory_usage_bytes
+                .load(Ordering::Relaxed) as u64,
+        );
+
+        metrics
+    }
+
+    pub fn size(&self) -> usize {
+        self.transactions.len()
+    }
+
+    pub fn get_current_size_bytes(&self) -> usize {
+        self.current_size_bytes.load(Ordering::Relaxed)
+    }
+
+    pub fn get_transaction_count(&self) -> usize {
+        self.transactions.len()
+    }
+}
+
 impl OptimizedMempool {
     pub fn new(max_age: Duration, max_size_bytes: usize) -> Self {
         Self {
@@ -109,6 +489,28 @@ impl OptimizedMempool {
             last_log_time: Arc::new(RwLock::new(Instant::now())),
             log_interval: Duration::from_secs(10), // Log every 10 seconds for high throughput
             backpressure_threshold: 0.75, // Trigger backpressure at 75% capacity for high throughput
+            backpressure_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            rejected_tx_counter: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    /// Create a new mempool with configurable backpressure threshold
+    /// Set backpressure_threshold to 1.0 or higher to effectively disable backpressure
+    pub fn new_with_backpressure(
+        max_age: Duration,
+        max_size_bytes: usize,
+        backpressure_threshold: f64,
+    ) -> Self {
+        Self {
+            transactions: DashMap::new(),
+            priority_queue: Arc::new(RwLock::new(BinaryHeap::new())),
+            max_age,
+            max_size_bytes,
+            current_size_bytes: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            tx_counter: Arc::new(AtomicUsize::new(0)),
+            last_log_time: Arc::new(RwLock::new(Instant::now())),
+            log_interval: Duration::from_secs(10),
+            backpressure_threshold,
             backpressure_active: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             rejected_tx_counter: Arc::new(AtomicUsize::new(0)),
         }
@@ -180,7 +582,8 @@ impl OptimizedMempool {
             + 256; // Estimated overhead
 
         let current_size = self.current_size_bytes.load(Ordering::Relaxed);
-        let capacity_ratio = current_size as f64 / self.max_size_bytes as f64;
+        let projected_size = current_size + tx_size;
+        let capacity_ratio = projected_size as f64 / self.max_size_bytes as f64;
 
         // Implement backpressure mechanism
         if capacity_ratio >= self.backpressure_threshold {
@@ -190,6 +593,8 @@ impl OptimizedMempool {
             let min_fee_threshold = self.calculate_dynamic_fee_threshold().await;
 
             let fee_per_byte = if tx_size > 0 {
+                // Use scaled calculation to avoid integer division truncation
+                // Scale by 100 to preserve precision for small fees
                 (transaction.fee * 100)
                     .checked_div(tx_size as u64)
                     .unwrap_or(0)
@@ -229,20 +634,29 @@ impl OptimizedMempool {
 
         // Check if mempool is full and evict if necessary
         while self.current_size_bytes.load(Ordering::Relaxed) + tx_size > self.max_size_bytes {
+            warn!(
+                "Mempool size limit exceeded: current {} + tx {} > max {}. Attempting eviction.",
+                self.current_size_bytes.load(Ordering::Relaxed),
+                tx_size,
+                self.max_size_bytes
+            );
             if !self.evict_lowest_fee_transaction().await {
+                warn!("Failed to evict any transaction - mempool is full");
                 return Err(MempoolError::MempoolFull);
             }
+            warn!(
+                "After eviction: current size is now {}",
+                self.current_size_bytes.load(Ordering::Relaxed)
+            );
         }
 
-        // Add transaction and update size atomically
-        if self
-            .transactions
-            .insert(tx_id.clone(), prioritized_tx.clone())
-            .is_none()
-        {
-            self.current_size_bytes
-                .fetch_add(tx_size, Ordering::Relaxed);
-        }
+        // Add transaction to mempool
+        self.transactions
+            .insert(tx_id.clone(), prioritized_tx.clone());
+
+        // Update size after successful insertion
+        self.current_size_bytes
+            .fetch_add(tx_size, Ordering::Relaxed);
 
         // Add to priority queue with reduced lock contention
         let mut queue = self.priority_queue.write().await;
@@ -437,8 +851,8 @@ impl OptimizedMempool {
         let current_size = self.current_size_bytes.load(Ordering::Relaxed);
         let capacity_ratio = current_size as f64 / self.max_size_bytes as f64;
 
-        // Base fee threshold (in fee per byte) - increased for high performance
-        let base_threshold = 50; // 50 units per byte for high-throughput operation
+        // Base fee threshold (in scaled fee per byte) - adjusted to match 100x scale factor
+        let base_threshold = 100; // 1 unit per byte * 100 scale factor to match fee_per_byte calculation
 
         // Calculate dynamic threshold based on mempool utilization
         let dynamic_multiplier = if capacity_ratio >= 0.95 {
@@ -487,6 +901,55 @@ impl OptimizedMempool {
         let capacity_ratio = current_size as f64 / self.max_size_bytes as f64;
 
         (is_active, rejected_count, capacity_ratio)
+    }
+
+    /// Check if a transaction exists in the mempool
+    pub async fn contains_transaction(&self, tx_id: &str) -> bool {
+        self.transactions.contains_key(tx_id)
+    }
+
+    /// Clear transactions older than 5 minutes
+    pub async fn clear_old_txs(&self) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let five_minutes_ago = now.saturating_sub(300); // 5 minutes = 300 seconds
+
+        let old_txs: Vec<String> = self
+            .transactions
+            .iter()
+            .filter_map(|entry| {
+                let (tx_id, prioritized_tx) = entry.pair();
+                if prioritized_tx.timestamp < five_minutes_ago {
+                    Some(tx_id.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if !old_txs.is_empty() {
+            info!(
+                "Clearing {} transactions older than 5 minutes",
+                old_txs.len()
+            );
+
+            // Remove old transactions
+            for tx_id in old_txs {
+                if let Some((_, prioritized_tx)) = self.transactions.remove(&tx_id) {
+                    let tx_size = serde_json::to_vec(&prioritized_tx.tx)
+                        .map(|data| data.len())
+                        .unwrap_or(0);
+                    self.current_size_bytes
+                        .fetch_sub(tx_size, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+
+            // Rebuild priority queue after clearing
+            self.rebuild_priority_queue().await;
+        }
     }
 }
 

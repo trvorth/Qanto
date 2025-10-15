@@ -4,7 +4,7 @@ cargo-features = ["profile-rustflags"]
 name = "qanto"
 version = "0.1.0"
 edition = "2021"
-authors = ["Trevor <trvorth@gmail.com>"]
+authors = ["Trevor <trvorth@qanto.org>"]
 description = "Layer-0 blockchain featuring a DAG with hybrid consensus, governed by its SAGA AI for dynamic network optimization and unprecedented scalability"
 license = "MIT"
 repository = "https://github.com/trvorth/qanto"
@@ -27,6 +27,8 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 derivative = { git = "https://github.com/mcarton/rust-derivative", branch = "master" }
 # Force secure tracing-subscriber version for all transitive dependencies
 tracing-subscriber = { git = "https://github.com/tokio-rs/tracing", tag = "tracing-subscriber-0.3.20" }
+# Override ark-relations with a local patched manifest that depends on tracing-subscriber 0.3.20
+ark-relations = { path = "patches/ark-relations" }
 
 [dependencies]
 # --- Homomorphic Encryption (Updated for security) ---
@@ -34,17 +36,19 @@ tracing-subscriber = { git = "https://github.com/tokio-rs/tracing", tag = "traci
 # paillier = "0.2.0" # Temporarily disabled due to ring 0.13.5 security vulnerability
 # TODO: Replace with secure homomorphic encryption implementation
 # ed25519-dalek = "2.1.0" # Replaced with qanto_compat
-tfhe = { version = "0.10", features = ["boolean", "shortint", "integer"] }
-libp2p = { version = "0.56.0", features = ["gossipsub", "kad", "mdns", "noise", "yamux", "tcp", "tokio", "macros"] }
+qanto-core = { path = "qanto-core" }
+tfhe = { version = "1.4.1", features = ["boolean", "shortint", "integer"] }
+libp2p = { version = "0.56.0", features = ["tokio", "tcp", "noise", "yamux", "identify", "ping", "kad", "mdns", "gossipsub", "request-response", "autonat", "relay", "dcutr", "upnp", "macros"] }
 
 # --- SAGA Analytics (AI dependencies removed for production hardening) ---
 # Removed: tch (PyTorch), ndarray for memory optimization
 
 # --- Core Blockchain & Networking (Qanto-Native) ---
-my-blockchain = { path = "myblockchain", features = ["zk"] }
+my-blockchain = { path = "myblockchain" }
 futures = "0.3.30"
 tokio = { version = "1.38.0", features = ["full", "rt-multi-thread", "time"] }
-tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-stream = { version = "0.1.17", features = ["sync"] }
+tokio-graceful-shutdown = "0.15.1"
 anyhow = "1.0.86"
 async-graphql = { version = "7.0", features = ["uuid", "chrono"] }
 async-graphql-axum = "7.0.11"
@@ -67,6 +71,7 @@ bip39 = "2.1.0"
 hex = "0.4.3"
 rand = "0.8.5"
 rand_core = { version = "0.6.4", features = ["std"] }
+rand_chacha = "0.3.1"
 zeroize = { version = "1.7.0", features = ["zeroize_derive"] }
 subtle = "2.5.0"
 generic-array = "0.14.7"
@@ -102,8 +107,8 @@ clap = { version = "4.5.4", features = ["derive"] }
 log = "0.4.21"
 env_logger = "0.11.3"
 tracing = "0.1.40"
-# Force secure version to override arkworks dependency
 tracing-subscriber = { workspace = true }
+dhat = { version = "0.3.3", optional = true }
 
 # --- Rate Limiting & Backoff ---
 governor = "0.6.3"
@@ -131,19 +136,20 @@ num_cpus = "1.16.0"
 futures-util = { version = "0.3.31", features = ["sink"] }
 
 # --- Arkworks ZK Dependencies (Updated for security) ---
-ark-groth16 = "0.5.0"
-ark-bls12-381 = "0.5.0"
-ark-ff = "0.5.0"
-ark-ec = "0.5.0"
-ark-std = "0.5.0"
-ark-relations = { version = "0.5.1", default-features = false, features = [] }
-ark-r1cs-std = "0.5.0"
-ark-crypto-primitives = { version = "0.5.0", features = ["sponge", "r1cs", "crh"] }
-ark-serialize = "0.5.0"
-ark-snark = "0.5.0"
+ark-groth16 = { version = "0.5.0", optional = true }
+ark-bls12-381 = { version = "0.5.0", optional = true }
+ark-ff = { version = "0.5.0", optional = true }
+ark-ec = { version = "0.5.0", optional = true }
+ark-std = { version = "0.5.0", optional = true }
+ark-relations = { version = "0.5.1", default-features = false, features = [], optional = true }
+ark-r1cs-std = { version = "0.5.0", default-features = false, optional = true }
+ark-crypto-primitives = { version = "0.5.0", default-features = false, features = ["sponge", "r1cs", "crh"], optional = true }
+ark-serialize = { version = "0.5.0", optional = true }
+ark-snark = { version = "0.5.0", default-features = false, optional = true }
 
 # --- Post-Quantum Cryptography Dependencies (Replaced with Qanhash) ---
 ring = "0.17.8"
+memmap2 = "0.9.8"
 # p256 = "0.13.2" # Replaced with qanto_compat
 # pqc_dilithium = { version = "0.2.0", features = ["mode5"] } # Replaced with qanto_compat
 
@@ -153,15 +159,34 @@ tonic-build = { version = "0.11.0", features = ["prost"] }
 [dev-dependencies]
 tempfile = "3.10.1"
 serial_test = "2.0.0"
+mockall = "0.12.1"
+assert_cmd = "2.0.14"
+predicates = "3.1.0"
 
 
 [features]
-default = []
+default = ["zk"]
 gpu = ["ocl", "my-blockchain/gpu"]
-zk = ["bellman", "bls12_381", "ff"]
+zk = [
+  "my-blockchain/zk",
+  "dep:bellman",
+  "dep:bls12_381",
+  "dep:ff",
+  "dep:ark-groth16",
+  "dep:ark-bls12-381",
+  "dep:ark-ff",
+  "dep:ark-ec",
+  "dep:ark-std",
+  "dep:ark-relations",
+  "dep:ark-r1cs-std",
+  "dep:ark-crypto-primitives",
+  "dep:ark-serialize",
+  "dep:ark-snark",
+]
 # ai feature removed for production hardening
 infinite-strata = []
 performance-test = []
+dhat-heap = ["dhat"]
 
 # --- Main Library Definition ---
 [lib]
@@ -177,10 +202,6 @@ path = "src/bin/qanto.rs"
 name = "qantowallet"
 path = "src/bin/qantowallet.rs"
 
-[[bin]]
-name = "saga_assistant"
-path = "src/bin/saga_assistant.rs"
-
 # --- Utility & Test Binaries ---
 [[bin]]
 name = "generate_wallet"
@@ -195,16 +216,12 @@ name = "monitor"
 path = "src/bin/monitor.rs"
 
 [[bin]]
-name = "omega_test"
-path = "src/bin/omega_test.rs"
-
-[[bin]]
-name = "stress_test"
-path = "src/bin/stress_test.rs"
-
-[[bin]]
 name = "metrics_server"
 path = "src/bin/metrics_server.rs" 
+
+[[bin]]
+name = "performance-benchmark"
+path = "src/performance_benchmark.rs"
 
 # --- Build Profiles ---
 [profile.release]
