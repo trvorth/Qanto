@@ -157,7 +157,8 @@ cleanup-*.log
 /package.json
 /package-lock.json
 /cargo-flamegraph.trace
-
+/profile.json.gz
+/benchmark_results_1760294371.json
 # --- Language & Framework Specific ---
 # Python
 /venv/
