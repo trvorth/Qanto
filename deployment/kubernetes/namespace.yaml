@@ -1,7 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: qanto
-  labels:
-    name: qanto
-    app: qanto-blockchain

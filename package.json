@@ -1,7 +1,0 @@
-{
-  "dependencies": {
-    "@cloudflare/kv-asset-handler": "^0.4.0",
-    "marked": "^16.1.2",
-    "puppeteer": "^24.16.1"
-  }
-}
