@@ -365,7 +365,8 @@ impl Wallet {
         let salt_string = SaltString::from_b64(salt_str)
             .map_err(|e| WalletError::Passphrase(format!("Invalid salt format: {e}")))?;
 
-        let nonce: &Nonce<<Aes256Gcm as AeadCore>::NonceSize> = (&file_contents[salt_end..nonce_end]).into();
+        let nonce: &Nonce<<Aes256Gcm as AeadCore>::NonceSize> =
+            (&file_contents[salt_end..nonce_end]).into();
         let ciphertext = &file_contents[nonce_end..];
 
         let mut key_bytes = [0u8; 32];

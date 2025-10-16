@@ -115,9 +115,7 @@ async fn test_fast_batch_verification() -> Result<()> {
         }
 
         let creation_time = start.elapsed();
-        println!(
-            "Created {LARGE_BATCH_SIZE} transactions in {creation_time:?}"
-        );
+        println!("Created {LARGE_BATCH_SIZE} transactions in {creation_time:?}");
 
         // Verify all transactions
         let verification_start = Instant::now();
@@ -130,9 +128,7 @@ async fn test_fast_batch_verification() -> Result<()> {
         }
 
         let verification_time = verification_start.elapsed();
-        println!(
-            "Verified {verified_count} transactions in {verification_time:?}"
-        );
+        println!("Verified {verified_count} transactions in {verification_time:?}");
 
         assert_eq!(verified_count, LARGE_BATCH_SIZE);
         assert!(verification_time < Duration::from_secs(1)); // Should be very fast with mocks
@@ -172,9 +168,7 @@ async fn test_fast_storage_operations() -> Result<()> {
         }
 
         let retrieval_time = retrieval_start.elapsed();
-        println!(
-            "Retrieved {retrieved_count} transactions in {retrieval_time:?}",
-        );
+        println!("Retrieved {retrieved_count} transactions in {retrieval_time:?}",);
 
         assert_eq!(retrieved_count, 1000);
         assert!(storage_time < Duration::from_millis(100)); // Should be very fast with mocks

@@ -47,14 +47,8 @@ pub mod qanto;
 pub mod qanto_ai_metrics;
 // Re-export core modules from the `qanto-core` crate instead of duplicating them.
 pub use qanto_core::{
-    qanto_compat,
-    qanto_native_crypto,
-    qanto_net,
-    qanto_p2p,
-    qanto_serde,
-    qanto_storage,
-    storage_adapter,
-    storage_traits,
+    qanto_compat, qanto_native_crypto, qanto_net, qanto_p2p, qanto_serde, qanto_storage,
+    storage_adapter, storage_traits,
 };
 pub mod qantodag;
 pub mod saga;

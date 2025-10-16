@@ -31,7 +31,12 @@ impl Mempool {
     }
 
     /// Adds a transaction to the mempool, validating against UTXOs and DAG.
-    pub async fn add_transaction(&self, _tx: Transaction, _utxos: &HashMap<String, UTXO>, _dag: &QantoDAG) -> Result<(), String> {
+    pub async fn add_transaction(
+        &self,
+        _tx: Transaction,
+        _utxos: &HashMap<String, UTXO>,
+        _dag: &QantoDAG,
+    ) -> Result<(), String> {
         // Stub implementation
         Ok(())
     }
@@ -54,7 +59,11 @@ pub struct QantoDAG {
 
 impl QantoDAG {
     /// Inserts a block into the DAG, updating UTXO state if applicable.
-    pub async fn add_block(&self, _block: QantoBlock, _utxos: &Arc<RwLock<HashMap<String, UTXO>>>) -> Result<(), String> {
+    pub async fn add_block(
+        &self,
+        _block: QantoBlock,
+        _utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
+    ) -> Result<(), String> {
         // Stub implementation
         Ok(())
     }
@@ -94,12 +103,12 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 #[allow(unused_imports)]
 use std::sync::Mutex as StdMutex;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{mpsc, RwLock};
 
 // Network constants
 #[allow(dead_code)]
@@ -494,10 +503,7 @@ pub struct GossipProtocol {
 impl GossipProtocol {
     /// Subscribes a peer to a topic.
     pub fn subscribe(&mut self, topic: String, peer_id: PeerId) {
-        self.subscriptions
-            .entry(topic)
-            .or_default()
-            .insert(peer_id);
+        self.subscriptions.entry(topic).or_default().insert(peer_id);
     }
 
     /// Unsubscribes a peer from a topic.
@@ -546,9 +552,9 @@ pub struct QantoNetServer {
     rate_limiter: RateLimiter,
     dht: DhtRoutingTable,
     dag: Arc<QantoDAG>,
-    mempool: Arc<tokio::sync::Mutex<Mempool>>, 
+    mempool: Arc<tokio::sync::Mutex<Mempool>>,
     utxos: Arc<RwLock<HashMap<String, UTXO>>>,
-    command_rx: Option<mpsc::Receiver<QantoNetCommand>>, 
+    command_rx: Option<mpsc::Receiver<QantoNetCommand>>,
     response_tx: Option<mpsc::Sender<QantoNetResponse>>,
 }
 
@@ -598,16 +604,17 @@ impl QantoNetServer {
             match listener.accept().await {
                 Ok((stream, addr)) => {
                     println!("[QantoNet] New connection from {addr}");
-                    
+
                     // Generate peer ID from connection
                     let peer_id = PeerId::random();
-                    
+
                     // Perform handshake
                     let mut stream_clone = stream;
-                    match Self::perform_handshake(&mut stream_clone, &self.keypair, &peer_id).await {
+                    match Self::perform_handshake(&mut stream_clone, &self.keypair, &peer_id).await
+                    {
                         Ok(remote_peer_id) => {
                             println!("[QantoNet] Handshake successful with {remote_peer_id}");
-                            
+
                             // Create peer info
                             let peer_info = PeerInfo {
                                 peer_id: remote_peer_id.clone(),
@@ -635,7 +642,7 @@ impl QantoNetServer {
                                 let mut peers = self.peers.write().await;
                                 peers.insert(remote_peer_id.clone(), connection);
                             }
-                            
+
                             // Spawn read task for incoming connection
                             let from_peer = remote_peer_id.clone();
                             tokio::spawn(async move {
@@ -645,7 +652,8 @@ impl QantoNetServer {
                                         Ok(0) => break,
                                         Ok(n) => {
                                             // Process received data
-                                            match bincode::deserialize::<NetworkMessage>(&buf[..n]) {
+                                            match bincode::deserialize::<NetworkMessage>(&buf[..n])
+                                            {
                                                 Ok(message) => {
                                                     println!("[QantoNet] Received message from {from_peer}: {message:?}");
                                                 }
@@ -683,12 +691,15 @@ impl QantoNetServer {
 
     /// Connect to a peer
     /// Establishes a connection to a peer at the given address.
-    pub async fn connect_peer(&mut self, addr: SocketAddr) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn connect_peer(
+        &mut self,
+        addr: SocketAddr,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("[QantoNet] Connecting to peer at {addr}");
-        
+
         let stream = TcpStream::connect(addr).await?;
         let peer_id = PeerId::random();
-        
+
         let peer_info = PeerInfo {
             peer_id: peer_id.clone(),
             address: addr,
@@ -698,7 +709,7 @@ impl QantoNetServer {
             reputation: 0,
             connection_count: 0,
         };
-        
+
         let (_, write_half) = stream.into_split();
         let peer_connection = PeerConnection {
             peer_info,
@@ -708,10 +719,10 @@ impl QantoNetServer {
             write_stream: Some(write_half),
             rate_limiter: RateLimiter::new(100, 10),
         };
-        
+
         let mut conns = self.peers.write().await;
         conns.insert(peer_id, peer_connection);
-        
+
         Ok(())
     }
 
@@ -752,16 +763,19 @@ impl QantoNetServer {
 
     /// Broadcast a message to all connected peers
     /// Broadcasts a message to all connected peers.
-    pub async fn broadcast_message(&mut self, _message: NetworkMessage) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn broadcast_message(
+        &mut self,
+        _message: NetworkMessage,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         println!("[QantoNet] Broadcasting message to all peers");
-        
+
         let connections = self.peers.read().await;
-        
+
         for (peer_id, _connection) in connections.iter() {
             // Send message to each peer
             println!("[QantoNet] Sending message to peer {peer_id}");
         }
-        
+
         Ok(())
     }
 
@@ -996,19 +1010,19 @@ impl QantoNetServer {
         id
     }
 
-/// Returns true if a peer is currently connected.
-pub async fn is_peer_connected(&self, peer_id: &PeerId) -> bool {
+    /// Returns true if a peer is currently connected.
+    pub async fn is_peer_connected(&self, peer_id: &PeerId) -> bool {
         let peers = self.peers.read().await;
         peers.contains_key(peer_id)
     }
 
-/// Adds a peer to the subscribers for a gossip topic.
-pub async fn subscribe_gossip(&mut self, topic: String, peer_id: PeerId) {
+    /// Adds a peer to the subscribers for a gossip topic.
+    pub async fn subscribe_gossip(&mut self, topic: String, peer_id: PeerId) {
         self.gossip.subscribe(topic, peer_id);
     }
 
-/// Removes a peer from the subscribers for a gossip topic.
-pub async fn unsubscribe_gossip(&mut self, topic: &str, peer_id: &PeerId) {
+    /// Removes a peer from the subscribers for a gossip topic.
+    pub async fn unsubscribe_gossip(&mut self, topic: &str, peer_id: &PeerId) {
         self.gossip.unsubscribe(topic, peer_id);
     }
 
@@ -1021,39 +1035,44 @@ pub async fn unsubscribe_gossip(&mut self, topic: &str, peer_id: &PeerId) {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        
+
         let public_key = match keypair {
             QantoKeyPair::PostQuantum { public, .. } => public.as_bytes().to_vec(),
             QantoKeyPair::Ed25519 { public, .. } => public.as_bytes().to_vec(),
             QantoKeyPair::P256 { public, .. } => public.as_bytes().to_vec(),
         };
-        
-        let handshake_data = format!("{}{}", 
-            local_peer_id.id.iter().map(|b| format!("{b:02x}")).collect::<String>(), 
+
+        let handshake_data = format!(
+            "{}{}",
+            local_peer_id
+                .id
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>(),
             timestamp
         );
-        
+
         let handshake = NetworkMessage::Handshake {
             peer_id: local_peer_id.clone(),
             public_key,
             signature: handshake_data.as_bytes().to_vec(),
             timestamp,
         };
-        
+
         let serialized = bincode::serialize(&handshake)?;
         stream.write_all(&serialized).await?;
-        
+
         // Return a dummy peer ID for now
         Ok(PeerId::random())
     }
 
-/// Broadcasts a message to all connected peers.
-pub async fn broadcast(&mut self, message: NetworkMessage) -> Result<(), QantoNetError> {
+    /// Broadcasts a message to all connected peers.
+    pub async fn broadcast(&mut self, message: NetworkMessage) -> Result<(), QantoNetError> {
         let peer_ids: Vec<PeerId> = {
             let peers = self.peers.read().await;
             peers.keys().cloned().collect()
         };
-        
+
         for peer_id in peer_ids {
             if let Err(e) = self.send_to_peer(&peer_id, message.clone()).await {
                 println!("Failed to send message to peer {peer_id}: {e}");

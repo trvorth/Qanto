@@ -933,10 +933,7 @@ impl Miner {
                         }
 
                         // Optimized nonce testing with minimal overhead
-                        if Self::test_nonce_optimized(
-                            current_nonce,
-                            &block_template,
-                        ) {
+                        if Self::test_nonce_optimized(current_nonce, &block_template) {
                             // Atomic completion flag prevents timeout cancellation
                             if !completion_flag.swap(true, Ordering::AcqRel) {
                                 // Compute hash immediately while protected by completion flag
@@ -1102,10 +1099,7 @@ impl Miner {
                         }
 
                         // Optimized nonce testing with minimal overhead
-                        if Self::test_nonce_optimized(
-                            current_nonce,
-                            &block_template,
-                        ) {
+                        if Self::test_nonce_optimized(current_nonce, &block_template) {
                             // CRITICAL FIX: Atomic completion flag prevents timeout cancellation
                             // Set completion flag FIRST to block any timeout/cancellation
                             if !completion_flag.swap(true, Ordering::AcqRel) {
@@ -1216,10 +1210,7 @@ impl Miner {
     }
 
     /// Optimized nonce testing with minimal overhead and no blocking operations
-    fn test_nonce_optimized(
-        current_nonce: u64,
-        block_template: &QantoBlock,
-    ) -> bool {
+    fn test_nonce_optimized(current_nonce: u64, block_template: &QantoBlock) -> bool {
         // Create a mutable copy for nonce testing
         let mut test_block = block_template.clone();
         test_block.nonce = current_nonce;
@@ -1233,10 +1224,10 @@ impl Miner {
     fn compute_hash_for_nonce(nonce: u64, block_template: &QantoBlock) -> [u8; 32] {
         let mut test_block = block_template.clone();
         test_block.nonce = nonce;
-        
+
         // Use the canonical PoW hash method that includes nonce
         let pow_hash = test_block.hash_for_pow();
-        
+
         // Convert QantoHash to [u8; 32] array
         let mut hash_array = [0u8; 32];
         let hash_bytes = pow_hash.as_bytes();
@@ -1272,10 +1263,7 @@ impl Miner {
         }
 
         // Optimized nonce testing
-        if Self::test_nonce_optimized(
-            current_nonce,
-            &context.block_template,
-        ) {
+        if Self::test_nonce_optimized(current_nonce, &context.block_template) {
             // Set found signal to stop other threads
             context.found_signal.store(true, Ordering::Relaxed);
             return Some(current_nonce);
@@ -1625,11 +1613,11 @@ impl Miner {
 
 /// Inner DAG-optimized mining implementation
 pub async fn mine_cpu_with_dag_inner(
-    block_template: QantoBlock,  // Take ownership instead of borrowing
+    block_template: QantoBlock, // Take ownership instead of borrowing
     _target_hash_value: &[u8],
     _threads: usize,
     cancellation_token: tokio_util::sync::CancellationToken,
-    _qdag: Arc<Vec<[u8; 128]>>,  // Prefix with underscore to indicate intentionally unused
+    _qdag: Arc<Vec<[u8; 128]>>, // Prefix with underscore to indicate intentionally unused
 ) -> Result<MiningResult, MiningError> {
     use rayon::ThreadPoolBuilder;
 
@@ -1665,8 +1653,8 @@ pub async fn mine_cpu_with_dag_inner(
         let winning_nonce = winning_nonce.clone();
         let winning_hash = winning_hash.clone();
         let cancellation_token = cancellation_token.clone();
-        let _qdag = _qdag.clone();  // Keep for future DAG optimization
-        let block_template = block_template.clone();  // Clone for each thread
+        let _qdag = _qdag.clone(); // Keep for future DAG optimization
+        let block_template = block_template.clone(); // Clone for each thread
 
         let thread_start_nonce = base_nonce.wrapping_add(thread_id as u64 * nonce_range_per_thread);
         let thread_end_nonce = thread_start_nonce.wrapping_add(nonce_range_per_thread);
@@ -1692,10 +1680,10 @@ pub async fn mine_cpu_with_dag_inner(
                 for nonce in current_nonce..batch_end {
                     // Update block's nonce
                     test_block.nonce = nonce;
-                    
+
                     // Calculate PoW hash exclusively using canonical method
                     let pow_hash = test_block.hash_for_pow();
-                    
+
                     // Validate using canonical method for perfect symmetry
                     if test_block.is_pow_valid_with_pow_hash(pow_hash) {
                         // Atomic completion flag prevents timeout cancellation

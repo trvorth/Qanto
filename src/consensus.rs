@@ -79,14 +79,14 @@ impl Consensus {
     }
 
     /// **CANONICAL POW VALIDATION FUNCTION**
-    /// 
+    ///
     /// This is the single source of truth for Proof-of-Work validation.
     /// Both the miner and DAG validation logic MUST use this function to ensure consistency.
-    /// 
+    ///
     /// # Arguments
     /// * `hash_bytes` - The block hash as raw bytes
     /// * `difficulty` - The target difficulty as a floating-point number
-    /// 
+    ///
     /// # Returns
     /// * `true` if the hash meets the difficulty target, `false` otherwise
     pub fn is_pow_valid(hash_bytes: &[u8], difficulty: f64) -> bool {

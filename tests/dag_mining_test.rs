@@ -140,7 +140,7 @@ async fn test_dag_mining_performance() {
 
     // Test that mining completes without errors
     let mining_result = qanto::miner::mine_cpu_with_dag_inner(
-        block,  // Pass owned value instead of reference
+        block, // Pass owned value instead of reference
         &target_hash_value,
         threads,
         cancellation_token.clone(),

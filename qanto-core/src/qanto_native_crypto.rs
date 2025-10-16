@@ -8,8 +8,8 @@
 
 #[allow(unused_imports)]
 use getrandom::getrandom;
-use rand::{CryptoRng, RngCore};
 use my_blockchain::qanto_hash;
+use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use subtle::ConstantTimeEq;
@@ -21,19 +21,19 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 pub enum QantoNativeCryptoError {
     /// Invalid key length error with expected and actual lengths
     #[error("Invalid key length: expected {expected}, got {actual}")]
-    InvalidKeyLength { 
+    InvalidKeyLength {
         /// Expected key length
-        expected: usize, 
+        expected: usize,
         /// Actual key length received
-        actual: usize 
+        actual: usize,
     },
     /// Invalid signature length error with expected and actual lengths
     #[error("Invalid signature length: expected {expected}, got {actual}")]
-    InvalidSignatureLength { 
+    InvalidSignatureLength {
         /// Expected signature length
-        expected: usize, 
+        expected: usize,
         /// Actual signature length received
-        actual: usize 
+        actual: usize,
     },
     /// Signature verification failed
     #[error("Signature verification failed")]

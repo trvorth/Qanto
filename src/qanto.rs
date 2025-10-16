@@ -245,7 +245,7 @@ pub async fn run() -> Result<()> {
                         info!("⚠️ Shutdown requested during DAG preloading. Aborting preloading.");
                         break;
                     }
-                    
+
                     let qdag_gen = qdag_gen_for_preload.clone();
                     let handle = tokio::task::spawn_blocking(move || {
                         tokio::runtime::Builder::new_current_thread()
@@ -254,10 +254,13 @@ pub async fn run() -> Result<()> {
                             .unwrap()
                             .block_on(qdag_gen.get_qdag(epoch as u64))
                     });
-                    
+
                     match handle.await {
                         Ok(_) => {
-                            info!("✅ Background DAG preloading for epoch {}/9 complete", epoch);
+                            info!(
+                                "✅ Background DAG preloading for epoch {}/9 complete",
+                                epoch
+                            );
                         }
                         Err(e) => {
                             error!("❌ Failed to preload DAG for epoch {}: {}", epoch, e);
@@ -267,7 +270,9 @@ pub async fn run() -> Result<()> {
                 info!("🎯 Background DAG preloading completed for all epochs");
             });
 
-            info!("🌟 Node services starting immediately (DAG preloading continues in background)...");
+            info!(
+                "🌟 Node services starting immediately (DAG preloading continues in background)..."
+            );
 
             // Start node with shutdown monitoring - use existing tokio runtime
             let shutdown_monitor = shutdown.clone();

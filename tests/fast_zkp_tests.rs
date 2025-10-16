@@ -33,9 +33,7 @@ mod tests {
         assert!(is_valid);
 
         let duration = start.elapsed();
-        println!(
-            "Mock range proof generation and verification took: {duration:?}"
-        );
+        println!("Mock range proof generation and verification took: {duration:?}");
         assert!(duration.as_millis() < 10); // Should be nearly instant
     }
 
@@ -57,9 +55,7 @@ mod tests {
         assert!(is_valid);
 
         let duration = start.elapsed();
-        println!(
-            "Mock balance proof generation and verification took: {duration:?}"
-        );
+        println!("Mock balance proof generation and verification took: {duration:?}");
         assert!(duration.as_millis() < 10); // Should be nearly instant
     }
 
@@ -109,9 +105,7 @@ mod tests {
         assert!(is_valid, "Multiplication computation proof should be valid");
 
         let duration = start.elapsed();
-        println!(
-            "Mock computation proofs generation and verification took: {duration:?}"
-        );
+        println!("Mock computation proofs generation and verification took: {duration:?}");
         assert!(duration.as_millis() < 20); // Should be nearly instant
     }
 
@@ -137,9 +131,7 @@ mod tests {
         assert!(is_valid, "Identity proof should be valid");
 
         let duration = start.elapsed();
-        println!(
-            "Mock identity proof generation and verification took: {duration:?}"
-        );
+        println!("Mock identity proof generation and verification took: {duration:?}");
         assert!(duration.as_millis() < 10); // Should be nearly instant
     }
 
@@ -164,9 +156,7 @@ mod tests {
         assert!(is_valid, "Voting proof should be valid");
 
         let duration = start.elapsed();
-        println!(
-            "Mock voting proof generation and verification took: {duration:?}"
-        );
+        println!("Mock voting proof generation and verification took: {duration:?}");
         assert!(duration.as_millis() < 10); // Should be nearly instant
     }
 

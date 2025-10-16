@@ -321,9 +321,7 @@ async fn test_concurrent_found_signal_access() {
             println!("✅ Concurrent access test completed successfully");
         }
         Err(_) => {
-            panic!(
-                "❌ Concurrent test timed out after {TEST_TIMEOUT_SECS} seconds"
-            );
+            panic!("❌ Concurrent test timed out after {TEST_TIMEOUT_SECS} seconds");
         }
     }
 }

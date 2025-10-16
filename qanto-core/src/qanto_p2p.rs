@@ -51,7 +51,7 @@ const MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024; // 16MB
 const PROTOCOL_VERSION: u32 = 1;
 
 /// Qanto P2P Network Node
-/// 
+///
 /// This is the main P2P networking component that handles peer connections,
 /// message routing, and network statistics for the Qanto blockchain network.
 #[derive(Clone)]
@@ -237,10 +237,10 @@ pub struct PeerDiscoveryMessage {
 
 impl QantoP2P {
     /// Create a new Qanto P2P node with the specified configuration
-    /// 
+    ///
     /// # Arguments
     /// * `config` - Network configuration parameters
-    /// 
+    ///
     /// # Returns
     /// A new QantoP2P instance ready to start networking
     pub fn new(config: NetworkConfig) -> Result<Self> {
@@ -266,7 +266,7 @@ impl QantoP2P {
     }
 
     /// Generate a unique node ID using qanhash
-    /// 
+    ///
     /// Creates a cryptographically secure node identifier by hashing
     /// the current timestamp and random bytes using qanhash.
     fn generate_node_id() -> Result<QantoHash> {
@@ -281,7 +281,7 @@ impl QantoP2P {
     }
 
     /// Start the P2P network and begin accepting connections
-    /// 
+    ///
     /// This method starts the TCP listener, connection acceptor task,
     /// heartbeat task, and connects to bootstrap nodes.
     pub async fn start(&mut self) -> Result<()> {
@@ -354,7 +354,7 @@ impl QantoP2P {
     }
 
     /// Handle an incoming TCP connection from a peer
-    /// 
+    ///
     /// Performs handshake, establishes peer connection, and starts
     /// message handling tasks for the new peer.
     async fn handle_incoming_connection(
@@ -367,8 +367,7 @@ impl QantoP2P {
         config: NetworkConfig,
     ) -> Result<()> {
         // Perform handshake
-        let (peer_id, reader, writer) =
-            Self::perform_handshake(stream, node_id, true).await?;
+        let (peer_id, reader, writer) = Self::perform_handshake(stream, node_id, true).await?;
 
         // Create message channel
         let (tx, rx) = mpsc::unbounded_channel();
@@ -410,15 +409,15 @@ impl QantoP2P {
     }
 
     /// Perform handshake protocol with a peer
-    /// 
+    ///
     /// Exchanges handshake messages to establish protocol version,
     /// node identity, and capabilities.
-    /// 
+    ///
     /// # Arguments
     /// * `stream` - TCP stream to the peer
     /// * `node_id` - This node's identifier
     /// * `is_incoming` - Whether this is an incoming or outgoing connection
-    /// 
+    ///
     /// # Returns
     /// Tuple of (peer_id, read_half, write_half) on successful handshake
     async fn perform_handshake(
@@ -470,7 +469,7 @@ impl QantoP2P {
     }
 
     /// Sign a message using qanhash for authentication
-    /// 
+    ///
     /// # Arguments
     /// * `message` - The message to sign (must be serializable)
     /// * `node_id` - The node ID to include in the signature
@@ -483,7 +482,7 @@ impl QantoP2P {
     }
 
     /// Send a network message over a TCP stream
-    /// 
+    ///
     /// Serializes the message and sends it with a length prefix.
     async fn send_message_to_stream(
         writer: &mut tokio::net::tcp::OwnedWriteHalf,
@@ -506,7 +505,7 @@ impl QantoP2P {
     }
 
     /// Read a network message from a TCP stream
-    /// 
+    ///
     /// Reads the length prefix and then the message data.
     async fn read_message_from_stream(
         reader: &mut tokio::net::tcp::OwnedReadHalf,
@@ -529,7 +528,7 @@ impl QantoP2P {
     }
 
     /// Connect to all configured bootstrap nodes
-    /// 
+    ///
     /// Attempts to establish connections to bootstrap nodes for
     /// initial network discovery.
     async fn connect_to_bootstrap_nodes(&self) -> Result<()> {
@@ -542,9 +541,9 @@ impl QantoP2P {
     }
 
     /// Connect to a specific peer by address
-    /// 
+    ///
     /// Establishes an outgoing connection to the specified peer address.
-    /// 
+    ///
     /// # Arguments
     /// * `addr` - Socket address of the peer to connect to
     pub async fn connect_to_peer(&self, addr: SocketAddr) -> Result<()> {
@@ -552,11 +551,7 @@ impl QantoP2P {
             return Err(anyhow!("Maximum connections reached"));
         }
 
-        let stream = timeout(
-            self.config.connection_timeout,
-            TcpStream::connect(addr),
-        )
-        .await??;
+        let stream = timeout(self.config.connection_timeout, TcpStream::connect(addr)).await??;
 
         // Perform handshake
         let (peer_id, reader, writer) =
@@ -621,7 +616,7 @@ impl QantoP2P {
     }
 
     /// Handle message processing for an established peer connection
-    /// 
+    ///
     /// Manages bidirectional message flow between this node and a peer,
     /// including sending queued messages and processing incoming messages.
     #[allow(clippy::too_many_arguments)]
@@ -704,7 +699,7 @@ impl QantoP2P {
     }
 
     /// Start the heartbeat task to maintain peer connections
-    /// 
+    ///
     /// Sends periodic heartbeat messages to all connected peers
     /// to detect disconnections and maintain connection health.
     async fn start_heartbeat_task(&self) {
@@ -740,7 +735,7 @@ impl QantoP2P {
     }
 
     /// Register a message handler for a specific message type
-    /// 
+    ///
     /// # Arguments
     /// * `msg_type` - The type of message to handle
     /// * `handler` - Function to call when messages of this type are received
@@ -749,7 +744,7 @@ impl QantoP2P {
     }
 
     /// Broadcast a message to all connected peers
-    /// 
+    ///
     /// # Arguments
     /// * `msg_type` - Type of the message
     /// * `payload` - Message payload data
@@ -757,9 +752,7 @@ impl QantoP2P {
         let message = NetworkMessage {
             msg_type,
             payload,
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)?
-                .as_secs(),
+            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
             sender: self.node_id,
             signature: Self::sign_message(&msg_type, self.node_id)?,
         };
@@ -774,7 +767,7 @@ impl QantoP2P {
     }
 
     /// Send a message to a specific peer
-    /// 
+    ///
     /// # Arguments
     /// * `peer_id` - ID of the target peer
     /// * `msg_type` - Type of the message
@@ -788,9 +781,7 @@ impl QantoP2P {
         let message = NetworkMessage {
             msg_type,
             payload,
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)?
-                .as_secs(),
+            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
             sender: self.node_id,
             signature: Self::sign_message(&msg_type, self.node_id)?,
         };

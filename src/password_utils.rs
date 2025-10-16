@@ -18,7 +18,9 @@ pub fn prompt_for_password(confirm: bool, message: Option<&str>) -> Result<Secre
         // Validate that the password is not empty after trimming
         if trimmed_password.is_empty() {
             // Match integration test expectation exactly
-            return Err(anyhow!("WALLET_PASSWORD environment variable is set but empty!"));
+            return Err(anyhow!(
+                "WALLET_PASSWORD environment variable is set but empty!"
+            ));
         }
 
         println!("Using password from WALLET_PASSWORD environment variable.");

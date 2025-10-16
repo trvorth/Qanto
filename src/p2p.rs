@@ -13,13 +13,13 @@
 use crate::config::P2pConfig;
 use crate::mempool::Mempool;
 use crate::node::PeerCache;
-use qanto_core::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey};
 use crate::qantodag::{QantoBlock, QantoDAG};
 use crate::saga::CarbonOffsetCredential;
 use crate::transaction::Transaction;
 use crate::types::{QuantumResistantSignature, UTXO};
 use futures::stream::StreamExt;
 use governor::{clock::DefaultClock, state::keyed::DashMapStateStore, Quota, RateLimiter};
+use qanto_core::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey};
 // Removed HMAC import - using custom implementation with qanto_hash
 use hex;
 use libp2p::{

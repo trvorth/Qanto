@@ -127,13 +127,13 @@ pub mod ed25519_dalek {
 
     impl SigningKey {
         /// Creates a SigningKey from raw bytes.
-        /// 
+        ///
         /// # Arguments
-        /// 
+        ///
         /// * `bytes` - The raw bytes representing the private key
-        /// 
+        ///
         /// # Returns
-        /// 
+        ///
         /// A Result containing the SigningKey or an error if the bytes are invalid.
         pub fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, SignatureError> {
             let inner = QantoEd25519PrivateKey::from_bytes(bytes)?;
@@ -141,13 +141,13 @@ pub mod ed25519_dalek {
         }
 
         /// Creates a SigningKey from a 32-byte array.
-        /// 
+        ///
         /// # Arguments
-        /// 
+        ///
         /// * `bytes` - A 32-byte array containing the private key bytes
-        /// 
+        ///
         /// # Returns
-        /// 
+        ///
         /// A new SigningKey instance.
         pub fn from_bytes_array(bytes: [u8; 32]) -> Self {
             let inner = QantoEd25519PrivateKey::from_bytes(&bytes).unwrap();
@@ -155,13 +155,13 @@ pub mod ed25519_dalek {
         }
 
         /// Generates a new random SigningKey using the provided RNG.
-        /// 
+        ///
         /// # Arguments
-        /// 
+        ///
         /// * `rng` - A cryptographically secure random number generator
-        /// 
+        ///
         /// # Returns
-        /// 
+        ///
         /// A new randomly generated SigningKey.
         pub fn generate<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
             let inner = QantoEd25519PrivateKey::generate(rng);
@@ -169,9 +169,9 @@ pub mod ed25519_dalek {
         }
 
         /// Returns the corresponding VerifyingKey for this SigningKey.
-        /// 
+        ///
         /// # Returns
-        /// 
+        ///
         /// The public key corresponding to this private key.
         pub fn verifying_key(&self) -> VerifyingKey {
             VerifyingKey {
@@ -180,9 +180,9 @@ pub mod ed25519_dalek {
         }
 
         /// Converts the SigningKey to its byte representation.
-        /// 
+        ///
         /// # Returns
-        /// 
+        ///
         /// A 32-byte array containing the private key bytes.
         pub fn to_bytes(&self) -> [u8; 32] {
             *self.inner.as_bytes()
@@ -191,13 +191,13 @@ pub mod ed25519_dalek {
 
     impl VerifyingKey {
         /// Creates a VerifyingKey from raw bytes.
-        /// 
+        ///
         /// # Arguments
-        /// 
+        ///
         /// * `bytes` - The raw bytes representing the public key
-        /// 
+        ///
         /// # Returns
-        /// 
+        ///
         /// A Result containing the VerifyingKey or an error if the bytes are invalid.
         pub fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, SignatureError> {
             let inner = QantoEd25519PublicKey::from_bytes(bytes)?;
@@ -205,23 +205,23 @@ pub mod ed25519_dalek {
         }
 
         /// Converts the VerifyingKey to its byte representation.
-        /// 
+        ///
         /// # Returns
-        /// 
+        ///
         /// A 32-byte array containing the public key bytes.
         pub fn to_bytes(&self) -> [u8; 32] {
             *self.inner.as_bytes()
         }
 
         /// Verifies a signature against a message using strict verification.
-        /// 
+        ///
         /// # Arguments
-        /// 
+        ///
         /// * `message` - The message that was signed
         /// * `signature` - The signature to verify
-        /// 
+        ///
         /// # Returns
-        /// 
+        ///
         /// A Result indicating success or failure of verification.
         pub fn verify_strict(
             &self,
@@ -234,13 +234,13 @@ pub mod ed25519_dalek {
 
     impl Signature {
         /// Creates a Signature from raw bytes.
-        /// 
+        ///
         /// # Arguments
-        /// 
+        ///
         /// * `bytes` - The raw bytes representing the signature (must be 64 bytes)
-        /// 
+        ///
         /// # Returns
-        /// 
+        ///
         /// A Result containing the Signature or an error if the bytes are invalid.
         pub fn from_bytes(bytes: &[u8]) -> std::result::Result<Self, SignatureError> {
             if bytes.len() != 64 {
@@ -256,11 +256,11 @@ pub mod ed25519_dalek {
         }
 
         /// Converts the signature to its byte representation.
-        /// 
+        ///
         /// Returns the signature as a 64-byte array in the standard Ed25519 format.
-        /// 
+        ///
         /// # Returns
-        /// 
+        ///
         /// A 64-byte array containing the signature bytes.
         pub fn to_bytes(&self) -> [u8; 64] {
             self.inner.0
@@ -269,18 +269,18 @@ pub mod ed25519_dalek {
 
     /// Signer trait implementation for SigningKey
     /// A trait for cryptographic signing operations.
-    /// 
+    ///
     /// This trait provides a generic interface for signing messages with various
     /// signature algorithms.
     pub trait Signer<S> {
         /// Signs a message and returns the signature.
-        /// 
+        ///
         /// # Arguments
-        /// 
+        ///
         /// * `message` - The message bytes to sign
-        /// 
+        ///
         /// # Returns
-        /// 
+        ///
         /// A signature of type `S` for the given message.
         fn sign(&self, message: &[u8]) -> S;
     }
@@ -294,21 +294,21 @@ pub mod ed25519_dalek {
 
     /// Verifier trait implementation for VerifyingKey
     /// A trait for cryptographic signature verification operations.
-    /// 
+    ///
     /// This trait provides a generic interface for verifying signatures with various
     /// signature algorithms.
     pub trait Verifier<S> {
         /// The error type returned when verification fails.
         type Error;
         /// Verifies a signature against a message.
-        /// 
+        ///
         /// # Arguments
-        /// 
+        ///
         /// * `message` - The message bytes that were signed
         /// * `signature` - The signature to verify
-        /// 
+        ///
         /// # Returns
-        /// 
+        ///
         /// `Ok(())` if the signature is valid, or an error if verification fails.
         fn verify(&self, message: &[u8], signature: &S) -> std::result::Result<(), Self::Error>;
     }
@@ -356,7 +356,7 @@ pub mod pqcrypto_compat {
         use rand::rngs::OsRng;
 
         /// A secret key for ML-DSA-65 (Dilithium) digital signatures.
-        /// 
+        ///
         /// This struct wraps a Qanto post-quantum private key for compatibility
         /// with the pqcrypto interface.
         #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -366,13 +366,13 @@ pub mod pqcrypto_compat {
 
         impl SecretKey {
             /// Creates a new SecretKey from a Qanto post-quantum private key.
-            /// 
+            ///
             /// # Arguments
-            /// 
+            ///
             /// * `inner` - The underlying Qanto post-quantum private key
-            /// 
+            ///
             /// # Returns
-            /// 
+            ///
             /// A new SecretKey instance wrapping the provided key.
             pub fn new(inner: QantoPQPrivateKey) -> Self {
                 Self { inner }
@@ -380,7 +380,7 @@ pub mod pqcrypto_compat {
         }
 
         /// A public key for ML-DSA-65 (Dilithium) digital signatures.
-        /// 
+        ///
         /// This struct wraps a Qanto post-quantum public key for compatibility
         /// with the pqcrypto interface.
         #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -390,13 +390,13 @@ pub mod pqcrypto_compat {
 
         impl PublicKey {
             /// Creates a new PublicKey from a Qanto post-quantum public key.
-            /// 
+            ///
             /// # Arguments
-            /// 
+            ///
             /// * `inner` - The underlying Qanto post-quantum public key
-            /// 
+            ///
             /// # Returns
-            /// 
+            ///
             /// A new PublicKey instance wrapping the provided key.
             pub fn new(inner: QantoPQPublicKey) -> Self {
                 Self { inner }
@@ -404,7 +404,7 @@ pub mod pqcrypto_compat {
         }
 
         /// A detached signature for ML-DSA-65 post-quantum digital signatures.
-        /// 
+        ///
         /// This structure wraps a Qanto post-quantum signature and provides
         /// compatibility with the ML-DSA-65 signature format.
         #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -414,13 +414,13 @@ pub mod pqcrypto_compat {
 
         impl DetachedSignature {
             /// Creates a new DetachedSignature from a Qanto post-quantum signature.
-            /// 
+            ///
             /// # Arguments
-            /// 
+            ///
             /// * `inner` - The underlying Qanto post-quantum signature
-            /// 
+            ///
             /// # Returns
-            /// 
+            ///
             /// A new DetachedSignature instance wrapping the provided signature.
             pub fn new(inner: QantoPQSignature) -> Self {
                 Self { inner }
@@ -428,7 +428,7 @@ pub mod pqcrypto_compat {
         }
 
         /// ML-DSA signed message
-        /// 
+        ///
         /// Contains both the signature and the original message.
         #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
         pub struct SignedMessage {
@@ -439,7 +439,7 @@ pub mod pqcrypto_compat {
         }
 
         /// Generate a new ML-DSA key pair
-        /// 
+        ///
         /// # Returns
         /// A tuple containing (PublicKey, SecretKey)
         pub fn keypair() -> (PublicKey, SecretKey) {
@@ -454,11 +454,11 @@ pub mod pqcrypto_compat {
         }
 
         /// Create a detached signature for a message
-        /// 
+        ///
         /// # Arguments
         /// * `message` - The message to sign
         /// * `secret_key` - The secret key to use for signing
-        /// 
+        ///
         /// # Returns
         /// A DetachedSignature over the message
         pub fn sign_detached(message: &[u8], secret_key: &SecretKey) -> DetachedSignature {
@@ -467,12 +467,12 @@ pub mod pqcrypto_compat {
         }
 
         /// Verify a detached signature
-        /// 
+        ///
         /// # Arguments
         /// * `message` - The original message
         /// * `signature` - The signature to verify
         /// * `public_key` - The public key to use for verification
-        /// 
+        ///
         /// # Returns
         /// Ok(()) if the signature is valid, Err otherwise
         pub fn verify_detached_signature(
@@ -485,10 +485,10 @@ pub mod pqcrypto_compat {
 
         impl SecretKey {
             /// Create a secret key from raw bytes
-            /// 
+            ///
             /// # Arguments
             /// * `bytes` - The raw key material
-            /// 
+            ///
             /// # Returns
             /// A Result containing the SecretKey or an error
             pub fn from_bytes(bytes: &[u8]) -> Result<Self, QantoNativeCryptoError> {
@@ -499,7 +499,7 @@ pub mod pqcrypto_compat {
             }
 
             /// Get the raw bytes of the secret key
-            /// 
+            ///
             /// # Returns
             /// A reference to the key material as bytes
             pub fn as_bytes(&self) -> &[u8] {
@@ -509,10 +509,10 @@ pub mod pqcrypto_compat {
 
         impl PublicKey {
             /// Create a public key from raw bytes
-            /// 
+            ///
             /// # Arguments
             /// * `bytes` - The raw key material
-            /// 
+            ///
             /// # Returns
             /// A Result containing the PublicKey or an error
             pub fn from_bytes(bytes: &[u8]) -> ::std::result::Result<Self, QantoNativeCryptoError> {
@@ -526,7 +526,7 @@ pub mod pqcrypto_compat {
             }
 
             /// Get the raw bytes of the public key
-            /// 
+            ///
             /// # Returns
             /// A reference to the key material as bytes
             pub fn as_bytes(&self) -> &[u8] {
@@ -536,10 +536,10 @@ pub mod pqcrypto_compat {
 
         impl DetachedSignature {
             /// Create a detached signature from raw bytes
-            /// 
+            ///
             /// # Arguments
             /// * `bytes` - The raw signature data
-            /// 
+            ///
             /// # Returns
             /// A Result containing the DetachedSignature or an error
             pub fn from_bytes(bytes: &[u8]) -> ::std::result::Result<Self, QantoNativeCryptoError> {
@@ -553,7 +553,7 @@ pub mod pqcrypto_compat {
             }
 
             /// Get the raw bytes of the signature
-            /// 
+            ///
             /// # Returns
             /// A reference to the signature data as bytes
             pub fn as_bytes(&self) -> &[u8] {
@@ -563,31 +563,31 @@ pub mod pqcrypto_compat {
 
         impl SignedMessage {
             /// Create a signed message from raw bytes
-            /// 
+            ///
             /// # Arguments
             /// * `bytes` - The serialized signed message data
-            /// 
+            ///
             /// # Returns
             /// A Result containing the SignedMessage or an error
             pub fn from_bytes(bytes: &[u8]) -> ::std::result::Result<Self, QantoNativeCryptoError> {
                 if bytes.len() < 8 {
                     return Err(QantoNativeCryptoError::InvalidInputLength);
                 }
-                
+
                 // Simple serialization format: [signature_len: 4 bytes][signature][message]
                 let sig_len = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
                 if bytes.len() < 4 + sig_len {
                     return Err(QantoNativeCryptoError::InvalidInputLength);
                 }
-                
+
                 let signature = QantoPQSignature::from_bytes(&bytes[4..4 + sig_len])?;
                 let message = bytes[4 + sig_len..].to_vec();
-                
+
                 Ok(Self { signature, message })
             }
 
             /// Convert the signed message to raw bytes
-            /// 
+            ///
             /// # Returns
             /// A vector containing the serialized signed message
             pub fn as_bytes(&self) -> Vec<u8> {
@@ -613,7 +613,7 @@ pub mod pqcrypto_compat {
             pub trait PublicKey {
                 /// Get the raw bytes of the public key
                 fn as_bytes(&self) -> &[u8];
-                
+
                 /// Create a public key from raw bytes
                 fn from_bytes(bytes: &[u8]) -> ::std::result::Result<Self, QantoNativeCryptoError>
                 where
@@ -624,7 +624,7 @@ pub mod pqcrypto_compat {
             pub trait SecretKey {
                 /// Get the raw bytes of the secret key
                 fn as_bytes(&self) -> &[u8];
-                
+
                 /// Create a secret key from raw bytes
                 fn from_bytes(bytes: &[u8]) -> Result<Self, QantoNativeCryptoError>
                 where
@@ -635,7 +635,7 @@ pub mod pqcrypto_compat {
             pub trait DetachedSignature {
                 /// Get the raw bytes of the signature
                 fn as_bytes(&self) -> &[u8];
-                
+
                 /// Create a signature from raw bytes
                 fn from_bytes(bytes: &[u8]) -> Result<Self, QantoNativeCryptoError>
                 where
@@ -646,7 +646,7 @@ pub mod pqcrypto_compat {
             pub trait SignedMessage {
                 /// Get the raw bytes of the signed message
                 fn as_bytes(&self) -> Vec<u8>;
-                
+
                 /// Create a signed message from raw bytes
                 fn from_bytes(bytes: &[u8]) -> ::std::result::Result<Self, QantoNativeCryptoError>
                 where
@@ -695,7 +695,9 @@ pub mod pqcrypto_compat {
                     match QantoPQSignature::from_bytes(bytes) {
                         Ok(inner) => Ok(Self::new(inner)),
                         Err(e) => {
-                            eprintln!("Failed to create mldsa65::DetachedSignature from bytes: {e:?}");
+                            eprintln!(
+                                "Failed to create mldsa65::DetachedSignature from bytes: {e:?}"
+                            );
                             Err(e)
                         }
                     }
@@ -716,14 +718,14 @@ pub mod pqcrypto_compat {
 }
 
 /// ECDSA P-256 compatibility module providing drop-in replacements for p256 crate types.
-/// 
+///
 /// This module provides signing and verification functionality using the P-256 elliptic curve
 /// with Qanto's native cryptographic implementations underneath.
 pub mod ecdsa {
     use super::*;
 
     /// A P-256 ECDSA signing key for creating digital signatures.
-    /// 
+    ///
     /// This structure wraps a Qanto P-256 private key and provides
     /// compatibility with the p256 crate's SigningKey interface.
     #[derive(Clone, Serialize, Deserialize)]
@@ -732,7 +734,7 @@ pub mod ecdsa {
     }
 
     /// A P-256 ECDSA verifying key for validating digital signatures.
-    /// 
+    ///
     /// This structure wraps a Qanto P-256 public key and provides
     /// compatibility with the p256 crate's VerifyingKey interface.
     #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -741,7 +743,7 @@ pub mod ecdsa {
     }
 
     /// A P-256 ECDSA signature for digital signature verification.
-    /// 
+    ///
     /// This structure wraps a Qanto P-256 signature and provides
     /// compatibility with the p256 crate's Signature interface.
     #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -751,7 +753,7 @@ pub mod ecdsa {
 
     impl SigningKey {
         /// Get the corresponding verifying key
-        /// 
+        ///
         /// # Returns
         /// The VerifyingKey that corresponds to this SigningKey
         pub fn verifying_key(&self) -> VerifyingKey {
@@ -761,7 +763,7 @@ pub mod ecdsa {
         }
 
         /// Convert the signing key to raw bytes
-        /// 
+        ///
         /// # Returns
         /// A 32-byte array containing the private key material
         pub fn to_bytes(&self) -> [u8; 32] {
@@ -771,10 +773,10 @@ pub mod ecdsa {
 
     impl VerifyingKey {
         /// Create a verifying key from raw bytes
-        /// 
+        ///
         /// # Arguments
         /// * `bytes` - The raw public key material
-        /// 
+        ///
         /// # Returns
         /// A Result containing the VerifyingKey or an error
         pub fn from_bytes(bytes: &[u8]) -> Result<Self, QantoNativeCryptoError> {
@@ -783,7 +785,7 @@ pub mod ecdsa {
         }
 
         /// Convert the verifying key to raw bytes
-        /// 
+        ///
         /// # Returns
         /// A 64-byte array containing the public key material
         pub fn to_bytes(&self) -> [u8; 64] {
@@ -793,10 +795,10 @@ pub mod ecdsa {
 
     impl Signature {
         /// Create a signature from raw bytes
-        /// 
+        ///
         /// # Arguments
         /// * `bytes` - The raw signature data
-        /// 
+        ///
         /// # Returns
         /// A Result containing the Signature or an error
         pub fn from_bytes(bytes: &[u8]) -> Result<Self, QantoNativeCryptoError> {
@@ -808,7 +810,7 @@ pub mod ecdsa {
         }
 
         /// Convert the signature to raw bytes
-        /// 
+        ///
         /// # Returns
         /// A 64-byte array containing the signature data
         pub fn to_bytes(&self) -> [u8; 64] {
@@ -830,13 +832,10 @@ pub mod ecdsa {
         pub trait Verifier<S> {
             /// The error type returned by verification failures
             type Error;
-            
+
             /// Verify a signature against a message
-            fn verify(
-                &self,
-                message: &[u8],
-                signature: &S,
-            ) -> std::result::Result<(), Self::Error>;
+            fn verify(&self, message: &[u8], signature: &S)
+                -> std::result::Result<(), Self::Error>;
         }
 
         impl Signer<Signature> for SigningKey {
@@ -869,14 +868,14 @@ pub mod pqcrypto_classicmceliece {
     use super::*;
 
     /// Classic McEliece 8192128 post-quantum key encapsulation mechanism.
-    /// 
+    ///
     /// This module provides compatibility with the Classic McEliece cryptographic
     /// scheme for post-quantum key encapsulation.
     pub mod mceliece8192128 {
         use super::*;
 
         /// A Classic McEliece public key for key encapsulation.
-        /// 
+        ///
         /// This structure represents a public key used in the Classic McEliece
         /// key encapsulation mechanism.
         #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -885,7 +884,7 @@ pub mod pqcrypto_classicmceliece {
         }
 
         /// A Classic McEliece secret key for key decapsulation.
-        /// 
+        ///
         /// This structure represents a secret key used in the Classic McEliece
         /// key encapsulation mechanism.
         #[derive(Clone, Serialize, Deserialize)]
@@ -894,7 +893,7 @@ pub mod pqcrypto_classicmceliece {
         }
 
         /// A Classic McEliece ciphertext for encapsulated keys.
-        /// 
+        ///
         /// This structure represents a ciphertext containing an encapsulated
         /// shared secret in the Classic McEliece scheme.
         #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -939,12 +938,12 @@ pub mod pqcrypto_classicmceliece {
         }
 
         /// Generate a Classic McEliece 8192128 key pair.
-        /// 
+        ///
         /// Returns a tuple containing the public key and secret key for post-quantum
         /// key encapsulation mechanism operations.
-        /// 
+        ///
         /// # Returns
-        /// 
+        ///
         /// A tuple `(PublicKey, SecretKey)` representing the generated key pair.
         pub fn keypair() -> (PublicKey, SecretKey) {
             // Placeholder implementation - would use actual Classic McEliece in production
@@ -958,10 +957,10 @@ pub mod pqcrypto_classicmceliece {
         }
 
         /// Encapsulate a shared secret
-        /// 
+        ///
         /// # Arguments
         /// * `_public_key` - The public key to use for encapsulation
-        /// 
+        ///
         /// # Returns
         /// A tuple containing (Ciphertext, shared_secret)
         pub fn encapsulate(_public_key: &PublicKey) -> (Ciphertext, Vec<u8>) {
@@ -974,11 +973,11 @@ pub mod pqcrypto_classicmceliece {
         }
 
         /// Decapsulate a shared secret
-        /// 
+        ///
         /// # Arguments
         /// * `_ciphertext` - The ciphertext to decapsulate
         /// * `_secret_key` - The secret key to use for decapsulation
-        /// 
+        ///
         /// # Returns
         /// The shared secret
         pub fn decapsulate(_ciphertext: &Ciphertext, _secret_key: &SecretKey) -> Vec<u8> {
@@ -989,7 +988,7 @@ pub mod pqcrypto_classicmceliece {
 }
 
 /// Falcon post-quantum signature compatibility
-/// 
+///
 /// Provides compatibility with pqcrypto-falcon using qanto-native
 /// post-quantum digital signatures.
 pub mod pqcrypto_falcon {
@@ -1000,7 +999,7 @@ pub mod pqcrypto_falcon {
         use super::*;
 
         /// Falcon public key
-        /// 
+        ///
         /// Used for signature verification operations.
         #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
         pub struct PublicKey {
@@ -1008,7 +1007,7 @@ pub mod pqcrypto_falcon {
         }
 
         /// Falcon secret key
-        /// 
+        ///
         /// Used for signature generation operations.
         #[derive(Clone, Serialize, Deserialize)]
         pub struct SecretKey {
@@ -1016,7 +1015,7 @@ pub mod pqcrypto_falcon {
         }
 
         /// Falcon detached signature
-        /// 
+        ///
         /// Contains the signature data separate from the message.
         #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
         pub struct DetachedSignature {
@@ -1060,7 +1059,7 @@ pub mod pqcrypto_falcon {
         }
 
         /// Generate a Falcon key pair
-        /// 
+        ///
         /// # Returns
         /// A tuple containing (PublicKey, SecretKey)
         pub fn keypair() -> (PublicKey, SecretKey) {
@@ -1075,11 +1074,11 @@ pub mod pqcrypto_falcon {
         }
 
         /// Create a detached signature
-        /// 
+        ///
         /// # Arguments
         /// * `_message` - The message to sign
         /// * `_secret_key` - The secret key to use for signing
-        /// 
+        ///
         /// # Returns
         /// A DetachedSignature over the message
         pub fn detached_sign(_message: &[u8], _secret_key: &SecretKey) -> DetachedSignature {
@@ -1090,12 +1089,12 @@ pub mod pqcrypto_falcon {
         }
 
         /// Verify a detached signature
-        /// 
+        ///
         /// # Arguments
         /// * `_message` - The original message
         /// * `_signature` - The signature to verify
         /// * `_public_key` - The public key to use for verification
-        /// 
+        ///
         /// # Returns
         /// Ok(()) if the signature is valid, Err otherwise
         pub fn verify_detached_signature(
@@ -1110,7 +1109,7 @@ pub mod pqcrypto_falcon {
 }
 
 /// HQC post-quantum KEM compatibility
-/// 
+///
 /// Provides compatibility with pqcrypto-hqc using qanto-native
 /// post-quantum key encapsulation mechanisms.
 pub mod pqcrypto_hqc {
@@ -1121,7 +1120,7 @@ pub mod pqcrypto_hqc {
         use super::*;
 
         /// HQC public key
-        /// 
+        ///
         /// Used for key encapsulation operations.
         #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
         pub struct PublicKey {
@@ -1129,7 +1128,7 @@ pub mod pqcrypto_hqc {
         }
 
         /// HQC secret key
-        /// 
+        ///
         /// Used for key decapsulation operations.
         #[derive(Clone, Serialize, Deserialize)]
         pub struct SecretKey {
@@ -1137,7 +1136,7 @@ pub mod pqcrypto_hqc {
         }
 
         /// HQC ciphertext
-        /// 
+        ///
         /// Contains the encapsulated key material.
         #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
         pub struct Ciphertext {
@@ -1181,7 +1180,7 @@ pub mod pqcrypto_hqc {
         }
 
         /// Generate an HQC key pair
-        /// 
+        ///
         /// # Returns
         /// A tuple containing (PublicKey, SecretKey)
         pub fn keypair() -> (PublicKey, SecretKey) {
@@ -1196,10 +1195,10 @@ pub mod pqcrypto_hqc {
         }
 
         /// Encapsulate a shared secret
-        /// 
+        ///
         /// # Arguments
         /// * `_public_key` - The public key to use for encapsulation
-        /// 
+        ///
         /// # Returns
         /// A tuple containing (Ciphertext, shared_secret)
         pub fn encapsulate(_public_key: &PublicKey) -> (Ciphertext, Vec<u8>) {
@@ -1212,11 +1211,11 @@ pub mod pqcrypto_hqc {
         }
 
         /// Decapsulate a shared secret
-        /// 
+        ///
         /// # Arguments
         /// * `_ciphertext` - The ciphertext to decapsulate
         /// * `_secret_key` - The secret key to use for decapsulation
-        /// 
+        ///
         /// # Returns
         /// The shared secret
         pub fn decapsulate(_ciphertext: &Ciphertext, _secret_key: &SecretKey) -> Vec<u8> {
@@ -1227,7 +1226,7 @@ pub mod pqcrypto_hqc {
 }
 
 /// ML-DSA compatibility re-export
-/// 
+///
 /// Provides a direct re-export of the ML-DSA implementation from pqcrypto_compat.
 pub mod pqcrypto_mldsa {
     /// ML-DSA-65 parameter set
@@ -1238,7 +1237,7 @@ pub mod pqcrypto_mldsa {
 }
 
 /// ML-KEM post-quantum KEM compatibility
-/// 
+///
 /// Provides compatibility with pqcrypto-mlkem using qanto-native
 /// post-quantum key encapsulation mechanisms.
 pub mod pqcrypto_mlkem {
@@ -1249,7 +1248,7 @@ pub mod pqcrypto_mlkem {
         use super::*;
 
         /// ML-KEM public key
-        /// 
+        ///
         /// Used for key encapsulation operations.
         #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
         pub struct PublicKey {
@@ -1257,7 +1256,7 @@ pub mod pqcrypto_mlkem {
         }
 
         /// ML-KEM secret key
-        /// 
+        ///
         /// Used for key decapsulation operations.
         #[derive(Clone, Serialize, Deserialize)]
         pub struct SecretKey {
@@ -1265,7 +1264,7 @@ pub mod pqcrypto_mlkem {
         }
 
         /// ML-KEM ciphertext
-        /// 
+        ///
         /// Contains the encapsulated key material.
         #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
         pub struct Ciphertext {
@@ -1309,7 +1308,7 @@ pub mod pqcrypto_mlkem {
         }
 
         /// Generate an ML-KEM key pair
-        /// 
+        ///
         /// # Returns
         /// A tuple containing (PublicKey, SecretKey)
         pub fn keypair() -> (PublicKey, SecretKey) {
@@ -1324,10 +1323,10 @@ pub mod pqcrypto_mlkem {
         }
 
         /// Encapsulate a shared secret
-        /// 
+        ///
         /// # Arguments
         /// * `_public_key` - The public key to use for encapsulation
-        /// 
+        ///
         /// # Returns
         /// A tuple containing (Ciphertext, shared_secret)
         pub fn encapsulate(_public_key: &PublicKey) -> (Ciphertext, Vec<u8>) {
@@ -1340,11 +1339,11 @@ pub mod pqcrypto_mlkem {
         }
 
         /// Decapsulate a shared secret
-        /// 
+        ///
         /// # Arguments
         /// * `_ciphertext` - The ciphertext to decapsulate
         /// * `_secret_key` - The secret key to use for decapsulation
-        /// 
+        ///
         /// # Returns
         /// The shared secret
         pub fn decapsulate(_ciphertext: &Ciphertext, _secret_key: &SecretKey) -> Vec<u8> {
@@ -1355,7 +1354,7 @@ pub mod pqcrypto_mlkem {
 }
 
 /// Post-quantum cryptography trait definitions
-/// 
+///
 /// Provides common trait interfaces for post-quantum cryptographic operations.
 pub mod pqcrypto_traits {
     use super::*;
@@ -1368,7 +1367,7 @@ pub mod pqcrypto_traits {
         pub trait PublicKey {
             /// Get the raw bytes of the public key
             fn as_bytes(&self) -> &[u8];
-            
+
             /// Create a public key from raw bytes
             fn from_bytes(bytes: &[u8]) -> ::std::result::Result<Self, QantoNativeCryptoError>
             where
@@ -1379,7 +1378,7 @@ pub mod pqcrypto_traits {
         pub trait SecretKey {
             /// Get the raw bytes of the secret key
             fn as_bytes(&self) -> &[u8];
-            
+
             /// Create a secret key from raw bytes
             fn from_bytes(bytes: &[u8]) -> ::std::result::Result<Self, QantoNativeCryptoError>
             where
@@ -1390,7 +1389,7 @@ pub mod pqcrypto_traits {
         pub trait Ciphertext {
             /// Get the raw bytes of the ciphertext
             fn as_bytes(&self) -> &[u8];
-            
+
             /// Create a ciphertext from raw bytes
             fn from_bytes(bytes: &[u8]) -> ::std::result::Result<Self, QantoNativeCryptoError>
             where
@@ -1401,7 +1400,7 @@ pub mod pqcrypto_traits {
         pub trait SharedSecret {
             /// Get the raw bytes of the shared secret
             fn as_bytes(&self) -> &[u8];
-            
+
             /// Create a shared secret from raw bytes
             fn from_bytes(bytes: &[u8]) -> ::std::result::Result<Self, QantoNativeCryptoError>
             where
@@ -1417,14 +1416,14 @@ pub mod pqcrypto_traits {
 }
 
 /// libp2p identity compatibility module
-/// 
+///
 /// Provides compatibility with libp2p's identity types using qanto-native
 /// cryptographic implementations.
 pub mod libp2p_identity {
     use super::*;
 
     /// Cryptographic keypair for libp2p identity
-    /// 
+    ///
     /// Currently supports Ed25519 keys using qanto-native implementations.
     #[derive(Clone, Debug)]
     pub enum Keypair {
@@ -1434,7 +1433,7 @@ pub mod libp2p_identity {
 
     impl Keypair {
         /// Generate a new Ed25519 keypair
-        /// 
+        ///
         /// # Returns
         /// A new Keypair with a randomly generated Ed25519 key
         pub fn generate_ed25519() -> Self {
@@ -1444,7 +1443,7 @@ pub mod libp2p_identity {
         }
 
         /// Get the public key from this keypair
-        /// 
+        ///
         /// # Returns
         /// The PublicKey corresponding to this Keypair
         pub fn public(&self) -> PublicKey {
@@ -1455,7 +1454,7 @@ pub mod libp2p_identity {
     }
 
     /// Public key for libp2p identity
-    /// 
+    ///
     /// Currently supports Ed25519 public keys using qanto-native implementations.
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub enum PublicKey {
@@ -1465,7 +1464,7 @@ pub mod libp2p_identity {
 
     impl PublicKey {
         /// Convert this public key to a peer ID
-        /// 
+        ///
         /// # Returns
         /// A PeerId derived from this public key
         pub fn to_peer_id(&self) -> PeerId {
@@ -1480,7 +1479,7 @@ pub mod libp2p_identity {
     }
 
     /// Peer identifier for libp2p networks
-    /// 
+    ///
     /// A unique identifier derived from a public key that identifies
     /// a peer in the libp2p network.
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -1488,10 +1487,10 @@ pub mod libp2p_identity {
 
     impl PeerId {
         /// Create a PeerId from raw bytes
-        /// 
+        ///
         /// # Arguments
         /// * `bytes` - The raw bytes to create the PeerId from
-        /// 
+        ///
         /// # Returns
         /// A Result containing the PeerId or an error
         pub fn from_bytes(bytes: &[u8]) -> Result<Self, QantoNativeCryptoError> {
@@ -1502,7 +1501,7 @@ pub mod libp2p_identity {
         }
 
         /// Convert the PeerId to raw bytes
-        /// 
+        ///
         /// # Returns
         /// A vector containing the PeerId bytes
         pub fn to_bytes(&self) -> Vec<u8> {

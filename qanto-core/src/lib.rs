@@ -25,19 +25,21 @@
 #![allow(unsafe_code)]
 
 // Re-export core modules for external use
+pub mod mining_celebration;
 pub mod qanto_compat;
 pub mod qanto_native_crypto;
-pub mod qanto_p2p;
 pub mod qanto_net;
+pub mod qanto_p2p;
 pub mod qanto_serde;
 pub mod qanto_storage;
 pub mod storage_adapter;
 pub mod storage_traits;
-pub mod mining_celebration;
 
 // Re-export specific types to avoid ambiguous glob re-exports
-pub use qanto_compat::{QantoNativeCrypto};
+pub use qanto_compat::QantoNativeCrypto;
 pub use qanto_native_crypto::QantoNativeCryptoError as QantoCompatError;
-pub use qanto_native_crypto::{QantoPQPublicKey, QantoPQPrivateKey, QantoPQSignature, QantoNativeCrypto as NativeCrypto};
-pub use qanto_p2p::{QantoP2P, NetworkConfig};
-pub use qanto_net::{QantoNetServer, QantoNetError, NetworkMessage, PeerId};
+pub use qanto_native_crypto::{
+    QantoNativeCrypto as NativeCrypto, QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature,
+};
+pub use qanto_net::{NetworkMessage, PeerId, QantoNetError, QantoNetServer};
+pub use qanto_p2p::{NetworkConfig, QantoP2P};

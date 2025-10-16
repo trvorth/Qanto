@@ -8,12 +8,10 @@
 //!   ensuring the final reward includes both the base amount and fees.
 
 use crate::config::LoggingConfig;
-use qanto_core::mining_celebration::LoggingConfig as CoreLoggingConfig;
 use crate::emission::Emission;
 use crate::mempool::Mempool;
 use crate::metrics::QantoMetrics;
 use crate::miner::Miner;
-use qanto_core::mining_celebration::{on_block_mined, MiningCelebrationParams};
 use crate::mining_metrics::{MiningFailureType, MiningMetrics};
 use crate::performance_monitoring::{PerformanceMonitor, PerformanceMonitoringConfig};
 use crate::saga::{
@@ -22,6 +20,8 @@ use crate::saga::{
 use crate::timing::BlockTimingCoordinator;
 use crate::types::QuantumResistantSignature;
 use my_blockchain::{qanhash, qanto_hash};
+use qanto_core::mining_celebration::LoggingConfig as CoreLoggingConfig;
+use qanto_core::mining_celebration::{on_block_mined, MiningCelebrationParams};
 
 // This import is required for the `#[from]` attribute in QantoDAGError.
 // The compiler may incorrectly flag it as unused, but it is necessary.

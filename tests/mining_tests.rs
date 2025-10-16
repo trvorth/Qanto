@@ -205,15 +205,15 @@ async fn test_simple_mining_consolidated() {
             // Use canonical PoW hash bytes (includes nonce)
             let block_pow_hash = block.hash_for_pow();
             let block_pow_hash_bytes = block_pow_hash.as_bytes();
-             let target_hash_bytes =
-                 qanto::miner::Miner::calculate_target_from_difficulty(block.difficulty);
+            let target_hash_bytes =
+                qanto::miner::Miner::calculate_target_from_difficulty(block.difficulty);
 
-             if qanto::miner::Miner::hash_meets_target(block_pow_hash_bytes, &target_hash_bytes) {
-                 info!("✅ Hash meets target - PoW validation successful!");
-             } else {
-                 error!("❌ Hash does not meet target - PoW validation failed!");
-                 panic!("PoW validation failed");
-             }
+            if qanto::miner::Miner::hash_meets_target(block_pow_hash_bytes, &target_hash_bytes) {
+                info!("✅ Hash meets target - PoW validation successful!");
+            } else {
+                error!("❌ Hash does not meet target - PoW validation failed!");
+                panic!("PoW validation failed");
+            }
         }
         Err(e) => {
             error!("❌ Mock mining failed with error: {e:?}");
