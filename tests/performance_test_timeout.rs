@@ -90,6 +90,7 @@ async fn create_test_environment() -> Result<(Arc<QantoDAG>, Wallet)> {
         initial_validator: "test_validator".to_string(),
         target_block_time: 1000, // 1 second
         num_chains: 2,           // Reduced from default for faster testing
+        dev_fee_rate: 0.10,
     };
 
     let dag_arc = QantoDAG::new(

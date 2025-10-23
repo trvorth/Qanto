@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "qanto-node.fullname" . }}
+  labels:
+    {{- include "qanto-node.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.ports.api }}
+      targetPort: api
+      protocol: TCP
+      name: api
+    - port: {{ .Values.service.ports.metrics }}
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+    - port: {{ .Values.service.ports.websocket }}
+      targetPort: websocket
+      protocol: TCP
+      name: websocket
+    - port: {{ .Values.service.ports.p2p }}
+      targetPort: p2p
+      protocol: TCP
+      name: p2p
+  selector:
+    {{- include "qanto-node.selectorLabels" . | nindent 4 }}

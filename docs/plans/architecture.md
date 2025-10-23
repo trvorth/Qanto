@@ -118,8 +118,7 @@ qanto/
 │   ├── whitepaper/        # Technical whitepaper
 │   └── testnet-guide.md   # Testnet participation guide
 ├── config/                # Configuration files
-│   ├── config.toml.example # Example node configuration
-│   └── config.production.toml # Production configuration
+│   └── config.toml.example # Example node configuration
 ├── qanto-docs/            # Documentation portal
 └── tests/                 # Integration tests
 ```

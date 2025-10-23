@@ -3,7 +3,7 @@ api_address = "127.0.0.1:8080"
 peers = []
 local_full_p2p_address = "/ip4/127.0.0.1/tcp/8333/p2p/12D3KooWBUfMefQKJAkLZPAqXKRMiZ6LST4bdeZykEwovDsAdGAt"
 network_id = "qanto-testnet"
-genesis_validator = "63e70fa0ce7c33793c9a5f8333894b80291fec344ed676c7e30dc04f003c66bb"
+genesis_validator = "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3"
 contract_address = "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"
 target_block_time = 31
 difficulty = 1
@@ -25,11 +25,15 @@ tx_batch_size = 500
 adaptive_batch_threshold = 0.7
 memory_soft_limit = 8388608
 memory_hard_limit = 10485760
+dev_fee_rate = 0.10
 data_dir = "./data"
 db_path = "./data/qanto.db"
 wallet_path = "wallet.key"
 p2p_identity_path = "p2p_identity.key"
 log_file_path = "./logs/qanto.log"
+
+[rpc]
+address = "127.0.0.1:50051"
 
 [logging]
 level = "info"

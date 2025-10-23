@@ -36,6 +36,8 @@ use my_blockchain::qanto_hash;
 use nonzero_ext::nonzero;
 
 use prometheus::{register_int_counter, IntCounter};
+use prost::Message;
+use qanto_rpc::server::generated as proto;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
@@ -142,6 +144,7 @@ pub struct NetworkMessage {
 pub enum NetworkMessageData {
     Block(QantoBlock),
     Transaction(Transaction),
+    TransactionBatch(Vec<Transaction>),
     State(HashMap<String, QantoBlock>, HashMap<String, UTXO>),
     StateRequest,
     CarbonOffsetCredential(CarbonOffsetCredential),
@@ -150,6 +153,7 @@ pub enum NetworkMessageData {
 impl NetworkMessage {
     // Corrected: Skipped non-debuggable keys in the instrument macro.
     #[instrument(skip(signing_key))]
+    #[allow(dead_code)]
     fn new(data: NetworkMessageData, signing_key: &QantoPQPrivateKey) -> Result<Self, P2PError> {
         let hmac_secret = Self::get_hmac_secret();
         let serialized_data = serde_json::to_vec(&data)?;
@@ -185,10 +189,160 @@ impl NetworkMessage {
     }
 }
 
+fn convert_internal_tx_to_proto(tx: &crate::transaction::Transaction) -> proto::Transaction {
+    let inputs = tx
+        .inputs
+        .iter()
+        .map(|i| proto::Input {
+            tx_id: i.tx_id.clone(),
+            output_index: i.output_index,
+        })
+        .collect::<Vec<_>>();
+
+    let outputs = tx
+        .outputs
+        .iter()
+        .map(|o| proto::Output {
+            address: o.address.clone(),
+            amount: o.amount,
+            homomorphic_encrypted: Some(proto::HomomorphicEncrypted {
+                ciphertext: o.homomorphic_encrypted.ciphertext.clone(),
+                public_key: o.homomorphic_encrypted.public_key.clone(),
+            }),
+        })
+        .collect::<Vec<_>>();
+
+    let signature = Some(proto::QuantumResistantSignature {
+        signer_public_key: tx.signature.signer_public_key.clone(),
+        signature: tx.signature.signature.clone(),
+    });
+
+    let fee_breakdown = tx.fee_breakdown.as_ref().map(|fb| proto::FeeBreakdown {
+        base_fee: fb.base_fee,
+        complexity_fee: fb.complexity_fee,
+        storage_fee: fb.storage_fee,
+        gas_fee: fb.gas_fee,
+        priority_fee: fb.priority_fee,
+        congestion_multiplier: fb.congestion_multiplier,
+        total_fee: fb.total_fee,
+        gas_used: fb.gas_used,
+        gas_price: fb.gas_price,
+    });
+
+    proto::Transaction {
+        id: tx.id.clone(),
+        sender: tx.sender.clone(),
+        receiver: tx.receiver.clone(),
+        amount: tx.amount,
+        fee: tx.fee,
+        gas_limit: tx.gas_limit,
+        gas_used: tx.gas_used,
+        gas_price: tx.gas_price,
+        priority_fee: tx.priority_fee,
+        inputs,
+        outputs,
+        timestamp: tx.timestamp,
+        metadata: tx.metadata.clone(),
+        signature,
+        fee_breakdown,
+    }
+}
+
+fn convert_proto_tx(ptx: proto::Transaction) -> Result<crate::transaction::Transaction, String> {
+    let inputs = ptx
+        .inputs
+        .into_iter()
+        .map(|i| crate::transaction::Input {
+            tx_id: i.tx_id,
+            output_index: i.output_index,
+        })
+        .collect::<Vec<_>>();
+
+    let outputs = ptx
+        .outputs
+        .into_iter()
+        .map(|o| crate::transaction::Output {
+            address: o.address,
+            amount: o.amount,
+            homomorphic_encrypted: match o.homomorphic_encrypted {
+                Some(he) => crate::types::HomomorphicEncrypted {
+                    ciphertext: he.ciphertext,
+                    public_key: he.public_key,
+                },
+                None => crate::types::HomomorphicEncrypted {
+                    ciphertext: vec![],
+                    public_key: vec![],
+                },
+            },
+        })
+        .collect::<Vec<_>>();
+
+    let signature = match ptx.signature {
+        Some(sig) => crate::types::QuantumResistantSignature {
+            signer_public_key: sig.signer_public_key,
+            signature: sig.signature,
+        },
+        None => return Err("Missing transaction signature".to_string()),
+    };
+
+    let fee_breakdown = ptx
+        .fee_breakdown
+        .map(|fb| crate::gas_fee_model::FeeBreakdown {
+            base_fee: fb.base_fee,
+            complexity_fee: fb.complexity_fee,
+            storage_fee: fb.storage_fee,
+            gas_fee: fb.gas_fee,
+            priority_fee: fb.priority_fee,
+            congestion_multiplier: fb.congestion_multiplier,
+            total_fee: fb.total_fee,
+            gas_used: fb.gas_used,
+            gas_price: fb.gas_price,
+        });
+
+    Ok(crate::transaction::Transaction {
+        id: ptx.id,
+        sender: ptx.sender,
+        receiver: ptx.receiver,
+        amount: ptx.amount,
+        fee: ptx.fee,
+        gas_limit: ptx.gas_limit,
+        gas_used: ptx.gas_used,
+        gas_price: ptx.gas_price,
+        priority_fee: ptx.priority_fee,
+        inputs,
+        outputs,
+        timestamp: ptx.timestamp,
+        metadata: ptx.metadata,
+        signature,
+        fee_breakdown,
+    })
+}
+
+fn convert_internal_utxo_to_proto(u: &crate::types::UTXO) -> proto::Utxo {
+    proto::Utxo {
+        address: u.address.clone(),
+        amount: u.amount,
+        tx_id: u.tx_id.clone(),
+        output_index: u.output_index,
+        explorer_link: u.explorer_link.clone(),
+    }
+}
+
+fn convert_proto_utxo(u: proto::Utxo) -> crate::types::UTXO {
+    crate::types::UTXO {
+        address: u.address,
+        amount: u.amount,
+        tx_id: u.tx_id,
+        output_index: u.output_index,
+        explorer_link: u.explorer_link,
+    }
+}
+
 #[derive(Debug)]
 pub enum P2PCommand {
     BroadcastBlock(QantoBlock),
     BroadcastTransaction(Transaction),
+    BroadcastTransactionBatch(Vec<Transaction>),
     RequestState,
     BroadcastState(HashMap<String, QantoBlock>, HashMap<String, UTXO>),
     BroadcastCarbonCredential(CarbonOffsetCredential),
@@ -555,12 +709,13 @@ impl P2PServer {
                 message_id: _,
                 message,
             })) => {
+                // Route gossip message through the static handler with fresh rate limiters
                 let blacklist = Arc::new(RwLock::new(HashSet::new()));
                 let rate_limiters = GossipRateLimiters {
                     block: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(10u32)))),
                     tx: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(50u32)))),
                     state: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(5u32)))),
-                    credential: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(10u32)))),
+                    credential: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(20u32)))),
                 };
 
                 Self::static_process_gossip_message(
@@ -629,8 +784,17 @@ impl P2PServer {
                 let mut log_msg = String::with_capacity(12 + tx.id.len());
                 log_msg.push_str("transaction ");
                 log_msg.push_str(&tx.id);
-                self.broadcast_message(NetworkMessageData::Transaction(tx.clone()), 1, &log_msg)
+                self.broadcast_message(NetworkMessageData::Transaction(tx.clone()), 2, &log_msg)
                     .await
+            }
+            P2PCommand::BroadcastTransactionBatch(txs) => {
+                let log_msg = format!("transaction_batch {} txs", txs.len());
+                self.broadcast_message(
+                    NetworkMessageData::TransactionBatch(txs.clone()),
+                    2,
+                    &log_msg,
+                )
+                .await
             }
             P2PCommand::RequestState => {
                 // Collect current blocks from DAG as HashMap
@@ -648,11 +812,11 @@ impl P2PServer {
                 };
 
                 // Broadcast the current state
-                self.broadcast_message(NetworkMessageData::State(blocks, utxos), 2, "state data")
+                self.broadcast_message(NetworkMessageData::State(blocks, utxos), 4, "state data")
                     .await
             }
             P2PCommand::BroadcastState(blocks, utxos) => {
-                self.broadcast_message(NetworkMessageData::State(blocks, utxos), 2, "state data")
+                self.broadcast_message(NetworkMessageData::State(blocks, utxos), 4, "state data")
                     .await
             }
             P2PCommand::BroadcastCarbonCredential(cred) => {
@@ -716,47 +880,203 @@ impl P2PServer {
             return;
         }
 
-        match serde_json::from_slice::<NetworkMessage>(&message.data) {
-            Ok(msg_payload) => {
-                info!("Successfully deserialized message from {}", source);
-                let cmd = match msg_payload.data {
-                    NetworkMessageData::Block(block) => {
-                        info!("Processing block message: {}", block.id);
-                        P2PCommand::BroadcastBlock(block)
-                    }
-                    NetworkMessageData::Transaction(tx) => {
-                        info!("Processing transaction message: {}", tx.id);
-                        P2PCommand::BroadcastTransaction(tx)
-                    }
-                    NetworkMessageData::State(blocks, utxos) => {
-                        info!(
-                            "Processing state sync response with {} blocks and {} UTXOs",
-                            blocks.len(),
-                            utxos.len()
-                        );
-                        P2PCommand::SyncResponse {
-                            blocks: blocks.into_values().collect(),
-                            utxos,
-                        }
-                    }
-                    NetworkMessageData::StateRequest => {
-                        info!("Processing state request from {}", source);
-                        P2PCommand::RequestState
-                    }
-                    NetworkMessageData::CarbonOffsetCredential(cred) => {
-                        info!("Processing carbon credential message");
-                        P2PCommand::BroadcastCarbonCredential(cred)
-                    }
-                };
+        // Decode protobuf envelope
+        let envelope = match proto::P2pNetworkMessage::decode(message.data.as_slice()) {
+            Ok(env) => env,
+            Err(e) => {
+                error!("Failed to decode protobuf envelope from {}: {}", source, e);
+                return;
+            }
+        };
 
-                match p2p_command_sender.send(cmd).await {
-                    Ok(_) => info!("Successfully forwarded message to command processor"),
-                    Err(e) => error!("Failed to forward message to command processor: {}", e),
+        // Verify HMAC over payload_bytes
+        let hmac_secret = NetworkMessage::get_hmac_secret();
+        let expected_hmac =
+            match NetworkMessage::compute_hmac(&envelope.payload_bytes, &hmac_secret) {
+                Ok(h) => h,
+                Err(e) => {
+                    error!("HMAC computation error: {}", e);
+                    return;
+                }
+            };
+        if envelope.hmac != expected_hmac {
+            warn!(
+                "Invalid HMAC from peer {} on topic {}",
+                source,
+                message.topic.as_str()
+            );
+            let mut blacklist_writer = blacklist.write().await;
+            if blacklist_writer.insert(source) {
+                warn!("Peer {} failed HMAC check. Blacklisting.", source);
+                PEERS_BLACKLISTED.inc();
+            }
+            return;
+        }
+
+        // Verify Dilithium signature over payload_bytes
+        let sig = match &envelope.signature {
+            Some(s) => s,
+            None => {
+                warn!(
+                    "Missing signature from peer {} on topic {}",
+                    source,
+                    message.topic.as_str()
+                );
+                let mut blacklist_writer = blacklist.write().await;
+                if blacklist_writer.insert(source) {
+                    warn!("Peer {} failed signature check. Blacklisting.", source);
+                    PEERS_BLACKLISTED.inc();
+                }
+                return;
+            }
+        };
+        let internal_sig = QuantumResistantSignature {
+            signer_public_key: sig.signer_public_key.clone(),
+            signature: sig.signature.clone(),
+        };
+        if !internal_sig.verify(&envelope.payload_bytes) {
+            warn!(
+                "Invalid signature from peer {} on topic {}",
+                source,
+                message.topic.as_str()
+            );
+            let mut blacklist_writer = blacklist.write().await;
+            if blacklist_writer.insert(source) {
+                warn!("Peer {} failed signature check. Blacklisting.", source);
+                PEERS_BLACKLISTED.inc();
+            }
+            return;
+        }
+
+        // Metrics: count valid received messages
+        MESSAGES_RECEIVED.inc();
+
+        // Route by payload type
+        let payload_type = match proto::P2pPayloadType::try_from(envelope.payload_type) {
+            Ok(pt) => pt,
+            Err(_) => {
+                warn!(
+                    "Unknown payload type {} from {}",
+                    envelope.payload_type, source
+                );
+                return;
+            }
+        };
+
+        let cmd = match payload_type {
+            proto::P2pPayloadType::Transaction => {
+                match proto::Transaction::decode(envelope.payload_bytes.as_slice()) {
+                    Ok(ptx) => match convert_proto_tx(ptx) {
+                        Ok(tx) => {
+                            info!("Processing transaction message: {}", tx.id);
+                            P2PCommand::BroadcastTransaction(tx)
+                        }
+                        Err(e) => {
+                            error!("Failed to convert protobuf Transaction: {}", e);
+                            return;
+                        }
+                    },
+                    Err(e) => {
+                        error!("Failed to decode protobuf Transaction: {}", e);
+                        return;
+                    }
                 }
             }
-            Err(e) => {
-                error!("Failed to deserialize message from {}: {}", source, e);
+            proto::P2pPayloadType::Block => {
+                match proto::QantoBlock::decode(envelope.payload_bytes.as_slice()) {
+                    Ok(pb) => match convert_proto_block(pb) {
+                        Ok(block) => {
+                            info!("Processing block message: {}", block.id);
+                            P2PCommand::BroadcastBlock(block)
+                        }
+                        Err(e) => {
+                            error!("Failed to convert protobuf Block: {}", e);
+                            return;
+                        }
+                    },
+                    Err(e) => {
+                        error!("Failed to decode protobuf Block: {}", e);
+                        return;
+                    }
+                }
             }
+            proto::P2pPayloadType::Credential => {
+                match proto::CarbonOffsetCredential::decode(envelope.payload_bytes.as_slice()) {
+                    Ok(pc) => {
+                        let cred = convert_proto_credential(pc);
+                        info!("Processing carbon credential message: {}", cred.id);
+                        P2PCommand::BroadcastCarbonCredential(cred)
+                    }
+                    Err(e) => {
+                        error!("Failed to decode protobuf Credential: {}", e);
+                        return;
+                    }
+                }
+            }
+            proto::P2pPayloadType::State => {
+                match proto::StateSnapshot::decode(envelope.payload_bytes.as_slice()) {
+                    Ok(state) => {
+                        let blocks_res: Result<Vec<QantoBlock>, String> =
+                            state.blocks.into_iter().map(convert_proto_block).collect();
+                        let blocks = match blocks_res {
+                            Ok(b) => b,
+                            Err(e) => {
+                                error!("Failed to convert StateSnapshot blocks: {}", e);
+                                return;
+                            }
+                        };
+                        let mut utxos_map: HashMap<String, UTXO> = HashMap::new();
+                        for pu in state.utxos.into_iter() {
+                            let u = convert_proto_utxo(pu);
+                            let key = format!("{}_{}", u.tx_id, u.output_index);
+                            utxos_map.insert(key, u);
+                        }
+                        info!(
+                            "Processing state snapshot: {} blocks, {} utxos",
+                            blocks.len(),
+                            utxos_map.len()
+                        );
+                        P2PCommand::SyncResponse {
+                            blocks,
+                            utxos: utxos_map,
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to decode StateSnapshot: {}", e);
+                        return;
+                    }
+                }
+            }
+            proto::P2pPayloadType::TransactionBatch => {
+                match proto::TransactionBatch::decode(envelope.payload_bytes.as_slice()) {
+                    Ok(batch) => {
+                        let txs_res: Result<Vec<Transaction>, String> = batch
+                            .transactions
+                            .into_iter()
+                            .map(convert_proto_tx)
+                            .collect();
+                        match txs_res {
+                            Ok(txs) => {
+                                info!("Processing transaction batch: {} transactions", txs.len());
+                                P2PCommand::BroadcastTransactionBatch(txs)
+                            }
+                            Err(e) => {
+                                error!("Failed to convert TransactionBatch: {}", e);
+                                return;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to decode TransactionBatch: {}", e);
+                        return;
+                    }
+                }
+            }
+        };
+
+        match p2p_command_sender.send(cmd).await {
+            Ok(_) => info!("Successfully forwarded message to command processor"),
+            Err(e) => error!("Failed to forward message to command processor: {}", e),
         }
     }
 
@@ -819,23 +1139,240 @@ impl P2PServer {
             );
         }
 
-        let net_msg = NetworkMessage::new(data, &self.node_qr_sk)?;
-        let msg_bytes = serde_json::to_vec(&net_msg)?;
+        // Build protobuf envelope
+        let (payload_type, payload_bytes) = match data {
+            NetworkMessageData::Transaction(ref tx) => {
+                let ptx = convert_internal_tx_to_proto(tx);
+                (
+                    proto::P2pPayloadType::Transaction as i32,
+                    ptx.encode_to_vec(),
+                )
+            }
+            NetworkMessageData::Block(ref b) => {
+                // Minimal block conversion using rpc_backend's logic mirrored here
+                let transactions = b
+                    .transactions
+                    .iter()
+                    .map(convert_internal_tx_to_proto)
+                    .collect::<Vec<_>>();
+                let cross_chain_references = b
+                    .cross_chain_references
+                    .iter()
+                    .map(|(cid, bid)| proto::CrossChainReference {
+                        chain_id: *cid,
+                        block_id: bid.clone(),
+                    })
+                    .collect::<Vec<_>>();
+                let cross_chain_swaps = vec![];
+                let signature = Some(proto::QuantumResistantSignature {
+                    signer_public_key: b.signature.signer_public_key.clone(),
+                    signature: b.signature.signature.clone(),
+                });
+                let homomorphic_encrypted = b
+                    .homomorphic_encrypted
+                    .iter()
+                    .map(|he| proto::HomomorphicEncrypted {
+                        ciphertext: he.ciphertext.clone(),
+                        public_key: he.public_key.clone(),
+                    })
+                    .collect::<Vec<_>>();
+                let smart_contracts = b
+                    .smart_contracts
+                    .iter()
+                    .map(|sc| proto::SmartContract {
+                        contract_id: sc.contract_id.clone(),
+                        code: sc.code.clone(),
+                        storage: sc.storage.clone(),
+                        owner: sc.owner.clone(),
+                        gas_balance: sc.gas_balance,
+                    })
+                    .collect::<Vec<_>>();
+                let carbon_credentials = b
+                    .carbon_credentials
+                    .iter()
+                    .map(|cc| proto::CarbonOffsetCredential {
+                        id: cc.id.clone(),
+                        issuer_id: cc.issuer_id.clone(),
+                        beneficiary_node: cc.beneficiary_node.clone(),
+                        tonnes_co2_sequestered: cc.tonnes_co2_sequestered,
+                        project_id: cc.project_id.clone(),
+                        vintage_year: cc.vintage_year,
+                        verification_signature: cc.verification_signature.clone(),
+                        additionality_proof_hash: cc.additionality_proof_hash.clone(),
+                        issuer_reputation_score: cc.issuer_reputation_score,
+                        geospatial_consistency_score: cc.geospatial_consistency_score,
+                    })
+                    .collect::<Vec<_>>();
+                let pb = proto::QantoBlock {
+                    chain_id: b.chain_id,
+                    id: b.id.clone(),
+                    parents: b.parents.clone(),
+                    transactions,
+                    difficulty: b.difficulty,
+                    validator: b.validator.clone(),
+                    miner: b.miner.clone(),
+                    nonce: b.nonce,
+                    timestamp: b.timestamp,
+                    height: b.height,
+                    reward: b.reward,
+                    effort: b.effort,
+                    cross_chain_references,
+                    cross_chain_swaps,
+                    merkle_root: b.merkle_root.clone(),
+                    signature,
+                    homomorphic_encrypted,
+                    smart_contracts,
+                    carbon_credentials,
+                    epoch: b.epoch,
+                };
+                (proto::P2pPayloadType::Block as i32, pb.encode_to_vec())
+            }
+            NetworkMessageData::CarbonOffsetCredential(ref cc) => {
+                let pc = proto::CarbonOffsetCredential {
+                    id: cc.id.clone(),
+                    issuer_id: cc.issuer_id.clone(),
+                    beneficiary_node: cc.beneficiary_node.clone(),
+                    tonnes_co2_sequestered: cc.tonnes_co2_sequestered,
+                    project_id: cc.project_id.clone(),
+                    vintage_year: cc.vintage_year,
+                    verification_signature: cc.verification_signature.clone(),
+                    additionality_proof_hash: cc.additionality_proof_hash.clone(),
+                    issuer_reputation_score: cc.issuer_reputation_score,
+                    geospatial_consistency_score: cc.geospatial_consistency_score,
+                };
+                (proto::P2pPayloadType::Credential as i32, pc.encode_to_vec())
+            }
+            NetworkMessageData::TransactionBatch(ref txs) => {
+                let batch = proto::TransactionBatch {
+                    transactions: txs.iter().map(convert_internal_tx_to_proto).collect(),
+                };
+                (
+                    proto::P2pPayloadType::TransactionBatch as i32,
+                    batch.encode_to_vec(),
+                )
+            }
+            NetworkMessageData::State(ref blocks_map, ref utxos_map) => {
+                let blocks = blocks_map
+                    .values()
+                    .map(|b| {
+                        let transactions = b
+                            .transactions
+                            .iter()
+                            .map(convert_internal_tx_to_proto)
+                            .collect::<Vec<_>>();
+                        let cross_chain_references = b
+                            .cross_chain_references
+                            .iter()
+                            .map(|(cid, bid)| proto::CrossChainReference {
+                                chain_id: *cid,
+                                block_id: bid.clone(),
+                            })
+                            .collect::<Vec<_>>();
+                        let cross_chain_swaps = vec![];
+                        let signature = Some(proto::QuantumResistantSignature {
+                            signer_public_key: b.signature.signer_public_key.clone(),
+                            signature: b.signature.signature.clone(),
+                        });
+                        let homomorphic_encrypted = b
+                            .homomorphic_encrypted
+                            .iter()
+                            .map(|he| proto::HomomorphicEncrypted {
+                                ciphertext: he.ciphertext.clone(),
+                                public_key: he.public_key.clone(),
+                            })
+                            .collect::<Vec<_>>();
+                        let smart_contracts = b
+                            .smart_contracts
+                            .iter()
+                            .map(|sc| proto::SmartContract {
+                                contract_id: sc.contract_id.clone(),
+                                code: sc.code.clone(),
+                                storage: sc.storage.clone(),
+                                owner: sc.owner.clone(),
+                                gas_balance: sc.gas_balance,
+                            })
+                            .collect::<Vec<_>>();
+                        let carbon_credentials = b
+                            .carbon_credentials
+                            .iter()
+                            .map(|cc| proto::CarbonOffsetCredential {
+                                id: cc.id.clone(),
+                                issuer_id: cc.issuer_id.clone(),
+                                beneficiary_node: cc.beneficiary_node.clone(),
+                                tonnes_co2_sequestered: cc.tonnes_co2_sequestered,
+                                project_id: cc.project_id.clone(),
+                                vintage_year: cc.vintage_year,
+                                verification_signature: cc.verification_signature.clone(),
+                                additionality_proof_hash: cc.additionality_proof_hash.clone(),
+                                issuer_reputation_score: cc.issuer_reputation_score,
+                                geospatial_consistency_score: cc.geospatial_consistency_score,
+                            })
+                            .collect::<Vec<_>>();
+                        proto::QantoBlock {
+                            chain_id: b.chain_id,
+                            id: b.id.clone(),
+                            parents: b.parents.clone(),
+                            transactions,
+                            difficulty: b.difficulty,
+                            validator: b.validator.clone(),
+                            miner: b.miner.clone(),
+                            nonce: b.nonce,
+                            timestamp: b.timestamp,
+                            height: b.height,
+                            reward: b.reward,
+                            effort: b.effort,
+                            cross_chain_references,
+                            cross_chain_swaps,
+                            merkle_root: b.merkle_root.clone(),
+                            signature,
+                            homomorphic_encrypted,
+                            smart_contracts,
+                            carbon_credentials,
+                            epoch: b.epoch,
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let utxos = utxos_map
+                    .values()
+                    .map(convert_internal_utxo_to_proto)
+                    .collect::<Vec<_>>();
+                let snap = proto::StateSnapshot { blocks, utxos };
+                (proto::P2pPayloadType::State as i32, snap.encode_to_vec())
+            }
+            NetworkMessageData::StateRequest => {
+                // Not yet supported in protobuf path
+                warn!("Skipping unsupported protobuf payload for {}", log_info);
+                return Ok(());
+            }
+        };
+
+        let hmac_secret = NetworkMessage::get_hmac_secret();
+        let hmac = NetworkMessage::compute_hmac(&payload_bytes, &hmac_secret)?;
+        let signature = QuantumResistantSignature::sign(&self.node_qr_sk, &payload_bytes)
+            .map_err(|e| P2PError::QuantumSignature(e.to_string()))?;
+
+        let envelope = proto::P2pNetworkMessage {
+            payload_type,
+            payload_bytes,
+            hmac,
+            signature: Some(proto::QuantumResistantSignature {
+                signer_public_key: signature.signer_public_key,
+                signature: signature.signature,
+            }),
+        };
+        let msg_bytes = envelope.encode_to_vec();
 
         self.swarm
             .behaviour_mut()
             .gossipsub
-            .publish(topic.clone(), msg_bytes)
-            .map(|msg_id| {
-                MESSAGES_SENT.inc();
-                let mut log_msg = String::with_capacity(log_info.len() + 50);
-                log_msg.push_str("Broadcasted ");
-                log_msg.push_str(log_info);
-                log_msg.push_str(": ");
-                log_msg.push_str(&msg_id.to_string());
-                info!("{}", log_msg);
-            })
-            .map_err(P2PError::Broadcast)
+            .publish(topic.clone(), msg_bytes)?;
+        MESSAGES_SENT.inc();
+        let mut log_msg = String::with_capacity(log_info.len() + 50);
+        log_msg.push_str("Broadcasted ");
+        log_msg.push_str(log_info);
+        log_msg.push_str(": ");
+        info!("{}", log_msg);
+        Ok(())
     }
 
     /// Get the list of currently connected peer IDs
@@ -844,5 +1381,434 @@ impl P2PServer {
             .connected_peers()
             .map(|peer_id| peer_id.to_string())
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use libp2p::gossipsub::IdentTopic;
+    use libp2p::{gossipsub, identity, PeerId};
+    use prost::Message;
+    use qanto_rpc::server::generated as proto;
+    use serial_test::serial;
+    use std::collections::HashSet;
+    use std::sync::Arc;
+    use tokio::sync::mpsc;
+
+    fn gen_peer_id() -> PeerId {
+        let kp = identity::Keypair::generate_ed25519();
+        PeerId::from(kp.public())
+    }
+
+    fn make_rate_limiters_tx_1() -> GossipRateLimiters {
+        GossipRateLimiters {
+            block: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(10u32)))),
+            tx: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(1u32)))),
+            state: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(5u32)))),
+            credential: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(10u32)))),
+        }
+    }
+
+    fn make_default_rate_limiters() -> GossipRateLimiters {
+        GossipRateLimiters {
+            block: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(10u32)))),
+            tx: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(50u32)))),
+            state: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(5u32)))),
+            credential: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(20u32)))),
+        }
+    }
+
+    // Helper to construct a gossipsub::Message with our payload
+    fn make_message(topic: &str, data: Vec<u8>) -> gossipsub::Message {
+        // Note: Depending on libp2p version, Message fields are public and include
+        // source, data, sequence_number, topic.
+        gossipsub::Message {
+            source: None,
+            data,
+            sequence_number: None,
+            topic: IdentTopic::new(topic).into(),
+        }
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn valid_transaction_message_is_forwarded() {
+        let orig_secret = std::env::var("HMAC_SECRET").ok();
+        std::env::set_var("HMAC_SECRET", "test_secret");
+        let (_pk, sk) = crate::post_quantum_crypto::generate_pq_keypair(None).expect("pq keypair");
+        let tx = crate::transaction::Transaction::new_dummy();
+
+        // Build protobuf payload and envelope
+        let ptx = convert_internal_tx_to_proto(&tx);
+        let payload_bytes = ptx.encode_to_vec();
+        let hmac_secret = NetworkMessage::get_hmac_secret();
+        let hmac =
+            NetworkMessage::compute_hmac(&payload_bytes, &hmac_secret).expect("compute hmac");
+        let signature =
+            QuantumResistantSignature::sign(&sk, &payload_bytes).expect("sign network payload");
+        let msg = proto::P2pNetworkMessage {
+            payload_type: proto::P2pPayloadType::Transaction as i32,
+            payload_bytes,
+            hmac: hmac.clone(),
+            signature: Some(proto::QuantumResistantSignature {
+                signer_public_key: signature.signer_public_key.clone(),
+                signature: signature.signature.clone(),
+            }),
+        };
+
+        // Sanity-check: locally verify HMAC and signature match what the handler expects
+        let expected_hmac =
+            NetworkMessage::compute_hmac(&msg.payload_bytes, &hmac_secret).expect("expected hmac");
+        assert_eq!(
+            msg.hmac, expected_hmac,
+            "constructed HMAC should match expected"
+        );
+        let internal_sig = QuantumResistantSignature {
+            signer_public_key: signature.signer_public_key.clone(),
+            signature: signature.signature.clone(),
+        };
+        assert!(
+            internal_sig.verify(&msg.payload_bytes),
+            "constructed signature should verify"
+        );
+
+        let bytes = msg.encode_to_vec();
+        let message = make_message("/qanto/transactions/1", bytes);
+        let source = gen_peer_id();
+        let blacklist = Arc::new(RwLock::new(HashSet::new()));
+        let rate_limiters = make_default_rate_limiters();
+        let (cmd_tx, mut cmd_rx) = mpsc::channel(1);
+
+        P2PServer::static_process_gossip_message(
+            message,
+            source,
+            blacklist.clone(),
+            cmd_tx,
+            rate_limiters,
+        )
+        .await;
+
+        let cmd = cmd_rx.recv().await.expect("expected forwarded command");
+        match cmd {
+            P2PCommand::BroadcastTransaction(t) => assert_eq!(t.id, tx.id),
+            _ => panic!("unexpected command variant"),
+        }
+        assert!(!blacklist.read().await.contains(&source));
+        if let Some(s) = orig_secret {
+            std::env::set_var("HMAC_SECRET", s);
+        } else {
+            std::env::remove_var("HMAC_SECRET");
+        }
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn invalid_hmac_blacklists_peer() {
+        let orig_secret = std::env::var("HMAC_SECRET").ok();
+        std::env::set_var("HMAC_SECRET", "valid_secret");
+        let (_pk, sk) = crate::post_quantum_crypto::generate_pq_keypair(None).expect("pq keypair");
+        let tx = crate::transaction::Transaction::new_dummy();
+
+        let ptx = convert_internal_tx_to_proto(&tx);
+        let payload_bytes = ptx.encode_to_vec();
+        let hmac = NetworkMessage::compute_hmac(&payload_bytes, &NetworkMessage::get_hmac_secret())
+            .expect("hmac");
+        let signature = QuantumResistantSignature::sign(&sk, &payload_bytes).expect("sign");
+        let msg = proto::P2pNetworkMessage {
+            payload_type: proto::P2pPayloadType::Transaction as i32,
+            payload_bytes,
+            hmac,
+            signature: Some(proto::QuantumResistantSignature {
+                signer_public_key: signature.signer_public_key,
+                signature: signature.signature,
+            }),
+        };
+        let bytes = msg.encode_to_vec();
+
+        let message = make_message("/qanto/transactions/1", bytes);
+        let source = gen_peer_id();
+        let blacklist = Arc::new(RwLock::new(HashSet::new()));
+        let rate_limiters = make_default_rate_limiters();
+        let (cmd_tx, mut cmd_rx) = mpsc::channel(1);
+
+        // Change secret to break HMAC verification path
+        std::env::set_var("HMAC_SECRET", "invalid_secret");
+
+        P2PServer::static_process_gossip_message(
+            message,
+            source,
+            blacklist.clone(),
+            cmd_tx,
+            rate_limiters,
+        )
+        .await;
+
+        assert!(blacklist.read().await.contains(&source));
+        assert!(cmd_rx.try_recv().is_err());
+        if let Some(s) = orig_secret {
+            std::env::set_var("HMAC_SECRET", s);
+        } else {
+            std::env::remove_var("HMAC_SECRET");
+        }
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn tampered_signature_blacklists_peer() {
+        let orig_secret = std::env::var("HMAC_SECRET").ok();
+        std::env::set_var("HMAC_SECRET", "test_secret");
+        let (_pk, sk) = crate::post_quantum_crypto::generate_pq_keypair(None).expect("pq keypair");
+        let mut tx = crate::transaction::Transaction::new_dummy();
+        let ptx_valid = convert_internal_tx_to_proto(&tx);
+        let payload_bytes_valid = ptx_valid.encode_to_vec();
+        let hmac_valid =
+            NetworkMessage::compute_hmac(&payload_bytes_valid, &NetworkMessage::get_hmac_secret())
+                .expect("hmac");
+        let signature_valid =
+            QuantumResistantSignature::sign(&sk, &payload_bytes_valid).expect("sign");
+
+        // Tamper the payload to invalidate signature
+        tx.amount = tx.amount.saturating_add(1);
+        let ptx_tampered = convert_internal_tx_to_proto(&tx);
+        let payload_bytes_tampered = ptx_tampered.encode_to_vec();
+        let msg_tampered = proto::P2pNetworkMessage {
+            payload_type: proto::P2pPayloadType::Transaction as i32,
+            payload_bytes: payload_bytes_tampered,
+            hmac: hmac_valid, // keep HMAC consistent with secret
+            signature: Some(proto::QuantumResistantSignature {
+                signer_public_key: signature_valid.signer_public_key,
+                signature: signature_valid.signature,
+            }),
+        };
+
+        let bytes = msg_tampered.encode_to_vec();
+        let message = make_message("/qanto/transactions/1", bytes);
+        let source = gen_peer_id();
+        let blacklist = Arc::new(RwLock::new(HashSet::new()));
+        let rate_limiters = make_default_rate_limiters();
+        let (cmd_tx, mut cmd_rx) = mpsc::channel(1);
+
+        P2PServer::static_process_gossip_message(
+            message,
+            source,
+            blacklist.clone(),
+            cmd_tx,
+            rate_limiters,
+        )
+        .await;
+
+        assert!(blacklist.read().await.contains(&source));
+        assert!(cmd_rx.try_recv().is_err());
+        if let Some(s) = orig_secret {
+            std::env::set_var("HMAC_SECRET", s);
+        } else {
+            std::env::remove_var("HMAC_SECRET");
+        }
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn rate_limit_exceeded_blacklists_peer() {
+        let orig_secret = std::env::var("HMAC_SECRET").ok();
+        std::env::set_var("HMAC_SECRET", "test_secret");
+        let (_pk, sk) = crate::post_quantum_crypto::generate_pq_keypair(None).expect("pq keypair");
+        let tx = crate::transaction::Transaction::new_dummy();
+        let ptx = convert_internal_tx_to_proto(&tx);
+        let payload_bytes = ptx.encode_to_vec();
+        let hmac = NetworkMessage::compute_hmac(&payload_bytes, &NetworkMessage::get_hmac_secret())
+            .expect("hmac");
+        let signature = QuantumResistantSignature::sign(&sk, &payload_bytes).expect("sign");
+        let msg = proto::P2pNetworkMessage {
+            payload_type: proto::P2pPayloadType::Transaction as i32,
+            payload_bytes,
+            hmac,
+            signature: Some(proto::QuantumResistantSignature {
+                signer_public_key: signature.signer_public_key,
+                signature: signature.signature,
+            }),
+        };
+        let bytes = msg.encode_to_vec();
+
+        // Sanity-check: verify constructed message authentication before sending
+        let expected_hmac =
+            NetworkMessage::compute_hmac(&msg.payload_bytes, &NetworkMessage::get_hmac_secret())
+                .expect("expected hmac");
+        assert_eq!(msg.hmac, expected_hmac, "HMAC matches expected");
+        let internal_sig = QuantumResistantSignature {
+            signer_public_key: msg.signature.as_ref().unwrap().signer_public_key.clone(),
+            signature: msg.signature.as_ref().unwrap().signature.clone(),
+        };
+        assert!(
+            internal_sig.verify(&msg.payload_bytes),
+            "signature verifies"
+        );
+
+        let source = gen_peer_id();
+        let blacklist = Arc::new(RwLock::new(HashSet::new()));
+        let rate_limiters = make_rate_limiters_tx_1();
+        let (cmd_tx, mut cmd_rx) = mpsc::channel(2);
+
+        let m1 = make_message("/qanto/transactions/1", bytes.clone());
+        P2PServer::static_process_gossip_message(
+            m1,
+            source,
+            blacklist.clone(),
+            cmd_tx.clone(),
+            rate_limiters.clone(),
+        )
+        .await;
+        let cmd1 = tokio::time::timeout(Duration::from_millis(200), cmd_rx.recv())
+            .await
+            .expect("timeout waiting for first command")
+            .expect("expected first command");
+        match cmd1 {
+            P2PCommand::BroadcastTransaction(_) => {}
+            _ => panic!("unexpected"),
+        }
+
+        // Small delay to ensure the rate limiter clock registers the first event
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+        let m2 = make_message("/qanto/transactions/1", bytes.clone());
+        P2PServer::static_process_gossip_message(
+            m2,
+            source,
+            blacklist.clone(),
+            cmd_tx.clone(),
+            rate_limiters.clone(),
+        )
+        .await;
+
+        assert!(blacklist.read().await.contains(&source));
+        if let Some(s) = orig_secret {
+            std::env::set_var("HMAC_SECRET", s);
+        } else {
+            std::env::remove_var("HMAC_SECRET");
+        }
+    }
+}
+
+fn convert_proto_block(pb: proto::QantoBlock) -> Result<crate::qantodag::QantoBlock, String> {
+    use crate::qantodag::{CrossChainSwap, SmartContract, SwapState};
+    use crate::types::{HomomorphicEncrypted, QuantumResistantSignature};
+
+    // Transactions
+    let transactions = pb
+        .transactions
+        .into_iter()
+        .map(convert_proto_tx)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Cross-chain references
+    let cross_chain_references = pb
+        .cross_chain_references
+        .into_iter()
+        .map(|r| (r.chain_id, r.block_id))
+        .collect::<Vec<_>>();
+
+    // Cross-chain swaps
+    let cross_chain_swaps = pb
+        .cross_chain_swaps
+        .into_iter()
+        .map(|s| {
+            let state = match s.state {
+                x if x == proto::SwapState::Initiated as i32 => SwapState::Initiated,
+                x if x == proto::SwapState::Redeemed as i32 => SwapState::Redeemed,
+                x if x == proto::SwapState::Refunded as i32 => SwapState::Refunded,
+                _ => return Err(format!("Unknown SwapState value: {}", s.state)),
+            };
+            Ok(CrossChainSwap {
+                swap_id: s.swap_id,
+                source_chain: s.source_chain,
+                target_chain: s.target_chain,
+                amount: s.amount,
+                initiator: s.initiator,
+                responder: s.responder,
+                timelock: s.timelock,
+                state,
+                secret_hash: s.secret_hash,
+                secret: s.secret,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    // Signature
+    let signature = match pb.signature {
+        Some(sig) => QuantumResistantSignature {
+            signer_public_key: sig.signer_public_key,
+            signature: sig.signature,
+        },
+        None => return Err("Missing block signature".to_string()),
+    };
+
+    // Homomorphic encrypted data
+    let homomorphic_encrypted = pb
+        .homomorphic_encrypted
+        .into_iter()
+        .map(|h| HomomorphicEncrypted {
+            ciphertext: h.ciphertext,
+            public_key: h.public_key,
+        })
+        .collect::<Vec<_>>();
+
+    // Smart contracts
+    let smart_contracts = pb
+        .smart_contracts
+        .into_iter()
+        .map(|sc| SmartContract {
+            contract_id: sc.contract_id,
+            code: sc.code,
+            storage: sc.storage,
+            owner: sc.owner,
+            gas_balance: sc.gas_balance,
+        })
+        .collect::<Vec<_>>();
+
+    // Carbon credentials
+    let carbon_credentials = pb
+        .carbon_credentials
+        .into_iter()
+        .map(convert_proto_credential)
+        .collect::<Vec<_>>();
+
+    Ok(crate::qantodag::QantoBlock {
+        chain_id: pb.chain_id,
+        id: pb.id,
+        parents: pb.parents,
+        transactions,
+        difficulty: pb.difficulty,
+        validator: pb.validator,
+        miner: pb.miner,
+        nonce: pb.nonce,
+        timestamp: pb.timestamp,
+        height: pb.height,
+        reward: pb.reward,
+        effort: pb.effort,
+        cross_chain_references,
+        cross_chain_swaps,
+        merkle_root: pb.merkle_root,
+        signature,
+        homomorphic_encrypted,
+        smart_contracts,
+        carbon_credentials,
+        epoch: pb.epoch,
+    })
+}
+
+fn convert_proto_credential(
+    pc: proto::CarbonOffsetCredential,
+) -> crate::saga::CarbonOffsetCredential {
+    crate::saga::CarbonOffsetCredential {
+        id: pc.id,
+        issuer_id: pc.issuer_id,
+        beneficiary_node: pc.beneficiary_node,
+        tonnes_co2_sequestered: pc.tonnes_co2_sequestered,
+        project_id: pc.project_id,
+        vintage_year: pc.vintage_year,
+        verification_signature: pc.verification_signature,
+        additionality_proof_hash: pc.additionality_proof_hash,
+        issuer_reputation_score: pc.issuer_reputation_score,
+        geospatial_consistency_score: pc.geospatial_consistency_score,
     }
 }

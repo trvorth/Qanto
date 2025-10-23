@@ -13,7 +13,7 @@ repository = "https://github.com/trvorth/qanto"
 resolver = "2"
 members = [
     ".",
-    "myblockchain",
+    "myblockchain", "qanto-rpc",
     "tools/relayer"
 ]
 
@@ -37,11 +37,13 @@ ark-relations = { path = "patches/ark-relations" }
 # TODO: Replace with secure homomorphic encryption implementation
 # ed25519-dalek = "2.1.0" # Replaced with qanto_compat
 qanto-core = { path = "qanto-core" }
+qanto-rpc = { path = "qanto-rpc" }
 tfhe = { version = "1.4.1", features = ["boolean", "shortint", "integer"] }
 libp2p = { version = "0.56.0", features = ["tokio", "tcp", "noise", "yamux", "identify", "ping", "kad", "mdns", "gossipsub", "request-response", "autonat", "relay", "dcutr", "upnp", "macros"] }
 
 # --- SAGA Analytics (AI dependencies removed for production hardening) ---
 # Removed: tch (PyTorch), ndarray for memory optimization
+decision_tree = "0.1"
 
 # --- Core Blockchain & Networking (Qanto-Native) ---
 my-blockchain = { path = "myblockchain" }
@@ -98,6 +100,7 @@ chrono = { version = "0.4.38", features = ["serde"] }
 sysinfo = "0.30.13"
 rayon = "1.10.0"
 bytes = "1.6.0"
+prost = "0.12.3"
 num-bigint = "0.4.4"
 num-traits = "0.2.17"
 
@@ -132,8 +135,10 @@ bellman = { version = "0.14.0", optional = true }
 bls12_381 = { version = "0.8.0", optional = true }
 ff = { version = "0.13.0", optional = true }
 ocl = { version = "0.19.7", optional = true }
+opencl3 = { version = "0.9.3", optional = true, features = ["CL_VERSION_1_2"] }
 num_cpus = "1.16.0"
 futures-util = { version = "0.3.31", features = ["sink"] }
+tokio-tungstenite = "0.21"
 
 # --- Arkworks ZK Dependencies (Updated for security) ---
 ark-groth16 = { version = "0.5.0", optional = true }
@@ -166,7 +171,7 @@ predicates = "3.1.0"
 
 [features]
 default = ["zk"]
-gpu = ["ocl", "my-blockchain/gpu"]
+gpu = ["ocl", "opencl3", "my-blockchain/gpu"]
 zk = [
   "my-blockchain/zk",
   "dep:bellman",
@@ -225,12 +230,13 @@ path = "src/performance_benchmark.rs"
 
 # --- Build Profiles ---
 [profile.release]
-lto = true           # Enable Link-Time Optimization for whole-program optimization
+lto = "thin"         # Faster builds with near-identical runtime performance
 codegen-units = 1    # Maximize optimization potential at the cost of compile time
 strip = true         # Remove debugging symbols to reduce binary size
 panic = "abort"      # Abort on panic for smaller and faster binaries
 opt-level = 3
+incremental = false  # Ensure consistent optimized builds
 
 [profile.dev]
-# Treat warnings as errors in development
+opt-level = 1        # Slightly optimize dev builds for realistic performance
 rustflags = ["-D", "warnings"]

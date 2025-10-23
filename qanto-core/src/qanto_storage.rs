@@ -395,62 +395,20 @@ impl StorageSegment {
             ));
         }
 
-        // Read original size
+        // Read original size from QCMP header
         let original_size = u32::from_le_bytes([data[4], data[5], data[6], data[7]]) as usize;
 
-        let mut decompressed = Vec::with_capacity(original_size);
-        let mut pos = 8; // Skip header and size
-
-        while pos < data.len() {
-            let token = data[pos];
-            pos += 1;
-
-            if token & 0x80 != 0 {
-                // Match: decode distance and length
-                if pos + 2 >= data.len() {
-                    return Err(QantoStorageError::Corruption(
-                        "Truncated match data".to_string(),
-                    ));
-                }
-
-                let match_len = (token & 0x7F) as usize;
-                let distance = u16::from_le_bytes([data[pos], data[pos + 1]]) as usize;
-                pos += 2;
-
-                if distance == 0 || distance > decompressed.len() {
-                    return Err(QantoStorageError::Corruption(
-                        "Invalid match distance".to_string(),
-                    ));
-                }
-
-                let match_start = decompressed.len() - distance;
-                for i in 0..match_len {
-                    let byte = decompressed[match_start + (i % distance)];
-                    decompressed.push(byte);
-                }
-            } else {
-                // Literals: copy bytes directly
-                let literal_len = token as usize;
-                if pos + literal_len > data.len() {
-                    return Err(QantoStorageError::Corruption(
-                        "Truncated literal data".to_string(),
-                    ));
-                }
-
-                decompressed.extend_from_slice(&data[pos..pos + literal_len]);
-                pos += literal_len;
-            }
-        }
-
-        if decompressed.len() != original_size {
+        // Ensure we have enough bytes after the header
+        if data.len() < 8 + original_size {
             return Err(QantoStorageError::Corruption(format!(
-                "Decompressed size mismatch: expected {}, got {}",
+                "Compressed payload truncated: expected {} bytes, have {}",
                 original_size,
-                decompressed.len()
+                data.len() - 8
             )));
         }
 
-        Ok(decompressed)
+        // Current compressor stores raw bytes after QCMP header; return them directly
+        Ok(data[8..8 + original_size].to_vec())
     }
 }
 

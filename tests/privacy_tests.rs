@@ -62,7 +62,6 @@ async fn test_stealth_address_generation() -> Result<(), PrivacyError> {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_confidential_transaction_creation() -> Result<(), PrivacyError> {
     let test_future = async {
         let privacy_engine = create_test_privacy_engine().await?;
@@ -104,6 +103,12 @@ async fn test_confidential_transaction_creation() -> Result<(), PrivacyError> {
 
         assert!(!confidential_tx.encrypted_inputs.is_empty());
         assert!(!confidential_tx.encrypted_outputs.is_empty());
+
+        // New: verify the full confidential transaction
+        let verified = privacy_engine
+            .verify_confidential_transaction(&confidential_tx)
+            .await?;
+        assert!(verified);
 
         Ok::<(), PrivacyError>(())
     };
@@ -162,7 +167,6 @@ async fn test_quantum_resistant_features() -> Result<(), PrivacyError> {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_ring_signature_generation_optimized() -> Result<(), PrivacyError> {
     let test_future = async {
         let privacy_engine = create_test_privacy_engine().await?;
@@ -204,6 +208,19 @@ async fn test_ring_signature_generation_optimized() -> Result<(), PrivacyError> 
         assert!(!confidential_tx.ring_signature.signature_data.is_empty());
         assert!(!confidential_tx.ring_signature.ring_members.is_empty());
         assert_eq!(confidential_tx.ring_signature.privacy_level, 3);
+
+        // New: verify the ring signature specifically
+        // Deprecated: direct ring signature verification is private; use full tx verify
+        // let rs_valid = privacy_engine
+        //     .verify_ring_signature(&confidential_tx.ring_signature)
+        //     .await?;
+        // assert!(rs_valid);
+
+        // Verify full confidential transaction as it includes ring signature checks
+        let verified_full = privacy_engine
+            .verify_confidential_transaction(&confidential_tx)
+            .await?;
+        assert!(verified_full);
 
         Ok::<(), PrivacyError>(())
     };

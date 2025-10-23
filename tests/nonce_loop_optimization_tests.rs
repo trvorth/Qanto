@@ -35,6 +35,7 @@ fn create_test_dag() -> Arc<QantoDAG> {
         initial_validator: "test_validator".to_string(),
         target_block_time: 60,
         num_chains: 1,
+        dev_fee_rate: 0.10,
     };
 
     QantoDAG::new(dag_config, saga, storage, LoggingConfig::default())

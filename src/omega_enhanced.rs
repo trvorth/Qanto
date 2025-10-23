@@ -1111,6 +1111,7 @@ pub mod enhanced_simulation {
             num_chains: 1,
             initial_validator: "mock_validator".to_string(),
             target_block_time: 10000, // 10 seconds in milliseconds
+            dev_fee_rate: 0.10,
         };
         let mock_saga = Arc::new(PalletSaga::new(
             #[cfg(feature = "infinite-strata")]

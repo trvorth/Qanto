@@ -43,7 +43,9 @@ const MAX_METADATA_VALUE_LEN: usize = 256;
 // --- New Dynamic Fee Structure ---
 // Thresholds are defined in the smallest units of QAN for precision.
 /// The number of smallest units in one QAN.
-pub const SMALLEST_UNITS_PER_QAN: u64 = 1_000_000_000;
+pub const SMALLEST_UNITS_PER_QAN: u64 = 1_000_000;
+/// The number of decimals per QAN when formatting base units.
+pub const DECIMALS_PER_QAN: usize = 6;
 /// The threshold for the first fee tier (under 1,000,000 QAN).
 pub const FEE_TIER1_THRESHOLD: u64 = 1_000_000 * SMALLEST_UNITS_PER_QAN;
 /// The threshold for the second fee tier (1M to 10M QAN).
@@ -965,5 +967,32 @@ impl Zeroize for Transaction {
 impl Drop for Transaction {
     fn drop(&mut self) {
         self.zeroize();
+    }
+}
+
+impl Transaction {
+    pub fn verify_signatures_batch_parallel(transactions: &[Transaction]) -> Vec<bool> {
+        use rayon::prelude::*;
+        transactions
+            .par_iter()
+            .map(|tx| {
+                // Construct signing payload like verify_signature does
+                let signing_payload = TransactionSigningPayload {
+                    sender: &tx.sender,
+                    receiver: &tx.receiver,
+                    amount: tx.amount,
+                    fee: tx.fee,
+                    inputs: &tx.inputs,
+                    outputs: &tx.outputs,
+                    metadata: &tx.metadata,
+                    timestamp: tx.timestamp,
+                };
+
+                match Self::serialize_for_signing(&signing_payload) {
+                    Ok(bytes) => QuantumResistantSignature::verify(&tx.signature, &bytes),
+                    Err(_) => false,
+                }
+            })
+            .collect()
     }
 }

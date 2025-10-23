@@ -318,9 +318,15 @@ impl Miner {
             return Err(MiningError::InvalidAddress(error_msg).into());
         }
 
-        let effective_use_gpu = config.use_gpu && cfg!(feature = "gpu");
-        if config.use_gpu && !effective_use_gpu {
-            warn!("GPU mining enabled in config but 'gpu' feature is not compiled. Disabling GPU for this session.");
+        let compiled_gpu = cfg!(feature = "gpu");
+        let effective_use_gpu = config.use_gpu && compiled_gpu;
+        // Explicit startup logs for GPU configuration scenarios
+        if compiled_gpu && config.use_gpu {
+            info!(target = "qanto::miner", "GPU feature compiled and 'gpu_enabled' is true in config.toml. Activating GPU miner.");
+        } else if compiled_gpu && !config.use_gpu {
+            info!(target = "qanto::miner", "GPU feature is compiled, but 'gpu_enabled' is false in config.toml. Defaulting to CPU miner.");
+        } else if !compiled_gpu && config.use_gpu {
+            warn!(target = "qanto::miner", "'gpu_enabled = true' in config.toml, but the node was not compiled with the 'gpu' feature. Defaulting to CPU miner. To enable GPU support, please re-compile using: cargo build --release --features gpu");
         }
         let effective_zk_enabled = config.zk_enabled && cfg!(feature = "zk");
         if config.zk_enabled && !effective_zk_enabled {
@@ -330,16 +336,10 @@ impl Miner {
         // Configure QanHash miner with optimal settings for high throughput
         // Try GPU first if available and enabled, then fallback to CPU
         let mining_device = if effective_use_gpu {
-            // Check if CUDA is available
             #[cfg(feature = "gpu")]
             {
-                if Self::is_cuda_available() {
-                    info!("CUDA detected, enabling GPU mining");
-                    MiningDevice::Gpu
-                } else {
-                    warn!("GPU mining requested but CUDA not available, falling back to CPU");
-                    MiningDevice::Cpu
-                }
+                info!("GPU feature enabled; selecting Auto device (Metal/CUDA/OpenCL).");
+                MiningDevice::Auto
             }
             #[cfg(not(feature = "gpu"))]
             {
@@ -361,7 +361,7 @@ impl Miner {
         let qanhash_config = MiningConfig {
             device: mining_device,
             thread_count: Some(effective_threads),
-            batch_size: Some(1024), // Optimized batch size for high throughput
+            batch_size: Some(1024 * 1024), // Use 1M for GPU throughput
             max_iterations: Some(config.target_block_time * 1_000_000), // Limit iterations based on target block time
             enable_simd: true,                                          // Enable SIMD optimizations
         };
@@ -692,13 +692,14 @@ impl Miner {
 
         // Try GPU mining first if available and enabled
         #[cfg(feature = "gpu")]
-        if self._use_gpu && Self::is_cuda_available() {
+        if self._use_gpu {
             match self.mine_gpu_with_cancellation(
                 &context.block_template,
                 &context.target_hash_value,
                 start_time,
                 adaptive_timeout,
                 cancellation_token.clone(),
+                qdag.clone(),
             ) {
                 Ok(MiningResult::Found { nonce, hash }) => {
                     return self.process_mining_result(
@@ -802,18 +803,45 @@ impl Miner {
         start_time: SystemTime,
         timeout_duration: Duration,
         cancellation_token: tokio_util::sync::CancellationToken,
+        qdag: Arc<Vec<[u8; 128]>>,
     ) -> Result<MiningResult, MiningError> {
-        // Silence unused variable warnings in placeholder implementation
-        let _ = block_template;
-        let _ = target_hash_bytes;
-        let _ = start_time;
-        let _ = timeout_duration;
-        let _ = cancellation_token;
+        // Immediate cancellation check
+        if cancellation_token.is_cancelled() {
+            return Ok(MiningResult::Cancelled);
+        }
 
-        // GPU mining implementation would go here
-        // For now, return Cancelled to indicate fallback to CPU
-        warn!("[GPU-MINE] GPU mining implementation not yet complete, falling back to CPU");
-        Ok(MiningResult::Cancelled)
+        // Prepare header and target for GPU mining
+        let (header_hash, target) = self.prepare_mining_data(block_template, target_hash_bytes)?;
+
+        // Start from deterministic nonce for parallel workers
+        let mut nonce = get_nonce_with_deterministic_fallback();
+        const GPU_BATCH_SIZE: u64 = 1024 * 1024; // Align with configured batch size
+
+        loop {
+            // Cancellation and timeout checks
+            if cancellation_token.is_cancelled() {
+                return Ok(MiningResult::Cancelled);
+            }
+            if start_time.elapsed()? >= timeout_duration {
+                return Ok(MiningResult::Timeout);
+            }
+
+            // Perform a GPU mining batch using precomputed DAG
+            if let Some((found_nonce, hash)) = self
+                .qanhash_miner
+                .mine_with_dag(&header_hash, nonce, &target, qdag.clone())
+            {
+                return Ok(MiningResult::Found { nonce: found_nonce, hash });
+            }
+
+            // Advance nonce space and record progress
+            nonce = nonce.wrapping_add(GPU_BATCH_SIZE);
+            self.total_hashes.fetch_add(GPU_BATCH_SIZE, Ordering::Relaxed);
+            increment_hash_attempts(GPU_BATCH_SIZE);
+
+            // Yield to other threads to keep event loop responsive
+            std::thread::yield_now();
+        }
     }
 
     /// New async-optimized CPU mining with improved cancellation responsiveness

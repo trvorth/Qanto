@@ -694,7 +694,7 @@ impl QantoRelayer {
                     transaction_hash: format!("0x{:064x}", rng.gen::<u128>()),
                     security_hash,
                     quantum_signature: if config.quantum_verification_enabled {
-                        Some(vec![rng.gen::<u8>(); 64])
+                        Some((0..64).map(|_| rng.gen::<u8>()).collect())
                     } else {
                         None
                     },
@@ -787,27 +787,26 @@ impl QantoRelayer {
 
         let mut rng = rand::thread_rng();
 
-        let validator_signatures = vec![
-            ValidatorSignature {
-                validator_address: format!("0x{:040x}", rng.gen::<u128>()),
-                signature: vec![rng.gen::<u8>(); 64],
-                public_key: vec![rng.gen::<u8>(); 32],
-                voting_power: rng.gen_range(1000..10000),
-            },
-            ValidatorSignature {
-                validator_address: format!("0x{:040x}", rng.gen::<u128>()),
-                signature: vec![rng.gen::<u8>(); 64],
-                public_key: vec![rng.gen::<u8>(); 32],
-                voting_power: rng.gen_range(1000..10000),
-            },
-        ];
+        let sig_a = ValidatorSignature {
+            validator_address: format!("0x{:040x}", rng.gen::<u128>()),
+            signature: (0..64).map(|_| rng.gen::<u8>()).collect::<Vec<u8>>(),
+            public_key: (0..32).map(|_| rng.gen::<u8>()).collect::<Vec<u8>>(),
+            voting_power: rng.gen_range(1000u64..10000u64),
+        };
+        let sig_b = ValidatorSignature {
+            validator_address: format!("0x{:040x}", rng.gen::<u128>()),
+            signature: (0..64).map(|_| rng.gen::<u8>()).collect::<Vec<u8>>(),
+            public_key: (0..32).map(|_| rng.gen::<u8>()).collect::<Vec<u8>>(),
+            voting_power: rng.gen_range(1000u64..10000u64),
+        };
+        let validator_signatures: Vec<ValidatorSignature> = vec![sig_a, sig_b];
 
         Ok(ProofData {
-            merkle_proof: vec![rng.gen::<u8>(); 256],
-            block_header: vec![rng.gen::<u8>(); 128],
-            consensus_proof: vec![rng.gen::<u8>(); 512],
+            merkle_proof: (0..256).map(|_| rng.gen::<u8>()).collect(),
+            block_header: (0..128).map(|_| rng.gen::<u8>()).collect(),
+            consensus_proof: (0..512).map(|_| rng.gen::<u8>()).collect(),
             quantum_proof: if config.quantum_verification_enabled {
-                Some(vec![rng.gen::<u8>(); 128])
+                Some((0..128).map(|_| rng.gen::<u8>()).collect())
             } else {
                 None
             },
@@ -954,7 +953,7 @@ fn load_config() -> Result<RelayerConfig> {
 
     Ok(RelayerConfig {
         source_chain_rpc: "https://rpc.qanto-testnet.com".to_string(),
-        target_chain_rpc: "https://goerli.infura.io/v3/YOUR_PROJECT_ID".to_string(),
+        target_chain_rpc: "https://goerli.infura.io/v3/PROJECT_ID".to_string(),
         relayer_private_key: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
             .to_string(),
         contract_address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6".to_string(),
@@ -983,8 +982,8 @@ async fn main() -> Result<()> {
 
     // Parse command line arguments
     let _matches = Command::new("Qanto Cross-Chain Relayer")
-        .version("2.0.0")
-        .author("Trevor <trvorth@gmail.com>")
+        .version("1.0.0")
+        .author("Trevor <trvorth@qanto.org>")
         .about("Production-ready cross-chain packet relayer for Qanto Protocol")
         .arg(
             Arg::new("config")
@@ -1009,7 +1008,7 @@ async fn main() -> Result<()> {
     // Create and start relayer
     let relayer = QantoRelayer::new(config);
 
-    info!("Qanto Cross-Chain Relayer v2.0.0 starting...");
+    info!("Qanto Cross-Chain Relayer v1.0.0 starting...");
 
     // Start relayer (this will run until shutdown signal)
     relayer.start().await?;

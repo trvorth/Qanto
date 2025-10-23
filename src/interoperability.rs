@@ -1100,6 +1100,17 @@ impl InteroperabilityCoordinator {
                     swap_id: swap_id.clone(),
                 })?;
 
+        // Enforce timeout before processing redemption
+        let current_timestamp = chrono::Utc::now().timestamp() as u64;
+        if current_timestamp >= swap.timeout {
+            swap.state = SwapState::Expired;
+            warn!("Atomic swap expired before redeem: {}", swap_id);
+            return Err(InteroperabilityError::ValidationError {
+                field: "timeout".to_string(),
+                reason: "Swap expired".to_string(),
+            });
+        }
+
         if swap.state != SwapState::Participated {
             return Err(InteroperabilityError::InvalidSwapState {
                 expected: "Participated".to_string(),
@@ -1118,6 +1129,54 @@ impl InteroperabilityCoordinator {
         swap.secret = Some(secret);
         swap.state = SwapState::Redeemed;
         info!("Redeemed atomic swap: {}", swap_id);
+        Ok(())
+    }
+
+    pub async fn refund_swap(
+        &self,
+        swap_id: String,
+        requester: String,
+    ) -> InteroperabilityResult<()> {
+        let mut swaps = self.atomic_swaps.write().await;
+        let swap =
+            swaps
+                .get_mut(&swap_id)
+                .ok_or_else(|| InteroperabilityError::AtomicSwapNotFound {
+                    swap_id: swap_id.clone(),
+                })?;
+
+        // Only allow refund after expiration and if not already redeemed or refunded
+        let current_timestamp = chrono::Utc::now().timestamp() as u64;
+        if current_timestamp < swap.timeout {
+            return Err(InteroperabilityError::ValidationError {
+                field: "timeout".to_string(),
+                reason: "Swap not yet expired".to_string(),
+            });
+        }
+
+        // Mark explicitly as expired if not already
+        if swap.state != SwapState::Expired {
+            swap.state = SwapState::Expired;
+        }
+
+        // Only initiator can refund
+        if requester != swap.initiator {
+            return Err(InteroperabilityError::ValidationError {
+                field: "requester".to_string(),
+                reason: "Only initiator may refund expired swap".to_string(),
+            });
+        }
+
+        // Cannot refund if already redeemed
+        if swap.secret.is_some() || matches!(swap.state, SwapState::Redeemed) {
+            return Err(InteroperabilityError::InvalidSwapState {
+                expected: "Expired".to_string(),
+                actual: format!("{:?}", swap.state),
+            });
+        }
+
+        swap.state = SwapState::Refunded;
+        info!("Refunded atomic swap: {} by {}", swap_id, requester);
         Ok(())
     }
 
@@ -1508,10 +1567,48 @@ impl InteroperabilityCoordinator {
             }
         }
 
-        // Verify signature (simplified)
-        if header.signature.is_empty() {
+        // Verify post-quantum signature against header payload
+        // Construct canonical message bytes for signing
+        let mut msg = Vec::new();
+        msg.extend_from_slice(client.client_state.chain_id.as_bytes());
+        msg.push(b':');
+        msg.extend_from_slice(&header.height.revision_number.to_be_bytes());
+        msg.push(b':');
+        msg.extend_from_slice(&header.height.revision_height.to_be_bytes());
+        msg.push(b':');
+        msg.extend_from_slice(&header.consensus_state.commitment_root);
+        msg.push(b':');
+        msg.extend_from_slice(&header.consensus_state.next_validators_hash);
+        let message_hash = qanto_hash(&msg).as_bytes().to_vec();
+
+        // Build PQ public key and signature
+        let public_key = QantoPQPublicKey::from_bytes(&header.validator_set).map_err(|e| {
+            InteroperabilityError::InvalidHeader {
+                reason: format!("Invalid validator public key: {e}"),
+            }
+        })?;
+        let pq_sig = QantoPQSignature::from_bytes(&header.signature).map_err(|e| {
+            InteroperabilityError::InvalidHeader {
+                reason: format!("Invalid header signature: {e}"),
+            }
+        })?;
+
+        // Verify signature
+        public_key.verify(&message_hash, &pq_sig).map_err(|e| {
+            InteroperabilityError::InvalidHeader {
+                reason: format!("Header signature verification failed: {e}"),
+            }
+        })?;
+
+        // Ensure signer is part of the trusted validator set
+        let pk_bytes = public_key.as_bytes();
+        if !header
+            .trusted_validators
+            .windows(pk_bytes.len())
+            .any(|w| w == pk_bytes)
+        {
             return Err(InteroperabilityError::InvalidHeader {
-                reason: "Header signature is required".to_string(),
+                reason: "Signer not in trusted validator set".to_string(),
             });
         }
 
@@ -2140,3 +2237,413 @@ pub struct CrossChainMessageParams {
 
 // Use unified metrics system
 pub use crate::metrics::QantoMetrics as InteroperabilityMetrics;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::performance_optimizations::QantoDAGOptimizations;
+    use crate::post_quantum_crypto::{generate_pq_keypair, pq_sign};
+    use my_blockchain::qanto_hash;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+    use uuid::Uuid;
+
+    fn build_light_client(chain_id: &str, latest_height: Height, prev_ts: u64) -> LightClient {
+        let mut consensus_states = HashMap::new();
+        consensus_states.insert(
+            latest_height.clone(),
+            ConsensusState {
+                timestamp: prev_ts,
+                commitment_root: vec![1, 2, 3],
+                next_validators_hash: vec![4, 5, 6],
+            },
+        );
+        LightClient {
+            client_id: "clientA".to_string(),
+            client_type: ClientType::Qanto,
+            latest_height: latest_height.clone(),
+            frozen_height: None,
+            consensus_states,
+            client_state: ClientState {
+                chain_id: chain_id.to_string(),
+                trust_level: TrustLevel {
+                    numerator: 1,
+                    denominator: 3,
+                },
+                trusting_period: 1200,
+                unbonding_period: 2400,
+                max_clock_drift: 120,
+                frozen_height: None,
+                latest_height,
+                proof_specs: vec![],
+            },
+        }
+    }
+
+    async fn build_coordinator() -> InteroperabilityCoordinator {
+        let dag = Arc::new(RwLock::new(QantoDAG::new_dummy_for_verification()));
+        let db_path = std::env::temp_dir().join(format!("interop_test_{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&db_path).unwrap();
+        InteroperabilityCoordinator::new(dag, &db_path)
+            .await
+            .unwrap()
+    }
+
+    fn canonical_message_bytes(
+        chain_id: &str,
+        height: &Height,
+        commitment_root: &[u8],
+        next_validators_hash: &[u8],
+    ) -> Vec<u8> {
+        let mut msg = Vec::new();
+        msg.extend_from_slice(chain_id.as_bytes());
+        msg.push(b':');
+        msg.extend_from_slice(&height.revision_number.to_be_bytes());
+        msg.push(b':');
+        msg.extend_from_slice(&height.revision_height.to_be_bytes());
+        msg.push(b':');
+        msg.extend_from_slice(commitment_root);
+        msg.push(b':');
+        msg.extend_from_slice(next_validators_hash);
+        msg
+    }
+
+    #[tokio::test]
+    async fn verify_client_header_valid_signature() {
+        let coord = build_coordinator().await;
+        let latest_height = Height {
+            revision_number: 1,
+            revision_height: 10,
+        };
+        let client = build_light_client("qanto-1", latest_height.clone(), 1000);
+
+        let target_height = Height {
+            revision_number: 1,
+            revision_height: 11,
+        };
+        let commitment_root = vec![7, 8, 9];
+        let next_validators_hash = vec![10, 11, 12];
+
+        let (pk, sk) = generate_pq_keypair(Some([42u8; 32])).unwrap();
+
+        let msg = canonical_message_bytes(
+            &client.client_state.chain_id,
+            &target_height,
+            &commitment_root,
+            &next_validators_hash,
+        );
+        let message_hash = qanto_hash(&msg).as_bytes().to_vec();
+        let sig = pq_sign(&sk, &message_hash).unwrap();
+
+        let header = ClientHeader {
+            height: target_height,
+            consensus_state: ConsensusState {
+                timestamp: client
+                    .consensus_states
+                    .get(&client.latest_height)
+                    .unwrap()
+                    .timestamp
+                    + 1,
+                commitment_root,
+                next_validators_hash,
+            },
+            signature: sig.as_bytes().to_vec(),
+            validator_set: pk.as_bytes().to_vec(),
+            trusted_height: client.latest_height.clone(),
+            trusted_validators: pk.as_bytes().to_vec(),
+        };
+
+        let res = coord.verify_client_header(&client, &header).await;
+        assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn verify_client_header_invalid_signature_fails() {
+        let coord = build_coordinator().await;
+        let latest_height = Height {
+            revision_number: 1,
+            revision_height: 20,
+        };
+        let client = build_light_client("qanto-1", latest_height.clone(), 2000);
+
+        let target_height = Height {
+            revision_number: 1,
+            revision_height: 21,
+        };
+        let commitment_root = vec![21, 22, 23];
+        let next_validators_hash = vec![24, 25, 26];
+
+        let (pk, sk) = generate_pq_keypair(Some([77u8; 32])).unwrap();
+
+        let msg = canonical_message_bytes(
+            &client.client_state.chain_id,
+            &target_height,
+            &commitment_root,
+            &next_validators_hash,
+        );
+        let message_hash = qanto_hash(&msg).as_bytes().to_vec();
+        let sig = pq_sign(&sk, &message_hash).unwrap();
+        let mut bad_sig_bytes = sig.as_bytes().to_vec();
+        if !bad_sig_bytes.is_empty() {
+            bad_sig_bytes[0] ^= 0xFF; // Corrupt signature
+        }
+
+        let header = ClientHeader {
+            height: target_height,
+            consensus_state: ConsensusState {
+                timestamp: client
+                    .consensus_states
+                    .get(&client.latest_height)
+                    .unwrap()
+                    .timestamp
+                    + 1,
+                commitment_root,
+                next_validators_hash,
+            },
+            signature: bad_sig_bytes,
+            validator_set: pk.as_bytes().to_vec(),
+            trusted_height: client.latest_height.clone(),
+            trusted_validators: pk.as_bytes().to_vec(),
+        };
+
+        let res = coord.verify_client_header(&client, &header).await;
+        match res {
+            Err(InteroperabilityError::InvalidHeader { reason }) => {
+                assert!(reason.contains("verification failed"))
+            }
+            other => panic!("Expected InvalidHeader, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn verify_client_header_untrusted_signer_fails() {
+        let coord = build_coordinator().await;
+        let latest_height = Height {
+            revision_number: 2,
+            revision_height: 5,
+        };
+        let client = build_light_client("qanto-2", latest_height.clone(), 3000);
+
+        let target_height = Height {
+            revision_number: 2,
+            revision_height: 6,
+        };
+        let commitment_root = vec![31, 32, 33];
+        let next_validators_hash = vec![34, 35, 36];
+
+        let (pk, sk) = generate_pq_keypair(Some([99u8; 32])).unwrap();
+
+        let msg = canonical_message_bytes(
+            &client.client_state.chain_id,
+            &target_height,
+            &commitment_root,
+            &next_validators_hash,
+        );
+        let message_hash = qanto_hash(&msg).as_bytes().to_vec();
+        let sig = pq_sign(&sk, &message_hash).unwrap();
+
+        let header = ClientHeader {
+            height: target_height,
+            consensus_state: ConsensusState {
+                timestamp: client
+                    .consensus_states
+                    .get(&client.latest_height)
+                    .unwrap()
+                    .timestamp
+                    + 1,
+                commitment_root,
+                next_validators_hash,
+            },
+            signature: sig.as_bytes().to_vec(),
+            validator_set: pk.as_bytes().to_vec(),
+            trusted_height: client.latest_height.clone(),
+            // Trusted validators deliberately exclude signer
+            trusted_validators: vec![0u8; pk.as_bytes().len()],
+        };
+
+        let res = coord.verify_client_header(&client, &header).await;
+        match res {
+            Err(InteroperabilityError::InvalidHeader { reason }) => {
+                assert!(reason.contains("trusted validator"))
+            }
+            other => panic!("Expected InvalidHeader, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn verify_client_header_height_progression_error() {
+        let coord = build_coordinator().await;
+        let latest_height = Height {
+            revision_number: 3,
+            revision_height: 100,
+        };
+        let client = build_light_client("qanto-3", latest_height.clone(), 5000);
+
+        // Same height as latest, which should fail
+        let target_height = latest_height.clone();
+        let commitment_root = vec![41, 42, 43];
+        let next_validators_hash = vec![44, 45, 46];
+        let (pk, sk) = generate_pq_keypair(Some([11u8; 32])).unwrap();
+
+        let msg = canonical_message_bytes(
+            &client.client_state.chain_id,
+            &target_height,
+            &commitment_root,
+            &next_validators_hash,
+        );
+        let message_hash = qanto_hash(&msg).as_bytes().to_vec();
+        let sig = pq_sign(&sk, &message_hash).unwrap();
+
+        let header = ClientHeader {
+            height: target_height,
+            consensus_state: ConsensusState {
+                timestamp: client
+                    .consensus_states
+                    .get(&client.latest_height)
+                    .unwrap()
+                    .timestamp
+                    + 1,
+                commitment_root,
+                next_validators_hash,
+            },
+            signature: sig.as_bytes().to_vec(),
+            validator_set: pk.as_bytes().to_vec(),
+            trusted_height: client.latest_height.clone(),
+            trusted_validators: pk.as_bytes().to_vec(),
+        };
+
+        let res = coord.verify_client_header(&client, &header).await;
+        match res {
+            Err(InteroperabilityError::HeightProgressionError { reason }) => {
+                assert!(reason.contains("height must be greater"))
+            }
+            other => panic!("Expected HeightProgressionError, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn verify_client_header_timestamp_not_increasing_error() {
+        let coord = build_coordinator().await;
+        let latest_height = Height {
+            revision_number: 4,
+            revision_height: 50,
+        };
+        let client = build_light_client("qanto-4", latest_height.clone(), 9000);
+
+        let target_height = Height {
+            revision_number: 4,
+            revision_height: 51,
+        };
+        let commitment_root = vec![51, 52, 53];
+        let next_validators_hash = vec![54, 55, 56];
+        let (pk, sk) = generate_pq_keypair(Some([123u8; 32])).unwrap();
+
+        let msg = canonical_message_bytes(
+            &client.client_state.chain_id,
+            &target_height,
+            &commitment_root,
+            &next_validators_hash,
+        );
+        let message_hash = qanto_hash(&msg).as_bytes().to_vec();
+        let sig = pq_sign(&sk, &message_hash).unwrap();
+
+        // Header timestamp intentionally not greater than previous
+        let header = ClientHeader {
+            height: target_height,
+            consensus_state: ConsensusState {
+                timestamp: client
+                    .consensus_states
+                    .get(&client.latest_height)
+                    .unwrap()
+                    .timestamp,
+                commitment_root,
+                next_validators_hash,
+            },
+            signature: sig.as_bytes().to_vec(),
+            validator_set: pk.as_bytes().to_vec(),
+            trusted_height: client.latest_height.clone(),
+            trusted_validators: pk.as_bytes().to_vec(),
+        };
+
+        let res = coord.verify_client_header(&client, &header).await;
+        match res {
+            Err(InteroperabilityError::HeightProgressionError { reason }) => {
+                assert!(reason.contains("timestamp must be greater"))
+            }
+            other => panic!("Expected HeightProgressionError, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn redeem_swap_respects_timeout_and_marks_expired() {
+        let coord = build_coordinator().await;
+        let secret = b"supersecret";
+        let secret_hash = qanto_hash(secret).as_bytes().to_vec();
+        let params = AtomicSwapParams {
+            initiator: "alice".to_string(),
+            participant: "bob".to_string(),
+            source_chain: ChainType::Qanto,
+            target_chain: ChainType::Ethereum,
+            source_asset: "QANTO".to_string(),
+            target_asset: "ETH".to_string(),
+            source_amount: 100,
+            target_amount: 10,
+            secret_hash,
+            timeout: chrono::Utc::now().timestamp() as u64 - 1,
+        };
+        let swap_id = coord.initiate_atomic_swap(params).await.unwrap();
+        coord.participate_in_swap(swap_id.clone()).await.unwrap();
+
+        let res = coord.redeem_swap(swap_id.clone(), secret.to_vec()).await;
+        match res {
+            Err(InteroperabilityError::ValidationError { field, reason }) => {
+                assert_eq!(field, "timeout");
+                assert!(reason.contains("expired"));
+            }
+            other => panic!("Expected ValidationError timeout, got: {other:?}"),
+        }
+
+        let swaps = coord.atomic_swaps.read().await;
+        let swap = swaps.get(&swap_id).unwrap();
+        assert_eq!(swap.state, SwapState::Expired);
+    }
+
+    #[tokio::test]
+    async fn refund_swap_only_after_expiration_and_by_initiator() {
+        let coord = build_coordinator().await;
+        let secret = b"anothersecret";
+        let secret_hash = qanto_hash(secret).as_bytes().to_vec();
+        let params = AtomicSwapParams {
+            initiator: "alice".to_string(),
+            participant: "bob".to_string(),
+            source_chain: ChainType::Qanto,
+            target_chain: ChainType::Ethereum,
+            source_asset: "QANTO".to_string(),
+            target_asset: "ETH".to_string(),
+            source_amount: 100,
+            target_amount: 10,
+            secret_hash,
+            timeout: chrono::Utc::now().timestamp() as u64 - 1,
+        };
+        let swap_id = coord.initiate_atomic_swap(params).await.unwrap();
+
+        let res = coord.refund_swap(swap_id.clone(), "bob".to_string()).await;
+        match res {
+            Err(InteroperabilityError::ValidationError { field, reason }) => {
+                assert_eq!(field, "requester");
+                assert!(reason.contains("initiator"));
+            }
+            other => panic!("Expected ValidationError requester, got: {other:?}"),
+        }
+
+        coord
+            .refund_swap(swap_id.clone(), "alice".to_string())
+            .await
+            .unwrap();
+
+        let swaps = coord.atomic_swaps.read().await;
+        let swap = swaps.get(&swap_id).unwrap();
+        assert_eq!(swap.state, SwapState::Refunded);
+    }
+}

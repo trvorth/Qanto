@@ -1,4 +1,4 @@
-apiVersion: v2
+apiVersion: v1
 name: qanto-node
 description: A Helm chart for Qanto blockchain node
 type: application

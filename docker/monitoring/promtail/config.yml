@@ -1,0 +1,203 @@
+# Promtail configuration for Qanto node log collection
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    tenant_id: qanto
+
+scrape_configs:
+  # Qanto node application logs
+  - job_name: qanto-node
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: qanto-node
+          service: qanto
+          environment: ${QANTO_ENVIRONMENT:-production}
+          __path__: /var/log/qanto/*.log
+    
+    pipeline_stages:
+      # Parse timestamp and log level
+      - regex:
+          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z?)\s+(?P<level>\w+)\s+(?P<message>.*)$'
+      
+      # Convert timestamp to proper format
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+      
+      # Extract log level as label
+      - labels:
+          level:
+      
+      # Parse structured log fields if present
+      - json:
+          expressions:
+            module: module
+            peer_id: peer_id
+            block_height: block_height
+            tx_hash: tx_hash
+            error_code: error_code
+      
+      # Add additional labels from parsed fields
+      - labels:
+          module:
+          peer_id:
+          error_code:
+      
+      # Drop debug logs in production
+      - drop:
+          expression: '.*'
+          older_than: 24h
+      
+      - match:
+          selector: '{level="DEBUG"}'
+          action: drop
+          drop_counter_reason: debug_logs_dropped
+
+  # Docker container logs
+  - job_name: docker-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          - name: label
+            values: ["logging=promtail"]
+    
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*?)'
+        target_label: 'container_name'
+      
+      - source_labels: ['__meta_docker_container_log_stream']
+        target_label: 'logstream'
+      
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: 'service_name'
+    
+    pipeline_stages:
+      # Parse Docker JSON logs
+      - json:
+          expressions:
+            output: log
+            stream: stream
+            time: time
+      
+      # Use Docker timestamp
+      - timestamp:
+          source: time
+          format: RFC3339Nano
+      
+      # Use log content as message
+      - output:
+          source: output
+      
+      # Add stream type label
+      - labels:
+          stream:
+
+  # System logs (if available)
+  - job_name: system-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: system
+          service: system
+          __path__: /var/log/syslog
+    
+    pipeline_stages:
+      # Parse syslog format
+      - regex:
+          expression: '^(?P<timestamp>\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+(?P<hostname>\S+)\s+(?P<process>\S+?)(?:\[(?P<pid>\d+)\])?:\s*(?P<message>.*)$'
+      
+      # Convert syslog timestamp
+      - timestamp:
+          source: timestamp
+          format: 'Jan 2 15:04:05'
+          location: 'UTC'
+      
+      # Add labels
+      - labels:
+          hostname:
+          process:
+          pid:
+
+  # Qanto wallet logs
+  - job_name: qanto-wallet
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: qanto-wallet
+          service: wallet
+          environment: ${QANTO_ENVIRONMENT:-production}
+          __path__: /var/log/qanto/wallet*.log
+    
+    pipeline_stages:
+      # Similar parsing as node logs
+      - regex:
+          expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z?)\s+(?P<level>\w+)\s+(?P<message>.*)$'
+      
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+      
+      - labels:
+          level:
+      
+      # Parse wallet-specific fields
+      - json:
+          expressions:
+            wallet_id: wallet_id
+            transaction_type: transaction_type
+            amount: amount
+            address: address
+      
+      - labels:
+          wallet_id:
+          transaction_type:
+
+  # Performance and metrics logs
+  - job_name: qanto-metrics
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: qanto-metrics
+          service: metrics
+          environment: ${QANTO_ENVIRONMENT:-production}
+          __path__: /var/log/qanto/metrics*.log
+    
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            metric_name: metric_name
+            metric_value: metric_value
+            metric_type: metric_type
+            labels: labels
+      
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+      
+      - labels:
+          metric_name:
+          metric_type:
+
+# Global configuration
+limits_config:
+  readline_rate: 10000
+  readline_burst: 20000
+  max_streams: 0
+
+# Target configuration
+target_config:
+  sync_period: 10s

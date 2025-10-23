@@ -71,6 +71,11 @@ pub enum ConfigError {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RpcConfig {
+    pub address: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
     // --- Network Configuration ---
     pub p2p_address: String,
@@ -87,11 +92,15 @@ pub struct Config {
     pub max_amount: u64,
 
     // --- Performance & Hardware ---
+    #[serde(alias = "gpu_enabled")]
     pub use_gpu: bool,
     pub zk_enabled: bool,
     pub mining_threads: usize,
     pub mining_enabled: bool,
     pub adaptive_mining_enabled: bool, // Enable adaptive mining with difficulty adjustments
+    
+    // --- Block Producer Configuration ---
+    pub producer_type: Option<String>, // "solo" or "decoupled" (default: "solo")
 
     // --- Telemetry Configuration ---
     pub hash_rate_interval_secs: Option<u64>, // Hash rate sampling interval (default: 5)
@@ -131,6 +140,8 @@ pub struct Config {
     pub adaptive_batch_threshold: Option<f64>,
     pub memory_soft_limit: Option<usize>,
     pub memory_hard_limit: Option<usize>,
+    /// Optional developer fee rate applied to coinbase rewards (0.10 = 10%)
+    pub dev_fee_rate: Option<f64>,
 
     // --- File & Database Paths ---
     pub data_dir: String,
@@ -144,6 +155,7 @@ pub struct Config {
     // --- Logging & P2P Internals ---
     pub logging: LoggingConfig,
     pub p2p: P2pConfig,
+    pub rpc: RpcConfig,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -206,6 +218,9 @@ impl Default for Config {
             mining_enabled: false,
             adaptive_mining_enabled: false,
 
+            // --- Producer Configuration ---
+            producer_type: Some("solo".to_string()), // Default to solo producer
+
             // --- Telemetry Configuration ---
             hash_rate_interval_secs: Some(5),
             enable_detailed_telemetry: Some(false),
@@ -242,6 +257,7 @@ impl Default for Config {
             adaptive_batch_threshold: None,
             memory_soft_limit: None,
             memory_hard_limit: None,
+            dev_fee_rate: Some(0.10),
 
             // --- File & Database Paths ---
             data_dir: "./data".to_string(),
@@ -260,6 +276,9 @@ impl Default for Config {
                 celebration_throttle_per_min: None,
             },
             p2p: P2pConfig::default(),
+            rpc: RpcConfig {
+                address: "127.0.0.1:50051".to_string(),
+            },
         }
     }
 }
@@ -386,6 +405,9 @@ impl Config {
             mining_enabled: false,          // Disabled by default for free-tier
             adaptive_mining_enabled: false, // Disabled for free-tier to save resources
 
+            // --- Producer Configuration ---
+            producer_type: Some("solo".to_string()), // Default to solo producer for free-tier
+
             // --- Telemetry Configuration ---
             hash_rate_interval_secs: Some(10), // Longer interval for free-tier
             enable_detailed_telemetry: Some(false),
@@ -421,6 +443,7 @@ impl Config {
             adaptive_batch_threshold: Some(0.7), // 70% memory threshold for free-tier
             memory_soft_limit: Some(SOFT_MEMORY_LIMIT), // 8MB soft limit
             memory_hard_limit: Some(HARD_MEMORY_LIMIT), // 10MB hard limit
+            dev_fee_rate: Some(0.10),
 
             // --- File & Database Paths ---
             data_dir: "./data".to_string(),
@@ -444,6 +467,9 @@ impl Config {
                 mesh_n: 2,
                 mesh_n_high: 4,
                 mesh_outbound_min: 1,
+            },
+            rpc: RpcConfig {
+                address: "127.0.0.1:50051".to_string(),
             },
         }
     }
@@ -476,6 +502,9 @@ impl Config {
             mining_threads: thread_count,   // Use all available threads
             mining_enabled: true,           // Enable mining for high performance
             adaptive_mining_enabled: false, // Disabled by default, can be enabled via CLI
+
+            // --- Producer Configuration ---
+            producer_type: Some("decoupled".to_string()), // Use decoupled producer for high performance
 
             // --- Telemetry Configuration ---
             hash_rate_interval_secs: Some(1), // Fast telemetry for high performance
@@ -512,6 +541,7 @@ impl Config {
             adaptive_batch_threshold: Some(0.8), // 80% memory threshold for adaptive batching
             memory_soft_limit: Some(memory_soft_limit),
             memory_hard_limit: Some(memory_hard_limit),
+            dev_fee_rate: Some(0.10),
 
             // --- File & Database Paths ---
             data_dir: "./data".to_string(),
@@ -535,6 +565,9 @@ impl Config {
                 mesh_n: 16,
                 mesh_n_high: 32,
                 mesh_outbound_min: 8,
+            },
+            rpc: RpcConfig {
+                address: "127.0.0.1:50051".to_string(),
             },
         }
     }
@@ -589,6 +622,14 @@ impl Config {
             let mut error_msg = String::with_capacity(32 + self.api_address.len());
             error_msg.push_str("Invalid API address format: '");
             error_msg.push_str(&self.api_address);
+            error_msg.push('\'');
+            ConfigError::Validation(error_msg)
+        })?;
+
+        self.rpc.address.parse::<SocketAddr>().map_err(|_| {
+            let mut error_msg = String::with_capacity(33 + self.rpc.address.len());
+            error_msg.push_str("Invalid RPC address format: '");
+            error_msg.push_str(&self.rpc.address);
             error_msg.push('\'');
             ConfigError::Validation(error_msg)
         })?;
@@ -736,6 +777,14 @@ impl Config {
                 return Err(ConfigError::Validation(format!(
                     "adaptive_batch_threshold must be between {MIN_ADAPTIVE_BATCH_THRESHOLD} and {MAX_ADAPTIVE_BATCH_THRESHOLD}"
                 )));
+            }
+        }
+
+        if let Some(dev_fee_rate) = self.dev_fee_rate {
+            if !(0.0..=1.0).contains(&dev_fee_rate) {
+                return Err(ConfigError::Validation(
+                    "dev_fee_rate must be between 0.0 and 1.0".to_string(),
+                ));
             }
         }
 

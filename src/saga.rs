@@ -158,6 +158,38 @@ pub struct TrustScoreBreakdown {
     pub final_weighted_score: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BehaviorClassification {
+    Malicious,
+    Neutral,
+    Beneficial,
+}
+
+#[derive(Debug, Clone)]
+pub struct ValidatorMetrics {
+    pub historical_performance: f64,
+    pub stake_amount: u64,
+    pub temporal_consistency: f64,
+    pub has_poco_credentials: bool,
+    pub metadata_integrity: f64,
+}
+
+const STAKE_AVERAGE_BASELINE: u64 = 50_000;
+const STAKE_SIGNIFICANT_THRESHOLD: u64 = 200_000;
+
+pub fn classify_validator_behavior(metrics: &ValidatorMetrics) -> BehaviorClassification {
+    if metrics.historical_performance < 0.2 && metrics.stake_amount < STAKE_AVERAGE_BASELINE {
+        BehaviorClassification::Malicious
+    } else if metrics.historical_performance > 0.9
+        && metrics.stake_amount >= STAKE_SIGNIFICANT_THRESHOLD
+        && metrics.has_poco_credentials
+    {
+        BehaviorClassification::Beneficial
+    } else {
+        BehaviorClassification::Neutral
+    }
+}
+
 // BehaviorNet AI model removed for production hardening
 
 // CongestionPredictorLSTM AI model removed for production hardening
@@ -3741,6 +3773,51 @@ impl PalletSaga {
         let final_reward_float =
             base_reward * scs * omega_penalty * market_premium * edict_multiplier * isnm_multiplier;
 
+        // Structured debug logging of reward computation internals
+        debug!(
+            base_reward,
+            scs,
+            threat_modifier,
+            threat_level = ?threat_level,
+            omega_penalty,
+            market_premium,
+            edict_multiplier,
+            isnm_multiplier,
+            total_fees,
+            final_reward_float,
+            miner = %block.miner,
+            target_block_time_ms = dag_arc.target_block_time,
+            "SAGA reward computation details"
+        );
+
+        // Detailed reward breakdown with dev fee and miner payout
+        let scs_multiplier =
+            scs * omega_penalty * market_premium * edict_multiplier * isnm_multiplier;
+        let subtotal = final_reward_float; // dynamic reward before fees
+        let block_reward_total_u64 = subtotal as u64 + total_fees;
+        let dev_fee_rate = dag_arc.dev_fee_rate;
+        let dev_fee_u64 = ((block_reward_total_u64 as f64) * dev_fee_rate).floor() as u64;
+        let miner_reward_u64 = block_reward_total_u64.saturating_sub(dev_fee_u64);
+        let subtotal_qan = subtotal / crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
+        let dev_fee_qan = dev_fee_u64 as f64 / crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
+        let final_miner_reward_qan =
+            miner_reward_u64 as f64 / crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
+
+        debug!(
+            base_reward,
+            scs_multiplier,
+            subtotal,
+            subtotal_qan,
+            total_fees,
+            dev_fee_rate,
+            dev_fee = dev_fee_u64,
+            dev_fee_qan,
+            final_miner_reward = miner_reward_u64,
+            final_miner_reward_qan,
+            miner = %block.miner,
+            "SAGA reward breakdown: base, multiplier, subtotal, dev fee, miner payout"
+        );
+
         let final_reward = final_reward_float as u64 + total_fees;
         Ok(final_reward)
     }
@@ -3905,7 +3982,43 @@ impl PalletSaga {
             .cloned()
             .unwrap_or(0.5);
 
-        let new_raw_score = (trust_breakdown.final_weighted_score * trust_weight)
+        let historical_performance = trust_breakdown
+            .factors
+            .get("historical_performance")
+            .cloned()
+            .unwrap_or(0.5);
+        let temporal_consistency = trust_breakdown
+            .factors
+            .get("temporal_consistency")
+            .cloned()
+            .unwrap_or(0.5);
+        let metadata_integrity = trust_breakdown
+            .factors
+            .get("metadata_integrity")
+            .cloned()
+            .unwrap_or(0.5);
+        let has_poco_credentials = env_score > 0.55;
+        let stake_amount = dag_arc
+            .validators
+            .get(miner_address)
+            .map_or(0u64, |entry| *entry.value());
+
+        let metrics = ValidatorMetrics {
+            historical_performance,
+            stake_amount,
+            temporal_consistency,
+            has_poco_credentials,
+            metadata_integrity,
+        };
+
+        let classification = classify_validator_behavior(&metrics);
+        let trust_multiplier = match classification {
+            BehaviorClassification::Malicious => 0.1,
+            BehaviorClassification::Neutral => 0.6,
+            BehaviorClassification::Beneficial => 1.0,
+        };
+
+        let new_raw_score = (trust_multiplier * trust_weight)
             + (karma_score * karma_weight)
             + (stake_score * stake_weight)
             + (env_score * env_weight);
@@ -4566,23 +4679,34 @@ impl PalletSaga {
 
         AnalyticsDashboardData {
             timestamp,
-            network_health,
+            network_health: network_health.clone(),
             ai_performance,
             security_insights,
             economic_indicators,
             environmental_metrics,
-            total_transactions: 0,
+            total_transactions: network_health
+                .transactions_processed
+                .load(std::sync::atomic::Ordering::Relaxed),
             active_addresses: 0,
-            mempool_size: 0,
+            mempool_size: network_health
+                .mempool_size
+                .load(std::sync::atomic::Ordering::Relaxed),
             block_height: 0,
-            tps_current: 0.0,
-            tps_peak: 0.0,
+            tps_current: network_health
+                .tps_current
+                .load(std::sync::atomic::Ordering::Relaxed) as f64
+                / 1000.0,
+            tps_peak: network_health
+                .tps_peak_24h
+                .load(std::sync::atomic::Ordering::Relaxed) as f64
+                / 1000.0,
         }
     }
 
     /// Collect network health metrics for dashboard
     async fn collect_network_health_metrics(&self) -> NetworkHealthMetrics {
-        NetworkHealthMetrics::default()
+        let global = crate::metrics::get_global_metrics();
+        (*global).clone()
     }
 
     /// Collect AI model performance metrics for dashboard
@@ -4642,5 +4766,55 @@ impl PalletSaga {
         };
         drop(env_metrics);
         environmental_metrics
+    }
+}
+
+#[cfg(test)]
+mod tests_decision_tree {
+    use super::*;
+
+    #[test]
+    fn classify_malicious_when_low_perf_and_low_stake() {
+        let metrics = ValidatorMetrics {
+            historical_performance: 0.1,
+            stake_amount: 10_000,
+            temporal_consistency: 0.4,
+            has_poco_credentials: false,
+            metadata_integrity: 0.5,
+        };
+        assert_eq!(
+            classify_validator_behavior(&metrics),
+            BehaviorClassification::Malicious
+        );
+    }
+
+    #[test]
+    fn classify_beneficial_when_high_perf_significant_stake_and_poco() {
+        let metrics = ValidatorMetrics {
+            historical_performance: 0.95,
+            stake_amount: 500_000,
+            temporal_consistency: 0.2,
+            has_poco_credentials: true,
+            metadata_integrity: 0.9,
+        };
+        assert_eq!(
+            classify_validator_behavior(&metrics),
+            BehaviorClassification::Beneficial
+        );
+    }
+
+    #[test]
+    fn classify_neutral_otherwise() {
+        let metrics = ValidatorMetrics {
+            historical_performance: 0.6,
+            stake_amount: 60_000,
+            temporal_consistency: 0.5,
+            has_poco_credentials: true,
+            metadata_integrity: 0.7,
+        };
+        assert_eq!(
+            classify_validator_behavior(&metrics),
+            BehaviorClassification::Neutral
+        );
     }
 }

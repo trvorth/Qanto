@@ -45,6 +45,7 @@ The main application crate serves as the orchestration layer, integrating all sy
 // Core modules structure
 src/
 ├── node.rs              // Main node orchestration
+├── block_producer.rs    // Block production logic
 ├── config.rs            // Configuration management
 ├── qantodag.rs          // DAG ledger implementation
 ├── consensus.rs         // Consensus mechanisms

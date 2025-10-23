@@ -65,6 +65,12 @@ pub struct QantoMetrics {
     pub batch_processing_ops: AtomicU64,
     pub compression_ratio: AtomicU64, // stored as percentage * 100
 
+    // Persistence metrics
+    pub persistence_batches: AtomicU64,
+    pub persistence_last_batch_ops: AtomicU64,
+    pub persistence_last_batch_bytes: AtomicU64,
+    pub persistence_overflows: AtomicU64,
+
     // Network and consensus metrics
     pub tps: AtomicU64,
     pub finality_ms: AtomicU64,
@@ -109,6 +115,9 @@ pub struct QantoMetrics {
     pub network_congestion: AtomicU64, // stored as percentage * 10000
     pub block_propagation_time: AtomicU64, // stored as integer * 1000
     pub mempool_size: AtomicU64,
+    pub total_value_locked: AtomicU64,
+    pub validator_rewards_24h: AtomicU64,
+    pub transaction_fees_24h: AtomicU64,
 
     // Relayer metrics
     pub relayer_success_rate: AtomicU64, // Stored as percentage * 100
@@ -189,6 +198,12 @@ impl Default for QantoMetrics {
             batch_processing_ops: AtomicU64::new(0),
             compression_ratio: AtomicU64::new(0),
 
+            // Persistence metrics
+            persistence_batches: AtomicU64::new(0),
+            persistence_last_batch_ops: AtomicU64::new(0),
+            persistence_last_batch_bytes: AtomicU64::new(0),
+            persistence_overflows: AtomicU64::new(0),
+
             // Network and consensus metrics
             tps: AtomicU64::new(0),
             finality_ms: AtomicU64::new(0),
@@ -233,6 +248,9 @@ impl Default for QantoMetrics {
             network_congestion: AtomicU64::new(0),
             block_propagation_time: AtomicU64::new(0),
             mempool_size: AtomicU64::new(0),
+            total_value_locked: AtomicU64::new(0),
+            validator_rewards_24h: AtomicU64::new(0),
+            transaction_fees_24h: AtomicU64::new(0),
 
             // Relayer metrics
             relayer_success_rate: AtomicU64::new(0),
@@ -328,6 +346,16 @@ impl Clone for QantoMetrics {
             parallel_validations: AtomicU64::new(self.parallel_validations.load(Ordering::Relaxed)),
             batch_processing_ops: AtomicU64::new(self.batch_processing_ops.load(Ordering::Relaxed)),
             compression_ratio: AtomicU64::new(self.compression_ratio.load(Ordering::Relaxed)),
+            persistence_batches: AtomicU64::new(self.persistence_batches.load(Ordering::Relaxed)),
+            persistence_last_batch_ops: AtomicU64::new(
+                self.persistence_last_batch_ops.load(Ordering::Relaxed),
+            ),
+            persistence_last_batch_bytes: AtomicU64::new(
+                self.persistence_last_batch_bytes.load(Ordering::Relaxed),
+            ),
+            persistence_overflows: AtomicU64::new(
+                self.persistence_overflows.load(Ordering::Relaxed),
+            ),
             tps: AtomicU64::new(self.tps.load(Ordering::Relaxed)),
             finality_ms: AtomicU64::new(self.finality_ms.load(Ordering::Relaxed)),
             validator_count: AtomicU64::new(self.validator_count.load(Ordering::Relaxed)),
@@ -369,6 +397,11 @@ impl Clone for QantoMetrics {
                 self.block_propagation_time.load(Ordering::Relaxed),
             ),
             mempool_size: AtomicU64::new(self.mempool_size.load(Ordering::Relaxed)),
+            total_value_locked: AtomicU64::new(self.total_value_locked.load(Ordering::Relaxed)),
+            validator_rewards_24h: AtomicU64::new(
+                self.validator_rewards_24h.load(Ordering::Relaxed),
+            ),
+            transaction_fees_24h: AtomicU64::new(self.transaction_fees_24h.load(Ordering::Relaxed)),
             relayer_success_rate: AtomicU64::new(self.relayer_success_rate.load(Ordering::Relaxed)),
             relayer_average_latency: AtomicU64::new(
                 self.relayer_average_latency.load(Ordering::Relaxed),
@@ -719,6 +752,18 @@ impl QantoMetrics {
             "qanto_mempool_size {}\n",
             self.mempool_size.load(Ordering::Relaxed)
         ));
+        output.push_str(&format!(
+            "qanto_total_value_locked {}\n",
+            self.total_value_locked.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_validator_rewards_24h {}\n",
+            self.validator_rewards_24h.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_transaction_fees_24h {}\n",
+            self.transaction_fees_24h.load(Ordering::Relaxed)
+        ));
 
         // Optimization metrics
         output.push_str(&format!(
@@ -732,6 +777,24 @@ impl QantoMetrics {
         output.push_str(&format!(
             "qanto_zero_copy_operations_total {}\n",
             self.zero_copy_operations.load(Ordering::Relaxed)
+        ));
+
+        // Persistence metrics
+        output.push_str(&format!(
+            "qanto_persistence_batches_total {}\n",
+            self.persistence_batches.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_persistence_last_batch_ops {}\n",
+            self.persistence_last_batch_ops.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_persistence_last_batch_bytes {}\n",
+            self.persistence_last_batch_bytes.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_persistence_overflows_total {}\n",
+            self.persistence_overflows.load(Ordering::Relaxed)
         ));
 
         output
@@ -870,6 +933,50 @@ impl QantoMetrics {
     }
 
     /// Increment blocks processed counter
+    pub fn get_total_value_locked(&self) -> u64 {
+        self.total_value_locked.load(Ordering::Relaxed)
+    }
+
+    pub fn set_total_value_locked(&self, value: u64) {
+        self.total_value_locked.store(value, Ordering::Relaxed);
+        self.touch();
+    }
+
+    pub fn add_total_value_locked(&self, delta: u64) {
+        self.total_value_locked.fetch_add(delta, Ordering::Relaxed);
+        self.touch();
+    }
+
+    pub fn get_validator_rewards_24h(&self) -> u64 {
+        self.validator_rewards_24h.load(Ordering::Relaxed)
+    }
+
+    pub fn set_validator_rewards_24h(&self, value: u64) {
+        self.validator_rewards_24h.store(value, Ordering::Relaxed);
+        self.touch();
+    }
+
+    pub fn get_transaction_fees_24h(&self) -> u64 {
+        self.transaction_fees_24h.load(Ordering::Relaxed)
+    }
+
+    pub fn set_transaction_fees_24h(&self, value: u64) {
+        self.transaction_fees_24h.store(value, Ordering::Relaxed);
+        self.touch();
+    }
+
+    pub fn add_transaction_fees_24h(&self, delta: u64) {
+        self.transaction_fees_24h
+            .fetch_add(delta, Ordering::Relaxed);
+        self.touch();
+    }
+
+    pub fn add_validator_rewards_24h(&self, delta: u64) {
+        self.validator_rewards_24h
+            .fetch_add(delta, Ordering::Relaxed);
+        self.touch();
+    }
+
     pub fn increment_blocks_processed(&self) {
         self.blocks_processed.fetch_add(1, Ordering::Relaxed);
         self.touch();

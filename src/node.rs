@@ -22,6 +22,7 @@
 
 use crate::adaptive_mining::AdaptiveMiningLoop;
 use crate::analytics_dashboard::{AnalyticsDashboard, DashboardConfig};
+use crate::block_producer::{BlockProducer, DecoupledProducer, SoloProducer};
 use crate::config::{Config, ConfigError};
 use crate::elite_mempool::EliteMempool;
 use crate::graphql_server::{create_graphql_router, create_graphql_schema, GraphQLContext};
@@ -30,11 +31,13 @@ use crate::miner::{Miner, MinerConfig, MiningError};
 use crate::omega::reflect_on_action;
 use crate::p2p::{P2PCommand, P2PConfig, P2PError, P2PServer};
 use crate::performance_optimizations::{OptimizedBlockBuilder, OptimizedMempool};
+use crate::persistence::has_genesis_block;
 use crate::qanto_compat::sp_core::H256;
 use crate::qanto_net::QantoNetServer;
 use crate::qanto_storage::{QantoStorage, QantoStorageError, StorageConfig};
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError, QantoDagConfig};
 use crate::resource_cleanup::ResourceCleanup;
+use crate::rpc_backend::NodeRpcBackend;
 use crate::saga::PalletSaga;
 use crate::transaction::Transaction;
 use crate::types::UTXO;
@@ -60,7 +63,7 @@ use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::fs;
 use tokio::signal;
@@ -310,6 +313,14 @@ impl Node {
         };
         let db = QantoStorage::new(storage_config)?;
         info!("Qanto native storage opened successfully");
+        // Genesis presence check to guard UTXO initialization
+        let genesis_exists = has_genesis_block(&db).unwrap_or(false);
+        info!("Checking for genesis marker... Found: {}", genesis_exists);
+        if genesis_exists {
+            info!("Existing genesis marker found in storage; skipping initial UTXO allocation.");
+        } else {
+            info!("No genesis marker found; initializing first-run chain state.");
+        }
 
         info!("Configuring QantoDagConfig");
         // Configure and create the core DAG structure.
@@ -317,6 +328,7 @@ impl Node {
             initial_validator,
             target_block_time: config.target_block_time,
             num_chains: config.num_chains,
+            dev_fee_rate: config.dev_fee_rate.unwrap_or(0.10),
         };
         info!("QantoDagConfig configured successfully");
 
@@ -333,31 +345,38 @@ impl Node {
         // Create genesis UTXO with the entire 21 billion QAN supply allocated to contract address
         // Clear any existing UTXOs first to ensure clean state
         {
-            let mut utxos_lock = utxos.write().await;
-            utxos_lock.clear(); // Reset UTXO state completely
+            if !genesis_exists {
+                let mut utxos_lock = utxos.write().await;
+                utxos_lock.clear(); // Reset UTXO state completely
 
-            let genesis_utxo_id = "genesis_total_supply_tx_0".to_string();
-            utxos_lock.insert(
-                genesis_utxo_id.clone(),
-                UTXO {
-                    address: config.contract_address.clone(),
-                    amount: 21_000_000_000_000_000, // Entire 21 billion QAN supply in smallest units with 6 decimals
-                    tx_id: "genesis_total_supply_tx".to_string(),
-                    output_index: 0,
-                    explorer_link: {
-                        // Use local explorer instead of external service
-                        let mut link = String::with_capacity(22 + genesis_utxo_id.len());
-                        link.push_str("/explorer/utxo/");
-                        link.push_str(&genesis_utxo_id);
-                        link
+                // Compute total supply in base units using canonical constant
+                let total_supply_base_units: u64 =
+                    21_000_000_000u64 * crate::transaction::SMALLEST_UNITS_PER_QAN;
+                let genesis_utxo_id = "genesis_total_supply_tx_0".to_string();
+                utxos_lock.insert(
+                    genesis_utxo_id.clone(),
+                    UTXO {
+                        address: config.contract_address.clone(),
+                        amount: total_supply_base_units, // Entire 21 billion QAN supply in smallest units with 9 decimals
+                        tx_id: "genesis_total_supply_tx".to_string(),
+                        output_index: 0,
+                        explorer_link: {
+                            // Use local explorer instead of external service
+                            let mut link = String::with_capacity(22 + genesis_utxo_id.len());
+                            link.push_str("/explorer/utxo/");
+                            link.push_str(&genesis_utxo_id);
+                            link
+                        },
                     },
-                },
-            );
-            info!(
-                "Genesis UTXO created with 21 billion QAN allocated to contract address: {}",
-                config.contract_address
-            );
-            info!("UTXO state reset - only contract address has balance now");
+                );
+                info!(
+                    "Genesis UTXO created with 21 billion QAN allocated to contract address: {}",
+                    config.contract_address
+                );
+                info!("UTXO state reset - only contract address has balance now");
+            } else {
+                info!("Genesis UTXO creation skipped; persistent chain state detected.");
+            }
         }
 
         // BUILD FIX (E0560): Remove `difficulty_hex` and `num_chains` from MinerConfig.
@@ -420,7 +439,7 @@ impl Node {
     pub async fn start(&self) -> Result<(), NodeError> {
         // Create a channel for passing commands between the P2P layer and the core logic.
         let (tx_p2p_commands, mut rx_p2p_commands) = mpsc::channel::<P2PCommand>(100);
-        let mut join_set: JoinSet<Result<(), NodeError>> = JoinSet::new();
+        let mut join_set: JoinSet<Result<(), anyhow::Error>> = JoinSet::new();
 
         // Get the cancellation token from resource cleanup system
         let shutdown_token = self.resource_cleanup.get_cancellation_token();
@@ -528,6 +547,20 @@ impl Node {
                                 .await
                             {
                                 warn!("Failed to add transaction to mempool: {}", e);
+                            }
+                        }
+                        P2PCommand::BroadcastTransactionBatch(txs) => {
+                            debug!(
+                                "Command processor received transaction batch: {} txs",
+                                txs.len()
+                            );
+                            let mempool_writer = mempool_clone.write().await;
+                            let utxos_reader = utxos_clone.read().await;
+                            let (_accepted, rejected) = mempool_writer
+                                .add_transaction_batch(txs, &utxos_reader, &dag_clone)
+                                .await;
+                            for (id, err) in rejected {
+                                warn!("Failed to add transaction {} to mempool: {}", id, err);
                             }
                         }
                         P2PCommand::SyncResponse { blocks, utxos } => {
@@ -725,7 +758,7 @@ impl Node {
 
                 // Run the P2P server's event loop.
                 let (_p2p_tx, p2p_rx) = mpsc::channel::<P2PCommand>(100);
-                p2p_server.run(p2p_rx).await.map_err(NodeError::P2PSpecific)
+                p2p_server.run(p2p_rx).await.map_err(|e| anyhow::anyhow!("P2P server error: {}", e))
             };
             let _p2p_task_handle = join_set.spawn(p2p_task_fut);
 
@@ -776,7 +809,7 @@ impl Node {
                         .await
                     {
                         error!("Adaptive mining loop failed: {}", e);
-                        return Err(NodeError::QantoDAG(e));
+                        return Err(anyhow::anyhow!("Adaptive mining loop failed: {}", e));
                     }
                     Ok(())
                 });
@@ -791,127 +824,150 @@ impl Node {
                     .await?;
             } else {
                 info!("No peers found. Running in single-node mode. Spawning solo miner...");
-                let miner_dag_clone = self.dag.clone();
-                let miner_wallet_clone = self.wallet.clone();
-                let miner_mempool_clone = self.mempool.clone();
-                let miner_utxos_clone = self.utxos.clone();
-                let miner_clone = self.miner.clone();
-                let miner_shutdown_token = shutdown_token.clone();
-                let optimized_block_builder_clone = self.optimized_block_builder.clone();
-
-                // Convert target_block_time from milliseconds to seconds for mining interval
-                #[cfg(feature = "performance-test")]
-                let mining_interval_secs = if self.config.target_block_time < 1000 {
-                    // For performance testing with sub-second intervals, use at least 1 second
-                    // but log the actual target for reference
-                    info!("Performance test mode: target_block_time {} ms, using 1 second mining interval", 
-                          self.config.target_block_time);
-                    1
-                } else {
-                    (self.config.target_block_time as f64 / 1000.0) as u64
-                };
-
-                #[cfg(not(feature = "performance-test"))]
-                let mining_interval_secs = {
-                    // Calculate mining interval from target_block_time without forcing minimum
-                    // Allow sub-second intervals for high-performance mining (e.g., 200ms target)
-                    let target_secs = self.config.target_block_time as f64 / 1000.0;
-                    if target_secs < 1.0 {
-                        // For sub-second intervals, use 0 to indicate millisecond precision
-                        0
-                    } else {
-                        target_secs as u64
-                    }
-                };
-
-                info!(
-                    "Using mining interval: {} seconds (from target_block_time: {} ms)",
-                    mining_interval_secs, self.config.target_block_time
-                );
-
-                let dummy_tx_interval_secs =
-                    self.config.dummy_tx_interval_ms.unwrap_or(30000) / 1000;
-                let dummy_tx_per_cycle = self.config.dummy_tx_per_cycle.unwrap_or(100) as usize;
-                let mempool_max_size_bytes =
-                    self.config.mempool_max_size_bytes.unwrap_or(1024 * 1024);
-                let mempool_batch_size = self.config.mempool_batch_size.unwrap_or(40000);
-                let mempool_backpressure_threshold =
-                    self.config.mempool_backpressure_threshold.unwrap_or(0.8)
-                        * (mempool_max_size_bytes as f64);
-
-                // TX generator backpressure configuration
-                let tx_batch_size = self.config.tx_batch_size.unwrap_or(100);
-                let adaptive_batch_threshold = self.config.adaptive_batch_threshold.unwrap_or(0.85);
-                let memory_soft_limit = self.config.memory_soft_limit.unwrap_or(8 * 1024 * 1024); // 8MB default
-                let memory_hard_limit = self.config.memory_hard_limit.unwrap_or(10 * 1024 * 1024); // 10MB default
-
+                
+                // Capture values before moving into async closure
+                let producer_type = self.config.producer_type.as_deref().unwrap_or("solo").to_string();
+                let target_block_time = self.config.target_block_time;
+                
+                // Clone all Arc references outside the spawn closure
+                let dag = self.dag.clone();
+                let wallet = self.wallet.clone();
+                let mempool = self.mempool.clone();
+                let utxos = self.utxos.clone();
+                let miner = self.miner.clone();
+                let shutdown_token = shutdown_token.clone();
+                
                 let _solo_miner_task_handle = join_set.spawn(async move {
-                    debug!("[DEBUG] Spawning solo miner task");
-                    miner_dag_clone
-                        .run_solo_miner(
-                            miner_wallet_clone,
-                            miner_mempool_clone,
-                            miner_utxos_clone,
-                            miner_clone,
-                            optimized_block_builder_clone,
-                            mining_interval_secs,
-                            dummy_tx_interval_secs,
-                            dummy_tx_per_cycle,
-                            mempool_max_size_bytes,
-                            mempool_batch_size,
-                            mempool_backpressure_threshold as usize,
-                            tx_batch_size,
-                            adaptive_batch_threshold,
-                            memory_soft_limit,
-                            memory_hard_limit,
-                            miner_shutdown_token,
-                        )
-                        .await
-                        .map_err(|e| NodeError::DAG(e.to_string()))
-                });
+                    debug!("[DEBUG] Spawning mining task");
+                    
+                    // Calculate mining interval inside the async closure using captured value
+                    #[cfg(feature = "performance-test")]
+                    let mining_interval_secs = if target_block_time < 1000 {
+                        // For performance testing with sub-second intervals, use at least 1 second
+                        // but log the actual target for reference
+                        info!("Performance test mode: target_block_time {} ms, using 1 second mining interval", 
+                              target_block_time);
+                        1
+                    } else {
+                        (target_block_time as f64 / 1000.0) as u64
+                    };
 
-                // Register the solo miner task with resource cleanup
-                self.resource_cleanup
-                    .register_task(|_token| async move {
-                        // Note: solo_miner_task_handle is an AbortHandle, not awaitable
-                        // The task will be aborted when the cancellation token is triggered
-                        Ok(())
+                    #[cfg(not(feature = "performance-test"))]
+                    let mining_interval_secs = {
+                        // Calculate mining interval from target_block_time without forcing minimum
+                        // Allow sub-second intervals for high-performance mining (e.g., 200ms target)
+                        let target_secs = target_block_time as f64 / 1000.0;
+                        if target_secs < 1.0 {
+                            // For sub-second intervals, use 0 to indicate millisecond precision
+                            0
+                        } else {
+                            target_secs as u64
+                        }
+                    };
+
+                    info!(
+                        "Using mining interval: {} seconds (from target_block_time: {} ms)",
+                        mining_interval_secs, target_block_time
+                    );
+                    
+                    let result = match producer_type.as_str() {
+                        "decoupled" => {
+                            info!("Starting DecoupledProducer for high-throughput mining");
+                            let block_creation_interval_ms = if mining_interval_secs == 0 {
+                                // For sub-second intervals, use target_block_time directly
+                                target_block_time
+                            } else {
+                                // Convert seconds to milliseconds
+                                mining_interval_secs * 1000
+                            };
+                            let decoupled_producer = DecoupledProducer::new(
+                                dag,
+                                wallet,
+                                mempool,
+                                utxos,
+                                miner,
+                                block_creation_interval_ms,
+                                4,    // mining_workers
+                                100,  // candidate_buffer_size
+                                50,   // mined_buffer_size
+                                shutdown_token,
+                            );
+                            decoupled_producer.run().await
+                        }
+                        "solo" | _ => {
+                            info!("Starting SoloProducer for traditional mining");
+                            let solo_producer = SoloProducer::new(
+                                dag,
+                                wallet,
+                                mempool,
+                                utxos,
+                                miner,
+                                mining_interval_secs,
+                                shutdown_token,
+                            );
+                            solo_producer.run().await
+                        }
+                    };
+                    
+                    // Convert to a simple error type that doesn't capture self
+                    result.map_err(|e| {
+                        let error_msg = format!("DAG error: {}", e);
+                        // Create a simple anyhow error instead of NodeError
+                        anyhow::anyhow!(error_msg)
                     })
-                    .await?;
+                });
             }
         }
 
         // --- WebSocket Server State ---
+        let dag_for_websocket = self.dag.clone();
+        let saga_for_websocket = self.saga_pallet.clone();
+        let analytics_for_websocket = self.analytics.clone();
+        
         let websocket_state = Arc::new(WebSocketServerState::new(
-            self.dag.clone(),
-            self.saga_pallet.clone(),
-            self.analytics.clone(),
+            dag_for_websocket.clone(),
+            saga_for_websocket,
+            analytics_for_websocket,
         ));
+        dag_for_websocket
+            .attach_balance_event_sender(websocket_state.balance_sender.clone())
+            .await;
 
         // --- WebSocket Broadcasting Task ---
         // This task monitors DAG and mempool changes and broadcasts updates to WebSocket clients
+        let dag_for_broadcast = self.dag.clone();
+        let mempool_for_broadcast = self.mempool.clone();
+        let utxos_for_broadcast = self.utxos.clone();
+        let saga_for_broadcast = self.saga_pallet.clone();
+        
         let websocket_broadcast_task = {
             let ws_state = websocket_state.clone();
-            let dag_clone = self.dag.clone();
-            let mempool_clone = self.mempool.clone();
-            let utxos_clone = self.utxos.clone();
-            let saga_clone = self.saga_pallet.clone();
 
             async move {
                 let mut interval = tokio::time::interval(Duration::from_secs(1));
                 interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+                // Subscribe to DAG-emitted balance events to ensure a receiver is always present
+                let mut balances_rx = ws_state.balance_sender.subscribe();
+
                 let mut last_block_count = 0;
                 let mut last_mempool_size = 0;
+                let mut last_balances: std::collections::HashMap<String, u64> =
+                    std::collections::HashMap::new();
 
                 loop {
                     interval.tick().await;
 
+                    // Drain any balance events emitted by DAG to keep the channel active
+                    while let Ok(balance_event) = balances_rx.try_recv() {
+                        last_balances.insert(balance_event.address.clone(), balance_event.balance);
+                    }
+
                     // Check for new blocks
-                    let current_block_count = dag_clone.blocks.len();
+                    let current_block_count = dag_for_broadcast.blocks.len();
                     if current_block_count > last_block_count {
                         // Get the latest block(s)
-                        if let Some(latest_block) = dag_clone.get_latest_block().await {
+                        if let Some(latest_block) = dag_for_broadcast.get_latest_block().await {
                             if ws_state.block_sender.receiver_count() > 0 {
                                 ws_state.broadcast_block_notification(&latest_block).await;
                             }
@@ -922,8 +978,12 @@ impl Node {
                     }
 
                     // Check for mempool changes
-                    let mempool_reader = mempool_clone.read().await;
+                    let mempool_reader = mempool_for_broadcast.read().await;
                     let current_mempool_size = mempool_reader.len().await;
+                    crate::metrics::get_global_metrics().mempool_size.store(
+                        current_mempool_size as u64,
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                     if current_mempool_size != last_mempool_size {
                         if ws_state.mempool_sender.receiver_count() > 0 {
                             ws_state
@@ -935,7 +995,7 @@ impl Node {
                     drop(mempool_reader);
 
                     // Broadcast network health metrics
-                    let utxos_reader = utxos_clone.read().await;
+                    let utxos_reader = utxos_for_broadcast.read().await;
                     let network_health = crate::websocket_server::NetworkHealth {
                         block_count: current_block_count,
                         mempool_size: current_mempool_size,
@@ -943,12 +1003,34 @@ impl Node {
                         connected_peers: 0, // Will be updated with actual peer count
                         sync_status: "synced".to_string(),
                     };
+
+                    // Broadcast balance updates to subscribed clients with address filters
+                    if ws_state.balance_sender.receiver_count() > 0 {
+                        let addresses_vec = ws_state.get_balance_subscription_addresses().await;
+                        let addresses: std::collections::HashSet<String> =
+                            addresses_vec.into_iter().collect();
+
+                        if !addresses.is_empty() {
+                            for address in addresses {
+                                let resp = make_balance_response(&utxos_reader, &address);
+                                let current_balance = resp.base_units;
+                                let prev = last_balances.get(&address).copied().unwrap_or(u64::MAX);
+                                if prev != current_balance {
+                                    last_balances.insert(address.clone(), current_balance);
+                                    ws_state
+                                        .broadcast_balance_update(address.clone(), current_balance)
+                                        .await;
+                                }
+                            }
+                        }
+                    }
+
                     drop(utxos_reader);
 
                     ws_state.broadcast_network_health(network_health).await;
 
                     // Broadcast analytics dashboard data
-                    let analytics_data = saga_clone.get_analytics_dashboard_data().await;
+                    let analytics_data = saga_for_broadcast.get_analytics_dashboard_data().await;
                     ws_state.broadcast_analytics_data(&analytics_data).await;
                 }
                 #[allow(unreachable_code)]
@@ -1033,6 +1115,7 @@ impl Node {
                     .route("/balance/{address}", get(get_balance))
                     .route("/utxos/{address}", get(get_utxos))
                     .route("/transaction", post(submit_transaction))
+                    .route("/submit-transactions", post(submit_transactions))
                     .route("/block/{id}", get(get_block))
                     .route("/dag", get(get_dag))
                     .route("/blocks", get(get_block_ids))
@@ -1040,6 +1123,8 @@ impl Node {
                     .route("/mempool", get(mempool_handler))
                     .route("/publish-readiness", get(publish_readiness_handler))
                     .route("/analytics/dashboard", get(analytics_dashboard_handler))
+                    .route("/metrics", get(metrics_json_handler))
+                    .route("/metrics/prometheus", get(metrics_prometheus_handler))
                     // /saga/ask route removed for production hardening
                     .route("/p2p_getConnectedPeers", get(get_connected_peers_handler))
                     .layer(middleware::from_fn_with_state(
@@ -1097,7 +1182,44 @@ impl Node {
                         }
 
                         warn!("Node shutdown initiated by API server failure.");
-                        return Err(e);
+                        return Err(e.into());
+                    }
+                }
+            },
+            // RPC Server Task - runs gRPC server for transaction and balance
+            rpc_result = async {
+                let rpc_addr: SocketAddr = self.config.rpc.address.parse().map_err(|e| {
+                    NodeError::Config(ConfigError::Validation(format!("Invalid RPC address: {e}")))
+                })?;
+
+                info!("Starting RPC server on {}", rpc_addr);
+
+                let backend = Arc::new(NodeRpcBackend::new(
+                    self.dag.clone(),
+                    self.utxos.clone(),
+                    self.mempool.clone(),
+                    tx_p2p_commands.clone(),
+                ));
+
+                match qanto_rpc::start(rpc_addr, backend).await {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(NodeError::ServerExecution(format!("RPC server failed: {e}"))),
+                }
+            } => {
+                match rpc_result {
+                    Ok(_) => {
+                        warn!("RPC server completed unexpectedly");
+                    }
+                    Err(e) => {
+                        error!("RPC server failed: {}", e);
+                        self.resource_cleanup.request_shutdown();
+
+                        if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
+                            warn!("Graceful shutdown failed: {}, forcing shutdown", e);
+                        }
+
+                        warn!("Node shutdown initiated by RPC server failure.");
+                        return Err(e.into());
                     }
                 }
             },
@@ -1114,7 +1236,7 @@ impl Node {
                         }
 
                         warn!("Node shutdown initiated by critical task failure.");
-                        return Err(e);
+                        return Err(e.into());
                     }
                     Err(e) => {
                         error!("A critical node task panicked: {}", e);
@@ -1303,11 +1425,17 @@ async fn info_handler(
 }
 
 /// Returns the current contents of the mempool.
+#[tracing::instrument(skip(state), name = "api.mempool_handler")]
 async fn mempool_handler(
     State(state): State<AppState>,
 ) -> Result<Json<HashMap<String, Transaction>>, StatusCode> {
+    debug!("Acquiring mempool read lock (API)");
     let mempool_read_guard = state.mempool.read().await;
-    Ok(Json(mempool_read_guard.get_transactions().await))
+    debug!("Mempool read lock acquired (API)");
+    let txs = mempool_read_guard.get_transactions().await;
+    drop(mempool_read_guard);
+    debug!("Mempool read lock released (API)");
+    Ok(Json(txs))
 }
 
 /// A readiness probe endpoint.
@@ -1373,11 +1501,40 @@ async fn publish_readiness_handler(
     }))
 }
 
+#[derive(Serialize, Debug)]
+struct BalanceResponse {
+    balance: String,
+    base_units: u64,
+}
+
+fn make_balance_response(
+    utxos: &std::collections::HashMap<String, UTXO>,
+    address: &str,
+) -> BalanceResponse {
+    let balance_base_units: u64 = utxos
+        .values()
+        .filter(|utxo_item| utxo_item.address == address)
+        .map(|utxo_item| utxo_item.amount)
+        .sum();
+    let int_part = balance_base_units / crate::transaction::SMALLEST_UNITS_PER_QAN;
+    let frac_part = balance_base_units % crate::transaction::SMALLEST_UNITS_PER_QAN;
+    let balance_str = format!(
+        "{}.{:0width$}",
+        int_part,
+        frac_part,
+        width = crate::transaction::DECIMALS_PER_QAN
+    );
+    BalanceResponse {
+        balance: balance_str,
+        base_units: balance_base_units,
+    }
+}
+
 /// Returns the total balance for a given address.
 async fn get_balance(
     State(state): State<AppState>,
     AxumPath(address): AxumPath<String>,
-) -> Result<Json<u64>, ApiError> {
+) -> Result<Json<BalanceResponse>, ApiError> {
     if !ADDRESS_REGEX_COMPILED.is_match(&address) {
         warn!("Invalid address format for balance check: {address}");
         return Err(ApiError {
@@ -1387,12 +1544,8 @@ async fn get_balance(
         });
     }
     let utxos_read_guard = state.utxos.read().await;
-    let balance = utxos_read_guard
-        .values()
-        .filter(|utxo_item| utxo_item.address == address)
-        .map(|utxo_item| utxo_item.amount)
-        .sum();
-    Ok(Json(balance))
+    let resp = make_balance_response(&utxos_read_guard, &address);
+    Ok(Json(resp))
 }
 
 /// Returns all UTXOs for a given address.
@@ -1477,6 +1630,129 @@ async fn submit_transaction(
 
     info!("Transaction {} submitted via API", tx_id);
     Ok(Json(tx_id))
+}
+
+#[tracing::instrument(skip(state, tx_list), fields(batch_size = tx_list.len()), name = "api.submit_transactions")]
+async fn submit_transactions(
+    State(state): State<AppState>,
+    Json(tx_list): Json<Vec<Transaction>>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    debug!("Batch submit: {} transactions", tx_list.len());
+
+    if tx_list.is_empty() {
+        return Ok(Json(serde_json::json!({"accepted": [], "rejected": []})));
+    }
+
+    // Lock UTXOs once for batch verification with timing
+    debug!("Acquiring UTXOs read lock (batch)");
+    let lock_start = Instant::now();
+    let utxos_read_guard = state.utxos.read().await;
+    let lock_elapsed = lock_start.elapsed();
+    debug!("UTXOs read lock acquired (batch) in {:?}", lock_elapsed);
+
+    // ΩMEGA preliminary checks (sequential, lightweight)
+    let mut omega_ok: Vec<bool> = Vec::with_capacity(tx_list.len());
+    let mut rejected: Vec<serde_json::Value> = Vec::new();
+    for tx in tx_list.iter() {
+        let tx_hash_bytes = match hex::decode(&tx.id) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                rejected.push(
+                    serde_json::json!({"id": tx.id, "error": "Invalid transaction ID format"}),
+                );
+                omega_ok.push(false);
+                continue;
+            }
+        };
+        let tx_hash = H256::from_slice(&tx_hash_bytes);
+        if !reflect_on_action(tx_hash).await {
+            error!("ΛΣ-ΩMEGA rejected transaction {}", tx.id);
+            rejected.push(
+                serde_json::json!({"id": tx.id, "error": "System unstable, transaction rejected"}),
+            );
+            omega_ok.push(false);
+        } else {
+            omega_ok.push(true);
+        }
+    }
+
+    // Parallel signature verification across the batch
+    let sig_ok_all = Transaction::verify_signatures_batch_parallel(&tx_list);
+
+    // Parallel UTXO/DAG verification with bounded concurrency via semaphore
+    let verification_semaphore = Arc::new(tokio::sync::Semaphore::new(32));
+    let verify_results =
+        Transaction::verify_batch_parallel(&tx_list, &utxos_read_guard, &verification_semaphore);
+
+    // Collect accepted and rejected
+    let mut accepted_ids: Vec<String> = Vec::new();
+    let mut accepted_txs: Vec<Transaction> = Vec::new();
+
+    for (i, res) in verify_results.into_iter().enumerate() {
+        let tx = &tx_list[i];
+        if !omega_ok[i] {
+            // Already rejected above with reason added
+            continue;
+        }
+        if !sig_ok_all[i] {
+            rejected.push(
+                serde_json::json!({"id": tx.id, "error": "Quantum signature verification failed"}),
+            );
+            continue;
+        }
+        match res {
+            Ok(()) => {
+                accepted_ids.push(tx.id.clone());
+                accepted_txs.push(tx.clone());
+            }
+            Err(e) => {
+                warn!("Transaction {} failed verification via API: {}", tx.id, e);
+                rejected.push(serde_json::json!({"id": tx.id, "error": e.to_string()}));
+            }
+        }
+    }
+
+    // Batch-ingest accepted transactions into local mempool
+    if !accepted_txs.is_empty() {
+        let (mp_accepted, mp_rejected) = {
+            let mempool_guard = state.mempool.write().await;
+            mempool_guard
+                .add_transaction_batch(accepted_txs.clone(), &utxos_read_guard, &state.dag)
+                .await
+        };
+
+        // Reconcile mempool outcomes with accepted list
+        let mp_acc_set: std::collections::HashSet<String> = mp_accepted.into_iter().collect();
+        accepted_ids.retain(|id| mp_acc_set.contains(id));
+        for (id, err) in mp_rejected {
+            rejected.push(serde_json::json!({"id": id, "error": format!("Mempool ingestion failed: {}", err)}));
+        }
+    }
+
+    // Broadcast accepted transactions via P2P as a single batch
+    if !accepted_ids.is_empty() {
+        if let Err(e) = state
+            .p2p_command_sender
+            .send(P2PCommand::BroadcastTransactionBatch(accepted_txs.clone()))
+            .await
+        {
+            error!("Failed to broadcast transaction batch: {}", e);
+            // On failure, mark all as rejected with a generic error
+            let drained = std::mem::take(&mut accepted_ids);
+            for tx_id in drained {
+                rejected.push(serde_json::json!({"id": tx_id, "error": "Internal server error"}));
+            }
+        }
+    }
+
+    info!(
+        "Batch submit via API: accepted={}, rejected={}",
+        accepted_ids.len(),
+        rejected.len()
+    );
+    Ok(Json(
+        serde_json::json!({ "accepted": accepted_ids, "rejected": rejected }),
+    ))
 }
 
 /// Retrieves a specific block by its ID.
@@ -1596,7 +1872,7 @@ async fn analytics_dashboard_handler(
         .as_secs();
 
     // Network health metrics
-    let network_health = crate::saga::NetworkHealthMetrics::default();
+    let network_health = crate::metrics::get_global_metrics().as_ref().clone();
 
     // AI model performance metrics
     let ai_performance = crate::saga::AIModelPerformance {
@@ -1620,14 +1896,47 @@ async fn analytics_dashboard_handler(
         security_confidence: 0.85,
     };
 
-    // Economic indicators
+    // Economic indicators (real calculations from DAG and SAGA)
+    let total_value_locked: u64 = crate::metrics::get_global_metrics()
+        .total_value_locked
+        .load(std::sync::atomic::Ordering::Relaxed);
+
+    let transaction_fees_24h: u64 = crate::metrics::get_global_metrics()
+        .transaction_fees_24h
+        .load(std::sync::atomic::Ordering::Relaxed);
+
+    let validator_rewards_24h: u64 = crate::metrics::get_global_metrics()
+        .validator_rewards_24h
+        .load(std::sync::atomic::Ordering::Relaxed);
+
+    let network_utilization: f64 = if !dag.blocks.is_empty() {
+        let total_txs: f64 = dag
+            .blocks
+            .iter()
+            .map(|entry| entry.value().transactions.len() as f64)
+            .sum::<f64>();
+        let avg_tx_per_block = total_txs / dag.blocks.len() as f64;
+        (avg_tx_per_block / 1000.0).min(1.0)
+    } else {
+        0.0
+    };
+
+    let env_metrics = state.saga.economy.environmental_metrics.read().await;
+    let economic_security = state
+        .saga
+        .economic_model
+        .predictive_market_premium(dag, &env_metrics)
+        .await;
+    drop(env_metrics);
+
     let economic_indicators = crate::saga::EconomicIndicators {
-        total_value_locked: utxos.values().map(|utxo| utxo.amount as f64).sum(),
-        transaction_fees_24h: mempool.get_transactions().await.len() as f64 * 100.0, // Placeholder calculation
-        validator_rewards_24h: 50000.0,                                              // Placeholder
-        network_utilization: 0.75,                                                   // Placeholder
-        economic_security: 0.95,                                                     // Placeholder
-        fee_market_efficiency: 0.85,                                                 // Placeholder
+        total_value_locked: total_value_locked as f64,
+        transaction_fees_24h: transaction_fees_24h as f64,
+        validator_rewards_24h: validator_rewards_24h as f64,
+        network_utilization,
+        economic_security,
+        // Align with AnalyticsDashboard simplification
+        fee_market_efficiency: 0.85,
     };
 
     // Environmental metrics
@@ -1647,15 +1956,115 @@ async fn analytics_dashboard_handler(
         security_insights,
         economic_indicators,
         environmental_metrics,
-        total_transactions: dag.blocks.len() as u64,
+        total_transactions: crate::metrics::get_global_metrics()
+            .transactions_processed
+            .load(std::sync::atomic::Ordering::Relaxed),
         active_addresses: utxos.len() as u64,
         mempool_size: mempool.get_transactions().await.len() as u64,
         block_height: dag.blocks.len() as u64,
-        tps_current: 32.0,      // Target 32 BPS
-        tps_peak: 10_000_000.0, // Target 10M+ TPS
+        tps_current: crate::metrics::get_global_metrics()
+            .tps_current
+            .load(std::sync::atomic::Ordering::Relaxed) as f64
+            / 1000.0,
+        tps_peak: crate::metrics::get_global_metrics()
+            .tps_peak_24h
+            .load(std::sync::atomic::Ordering::Relaxed) as f64
+            / 1000.0,
     };
 
     Ok(Json(dashboard_data))
+}
+
+async fn metrics_json_handler(
+    State(_state): State<AppState>,
+) -> Result<Json<HashMap<String, f64>>, StatusCode> {
+    let metrics = crate::metrics::get_global_metrics();
+    Ok(Json(metrics.export_metrics()))
+}
+
+async fn metrics_prometheus_handler(State(_state): State<AppState>) -> Result<String, StatusCode> {
+    let metrics = crate::metrics::get_global_metrics();
+    Ok(metrics.export_prometheus())
+}
+
+#[cfg(test)]
+mod balance_tests {
+    use super::*;
+    fn build_utxo(id: &str, addr: &str, amount: u64) -> (String, UTXO) {
+        (
+            id.to_string(),
+            UTXO {
+                address: addr.to_string(),
+                amount,
+                tx_id: "tx".to_string(),
+                output_index: 0,
+                explorer_link: String::new(),
+            },
+        )
+    }
+
+    #[test]
+    fn balance_zero() {
+        let address = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let utxos: std::collections::HashMap<String, UTXO> = std::collections::HashMap::new();
+        let resp = make_balance_response(&utxos, address);
+        assert_eq!(resp.base_units, 0);
+        assert_eq!(resp.balance, "0.000000");
+    }
+
+    #[test]
+    fn balance_whole_qan() {
+        let address = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let mut utxos: std::collections::HashMap<String, UTXO> = std::collections::HashMap::new();
+        let one_qan = crate::transaction::SMALLEST_UNITS_PER_QAN;
+        let (id, utxo) = build_utxo("u1", address, one_qan);
+        utxos.insert(id, utxo);
+        let resp = make_balance_response(&utxos, address);
+        assert_eq!(resp.base_units, one_qan);
+        assert_eq!(resp.balance, "1.000000");
+    }
+
+    #[test]
+    fn balance_fractional_qan() {
+        let address = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        let mut utxos: std::collections::HashMap<String, UTXO> = std::collections::HashMap::new();
+        let amt = crate::transaction::SMALLEST_UNITS_PER_QAN + 123_456;
+        let (id, utxo) = build_utxo("u2", address, amt);
+        utxos.insert(id, utxo);
+        let resp = make_balance_response(&utxos, address);
+        assert_eq!(resp.base_units, amt);
+        assert_eq!(resp.balance, "1.123456");
+    }
+
+    #[test]
+    fn balance_sum_multiple_utxos() {
+        let address = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+        let mut utxos: std::collections::HashMap<String, UTXO> = std::collections::HashMap::new();
+        let q = crate::transaction::SMALLEST_UNITS_PER_QAN;
+        utxos.insert(
+            "x1".to_string(),
+            UTXO {
+                address: address.to_string(),
+                amount: q * 2,
+                tx_id: "tx".to_string(),
+                output_index: 0,
+                explorer_link: String::new(),
+            },
+        );
+        utxos.insert(
+            "x2".to_string(),
+            UTXO {
+                address: address.to_string(),
+                amount: q / 2,
+                tx_id: "tx".to_string(),
+                output_index: 1,
+                explorer_link: String::new(),
+            },
+        );
+        let resp = make_balance_response(&utxos, address);
+        assert_eq!(resp.base_units, q * 2 + q / 2);
+        assert_eq!(resp.balance, "2.500000");
+    }
 }
 
 // --- Unit Tests ---

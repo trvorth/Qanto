@@ -475,6 +475,26 @@ impl AnalyticsDashboard {
             parallel_validations: AtomicU64::new(0),
             batch_processing_ops: AtomicU64::new(0),
             compression_ratio: AtomicU64::new(8000), // 80% compression
+            persistence_batches: AtomicU64::new(
+                crate::metrics::get_global_metrics()
+                    .persistence_batches
+                    .load(Ordering::Relaxed),
+            ),
+            persistence_last_batch_ops: AtomicU64::new(
+                crate::metrics::get_global_metrics()
+                    .persistence_last_batch_ops
+                    .load(Ordering::Relaxed),
+            ),
+            persistence_last_batch_bytes: AtomicU64::new(
+                crate::metrics::get_global_metrics()
+                    .persistence_last_batch_bytes
+                    .load(Ordering::Relaxed),
+            ),
+            persistence_overflows: AtomicU64::new(
+                crate::metrics::get_global_metrics()
+                    .persistence_overflows
+                    .load(Ordering::Relaxed),
+            ),
 
             // Network and consensus metrics
             tps: AtomicU64::new(current_tps as u64),
@@ -520,6 +540,21 @@ impl AnalyticsDashboard {
             network_congestion: AtomicU64::new(if current_tps > 1000.0 { 80 } else { 20 }),
             block_propagation_time: AtomicU64::new(500),
             mempool_size: AtomicU64::new(0),
+            total_value_locked: AtomicU64::new(
+                crate::metrics::get_global_metrics()
+                    .total_value_locked
+                    .load(Ordering::Relaxed),
+            ),
+            validator_rewards_24h: AtomicU64::new(
+                crate::metrics::get_global_metrics()
+                    .validator_rewards_24h
+                    .load(Ordering::Relaxed),
+            ),
+            transaction_fees_24h: AtomicU64::new(
+                crate::metrics::get_global_metrics()
+                    .transaction_fees_24h
+                    .load(Ordering::Relaxed),
+            ),
 
             // Relayer metrics
             relayer_success_rate: AtomicU64::new(9900), // 99%

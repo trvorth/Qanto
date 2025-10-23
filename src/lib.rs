@@ -1,10 +1,12 @@
 // The primary modules that define the Qanto node and its behavior.
 pub mod adaptive_mining;
 pub mod analytics_dashboard;
+pub mod block_producer;
 pub mod config;
 pub mod config_validator;
 pub mod consensus;
 pub mod decentralization;
+pub mod decoupled_producer;
 pub mod deterministic_mining;
 pub mod diagnostics;
 pub mod elite_mempool;
@@ -28,7 +30,9 @@ pub mod password_utils;
 pub mod performance_monitoring;
 pub mod performance_optimizations;
 pub mod performance_validation;
+pub mod persistence;
 pub mod post_quantum_crypto;
+pub mod pq_suite;
 pub mod privacy;
 pub mod resource_cleanup;
 pub mod safe_interval;
@@ -51,6 +55,7 @@ pub use qanto_core::{
     storage_adapter, storage_traits,
 };
 pub mod qantodag;
+pub mod rpc_backend;
 pub mod saga;
 pub mod transaction;
 pub mod types;

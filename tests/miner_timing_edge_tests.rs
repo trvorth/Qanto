@@ -70,6 +70,7 @@ fn create_test_dag() -> Arc<QantoDAG> {
         initial_validator: "test_validator".to_string(),
         target_block_time: 1000,
         num_chains: 1,
+        dev_fee_rate: 0.10,
     };
 
     let logging_config = LoggingConfig {

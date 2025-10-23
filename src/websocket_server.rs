@@ -40,6 +40,13 @@ pub struct NetworkHealth {
     pub sync_status: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BalanceEvent {
+    pub address: String,
+    pub balance: u64,
+    pub timestamp: u64,
+}
+
 /// WebSocket subscription types
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
@@ -50,6 +57,7 @@ pub enum SubscriptionType {
     Analytics,
     Alerts,
     Economic,
+    Balances,
     All,
 }
 
@@ -61,8 +69,14 @@ pub enum WebSocketMessage {
         subscription_type: SubscriptionType,
         filters: Option<HashMap<String, String>>,
     },
+    SubscribeBalance {
+        address: String,
+    },
     Unsubscribe {
         subscription_type: SubscriptionType,
+    },
+    UnsubscribeBalance {
+        address: String,
     },
     BlockNotification {
         block: QantoBlock,
@@ -113,12 +127,21 @@ pub enum WebSocketMessage {
         message: String,
         timestamp: u64,
     },
+    BalanceUpdate {
+        address: String,
+        balance: u64,
+        timestamp: u64,
+    },
     Error {
         message: String,
         code: u16,
     },
     SubscriptionConfirmed {
         subscription_type: SubscriptionType,
+        client_id: String,
+    },
+    BalanceSubscriptionConfirmed {
+        address: String,
         client_id: String,
     },
     Pong,
@@ -128,6 +151,7 @@ pub enum WebSocketMessage {
 #[derive(Debug, Clone)]
 pub struct ClientConnection {
     subscriptions: Vec<SubscriptionType>,
+    balance_subscriptions: Vec<String>, // Addresses for balance subscriptions
     filters: HashMap<String, String>,
     connected_at: u64,
 }
@@ -143,6 +167,7 @@ pub struct WebSocketServerState {
     pub transaction_sender: broadcast::Sender<Transaction>,
     pub network_health_sender: broadcast::Sender<NetworkHealth>,
     pub mempool_sender: broadcast::Sender<usize>,
+    pub balance_sender: broadcast::Sender<BalanceEvent>,
 }
 
 impl WebSocketServerState {
@@ -155,6 +180,7 @@ impl WebSocketServerState {
         let (transaction_sender, _) = broadcast::channel(1000);
         let (network_health_sender, _) = broadcast::channel(100);
         let (mempool_sender, _) = broadcast::channel(100);
+        let (balance_sender, _) = broadcast::channel(1000);
 
         Self {
             dag,
@@ -165,6 +191,22 @@ impl WebSocketServerState {
             transaction_sender,
             network_health_sender,
             mempool_sender,
+            balance_sender,
+        }
+    }
+
+    pub async fn broadcast_balance_update(&self, address: String, balance: u64) {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let event = BalanceEvent {
+            address,
+            balance,
+            timestamp,
+        };
+        if let Err(e) = self.balance_sender.send(event) {
+            warn!("Failed to broadcast balance update: {}", e);
         }
     }
 
@@ -219,6 +261,21 @@ impl WebSocketServerState {
                 warn!("Failed to broadcast network health: {}", e);
             }
         }
+    }
+
+    pub async fn get_balance_subscription_addresses(&self) -> Vec<String> {
+        let clients = self.clients.read().await;
+        let mut addrs = Vec::new();
+        for client in clients.values() {
+            if client.subscriptions.contains(&SubscriptionType::Balances)
+                || client.subscriptions.contains(&SubscriptionType::All)
+            {
+                if let Some(addr) = client.filters.get("address") {
+                    addrs.push(addr.clone());
+                }
+            }
+        }
+        addrs
     }
 
     /// Broadcast mempool update to subscribed clients
@@ -312,6 +369,7 @@ async fn handle_websocket(socket: WebSocket, state: WebSocketServerState) {
     let client_id = Uuid::new_v4().to_string();
     let client = ClientConnection {
         subscriptions: Vec::new(),
+        balance_subscriptions: Vec::new(),
         filters: HashMap::new(),
         connected_at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -334,6 +392,7 @@ async fn handle_websocket(socket: WebSocket, state: WebSocketServerState) {
     let mut alerts_rx = state.analytics.subscribe_to_alerts();
     let mut blocks_rx = state.block_sender.subscribe();
     let mut transactions_rx = state.transaction_sender.subscribe();
+    let mut balances_rx = state.balance_sender.subscribe();
 
     // Create a channel for pong responses
     let (pong_tx, mut pong_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
@@ -388,6 +447,29 @@ async fn handle_websocket(socket: WebSocket, state: WebSocketServerState) {
                     if let Err(e) = send_message(&mut sender, &message).await {
                         error!("Failed to send analytics update: {}", e);
                         break;
+                    }
+                }
+            }
+            // Handle balance updates
+            Ok(balance_event) = balances_rx.recv() => {
+                if client_has_subscription(&state, &client_id, &SubscriptionType::Balances).await {
+                    // Check address filter if present
+                    let mut allow = true;
+                    if let Some(client) = state.clients.read().await.get(&client_id) {
+                        if let Some(addr_filter) = client.filters.get("address") {
+                            allow = addr_filter == &balance_event.address;
+                        }
+                    }
+                    if allow {
+                        let message = WebSocketMessage::BalanceUpdate {
+                            address: balance_event.address.clone(),
+                            balance: balance_event.balance,
+                            timestamp: balance_event.timestamp,
+                        };
+                        if let Err(e) = send_message(&mut sender, &message).await {
+                            error!("Failed to send balance update: {}", e);
+                            break;
+                        }
                     }
                 }
             }
@@ -497,6 +579,15 @@ async fn handle_client_message(
                 info!("Client {} subscribed to {:?}", client_id, subscription_type);
             }
         }
+        WebSocketMessage::SubscribeBalance { address } => {
+            let mut clients = state.clients.write().await;
+            if let Some(client) = clients.get_mut(client_id) {
+                if !client.balance_subscriptions.contains(&address) {
+                    client.balance_subscriptions.push(address.clone());
+                    info!("Client {} subscribed to balance updates for {}", client_id, address);
+                }
+            }
+        }
         WebSocketMessage::Unsubscribe { subscription_type } => {
             let mut clients = state.clients.write().await;
             if let Some(client) = clients.get_mut(client_id) {
@@ -505,6 +596,13 @@ async fn handle_client_message(
                     "Client {} unsubscribed from {:?}",
                     client_id, subscription_type
                 );
+            }
+        }
+        WebSocketMessage::UnsubscribeBalance { address } => {
+            let mut clients = state.clients.write().await;
+            if let Some(client) = clients.get_mut(client_id) {
+                client.balance_subscriptions.retain(|a| a != &address);
+                info!("Client {} unsubscribed from balance updates for {}", client_id, address);
             }
         }
         _ => {
@@ -562,4 +660,79 @@ pub async fn start_websocket_server(port: u16, state: WebSocketServerState) -> R
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analytics_dashboard::DashboardConfig;
+    use crate::performance_optimizations::QantoDAGOptimizations;
+
+    #[tokio::test]
+    async fn websocket_state_initializes_with_dummy_dag() {
+        let dag = Arc::new(<QantoDAG as QantoDAGOptimizations>::new_dummy_for_verification());
+        let saga = {
+            #[cfg(feature = "infinite-strata")]
+            {
+                Arc::new(PalletSaga::new(None))
+            }
+            #[cfg(not(feature = "infinite-strata"))]
+            {
+                Arc::new(PalletSaga::new())
+            }
+        };
+        let analytics = Arc::new(AnalyticsDashboard::new(DashboardConfig::default()));
+
+        let state = WebSocketServerState::new(dag.clone(), saga.clone(), analytics.clone());
+
+        assert_eq!(state.clients.read().await.len(), 0);
+        assert_eq!(state.block_sender.receiver_count(), 0);
+        assert_eq!(state.transaction_sender.receiver_count(), 0);
+        assert_eq!(state.network_health_sender.receiver_count(), 0);
+        assert_eq!(state.mempool_sender.receiver_count(), 0);
+        assert_eq!(state.balance_sender.receiver_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn broadcasts_reach_subscribers() {
+        let dag = Arc::new(<QantoDAG as QantoDAGOptimizations>::new_dummy_for_verification());
+        let saga = {
+            #[cfg(feature = "infinite-strata")]
+            {
+                Arc::new(PalletSaga::new(None))
+            }
+            #[cfg(not(feature = "infinite-strata"))]
+            {
+                Arc::new(PalletSaga::new())
+            }
+        };
+        let analytics = Arc::new(AnalyticsDashboard::new(DashboardConfig::default()));
+        let state = WebSocketServerState::new(dag, saga, analytics);
+
+        let mut nh_rx = state.network_health_sender.subscribe();
+        let mut bal_rx = state.balance_sender.subscribe();
+
+        let health = NetworkHealth {
+            block_count: 0,
+            mempool_size: 0,
+            utxo_count: 0,
+            connected_peers: 0,
+            sync_status: "ok".to_string(),
+        };
+        state.broadcast_network_health(health.clone()).await;
+        let received_health = tokio::time::timeout(std::time::Duration::from_secs(1), nh_rx.recv())
+            .await
+            .expect("timeout waiting for network health")
+            .expect("channel closed");
+        assert_eq!(received_health.sync_status, health.sync_status);
+
+        state.broadcast_balance_update("addr1".to_string(), 42).await;
+        let received_bal = tokio::time::timeout(std::time::Duration::from_secs(1), bal_rx.recv())
+            .await
+            .expect("timeout waiting for balance update")
+            .expect("channel closed");
+        assert_eq!(received_bal.address, "addr1");
+        assert_eq!(received_bal.balance, 42);
+    }
 }

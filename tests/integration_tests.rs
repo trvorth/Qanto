@@ -152,6 +152,7 @@ async fn create_integration_test_environment(
         initial_validator: qanto::qantodag::DEV_ADDRESS.to_string(),
         target_block_time: 30,
         num_chains: 4,
+        dev_fee_rate: 0.10,
     };
 
     let dag_instance = QantoDAG::new(

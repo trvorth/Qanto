@@ -1,0 +1,215 @@
+syntax = "proto3";
+
+package qanto;
+
+service QantoRpc {
+  rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+  rpc GetBlock(GetBlockRequest) returns (GetBlockResponse);
+  rpc GetNetworkStats(GetNetworkStatsRequest) returns (GetNetworkStatsResponse);
+}
+
+// ----- Core Transaction Types -----
+message Transaction {
+  string id = 1;
+  string sender = 2;
+  string receiver = 3;
+  uint64 amount = 4;
+  uint64 fee = 5;
+  uint64 gas_limit = 6;
+  uint64 gas_used = 7;
+  uint64 gas_price = 8;
+  uint64 priority_fee = 9;
+  repeated Input inputs = 10;
+  repeated Output outputs = 11;
+  uint64 timestamp = 12;
+  map<string, string> metadata = 13;
+  QuantumResistantSignature signature = 14;
+  FeeBreakdown fee_breakdown = 15; // optional by presence
+}
+
+message Input {
+  string tx_id = 1;
+  uint32 output_index = 2;
+}
+
+message Output {
+  string address = 1;
+  uint64 amount = 2;
+  HomomorphicEncrypted homomorphic_encrypted = 3; // optional by presence
+}
+
+message QuantumResistantSignature {
+  bytes signer_public_key = 1;
+  bytes signature = 2;
+}
+
+message HomomorphicEncrypted {
+  bytes ciphertext = 1;
+  bytes public_key = 2;
+}
+
+message FeeBreakdown {
+  uint64 base_fee = 1;
+  uint64 complexity_fee = 2;
+  uint64 storage_fee = 3;
+  uint64 gas_fee = 4;
+  uint64 priority_fee = 5;
+  double congestion_multiplier = 6;
+  uint64 total_fee = 7;
+  uint64 gas_used = 8;
+  uint64 gas_price = 9;
+}
+
+// ----- Block and Related Types -----
+message QantoBlock {
+  uint32 chain_id = 1;
+  string id = 2;
+  repeated string parents = 3;
+  repeated Transaction transactions = 4;
+  double difficulty = 5;
+  string validator = 6;
+  string miner = 7;
+  uint64 nonce = 8;
+  uint64 timestamp = 9;
+  uint64 height = 10;
+  uint64 reward = 11;
+  uint64 effort = 12;
+  repeated CrossChainReference cross_chain_references = 13;
+  repeated CrossChainSwap cross_chain_swaps = 14;
+  string merkle_root = 15;
+  QuantumResistantSignature signature = 16;
+  repeated HomomorphicEncrypted homomorphic_encrypted = 17;
+  repeated SmartContract smart_contracts = 18;
+  repeated CarbonOffsetCredential carbon_credentials = 19;
+  uint64 epoch = 20;
+}
+
+message CrossChainReference {
+  uint32 chain_id = 1;
+  string block_id = 2;
+}
+
+message CrossChainSwapParams {
+  uint32 source_chain = 1;
+  uint32 target_chain = 2;
+  string source_block_id = 3;
+  uint64 amount = 4;
+  string initiator = 5;
+  string responder = 6;
+  uint64 timelock_duration = 7;
+  string secret_hash = 8;
+}
+
+message CrossChainSwap {
+  string swap_id = 1;
+  uint32 source_chain = 2;
+  uint32 target_chain = 3;
+  uint64 amount = 4;
+  string initiator = 5;
+  string responder = 6;
+  uint64 timelock = 7;
+  SwapState state = 8;
+  string secret_hash = 9;
+  optional string secret = 10;
+}
+
+enum SwapState {
+  INITIATED = 0;
+  REDEEMED = 1;
+  REFUNDED = 2;
+}
+
+message SmartContract {
+  string contract_id = 1;
+  string code = 2;
+  map<string, string> storage = 3;
+  string owner = 4;
+  uint64 gas_balance = 5;
+}
+
+message CarbonOffsetCredential {
+  string id = 1;
+  string issuer_id = 2;
+  string beneficiary_node = 3;
+  double tonnes_co2_sequestered = 4;
+  string project_id = 5;
+  uint32 vintage_year = 6;
+  string verification_signature = 7;
+  string additionality_proof_hash = 8;
+  double issuer_reputation_score = 9;
+  double geospatial_consistency_score = 10;
+}
+
+// ----- RPC Messages -----
+message SubmitTransactionRequest {
+  Transaction transaction = 1;
+}
+
+message SubmitTransactionResponse {
+  bool accepted = 1;
+  string message = 2;
+}
+
+message GetBalanceRequest {
+  string address = 1;
+}
+
+message GetBalanceResponse {
+  uint64 base_units = 1;
+  string balance = 2;
+}
+
+message GetBlockRequest {
+  string block_id = 1;
+}
+
+message GetBlockResponse {
+  QantoBlock block = 1;
+}
+
+message GetNetworkStatsRequest {}
+
+message GetNetworkStatsResponse {
+  double tps = 1;
+  double bps = 2;
+  uint64 mempool_tx_count = 3;
+  uint64 mempool_size_bytes = 4;
+  uint64 connected_peers = 5;
+  uint64 block_count = 6;
+  uint64 finality_ms = 7;
+  double network_throughput_mbps = 8;
+}
+
+// ----- P2P Networking Messages -----
+enum P2PPayloadType {
+  BLOCK = 0;
+  TRANSACTION = 1;
+  STATE = 2;
+  TRANSACTION_BATCH = 3;
+  CREDENTIAL = 4;
+}
+
+message UTXO {
+  string address = 1;
+  uint64 amount = 2;
+  string tx_id = 3;
+  uint32 output_index = 4;
+  string explorer_link = 5;
+}
+
+message TransactionBatch {
+  repeated Transaction transactions = 1;
+}
+
+message StateSnapshot {
+  repeated QantoBlock blocks = 1;
+  repeated UTXO utxos = 2;
+}
+
+message P2PNetworkMessage {
+  P2PPayloadType payload_type = 1;
+  bytes payload_bytes = 2;
+  bytes hmac = 3;
+  QuantumResistantSignature signature = 4;
+}

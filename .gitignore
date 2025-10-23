@@ -72,6 +72,11 @@ Thumbs.db
 /test_channel_db
 /test_performance_db
 /test_swap_db
+/test_data1
+/test_data2
+/test_mining_db
+/test_multi_mining_db
+/test_rpc_db
 
 # --- Sensitive Information ---
 *.key
@@ -114,6 +119,7 @@ node*/*.txt
 /Qanto-whitepaper.tex
 /mermaid-filter.err
 /scripts
+/diagnostics
 /docs/whitepaper/assets
 /docs/whitepaper/qanto-logo.png
 /docs/whitepaper/qanto-background.png
@@ -128,6 +134,7 @@ node*/*.txt
 /docs/PERFORMANCE_ANALYSIS.md
 /docs/PERFORMANCE_REPORT.md
 /docs/PERFORMANCE_RESULTS.txt
+/docs/interchain
 /docker-compose.production.yml
 /docker-compose.*.yml
 /deploy.sh
@@ -157,8 +164,7 @@ cleanup-*.log
 /package.json
 /package-lock.json
 /cargo-flamegraph.trace
-/profile.json.gz
-/benchmark_results_1760294371.json
+
 # --- Language & Framework Specific ---
 # Python
 /venv/
@@ -181,6 +187,9 @@ __pycache__/
 *.tar
 *.zip
 *.tgz
+
+# k8s
+/k8s/secrets.yaml
 
 # Terraform state and modules
 terraform/
@@ -261,7 +270,7 @@ yarn-error.log*
 
 # --- Cargo & Rust Specific ---
 /benchmark_data
-
+/benchmark_results
 # --- Documentation ---
 /docs/whitepaper/assets/diagrams/*.svg
 /docs/whitepaper/Qanto-whitepaper.docx

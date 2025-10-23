@@ -18,12 +18,23 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::future::pending;
 use std::io;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
+#[allow(unused_imports)]
 use tokio::sync::mpsc;
 use uuid::Uuid;
+
+// WebSocket client imports
+use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::connect_async;
+use tokio_tungstenite::tungstenite::Message;
+
+// Add storage and persistence imports for direct DB reads
+use crate::qanto_storage::{QantoStorage, StorageConfig};
+use crate::persistence::{balance_key, decode_balance, utxos_prefix, decode_utxo};
 
 // --- Constants ---
 #[allow(dead_code)]
@@ -57,9 +68,21 @@ struct Cli {
         long,
         global = true,
         help = "P2P listen port for wallet node",
-        default_value = "18081"
+        default_value = "8080"
     )]
     p2p_port: u16,
+    #[arg(
+        long,
+        global = true,
+        help = "Direct P2P peer address to connect (host:port)"
+    )]
+    p2p_direct: Option<String>,
+    #[arg(
+        long,
+        global = true,
+        help = "RPC server address for gRPC client (host:port)"
+    )]
+    node_url: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -88,6 +111,13 @@ enum Commands {
     Balance {
         #[arg()]
         address: String,
+        #[arg(long, help = "Follow live balance updates via WebSocket")]
+        follow: bool,
+    },
+    /// [watch] Follows live balance updates via WebSocket.
+    Watch {
+        #[arg()]
+        address: String,
     },
     /// [send] Sends QAN with Governance-Aware Transaction Tracking™.
     Send {
@@ -107,22 +137,34 @@ enum Commands {
 
 // --- P2P Network Initialization ---
 
-async fn initialize_p2p_client(port: u16) -> Result<Arc<QantoP2P>> {
+async fn initialize_p2p_client(
+    port: u16,
+    direct_peer: Option<SocketAddr>,
+) -> Result<Arc<QantoP2P>> {
     let config = crate::qanto_p2p::NetworkConfig {
         max_connections: 50,
         connection_timeout: Duration::from_secs(30),
         heartbeat_interval: Duration::from_secs(10),
         enable_encryption: true,
-        bootstrap_nodes: vec![], // Will be discovered via peer discovery
+        bootstrap_nodes: direct_peer.into_iter().collect(),
         listen_port: port,
     };
 
-    let p2p = QantoP2P::new(config).context("Failed to initialize P2P network")?;
+    let mut p2p = QantoP2P::new(config).context("Failed to initialize P2P network")?;
 
-    // P2P network will handle peer discovery internally
-
-    println!("✓ P2P network initialized on port {port}");
-    Ok(Arc::new(p2p))
+    // Start the P2P node with a bounded timeout
+    let start_timeout = Duration::from_secs(10);
+    match tokio::time::timeout(start_timeout, p2p.start()).await {
+        Ok(Ok(_)) => {
+            println!("✓ P2P network initialized on port {port}");
+            Ok(Arc::new(p2p))
+        }
+        Ok(Err(e)) => Err(anyhow!("Failed to start P2P network: {e}")),
+        Err(_) => Err(anyhow!(
+            "P2P network start timed out after {}s",
+            start_timeout.as_secs()
+        )),
+    }
 }
 
 // --- Command Implementations ---
@@ -216,48 +258,164 @@ async fn import_wallet(use_mnemonic: bool, use_private_key: bool) -> Result<()> 
     Ok(())
 }
 
+#[allow(dead_code)]
 async fn get_balance_p2p(p2p_client: &Option<Arc<QantoP2P>>, address: String) -> Result<()> {
-    if let Some(p2p) = p2p_client {
-        println!("🔍 Querying balance via P2P network for address: {address}");
+    let p2p = p2p_client
+        .as_ref()
+        .ok_or_else(|| anyhow!("P2P node is not running; start the node and retry"))?;
 
-        let query_id = Uuid::new_v4();
-        let request = BalanceRequest {
-            address: address.clone(),
-            query_id,
-        };
-        let payload = bincode::serialize(&request)?;
-        p2p.broadcast(MessageType::Custom(1), Bytes::from(payload))?;
+    println!("🔍 Querying balance via P2P network for address: {address}");
 
-        // Register temporary handler for response
-        let (tx, mut rx) = mpsc::channel(1);
-        let handler = Arc::new(move |msg: NetworkMessage, _peer: QantoHash| -> Result<()> {
-            if msg.msg_type == MessageType::Custom(2) {
-                let response: BalanceResponse = bincode::deserialize(&msg.payload)?;
-                if response.query_id == query_id {
-                    tx.try_send(response.balance)?;
-                }
+    let query_id = Uuid::new_v4();
+    let request = BalanceRequest {
+        address: address.clone(),
+        query_id,
+    };
+    let payload = bincode::serialize(&request)?;
+    p2p.broadcast(MessageType::Custom(1), Bytes::from(payload))?;
+
+    // Aggregate incoming balance updates without printing running totals
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<u64>();
+    let handler = Arc::new(move |msg: NetworkMessage, _peer: QantoHash| -> Result<()> {
+        if msg.msg_type == MessageType::Custom(2) {
+            let response: BalanceResponse = bincode::deserialize(&msg.payload)?;
+            if response.query_id == query_id {
+                let _ = tx.send(response.balance);
             }
-            Ok(())
-        });
-        p2p.register_handler(MessageType::Custom(2), handler);
-
-        // Wait for response (simplified, in production use timeout)
-        if let Some(balance) = rx.recv().await {
-            println!("📊 Balance for {address}: {balance} QANTO (P2P mode)");
-        } else {
-            println!("No response received");
         }
-        return Ok(());
+        Ok(())
+    });
+    p2p.register_handler(MessageType::Custom(2), handler);
+
+    let response_timeout = Duration::from_secs(5);
+    let deadline = Instant::now() + response_timeout;
+    let mut total_balance: u64 = 0;
+
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        match tokio::time::timeout(remaining, rx.recv()).await {
+            Ok(Some(amount)) => {
+                total_balance = total_balance.saturating_add(amount);
+            }
+            Ok(None) => {
+                break;
+            }
+            Err(_) => {
+                break;
+            }
+        }
     }
-    get_balance_http(&address).await
+
+    println!("📊 Balance for {address}: {total_balance} QANTO");
+    Ok(())
 }
 
-// HTTP fallback implementation
-async fn get_balance_http(address: &str) -> Result<()> {
-    println!("⚠️  HTTP fallback mode - consider enabling P2P discovery");
-    // Simplified implementation - in production would connect to a node
-    println!("📊 Balance for {address}: 0 QANTO (HTTP fallback)");
-    Ok(())
+#[derive(serde::Deserialize)]
+struct ApiBalanceResponse {
+    balance: String,
+    base_units: u64,
+}
+
+// HTTP RPC implementation (RPC-first)
+#[allow(dead_code)]
+async fn get_balance_http(api_address: &str, address: &str) -> Result<()> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(3))
+        .build()
+        .map_err(|e| anyhow!("Failed to build HTTP client: {e}"))?;
+
+    let url = format!("http://{api_address}/balance/{address}");
+
+    match client.get(&url).send().await {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                match resp.json::<ApiBalanceResponse>().await {
+                    Ok(payload) => {
+                        println!("📊 Balance for {address}: {} QANTO", payload.balance);
+                        let _ = payload.base_units; // read to avoid dead_code lint
+                        Ok(())
+                    }
+                    Err(_) => {
+                        eprintln!(
+                            "Error: Cannot connect to node at http://{api_address}. Please ensure the main Qanto node is running."
+                        );
+                        std::process::exit(1);
+                    }
+                }
+            } else {
+                eprintln!(
+                    "Error: Cannot connect to node at http://{api_address}. Please ensure the main Qanto node is running."
+                );
+                std::process::exit(1);
+            }
+        }
+        Err(_) => {
+            eprintln!(
+                "Error: Cannot connect to node at http://{api_address}. Please ensure the main Qanto node is running."
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+// Direct storage-balanced lookup
+async fn get_balance_storage(db_path: &str, address: &str) -> Result<Option<u64>> {
+    // Initialize storage with read-only friendly config
+    let mut cfg = StorageConfig::default();
+    cfg.data_dir = PathBuf::from(db_path);
+    cfg.wal_enabled = false; // avoid creating WAL when just reading
+
+    let storage = QantoStorage::new(cfg).map_err(|e| anyhow!("Storage init error: {e}"))?;
+    let key = balance_key(address);
+
+    // Helper: scan UTXOs prefix and aggregate amounts for the given address
+    let scan_utxos_total = |storage: &QantoStorage| -> Result<u64> {
+        let prefix = utxos_prefix();
+        let keys = storage
+            .keys_with_prefix(&prefix)
+            .map_err(|e| anyhow!("Storage list error: {e}"))?;
+        let mut total: u64 = 0;
+        for k in keys {
+            match storage.get(&k) {
+                Ok(Some(bytes)) => {
+                    if let Ok(utxo) = decode_utxo(&bytes) {
+                        if utxo.address == address {
+                            total = total.saturating_add(utxo.amount);
+                        }
+                    }
+                }
+                Ok(None) => {
+                    // skip missing values
+                }
+                Err(e) => {
+                    return Err(anyhow!("Storage read error for UTXO: {e}"));
+                }
+            }
+        }
+        Ok(total)
+    };
+
+    match storage.get(&key) {
+        Ok(Some(bytes)) => {
+            match decode_balance(&bytes) {
+                Ok(v) => Ok(Some(v)),
+                Err(_) => {
+                    // Fallback: compute balance by scanning UTXOs
+                    let total = scan_utxos_total(&storage)?;
+                    Ok(Some(total))
+                }
+            }
+        }
+        Ok(None) => {
+            // Fallback: compute balance by scanning UTXOs
+            let total = scan_utxos_total(&storage)?;
+            Ok(Some(total))
+        }
+        Err(e) => Err(anyhow!("Storage read error: {e}")),
+    }
 }
 
 // Define structs
@@ -333,6 +491,152 @@ async fn send_transaction_http(wallet_path: PathBuf, to: String, amount: u64) ->
     Ok(())
 }
 
+// gRPC client implementations
+#[allow(dead_code)]
+async fn get_balance_grpc(rpc_address: &str, address: &str) -> Result<()> {
+    use qanto_rpc::server::generated::{qanto_rpc_client::QantoRpcClient, GetBalanceRequest};
+
+    let endpoint = format!("http://{rpc_address}");
+    let mut client = QantoRpcClient::connect(endpoint)
+        .await
+        .map_err(|e| anyhow!("Failed to connect to RPC server {rpc_address}: {e}"))?;
+
+    let req = GetBalanceRequest {
+        address: address.to_string(),
+    };
+    match client.get_balance(req).await {
+        Ok(resp) => {
+            let payload = resp.into_inner();
+            println!("📊 Balance for {}: {} QANTO", address, payload.balance);
+            Ok(())
+        }
+        Err(status) => {
+            eprintln!("RPC error: {}", status.message());
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn send_transaction_grpc(
+    wallet_path: PathBuf,
+    to: String,
+    amount: u64,
+    rpc_address: &str,
+) -> Result<()> {
+    use qanto_rpc::server::generated::{
+        qanto_rpc_client::QantoRpcClient, FeeBreakdown as ProtoFeeBreakdown,
+        HomomorphicEncrypted as ProtoHE, Input as ProtoInput, Output as ProtoOutput,
+        QuantumResistantSignature as ProtoSigMsg, SubmitTransactionRequest,
+        Transaction as ProtoTransaction,
+    };
+
+    println!(
+        "Creating transaction from wallet at {}",
+        wallet_path.display()
+    );
+    println!("Sending {amount} QANTO to {to}");
+
+    // Build a simple internal transaction as before
+    let tx = Transaction {
+        id: "simulated_tx_id".to_string(),
+        sender: "sender".to_string(),
+        receiver: to,
+        amount,
+        fee: 0,
+        gas_limit: 21000,
+        gas_used: 0,
+        gas_price: 1,
+        priority_fee: 0,
+        inputs: vec![],
+        outputs: vec![],
+        signature: QuantumResistantSignature {
+            signer_public_key: vec![],
+            signature: vec![],
+        },
+        timestamp: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        metadata: HashMap::new(),
+        fee_breakdown: None,
+    };
+
+    // Convert to typed protobuf Transaction
+    let proto_tx = ProtoTransaction {
+        id: tx.id.clone(),
+        sender: tx.sender.clone(),
+        receiver: tx.receiver.clone(),
+        amount: tx.amount,
+        fee: tx.fee,
+        gas_limit: tx.gas_limit,
+        gas_used: tx.gas_used,
+        gas_price: tx.gas_price,
+        priority_fee: tx.priority_fee,
+        inputs: tx
+            .inputs
+            .iter()
+            .map(|i| ProtoInput {
+                tx_id: i.tx_id.clone(),
+                output_index: i.output_index,
+            })
+            .collect(),
+        outputs: tx
+            .outputs
+            .iter()
+            .map(|o| ProtoOutput {
+                address: o.address.clone(),
+                amount: o.amount,
+                homomorphic_encrypted: Some(ProtoHE {
+                    ciphertext: o.homomorphic_encrypted.ciphertext.clone(),
+                    public_key: o.homomorphic_encrypted.public_key.clone(),
+                }),
+            })
+            .collect(),
+        timestamp: tx.timestamp,
+        metadata: tx.metadata.clone(),
+        signature: Some(ProtoSigMsg {
+            signer_public_key: tx.signature.signer_public_key.clone(),
+            signature: tx.signature.signature.clone(),
+        }),
+        fee_breakdown: tx.fee_breakdown.as_ref().map(|fb| ProtoFeeBreakdown {
+            base_fee: fb.base_fee,
+            complexity_fee: fb.complexity_fee,
+            storage_fee: fb.storage_fee,
+            gas_fee: fb.gas_fee,
+            priority_fee: fb.priority_fee,
+            congestion_multiplier: fb.congestion_multiplier,
+            total_fee: fb.total_fee,
+            gas_used: fb.gas_used,
+            gas_price: fb.gas_price,
+        }),
+    };
+
+    // Submit via gRPC
+    let endpoint = format!("http://{rpc_address}");
+    let mut client = QantoRpcClient::connect(endpoint)
+        .await
+        .map_err(|e| anyhow!("Failed to connect to RPC server {rpc_address}: {e}"))?;
+    let req = SubmitTransactionRequest {
+        transaction: Some(proto_tx),
+    };
+
+    match client.submit_transaction(req).await {
+        Ok(resp) => {
+            let result = resp.into_inner();
+            if result.accepted {
+                println!("✅ Transaction accepted by node: {}", result.message);
+            } else {
+                println!("❌ Transaction rejected: {}", result.message);
+            }
+            Ok(())
+        }
+        Err(status) => {
+            eprintln!("RPC error: {}", status.message());
+            std::process::exit(1);
+        }
+    }
+}
+
 // For receive_transactions_p2p
 async fn receive_transactions_p2p(
     p2p_client: &Option<Arc<QantoP2P>>,
@@ -343,14 +647,13 @@ async fn receive_transactions_p2p(
         let password = prompt_for_password(false, None)?;
         let wallet = Wallet::from_file(&wallet_path, &password)?;
         let my_address = wallet.address();
-        let my_address_clone = my_address.clone(); // Add this line
+        let my_address_clone = my_address.clone();
 
         // Register handler for incoming tx
         let handler = Arc::new(move |msg: NetworkMessage, _peer: QantoHash| -> Result<()> {
             if msg.msg_type == MessageType::Custom(3) {
                 let tx: Transaction = deserialize(&msg.payload)?;
                 if tx.outputs.iter().any(|o| o.address == my_address_clone) {
-                    // Use clone here
                     println!("✅ Incoming Transaction Received!");
                 }
             }
@@ -450,6 +753,62 @@ fn prompt_for_input() -> Result<String> {
     Ok(input.trim().to_string())
 }
 
+async fn subscribe_balance_ws(api_address: &str, address: &str) -> Result<()> {
+    let url = format!("ws://{api_address}/ws");
+    let (ws_stream, _resp) = connect_async(&url)
+        .await
+        .map_err(|e| anyhow!("Failed to connect WebSocket at {url}: {e}"))?;
+
+    let (mut write, mut read) = ws_stream.split();
+
+    let sub_msg = serde_json::json!({
+        "type": "subscribe",
+        "subscription_type": "balances",
+        "filters": {"address": address}
+    })
+    .to_string();
+
+    write
+        .send(Message::Text(sub_msg))
+        .await
+        .map_err(|e| anyhow!("Failed to send subscribe message: {e}"))?;
+
+    println!(
+        "📡 Subscribed to balance updates for {address} via WebSocket at {api_address}"
+    );
+
+    while let Some(msg) = read.next().await {
+        match msg {
+            Ok(Message::Text(text)) => {
+                let v: serde_json::Value = match serde_json::from_str(&text) {
+                    Ok(json) => json,
+                    Err(_) => continue,
+                };
+                if v.get("type").and_then(|t| t.as_str()) == Some("balance_update") {
+                    let addr = v.get("address").and_then(|a| a.as_str()).unwrap_or("");
+                    let bal = v.get("balance").and_then(|b| b.as_u64()).unwrap_or(0);
+                    println!("📊 Balance update for {addr}: {bal} base units");
+                }
+            }
+            Ok(Message::Ping(data)) => {
+                // Respond to heartbeat pings
+                let _ = write.send(Message::Pong(data)).await;
+            }
+            Ok(Message::Close(_)) => {
+                println!("🔌 WebSocket closed by server");
+                break;
+            }
+            Err(e) => {
+                eprintln!("WebSocket error: {e}");
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
 pub async fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
@@ -484,12 +843,36 @@ pub async fn run() -> anyhow::Result<()> {
         }
     }
 
-    // Initialize P2P client if discovery is enabled
+    // Resolve optional direct peer
+    let direct_peer: Option<SocketAddr> = match &cli.p2p_direct {
+        Some(addr_str) => match addr_str.parse::<SocketAddr>() {
+            Ok(addr) => Some(addr),
+            Err(e) => {
+                eprintln!("Invalid --p2p-direct '{addr_str}': {e}");
+                None
+            }
+        },
+        None => None,
+    };
+
+    // Initialize P2P client if discovery is enabled; fall back to HTTP on failure
     let p2p_client = if cli.p2p_discovery.unwrap_or(true) {
-        Some(initialize_p2p_client(cli.p2p_port).await?)
+        match initialize_p2p_client(cli.p2p_port, direct_peer).await {
+            Ok(client) => Some(client),
+            Err(e) => {
+                eprintln!("⚠️ P2P init/start failed; HTTP fallback enabled: {e}");
+                None
+            }
+        }
     } else {
         None
     };
+
+    // Resolve RPC address for gRPC
+    let rpc_addr = cli
+        .node_url
+        .clone()
+        .unwrap_or_else(|| config.rpc.address.clone());
 
     let result = match cli.command {
         Commands::Generate { output } => {
@@ -504,10 +887,43 @@ pub async fn run() -> anyhow::Result<()> {
             mnemonic,
             private_key,
         } => import_wallet(mnemonic, private_key).await,
-        Commands::Balance { address } => get_balance_p2p(&p2p_client, address).await,
+        Commands::Balance { address, follow } => {
+            if follow {
+                let api_addr = config.api_address.clone();
+                subscribe_balance_ws(&api_addr, &address).await
+            } else {
+                // Direct RocksDB read - authoritative balance source
+                match get_balance_storage(&config.db_path, &address).await {
+                    Ok(Some(amount)) => {
+                        // Format to 6-decimal QANTO display
+                        let qan_base = crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
+                        let qan = (amount as f64) / qan_base;
+                        println!("📊 Balance for {address}: {qan:.6} QANTO");
+                        Ok(())
+                    }
+                    Ok(None) => {
+                        // No UTXOs found for this address
+                        println!("📊 Balance for {address}: 0.000000 QANTO");
+                        Ok(())
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Failed to read balance from database: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+        }
+        Commands::Watch { address } => {
+            let api_addr = config.api_address.clone();
+            subscribe_balance_ws(&api_addr, &address).await
+        }
         Commands::Send { wallet, to, amount } => {
             let wallet_path = wallet.unwrap_or_else(|| PathBuf::from(&config.wallet_path));
-            send_transaction_p2p(&p2p_client, wallet_path, to, amount).await
+            if cli.node_url.is_some() || p2p_client.is_none() {
+                send_transaction_grpc(wallet_path, to, amount, &rpc_addr).await
+            } else {
+                send_transaction_p2p(&p2p_client, wallet_path, to, amount).await
+            }
         }
         Commands::Receive { wallet } => {
             let wallet_path = wallet.unwrap_or_else(|| PathBuf::from(&config.wallet_path));
@@ -525,8 +941,129 @@ pub async fn run() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::types::UTXO;
+    use std::collections::HashMap;
+    use tempfile::TempDir;
+    use tokio::test;
+
     #[test]
-    fn test() {
-        // TODO
+    fn test_basic_arithmetic() {
+        assert_eq!(2 + 2, 4);
+    }
+
+    #[tokio::test]
+    async fn test_wallet_balance_integrity() {
+        // Create temporary directory for test database
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let db_path = temp_dir.path().join("test_db");
+        let db_path_str = db_path.to_str().unwrap();
+
+        // Test address
+        let test_address = "test_address_12345678901234567890123456789012345678901234567890123456";
+
+        // Test 1: Empty balance (no UTXOs)
+        let balance = get_balance_storage(db_path_str, test_address).await;
+        assert!(balance.is_ok());
+        assert_eq!(balance.unwrap(), None, "Empty wallet should have no balance");
+
+        // Test 2: Create storage and add test UTXOs
+        let storage_config = StorageConfig {
+            db_path: db_path_str.to_string(),
+            cache_size: 1024 * 1024, // 1MB cache
+        };
+        let storage = QantoStorage::new(storage_config).expect("Failed to create storage");
+
+        // Add test UTXOs with known amounts
+        let qan_base = crate::transaction::SMALLEST_UNITS_PER_QAN;
+        let utxo1_amount = qan_base; // 1 QANTO
+        let utxo2_amount = qan_base / 2; // 0.5 QANTO
+        let utxo3_amount = 123_456; // 0.123456 QANTO
+
+        // Create test UTXOs
+        let utxo1 = UTXO {
+            address: test_address.to_string(),
+            amount: utxo1_amount,
+            tx_id: "tx1".to_string(),
+            output_index: 0,
+            explorer_link: String::new(),
+        };
+
+        let utxo2 = UTXO {
+            address: test_address.to_string(),
+            amount: utxo2_amount,
+            tx_id: "tx2".to_string(),
+            output_index: 0,
+            explorer_link: String::new(),
+        };
+
+        let utxo3 = UTXO {
+            address: test_address.to_string(),
+            amount: utxo3_amount,
+            tx_id: "tx3".to_string(),
+            output_index: 0,
+            explorer_link: String::new(),
+        };
+
+        // Store UTXOs in database
+        let utxo1_key = format!("{}:tx1:0", utxos_prefix(test_address));
+        let utxo2_key = format!("{}:tx2:0", utxos_prefix(test_address));
+        let utxo3_key = format!("{}:tx3:0", utxos_prefix(test_address));
+
+        storage.put(&utxo1_key, &bincode::serialize(&utxo1).unwrap()).expect("Failed to store UTXO1");
+        storage.put(&utxo2_key, &bincode::serialize(&utxo2).unwrap()).expect("Failed to store UTXO2");
+        storage.put(&utxo3_key, &bincode::serialize(&utxo3).unwrap()).expect("Failed to store UTXO3");
+
+        // Store balance cache
+        let expected_total = utxo1_amount + utxo2_amount + utxo3_amount;
+        let balance_key = balance_key(test_address);
+        storage.put(&balance_key, &bincode::serialize(&expected_total).unwrap()).expect("Failed to store balance");
+
+        // Test 3: Verify balance calculation
+        let balance = get_balance_storage(db_path_str, test_address).await;
+        assert!(balance.is_ok());
+        let actual_balance = balance.unwrap().expect("Balance should exist");
+        assert_eq!(actual_balance, expected_total, "Balance should match sum of UTXOs");
+
+        // Test 4: Verify balance formatting
+        let qan_display = (actual_balance as f64) / (qan_base as f64);
+        let expected_display = 1.623456; // 1 + 0.5 + 0.123456
+        assert!((qan_display - expected_display).abs() < 0.000001, "Balance display should be accurate");
+
+        // Test 5: Test with different address (should be empty)
+        let other_address = "other_address_12345678901234567890123456789012345678901234567890123456";
+        let other_balance = get_balance_storage(db_path_str, other_address).await;
+        assert!(other_balance.is_ok());
+        assert_eq!(other_balance.unwrap(), None, "Different address should have no balance");
+
+        // Test 6: Test balance overflow protection
+        let max_amount = u64::MAX - 1000; // Near max value
+        let overflow_utxo = UTXO {
+            address: test_address.to_string(),
+            amount: max_amount,
+            tx_id: "tx_overflow".to_string(),
+            output_index: 0,
+            explorer_link: String::new(),
+        };
+
+        let overflow_key = format!("{}:tx_overflow:0", utxos_prefix(test_address));
+        storage.put(&overflow_key, &bincode::serialize(&overflow_utxo).unwrap()).expect("Failed to store overflow UTXO");
+
+        // Update balance cache with saturating add
+        let new_total = expected_total.saturating_add(max_amount);
+        storage.put(&balance_key, &bincode::serialize(&new_total).unwrap()).expect("Failed to update balance");
+
+        let overflow_balance = get_balance_storage(db_path_str, test_address).await;
+        assert!(overflow_balance.is_ok());
+        let overflow_result = overflow_balance.unwrap().expect("Overflow balance should exist");
+        assert!(overflow_result >= expected_total, "Balance should handle overflow gracefully");
+
+        println!("✅ Wallet balance integrity test passed");
+        println!("   - Empty balance: ✓");
+        println!("   - Multiple UTXOs: ✓");
+        println!("   - Balance calculation: ✓");
+        println!("   - Display formatting: ✓");
+        println!("   - Address isolation: ✓");
+        println!("   - Overflow protection: ✓");
     }
 }

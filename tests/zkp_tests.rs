@@ -15,7 +15,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
     async fn test_range_proof_generation_and_verification() {
         let zk_system = ZKProofSystem::new();
         zk_system.initialize().await.unwrap();
@@ -154,12 +153,12 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
     async fn test_proof_caching() {
         let zk_system = ZKProofSystem::new();
         zk_system.initialize().await.unwrap();
 
-        let proof = zk_system.generate_range_proof(500, 0, 1000).await.unwrap();
+        // Reduced range for faster proof generation
+        let proof = zk_system.generate_range_proof(50, 0, 100).await.unwrap();
         // Remove the private method call - just test that proof was generated
         assert!(!proof.proof.is_empty());
 

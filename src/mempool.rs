@@ -9,8 +9,9 @@ use crate::transaction::{Transaction, TransactionError};
 use crate::types::UTXO;
 use dashmap::DashMap;
 // use rayon::prelude::*; // Removed unused import
+use parking_lot::RwLock as ParkingRwLock;
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BinaryHeap, HashMap};
+use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -67,6 +68,7 @@ impl PartialOrd for PrioritizedTransaction {
 pub struct Mempool {
     transactions: Arc<RwLock<HashMap<String, PrioritizedTransaction>>>,
     priority_queue: Arc<RwLock<BTreeMap<u64, Vec<String>>>>,
+    priority_heap: Arc<ParkingRwLock<BinaryHeap<PrioritizedTransaction>>>,
     max_age: Duration,
     max_size_bytes: usize,
     current_size_bytes: Arc<AtomicUsize>,
@@ -74,6 +76,9 @@ pub struct Mempool {
     tx_counter: Arc<AtomicUsize>,
     last_log_time: Arc<RwLock<Instant>>,
     log_interval: Duration,
+    // Sharding
+    shard_count: usize,
+    sharded_heaps: Vec<Arc<ParkingRwLock<BinaryHeap<PrioritizedTransaction>>>>,
 }
 
 /// Optimized mempool implementation using DashMap and BinaryHeap for high performance
@@ -247,6 +252,11 @@ impl EnhancedMempool {
             .insert(tx_id.clone(), prioritized_tx.clone());
         self.current_size_bytes
             .fetch_add(tx_size, Ordering::Relaxed);
+        // Update global metric for mempool size
+        crate::set_metric!(
+            mempool_size,
+            self.current_size_bytes.load(Ordering::Relaxed) as u64
+        );
         self.tx_counter.fetch_add(1, Ordering::Relaxed);
 
         // Add to appropriate shard
@@ -385,6 +395,11 @@ impl EnhancedMempool {
 
         // Rebuild priority queues
         self.rebuild_all_queues().await;
+        // Update global metric for mempool size
+        crate::set_metric!(
+            mempool_size,
+            self.current_size_bytes.load(Ordering::Relaxed) as u64
+        );
     }
 
     /// Rebuild all priority queues
@@ -657,6 +672,11 @@ impl OptimizedMempool {
         // Update size after successful insertion
         self.current_size_bytes
             .fetch_add(tx_size, Ordering::Relaxed);
+        // Update global metric for mempool size
+        crate::set_metric!(
+            mempool_size,
+            self.current_size_bytes.load(Ordering::Relaxed) as u64
+        );
 
         // Add to priority queue with reduced lock contention
         let mut queue = self.priority_queue.write().await;
@@ -741,6 +761,12 @@ impl OptimizedMempool {
                     .unwrap_or(0);
                 self.current_size_bytes
                     .fetch_sub(tx_size, std::sync::atomic::Ordering::Relaxed);
+                // Update global metric for mempool size
+                crate::set_metric!(
+                    mempool_size,
+                    self.current_size_bytes
+                        .load(std::sync::atomic::Ordering::Relaxed) as u64
+                );
 
                 warn!(
                     "Evicted transaction {} with fee_per_byte: {}",
@@ -805,6 +831,12 @@ impl OptimizedMempool {
 
         // Rebuild priority queue after removals
         self.rebuild_priority_queue().await;
+        // Update global metric for mempool size
+        crate::set_metric!(
+            mempool_size,
+            self.current_size_bytes
+                .load(std::sync::atomic::Ordering::Relaxed) as u64
+        );
     }
 
     pub fn get_current_size_bytes(&self) -> usize {
@@ -955,15 +987,26 @@ impl OptimizedMempool {
 
 impl Mempool {
     pub fn new(max_age_secs: u64, max_size_bytes: usize, _max_transactions: usize) -> Self {
+        let shard_count = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1);
+        let sharded_heaps: Vec<Arc<ParkingRwLock<BinaryHeap<PrioritizedTransaction>>>> = (0
+            ..shard_count)
+            .map(|_| Arc::new(ParkingRwLock::new(BinaryHeap::new())))
+            .collect();
+
         Self {
             transactions: Arc::new(RwLock::new(HashMap::new())),
             priority_queue: Arc::new(RwLock::new(BTreeMap::new())),
+            priority_heap: Arc::new(ParkingRwLock::new(BinaryHeap::new())),
             max_age: Duration::from_secs(max_age_secs),
             max_size_bytes,
             current_size_bytes: Arc::new(AtomicUsize::new(0)),
             tx_counter: Arc::new(AtomicUsize::new(0)),
             last_log_time: Arc::new(RwLock::new(Instant::now())),
             log_interval: Duration::from_secs(60), // Log summary every 60 seconds
+            shard_count,
+            sharded_heaps,
         }
     }
 
@@ -1024,18 +1067,108 @@ impl Mempool {
         utxos: &HashMap<String, UTXO>,
         dag: &QantoDAG,
     ) -> Result<(), MempoolError> {
-        // Validate transaction first
-        if !dag.validate_transaction(&tx, utxos).await {
-            return Err(MempoolError::TransactionValidation(
-                "Transaction validation failed".to_string(),
-            ));
+        // Lightweight mempool-specific validation with detailed reasons
+        if let Err(e) = tx.validate_for_mempool() {
+            warn!(
+                "Rejected tx {} at mempool pre-check: {}; inputs={}, outputs={}, fee={}, sender={}, receiver={}",
+                tx.id,
+                e,
+                tx.inputs.len(),
+                tx.outputs.len(),
+                tx.fee,
+                tx.sender,
+                tx.receiver
+            );
+            return Err(MempoolError::Tx(e));
+        }
+
+        // Fast duplicate check in standard mempool
+        {
+            let transactions_read = self.transactions.read().await;
+            if transactions_read.contains_key(&tx.id) {
+                warn!("Rejected tx {}: duplicate transaction id", tx.id);
+                return Err(MempoolError::TransactionValidation(
+                    "Duplicate transaction".to_string(),
+                ));
+            }
+        }
+
+        // Prefetch UTXO existence before full verification
+        for input in &tx.inputs {
+            let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
+            if !utxos.contains_key(&utxo_id) {
+                warn!(
+                    "Rejected tx {} at prefetch: missing UTXO {}",
+                    tx.id, utxo_id
+                );
+                return Err(MempoolError::Tx(TransactionError::InvalidStructure(
+                    format!("UTXO {utxo_id} not found"),
+                )));
+            }
+        }
+
+        // Fast conflict pre-check against pending mempool inputs (double-spend prevention)
+        {
+            let tx_inputs: HashSet<String> = tx
+                .inputs
+                .iter()
+                .map(|i| format!("{}_{}", i.tx_id, i.output_index))
+                .collect();
+
+            let transactions_guard = self.transactions.read().await;
+            for (_, existing) in transactions_guard.iter() {
+                for ex_in in &existing.tx.inputs {
+                    let key = format!("{}_{}", ex_in.tx_id, ex_in.output_index);
+                    if tx_inputs.contains(&key) {
+                        warn!(
+                            "Rejected tx {}: input {} conflicts with pending tx {}",
+                            tx.id, key, existing.tx.id
+                        );
+                        return Err(MempoolError::TransactionValidation(
+                            "UTXO conflict with pending transaction".to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Full verification against UTXOs and DAG
+        if let Err(e) = tx.verify(dag, utxos).await {
+            warn!(
+                "Rejected tx {}: verification failed: {}; inputs={}, outputs={}, fee={}, sender={}, receiver={}",
+                tx.id,
+                e,
+                tx.inputs.len(),
+                tx.outputs.len(),
+                tx.fee,
+                tx.sender,
+                tx.receiver
+            );
+            return Err(MempoolError::Tx(e));
         }
 
         let tx_id = tx.id.clone();
         let tx_size = Self::calculate_transaction_size(&tx);
 
-        // Check if mempool is full
-        if self.current_size_bytes.load(Ordering::Relaxed) + tx_size > self.max_size_bytes {
+        // Check if mempool is full (log with projected capacity details)
+        let current_size = self.current_size_bytes.load(Ordering::Relaxed);
+        let projected_size = current_size + tx_size;
+        if projected_size > self.max_size_bytes {
+            let capacity_percentage = (projected_size as f64 / self.max_size_bytes as f64) * 100.0;
+            let fee_per_byte_dbg = if tx_size > 0 {
+                tx.fee / tx_size as u64
+            } else {
+                0
+            };
+            warn!(
+                "Rejected tx {}: mempool full ({:.1}% projected, {}/{} bytes). tx_size={}B, fee/byte={}",
+                tx_id,
+                capacity_percentage,
+                projected_size,
+                self.max_size_bytes,
+                tx_size,
+                fee_per_byte_dbg
+            );
             return Err(MempoolError::MempoolFull);
         }
 
@@ -1044,7 +1177,11 @@ impl Mempool {
             .map_err(|_| MempoolError::TimestampError)?
             .as_secs();
 
-        let fee_per_byte = tx.fee / tx_size as u64;
+        let fee_per_byte = if tx_size > 0 {
+            tx.fee / tx_size as u64
+        } else {
+            0
+        };
 
         let prioritized_tx = PrioritizedTransaction {
             tx: tx.clone(),
@@ -1055,16 +1192,31 @@ impl Mempool {
         // Add to transactions map
         {
             let mut transactions = self.transactions.write().await;
-            transactions.insert(tx_id.clone(), prioritized_tx);
+            transactions.insert(tx_id.clone(), prioritized_tx.clone());
         }
 
-        // Add to priority queue
+        // Add to priority queue (BTreeMap keyed by fee per byte)
         {
             let mut priority_queue = self.priority_queue.write().await;
             priority_queue
                 .entry(fee_per_byte)
                 .or_insert_with(Vec::new)
                 .push(tx_id.clone());
+        }
+
+        // Also push into the persistent BinaryHeap for O(1) top and O(log n) updates
+        {
+            let mut priority_heap = self.priority_heap.write();
+            priority_heap.push(prioritized_tx.clone());
+        }
+        // Push into the appropriate shard heap for parallel selection
+        {
+            let hash = tx_id
+                .bytes()
+                .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+            let shard_index = (hash as usize) % self.shard_count.max(1);
+            let mut shard_heap = self.sharded_heaps[shard_index].write();
+            shard_heap.push(prioritized_tx);
         }
 
         // Update size and counter
@@ -1131,15 +1283,91 @@ impl Mempool {
 
     pub async fn select_transactions(&self, max_txs: usize) -> Vec<Transaction> {
         let transactions = self.transactions.read().await;
-        let mut tx_vec: Vec<_> = transactions.values().collect();
 
-        // Sort by fee per byte in descending order (highest first)
-        tx_vec.sort_unstable_by(|a, b| b.fee_per_byte.cmp(&a.fee_per_byte));
+        // Fallback to single heap when sharding is not active
+        if self.shard_count <= 1 || self.sharded_heaps.is_empty() {
+            let mut heap = self.priority_heap.write();
+            let take = max_txs.min(heap.len());
+            let mut extracted: Vec<PrioritizedTransaction> = Vec::with_capacity(take);
+            let mut result: Vec<Transaction> = Vec::with_capacity(take);
 
-        let mut result = Vec::with_capacity(max_txs.min(tx_vec.len()));
-        for ptx in tx_vec.into_iter().take(max_txs) {
-            result.push(ptx.tx.clone());
+            for _ in 0..take {
+                if let Some(ptx) = heap.pop() {
+                    if transactions.contains_key(&ptx.tx.id) {
+                        result.push(ptx.tx.clone());
+                        extracted.push(ptx);
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            for ptx in extracted {
+                heap.push(ptx);
+            }
+
+            debug!(
+                "Selected {} transactions for block creation (BinaryHeap persistent)",
+                result.len()
+            );
+            return result;
         }
+
+        // Sharded selection: k-way merge across shard heaps
+        let take = max_txs;
+        let mut result: Vec<Transaction> = Vec::with_capacity(take);
+
+        // Acquire write guards for all shard heaps
+        let mut heap_guards: Vec<_> = self.sharded_heaps.iter().map(|h| h.write()).collect();
+
+        // Initialize current tops per shard
+        let mut current: Vec<Option<PrioritizedTransaction>> =
+            heap_guards.iter_mut().map(|heap| heap.pop()).collect();
+
+        // Track extracted per shard to restore later
+        let mut extracted_per_shard: Vec<Vec<PrioritizedTransaction>> =
+            vec![Vec::new(); heap_guards.len()];
+
+        for _ in 0..take {
+            // Find best among current candidates
+            let mut best_idx: Option<usize> = None;
+            for (i, opt_ptx) in current.iter().enumerate() {
+                if let Some(ptx) = opt_ptx.as_ref() {
+                    if let Some(bi) = best_idx {
+                        if ptx > current[bi].as_ref().unwrap() {
+                            best_idx = Some(i);
+                        }
+                    } else {
+                        best_idx = Some(i);
+                    }
+                }
+            }
+
+            match best_idx {
+                Some(i) => {
+                    let ptx = current[i].take().unwrap();
+                    if transactions.contains_key(&ptx.tx.id) {
+                        result.push(ptx.tx.clone());
+                        extracted_per_shard[i].push(ptx);
+                    }
+                    // Load next for this shard
+                    current[i] = heap_guards[i].pop();
+                }
+                None => break,
+            }
+        }
+
+        // Restore extracted entries
+        for (i, extracted) in extracted_per_shard.into_iter().enumerate() {
+            for ptx in extracted {
+                heap_guards[i].push(ptx);
+            }
+        }
+
+        debug!(
+            "Selected {} transactions for block creation (sharded merge)",
+            result.len()
+        );
         result
     }
 
@@ -1275,5 +1503,52 @@ impl Mempool {
     /// Get current size of mempool in bytes
     pub fn get_current_size_bytes(&self) -> usize {
         self.current_size_bytes.load(Ordering::Relaxed)
+    }
+
+    /// Add a batch of transactions under a single API, returning accepted ids and rejected reasons
+    pub async fn add_transaction_batch(
+        &self,
+        txs: Vec<Transaction>,
+        utxos: &HashMap<String, UTXO>,
+        dag: &QantoDAG,
+    ) -> (Vec<String>, Vec<(String, String)>) {
+        if txs.is_empty() {
+            return (Vec::new(), Vec::new());
+        }
+
+        let start = Instant::now();
+        let mut accepted: Vec<String> = Vec::new();
+        let mut rejected: Vec<(String, String)> = Vec::new();
+
+        // Shard-aware ordering to reduce lock contention
+        let shard_slots = self.shard_count.max(1);
+        let mut buckets: Vec<Vec<Transaction>> = vec![Vec::new(); shard_slots];
+        for tx in txs {
+            let hash = tx
+                .id
+                .bytes()
+                .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+            let idx = (hash as usize) % shard_slots;
+            buckets[idx].push(tx);
+        }
+
+        for bucket in buckets.into_iter() {
+            for tx in bucket {
+                match self.add_transaction(tx.clone(), utxos, dag).await {
+                    Ok(_) => accepted.push(tx.id.clone()),
+                    Err(e) => rejected.push((tx.id.clone(), e.to_string())),
+                }
+            }
+        }
+
+        let elapsed = start.elapsed();
+        debug!(
+            "Batch mempool add: accepted={}, rejected={}, elapsed={:?}",
+            accepted.len(),
+            rejected.len(),
+            elapsed
+        );
+
+        (accepted, rejected)
     }
 }

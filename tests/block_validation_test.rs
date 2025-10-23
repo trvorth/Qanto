@@ -71,11 +71,13 @@ mod tests {
             initial_validator: "test_validator_1".to_string(),
             target_block_time: 60,
             num_chains: 1,
+            dev_fee_rate: 0.10,
         };
         let config2 = QantoDagConfig {
             initial_validator: "test_validator_1".to_string(), // Use same validator as config1
             target_block_time: 60,
             num_chains: 1,
+            dev_fee_rate: 0.10,
         };
 
         let storage1 = QantoStorage::new(StorageConfig {

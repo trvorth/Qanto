@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "qanto-node.fullname" . }}
+  labels:
+    {{- include "qanto-node.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "qanto-node.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "qanto-node.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "qanto-node.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: api
+              containerPort: {{ .Values.service.ports.api }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.service.ports.metrics }}
+              protocol: TCP
+            - name: websocket
+              containerPort: {{ .Values.service.ports.websocket }}
+              protocol: TCP
+            - name: p2p
+              containerPort: {{ .Values.service.ports.p2p }}
+              protocol: TCP
+          env:
+            - name: RUST_LOG
+              value: {{ .Values.config.logLevel }}
+            - name: QANTO_ENV
+              value: {{ .Values.config.environment }}
+            - name: QANTO_CONFIG_PATH
+              value: "/app/config/config.toml"
+          {{- if .Values.healthcheck.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: api
+            initialDelaySeconds: {{ .Values.healthcheck.initialDelaySeconds }}
+            periodSeconds: {{ .Values.healthcheck.periodSeconds }}
+            timeoutSeconds: {{ .Values.healthcheck.timeoutSeconds }}
+            failureThreshold: {{ .Values.healthcheck.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: api
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: {{ .Values.healthcheck.timeoutSeconds }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: logs
+              mountPath: /app/logs
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "qanto-node.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: logs
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: {{ include "qanto-node.fullname" . }}-config
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

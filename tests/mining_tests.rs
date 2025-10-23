@@ -116,6 +116,7 @@ async fn test_simple_mining_consolidated() {
         initial_validator: "test_validator".to_string(),
         target_block_time: 60,
         num_chains: 1,
+        dev_fee_rate: 0.10,
     };
 
     let dag_arc = QantoDAG::new(
@@ -254,6 +255,7 @@ async fn test_multi_block_mining_without_dag_regeneration() {
         initial_validator: "test_validator".to_string(),
         target_block_time: 60,
         num_chains: 1,
+        dev_fee_rate: 0.10,
     };
 
     let dag_arc = QantoDAG::new(
@@ -417,6 +419,7 @@ async fn test_mining_with_multiple_transactions() {
         initial_validator: "test_validator_multi".to_string(),
         target_block_time: 60,
         num_chains: 2, // Test with multiple chains
+        dev_fee_rate: 0.10,
     };
 
     let dag_arc = QantoDAG::new(
@@ -563,6 +566,7 @@ async fn test_mining_performance_benchmark() {
         initial_validator: "test_validator_perf".to_string(),
         target_block_time: 25, // High performance: ~40 BPS
         num_chains: 4,         // Multiple chains for parallel processing
+        dev_fee_rate: 0.10,
     };
 
     let dag_arc = QantoDAG::new(
@@ -714,6 +718,7 @@ async fn test_miner_cancellation_returns_timeout_or_cancelled() {
         initial_validator: "test_validator_cancel".to_string(),
         target_block_time: 60,
         num_chains: 1,
+        dev_fee_rate: 0.10,
     };
 
     let dag_arc = QantoDAG::new(
@@ -831,6 +836,7 @@ async fn test_miner_shutdown_returns_timeout_or_cancelled() {
         initial_validator: "test_validator_shutdown".to_string(),
         target_block_time: 60,
         num_chains: 1,
+        dev_fee_rate: 0.10,
     };
 
     let dag_arc = QantoDAG::new(

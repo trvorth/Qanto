@@ -45,6 +45,7 @@ async fn test_dag_mining_performance() {
         initial_validator: "test_validator".to_string(),
         target_block_time: 60,
         num_chains: 1,
+        dev_fee_rate: 0.10,
     };
 
     let dag_arc = QantoDAG::new(

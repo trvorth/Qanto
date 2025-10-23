@@ -91,6 +91,7 @@ async fn run_autonomous_simulation() -> Result<()> {
         initial_validator: validator_address.clone(),
         target_block_time: 300,
         num_chains: 1,
+        dev_fee_rate: 0.10,
     };
     let dag_arc = QantoDAG::new(
         dag_config,

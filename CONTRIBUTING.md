@@ -5,7 +5,7 @@ To ensure a smooth and effective collaboration process for everyone involved, pl
 
 ## **Code of Conduct**
 
-This project and everyone participating in it is governed by the [Qanto Code of Conduct](http://docs.google.com/CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to the project maintainers.
+This project and everyone participating in it is governed by the [Qanto Code of Conduct](http://github.com/trvorth/qanto/CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to the project maintainers.
 
 ## **How Can I Contribute?**
 

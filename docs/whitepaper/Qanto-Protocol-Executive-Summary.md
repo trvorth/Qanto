@@ -1,6 +1,6 @@
 # The Qanto Protocol: Whitepaper Executive Summary & Technical Architecture
 
-**Version 3.0 | January 2025**  
+**Version 1.0 | January 2025**  
 **The Quantum-Secure Foundation for Web3**
 
 ---
@@ -536,8 +536,8 @@ The Qanto ecosystem is designed as a self-sustaining, quantum-secure foundation 
 
 ---
 
-**Document Version**: 3.0  
-**Last Updated**: January 2025  
+**Document Version**: 1.0  
+**Last Updated**: October 2025  
 **Authors**: Qanto Protocol Team  
 **Contact**: technical@qanto.org  
 
