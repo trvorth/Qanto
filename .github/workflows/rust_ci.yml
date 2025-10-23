@@ -1,4 +1,5 @@
-name: Rust CI
+# .github/workflows/rust_ci.yml
+name: Qanto Core CI
 
 on:
   push:
@@ -8,34 +9,38 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  build:
+  build-and-test:
+    name: Build and Test
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --verbose
+      - uses: actions/checkout@v4
 
-  test:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - name: Install nextest
-      run: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
-    - name: Run tests
-      run: cargo nextest run
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - name: Clippy
-      run: cargo clippy -- -D warnings
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
 
-  fmt:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - name: Check format
-      run: cargo fmt -- --check
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint (Clippy)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Build (Release)
+        run: cargo build --release --workspace --verbose
+
+      - name: Run Tests
+        run: cargo test --workspace --all-features --verbose -- --nocapture
