@@ -6,22 +6,27 @@
 //! All networking operations are secured using qanhash for authentication and encryption.
 
 use anyhow::{anyhow, Result};
-use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, SocketAddr};
-use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, Mutex};
-use tokio::time::{interval, timeout};
-// Removed unused import: use futures::prelude::*;
+use bincode::{deserialize, serialize};
 use bytes::Bytes;
 use dashmap::DashMap;
 use rand::{thread_rng, Rng};
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::io::Cursor;
+use std::net::{IpAddr, SocketAddr};
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{mpsc, Mutex, Semaphore};
+use tokio::time::{interval, timeout};
 
 use my_blockchain::qanto_hash;
 use my_blockchain::qanto_standalone::hash::QantoHash;
+use crate::balance_stream::{BalanceBroadcaster, BalanceSubscribe, BalanceUpdate};
 
+const ZSTD_MAGIC: [u8; 4] = *b"ZSTD";
 /// P2P-specific error types
 #[derive(Error, Debug)]
 pub enum QantoP2PError {
@@ -39,16 +44,22 @@ pub enum QantoP2PError {
     Serialization(String),
 }
 
-/// Maximum number of concurrent connections
-const MAX_CONNECTIONS: usize = 1000;
-/// Connection timeout in seconds
-const CONNECTION_TIMEOUT: u64 = 30;
-/// Heartbeat interval in seconds
-const HEARTBEAT_INTERVAL: u64 = 10;
-/// Maximum message size in bytes
-const MAX_MESSAGE_SIZE: usize = 16 * 1024 * 1024; // 16MB
-/// Network protocol version
+/// Enhanced constants for 32 BPS & 10M+ TPS optimization
+const MAX_CONNECTIONS: usize = 2000; // Increased from 1000 for higher throughput
+const CONNECTION_TIMEOUT: u64 = 15; // Reduced from 30 for faster connection establishment
+const HEARTBEAT_INTERVAL: u64 = 5; // Reduced from 10 for faster peer discovery
+const MAX_MESSAGE_SIZE: usize = 32 * 1024 * 1024; // Increased from 16MB to 32MB for larger blocks
 const PROTOCOL_VERSION: u32 = 1;
+
+// New constants for high-throughput optimization
+#[allow(dead_code)]
+const BATCH_SIZE_THRESHOLD: usize = 10; // Batch multiple messages for efficiency
+#[allow(dead_code)]
+const ADAPTIVE_COMPRESSION_THRESHOLD: usize = 1024; // Use adaptive compression
+#[allow(dead_code)]
+const PRIORITY_QUEUE_SIZE: usize = 1000; // Priority queue for critical messages
+#[allow(dead_code)]
+const GOSSIP_FANOUT: usize = 8; // Optimized gossip fanout for 32 BPS
 
 /// Qanto P2P Network Node
 ///
@@ -72,6 +83,11 @@ pub struct QantoP2P {
     config: NetworkConfig,
     /// Shutdown signal sender
     shutdown_tx: Arc<Mutex<Option<mpsc::Sender<()>>>>,
+    /// High-performance set reconciliation gossip protocol
+    #[allow(dead_code)]
+    gossip_protocol: Arc<SetReconciliationGossip>,
+    /// Subscribers per address for real-time balance updates
+    balance_subscribers: Arc<DashMap<String, Vec<QantoHash>>>,
 }
 
 /// Represents an active connection to a peer
@@ -156,6 +172,12 @@ pub struct NetworkConfig {
     pub heartbeat_interval: Duration,
     /// Whether to enable message encryption
     pub enable_encryption: bool,
+    /// Whether to enable zstd compression for network messages
+    pub enable_compression: bool,
+    /// Zstd compression level (typical: 1-9)
+    pub compression_level: i32,
+    /// Minimum size (bytes) to attempt compression
+    pub compression_min_size: usize,
     /// List of bootstrap nodes to connect to on startup
     pub bootstrap_nodes: Vec<SocketAddr>,
     /// Port to listen on for incoming connections
@@ -170,6 +192,9 @@ impl Default for NetworkConfig {
             connection_timeout: Duration::from_secs(CONNECTION_TIMEOUT),
             heartbeat_interval: Duration::from_secs(HEARTBEAT_INTERVAL),
             enable_encryption: true,
+            enable_compression: false,
+            compression_level: 3,
+            compression_min_size: 1024,
             bootstrap_nodes: Vec::new(),
             listen_port: 8080,
         }
@@ -191,6 +216,10 @@ pub enum MessageType {
     PeerDiscovery,
     /// State synchronization data
     StateSync,
+    /// Subscribe to real-time balance updates for an address
+    BalanceSubscribe,
+    /// Real-time balance update for a subscribed address
+    BalanceUpdate,
     /// Custom message type with user-defined ID
     Custom(u16),
 }
@@ -249,8 +278,7 @@ impl QantoP2P {
             IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)),
             config.listen_port,
         );
-
-        Ok(Self {
+        let node = Self {
             node_id,
             local_addr,
             peers: Arc::new(DashMap::new()),
@@ -262,7 +290,34 @@ impl QantoP2P {
             })),
             config,
             shutdown_tx: Arc::new(Mutex::new(None)),
-        })
+            gossip_protocol: Arc::new(SetReconciliationGossip::new(
+                GOSSIP_FANOUT,
+                Duration::from_secs(300), // 5 minutes max message age
+            )),
+            balance_subscribers: Arc::new(DashMap::new()),
+        };
+
+        // Register built-in handler for BalanceSubscribe
+        let subscribers = node.balance_subscribers.clone();
+        node.register_handler(
+            MessageType::BalanceSubscribe,
+            Arc::new(move |message, peer_id| {
+                let sub: BalanceSubscribe = deserialize(&message.payload)
+                    .map_err(|e| anyhow!("Deserialize BalanceSubscribe failed: {e}"))?;
+                let addr = sub.address.clone();
+                if let Some(mut entry) = subscribers.get_mut(&addr) {
+                    let list = entry.value_mut();
+                    if !list.iter().any(|p| p == &peer_id) {
+                        list.push(peer_id);
+                    }
+                } else {
+                    subscribers.insert(addr, vec![peer_id]);
+                }
+                Ok(())
+            }),
+        );
+
+        Ok(node)
     }
 
     /// Generate a unique node ID using qanhash
@@ -367,7 +422,8 @@ impl QantoP2P {
         config: NetworkConfig,
     ) -> Result<()> {
         // Perform handshake
-        let (peer_id, reader, writer) = Self::perform_handshake(stream, node_id, true).await?;
+        let (peer_id, reader, writer) =
+            Self::perform_handshake(stream, node_id, true, &config).await?;
 
         // Create message channel
         let (tx, rx) = mpsc::unbounded_channel();
@@ -424,6 +480,7 @@ impl QantoP2P {
         stream: TcpStream,
         node_id: QantoHash,
         is_incoming: bool,
+        config: &NetworkConfig,
     ) -> Result<(
         QantoHash,
         tokio::net::tcp::OwnedReadHalf,
@@ -435,12 +492,17 @@ impl QantoP2P {
             version: PROTOCOL_VERSION,
             node_id,
             timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
-            capabilities: vec!["qanto-v1".to_string()],
+            capabilities: {
+                let mut caps = vec!["qanto-v1".to_string()];
+                // Always advertise zstd frame support for Block/Transaction payloads
+                caps.push("compression:zstd".to_string());
+                caps
+            },
         };
 
         let message = NetworkMessage {
             msg_type: MessageType::Handshake,
-            payload: Bytes::from(serde_json::to_vec(&handshake)?),
+            payload: Bytes::from(serialize(&handshake)?),
             timestamp: handshake.timestamp,
             sender: node_id,
             signature: Self::sign_message(&handshake, node_id)?,
@@ -448,16 +510,16 @@ impl QantoP2P {
 
         if !is_incoming {
             // Send our handshake first for outgoing connections
-            Self::send_message_to_stream(&mut writer, &message).await?;
+            Self::send_message_to_stream(&mut writer, &message, config).await?;
         }
 
         // Read peer's handshake
         let peer_message = Self::read_message_from_stream(&mut reader).await?;
-        let peer_handshake: HandshakeMessage = serde_json::from_slice(&peer_message.payload)?;
+        let peer_handshake: HandshakeMessage = deserialize(&peer_message.payload)?;
 
         if is_incoming {
             // Send our handshake response for incoming connections
-            Self::send_message_to_stream(&mut writer, &message).await?;
+            Self::send_message_to_stream(&mut writer, &message, config).await?;
         }
 
         // Verify protocol version
@@ -474,7 +536,7 @@ impl QantoP2P {
     /// * `message` - The message to sign (must be serializable)
     /// * `node_id` - The node ID to include in the signature
     fn sign_message<T: Serialize>(message: &T, node_id: QantoHash) -> Result<QantoHash> {
-        let message_bytes = serde_json::to_vec(message)?;
+        let message_bytes = serialize(message)?;
         let mut data_to_sign = Vec::new();
         data_to_sign.extend_from_slice(&message_bytes);
         data_to_sign.extend_from_slice(node_id.as_bytes());
@@ -487,18 +549,46 @@ impl QantoP2P {
     async fn send_message_to_stream(
         writer: &mut tokio::net::tcp::OwnedWriteHalf,
         message: &NetworkMessage,
+        config: &NetworkConfig,
     ) -> Result<()> {
         use tokio::io::AsyncWriteExt;
 
-        let serialized = serde_json::to_vec(message)?;
-        let len = serialized.len() as u32;
+        let serialized = serialize(message)?;
+
+        // Unconditionally zstd-frame compress Block/Transaction messages for network efficiency
+        let payload: Vec<u8> = match message.msg_type {
+            MessageType::Block | MessageType::Transaction => {
+                let compressed =
+                    zstd::encode_all(Cursor::new(&serialized), config.compression_level)
+                        .map_err(|e| anyhow!("zstd compression failed: {e}"))?;
+                let mut framed = Vec::with_capacity(4 + compressed.len());
+                framed.extend_from_slice(&ZSTD_MAGIC);
+                framed.extend_from_slice(&compressed);
+                framed
+            }
+            _ => {
+                if config.enable_compression && serialized.len() >= config.compression_min_size {
+                    let compressed =
+                        zstd::encode_all(Cursor::new(&serialized), config.compression_level)
+                            .map_err(|e| anyhow!("zstd compression failed: {e}"))?;
+                    let mut framed = Vec::with_capacity(4 + compressed.len());
+                    framed.extend_from_slice(&ZSTD_MAGIC);
+                    framed.extend_from_slice(&compressed);
+                    framed
+                } else {
+                    serialized
+                }
+            }
+        };
+
+        let len = payload.len() as u32;
 
         if len as usize > MAX_MESSAGE_SIZE {
             return Err(anyhow!("Message too large: {len} bytes"));
         }
 
         writer.write_all(&len.to_le_bytes()).await?;
-        writer.write_all(&serialized).await?;
+        writer.write_all(&payload).await?;
         writer.flush().await?;
 
         Ok(())
@@ -523,7 +613,17 @@ impl QantoP2P {
         let mut message_bytes = vec![0u8; len];
         reader.read_exact(&mut message_bytes).await?;
 
-        let message: NetworkMessage = serde_json::from_slice(&message_bytes)?;
+        // Detect and decode zstd-compressed frames
+        let decoded_bytes: Vec<u8> =
+            if message_bytes.len() >= 4 && message_bytes[0..4] == ZSTD_MAGIC {
+                let decompressed = zstd::decode_all(Cursor::new(&message_bytes[4..]))
+                    .map_err(|e| anyhow!("zstd decompression failed: {e}"))?;
+                decompressed
+            } else {
+                message_bytes
+            };
+
+        let message: NetworkMessage = deserialize(&decoded_bytes)?;
         Ok(message)
     }
 
@@ -555,7 +655,7 @@ impl QantoP2P {
 
         // Perform handshake
         let (peer_id, reader, writer) =
-            Self::perform_handshake(stream, self.node_id, false).await?;
+            Self::perform_handshake(stream, self.node_id, false, &self.config).await?;
 
         // Check if we're already connected to this peer
         if self.peers.contains_key(&peer_id) {
@@ -629,7 +729,7 @@ impl QantoP2P {
         peers: Arc<DashMap<QantoHash, PeerConnection>>,
         message_handlers: Arc<DashMap<MessageType, MessageHandler>>,
         stats: Arc<RwLock<NetworkStats>>,
-        _config: NetworkConfig,
+        config: NetworkConfig,
         mut rx: mpsc::UnboundedReceiver<NetworkMessage>,
     ) -> Result<()> {
         loop {
@@ -638,7 +738,7 @@ impl QantoP2P {
                 message = rx.recv() => {
                     match message {
                         Some(msg) => {
-                            if let Err(e) = Self::send_message_to_stream(&mut writer, &msg).await {
+                            if let Err(e) = Self::send_message_to_stream(&mut writer, &msg, &config).await {
                                 eprintln!("Error sending message to peer {}: {e}", hex::encode(&peer_id.as_bytes()[..8]));
                                 break;
                             }
@@ -796,6 +896,47 @@ impl QantoP2P {
         Ok(())
     }
 
+    /// Broadcast a BalanceUpdate to all peers subscribed to the address.
+    pub fn broadcast_balance_update(&self, update: BalanceUpdate) -> Result<()> {
+        let payload = Bytes::from(serialize(&update)?);
+        if let Some(subs) = self.balance_subscribers.get(&update.address) {
+            for peer_id in subs.iter() {
+                // Fire-and-forget per peer; track errors but proceed
+                if let Err(e) = self.send_to_peer(*peer_id, MessageType::BalanceUpdate, payload.clone()) {
+                    eprintln!(
+                        "Failed to send BalanceUpdate to peer {}: {}",
+                        hex::encode(&peer_id.as_bytes()[..8]),
+                        e
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Attach a BalanceBroadcaster and forward updates to subscribed peers.
+    /// Spawns a Tokio task; requires a running Tokio runtime.
+    pub fn attach_broadcaster(&self, broadcaster: Arc<BalanceBroadcaster>) {
+        let this = self.clone();
+        tokio::spawn(async move {
+            let mut rx = broadcaster.subscribe();
+            loop {
+                match rx.recv().await {
+                    Ok(update) => {
+                        if let Err(e) = this.broadcast_balance_update(update) {
+                            eprintln!("Error broadcasting balance update: {e}");
+                        }
+                    }
+                    Err(err) => {
+                        // Channel closed or lagged; attempt to resubscribe
+                        eprintln!("BalanceBroadcaster subscription error: {err}");
+                        rx = broadcaster.subscribe();
+                    }
+                }
+            }
+        });
+    }
+
     /// Get a list of all connected peer IDs
     pub fn get_peers(&self) -> Vec<QantoHash> {
         self.peers.iter().map(|entry| *entry.key()).collect()
@@ -813,4 +954,393 @@ impl QantoP2P {
         }
         Ok(())
     }
+}
+
+/// High-Performance Set Reconciliation Gossip Protocol
+/// Optimized for 32 BPS and 10M+ TPS throughput
+#[derive(Debug, Clone)]
+pub struct SetReconciliationGossip {
+    /// Local message set with bloom filter for fast lookups
+    local_messages: Arc<DashMap<MessageId, NetworkMessage>>,
+    /// Bloom filter for efficient set membership testing
+    bloom_filter: Arc<Mutex<BloomFilter>>,
+    /// Message priority queue for critical messages
+    priority_queue: Arc<Mutex<PriorityQueue>>,
+    /// Gossip fanout configuration
+    fanout: usize,
+    /// Maximum message age before expiry
+    max_message_age: Duration,
+    /// Compression threshold for messages
+    compression_threshold: usize,
+    /// Parallel processing semaphore
+    processing_semaphore: Arc<Semaphore>,
+}
+
+/// Message identifier for set reconciliation
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MessageId([u8; 32]);
+
+impl MessageId {
+    pub fn new(data: &[u8]) -> Self {
+        let hash = qanto_hash(data);
+        Self(*hash.as_bytes())
+    }
+
+    pub fn random() -> Self {
+        let mut rng = thread_rng();
+        let mut id = [0u8; 32];
+        rng.fill(&mut id);
+        Self(id)
+    }
+}
+
+/// Bloom filter for efficient set membership testing
+#[derive(Debug, Clone)]
+pub struct BloomFilter {
+    bits: Vec<u64>,
+    hash_functions: usize,
+    size: usize,
+}
+
+impl BloomFilter {
+    pub fn new(expected_items: usize, false_positive_rate: f64) -> Self {
+        let size = Self::optimal_size(expected_items, false_positive_rate);
+        let hash_functions = Self::optimal_hash_functions(size, expected_items);
+
+        Self {
+            bits: vec![0u64; size.div_ceil(64)],
+            hash_functions,
+            size,
+        }
+    }
+
+    fn optimal_size(n: usize, p: f64) -> usize {
+        (-(n as f64) * p.ln() / (2.0_f64.ln().powi(2))).ceil() as usize
+    }
+
+    fn optimal_hash_functions(m: usize, n: usize) -> usize {
+        ((m as f64 / n as f64) * 2.0_f64.ln()).round() as usize
+    }
+
+    pub fn insert(&mut self, item: &MessageId) {
+        for i in 0..self.hash_functions {
+            let hash = self.hash_with_seed(&item.0, i as u64);
+            let bit_index = (hash % self.size as u64) as usize;
+            let word_index = bit_index / 64;
+            let bit_offset = bit_index % 64;
+            self.bits[word_index] |= 1u64 << bit_offset;
+        }
+    }
+
+    pub fn contains(&self, item: &MessageId) -> bool {
+        for i in 0..self.hash_functions {
+            let hash = self.hash_with_seed(&item.0, i as u64);
+            let bit_index = (hash % self.size as u64) as usize;
+            let word_index = bit_index / 64;
+            let bit_offset = bit_index % 64;
+            if (self.bits[word_index] & (1u64 << bit_offset)) == 0 {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn hash_with_seed(&self, data: &[u8], seed: u64) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        seed.hash(&mut hasher);
+        data.hash(&mut hasher);
+        hasher.finish()
+    }
+}
+
+/// Priority queue for critical messages
+#[derive(Debug, Clone)]
+pub struct PriorityQueue {
+    high_priority: VecDeque<NetworkMessage>,
+    normal_priority: VecDeque<NetworkMessage>,
+    low_priority: VecDeque<NetworkMessage>,
+}
+
+impl PriorityQueue {
+    pub fn new() -> Self {
+        Self {
+            high_priority: VecDeque::new(),
+            normal_priority: VecDeque::new(),
+            low_priority: VecDeque::new(),
+        }
+    }
+
+    pub fn push(&mut self, message: NetworkMessage, priority: MessagePriority) {
+        match priority {
+            MessagePriority::High => self.high_priority.push_back(message),
+            MessagePriority::Normal => self.normal_priority.push_back(message),
+            MessagePriority::Low => self.low_priority.push_back(message),
+        }
+    }
+
+    pub fn pop(&mut self) -> Option<NetworkMessage> {
+        self.high_priority
+            .pop_front()
+            .or_else(|| self.normal_priority.pop_front())
+            .or_else(|| self.low_priority.pop_front())
+    }
+
+    pub fn len(&self) -> usize {
+        self.high_priority.len() + self.normal_priority.len() + self.low_priority.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.high_priority.is_empty()
+            && self.normal_priority.is_empty()
+            && self.low_priority.is_empty()
+    }
+}
+
+impl Default for PriorityQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Message priority levels
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessagePriority {
+    High,   // Consensus messages, blocks
+    Normal, // Transactions
+    Low,    // Peer discovery, heartbeats
+}
+
+impl SetReconciliationGossip {
+    pub fn new(fanout: usize, max_message_age: Duration) -> Self {
+        Self {
+            local_messages: Arc::new(DashMap::new()),
+            bloom_filter: Arc::new(Mutex::new(BloomFilter::new(100000, 0.01))),
+            priority_queue: Arc::new(Mutex::new(PriorityQueue::new())),
+            fanout,
+            max_message_age,
+            compression_threshold: 1024,
+            processing_semaphore: Arc::new(Semaphore::new(100)), // Allow 100 concurrent operations
+        }
+    }
+
+    /// Add message to local set and propagate using set reconciliation
+    pub async fn gossip_message(
+        &self,
+        message: NetworkMessage,
+        priority: MessagePriority,
+        peers: &DashMap<QantoHash, PeerConnection>,
+    ) -> Result<()> {
+        let _permit = self.processing_semaphore.acquire().await?;
+
+        let message_id = MessageId::new(&serialize(&message)?);
+
+        // Check if we already have this message
+        if self.local_messages.contains_key(&message_id) {
+            return Ok(());
+        }
+
+        // Add to local set
+        self.local_messages.insert(message_id, message.clone());
+
+        // Update bloom filter
+        {
+            let mut bloom = self.bloom_filter.lock().await;
+            bloom.insert(&message_id);
+        }
+
+        // Add to priority queue
+        {
+            let mut queue = self.priority_queue.lock().await;
+            queue.push(message.clone(), priority);
+        }
+
+        // Select peers for gossip using optimized fanout
+        let selected_peers = self.select_gossip_peers(peers).await;
+
+        // Perform set reconciliation with selected peers
+        for peer_id in selected_peers {
+            if let Some(peer) = peers.get(&peer_id) {
+                self.reconcile_with_peer(&peer, &message_id, &message)
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Select optimal peers for gossip propagation
+    async fn select_gossip_peers(
+        &self,
+        peers: &DashMap<QantoHash, PeerConnection>,
+    ) -> Vec<QantoHash> {
+        let mut selected = Vec::new();
+        let peer_count = peers.len();
+
+        if peer_count == 0 {
+            return selected;
+        }
+
+        let fanout = std::cmp::min(self.fanout, peer_count);
+        let mut rng = thread_rng();
+
+        // Use reservoir sampling for fair peer selection
+        let peer_ids: Vec<_> = peers.iter().map(|entry| *entry.key()).collect();
+
+        // Take initial reservoir
+        selected.extend(peer_ids.iter().take(fanout).copied());
+
+        // Reservoir sampling over the remainder using enumerate for counter
+        for (offset, &peer_id) in peer_ids.iter().enumerate().skip(fanout) {
+            let j = rng.gen_range(0..=fanout + offset);
+            if j < fanout {
+                selected[j] = peer_id;
+            }
+        }
+
+        selected
+    }
+
+    /// Perform set reconciliation with a specific peer
+    async fn reconcile_with_peer(
+        &self,
+        peer: &PeerConnection,
+        message_id: &MessageId,
+        message: &NetworkMessage,
+    ) -> Result<()> {
+        // Create reconciliation request
+        let reconciliation_msg = NetworkMessage {
+            msg_type: MessageType::Custom(0x1001), // Set reconciliation type
+            payload: self
+                .create_reconciliation_payload(message_id, message)
+                .await?,
+            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+            sender: QantoHash::new([0u8; 32]), // Will be set by sender
+            signature: QantoHash::new([0u8; 32]), // Will be set by sender
+        };
+
+        // Send reconciliation message
+        peer.tx.send(reconciliation_msg)?;
+
+        Ok(())
+    }
+
+    /// Create reconciliation payload with compression
+    async fn create_reconciliation_payload(
+        &self,
+        message_id: &MessageId,
+        message: &NetworkMessage,
+    ) -> Result<Bytes> {
+        let payload = ReconciliationPayload {
+            message_id: *message_id,
+            message: message.clone(),
+            bloom_filter_summary: self.get_bloom_filter_summary().await,
+        };
+
+        let serialized = serialize(&payload)?;
+
+        // Apply compression if payload is large enough
+        let compressed = if serialized.len() > self.compression_threshold {
+            self.compress_payload(&serialized)?
+        } else {
+            serialized
+        };
+
+        Ok(Bytes::from(compressed))
+    }
+
+    /// Get bloom filter summary for set reconciliation
+    async fn get_bloom_filter_summary(&self) -> Vec<u64> {
+        let bloom = self.bloom_filter.lock().await;
+        bloom.bits.clone()
+    }
+
+    /// Compress payload using zstd
+    fn compress_payload(&self, data: &[u8]) -> Result<Vec<u8>> {
+        let mut compressed = Vec::new();
+        compressed.extend_from_slice(&ZSTD_MAGIC);
+
+        let zstd_compressed = zstd::encode_all(data, 3)?; // Level 3 for balance of speed/compression
+        compressed.extend_from_slice(&zstd_compressed);
+
+        Ok(compressed)
+    }
+
+    /// Handle incoming reconciliation message
+    pub async fn handle_reconciliation(
+        &self,
+        payload: &[u8],
+        sender_peer: &QantoHash,
+        peers: &DashMap<QantoHash, PeerConnection>,
+    ) -> Result<()> {
+        let _permit = self.processing_semaphore.acquire().await?;
+
+        // Decompress if needed
+        let decompressed = if payload.starts_with(&ZSTD_MAGIC) {
+            zstd::decode_all(&payload[4..])?
+        } else {
+            payload.to_vec()
+        };
+
+        let reconciliation: ReconciliationPayload = deserialize(&decompressed)?;
+
+        // Check if we have this message
+        if !self.local_messages.contains_key(&reconciliation.message_id) {
+            // We don't have this message, add it and continue propagation
+            self.local_messages
+                .insert(reconciliation.message_id, reconciliation.message.clone());
+
+            // Update bloom filter
+            {
+                let mut bloom = self.bloom_filter.lock().await;
+                bloom.insert(&reconciliation.message_id);
+            }
+
+            // Continue gossip to other peers (excluding sender)
+            let selected_peers = self.select_gossip_peers(peers).await;
+            for peer_id in selected_peers {
+                if peer_id != *sender_peer {
+                    if let Some(peer) = peers.get(&peer_id) {
+                        self.reconcile_with_peer(
+                            &peer,
+                            &reconciliation.message_id,
+                            &reconciliation.message,
+                        )
+                        .await?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Clean up old messages to prevent memory bloat
+    pub async fn cleanup_old_messages(&self) {
+        let _cutoff = Instant::now() - self.max_message_age;
+
+        // Remove old messages (this is a simplified cleanup)
+        // In production, you'd want to track message timestamps
+        if self.local_messages.len() > 50000 {
+            // Keep only the most recent 40000 messages
+            let mut to_remove = Vec::new();
+
+            for (count, entry) in self.local_messages.iter().enumerate() {
+                if count > 40000 {
+                    to_remove.push(*entry.key());
+                }
+            }
+
+            for key in to_remove {
+                self.local_messages.remove(&key);
+            }
+        }
+    }
+}
+
+/// Reconciliation payload structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ReconciliationPayload {
+    message_id: MessageId,
+    message: NetworkMessage,
+    bloom_filter_summary: Vec<u64>,
 }

@@ -32,9 +32,16 @@ use libp2p::{
     swarm::{NetworkBehaviour, SwarmEvent},
     yamux, Multiaddr, PeerId, Swarm, SwarmBuilder,
 };
+// QDS request-response imports
+use crate::qds::{QDSCodec, QDSRequest, QDSResponse, QDS_PROTOCOL};
+use libp2p::request_response::{
+    Behaviour as RequestResponseBehaviour, Event as RequestResponseEvent,
+    Message as RequestResponseMessage, ProtocolSupport,
+};
 use my_blockchain::qanto_hash;
 use nonzero_ext::nonzero;
 
+use bincode;
 use prometheus::{register_int_counter, IntCounter};
 use prost::Message;
 use qanto_rpc::server::generated as proto;
@@ -77,7 +84,7 @@ pub enum P2PError {
     #[error("Multiaddr parsing error: {0}")]
     Multiaddr(#[from] libp2p::multiaddr::Error),
     #[error("Serialization error: {0}")]
-    Serialization(#[from] serde_json::Error),
+    Serialization(#[from] Box<bincode::ErrorKind>),
     #[error("HMAC error")]
     Hmac,
     #[error("Invalid HMAC key length")]
@@ -108,6 +115,8 @@ pub struct NodeBehaviour {
     gossipsub: gossipsub::Behaviour,
     mdns: MdnsTokioBehaviour,
     kademlia: KadBehaviour<MemoryStore>,
+    // QDS request-response behaviour
+    qds: RequestResponseBehaviour<QDSCodec>,
 }
 
 #[derive(Debug)]
@@ -115,6 +124,8 @@ pub enum NodeBehaviourEvent {
     Gossipsub(gossipsub::Event),
     Mdns(MdnsEvent),
     Kademlia(KadEvent),
+    // QDS event bridging
+    RequestResponse(RequestResponseEvent<QDSRequest, QDSResponse>),
 }
 
 impl From<gossipsub::Event> for NodeBehaviourEvent {
@@ -130,6 +141,11 @@ impl From<MdnsEvent> for NodeBehaviourEvent {
 impl From<KadEvent> for NodeBehaviourEvent {
     fn from(event: KadEvent) -> Self {
         NodeBehaviourEvent::Kademlia(event)
+    }
+}
+impl From<RequestResponseEvent<QDSRequest, QDSResponse>> for NodeBehaviourEvent {
+    fn from(event: RequestResponseEvent<QDSRequest, QDSResponse>) -> Self {
+        NodeBehaviourEvent::RequestResponse(event)
     }
 }
 
@@ -156,7 +172,7 @@ impl NetworkMessage {
     #[allow(dead_code)]
     fn new(data: NetworkMessageData, signing_key: &QantoPQPrivateKey) -> Result<Self, P2PError> {
         let hmac_secret = Self::get_hmac_secret();
-        let serialized_data = serde_json::to_vec(&data)?;
+        let serialized_data = bincode::serialize(&data)?;
         let hmac = Self::compute_hmac(&serialized_data, &hmac_secret)?;
 
         let signature = QuantumResistantSignature::sign(signing_key, &serialized_data)
@@ -447,11 +463,17 @@ impl P2PServer {
                 error_msg.push_str(&e.to_string());
                 P2PError::Mdns(error_msg)
             })?;
+        // Initialize QDS request-response
+        let qds_behaviour = RequestResponseBehaviour::new(
+            std::iter::once((QDS_PROTOCOL.to_string(), ProtocolSupport::Full)),
+            Default::default(),
+        );
 
         let behaviour = NodeBehaviour {
             gossipsub: gossipsub_behaviour,
             mdns: mdns_behaviour,
             kademlia: kademlia_behaviour,
+            qds: qds_behaviour,
         };
 
         let mut swarm = SwarmBuilder::with_existing_identity(config.local_keypair)
@@ -484,8 +506,8 @@ impl P2PServer {
         Self::listen_on_addresses(&mut swarm, &config.listen_addresses, &local_peer_id)?;
 
         // Attempt to load peers from cache and connect to them at startup
-        if let Ok(cache_json) = fs::read_to_string(&config.peer_cache_path) {
-            match serde_json::from_str::<PeerCache>(&cache_json) {
+        if let Ok(cache_bytes) = fs::read(&config.peer_cache_path) {
+            match bincode::deserialize::<PeerCache>(&cache_bytes) {
                 Ok(cache) => {
                     for addr_str in cache.peers.iter() {
                         if let Ok(multiaddr) = addr_str.parse::<Multiaddr>() {
@@ -747,6 +769,48 @@ impl P2PServer {
                 }
                 _ => {}
             },
+            SwarmEvent::Behaviour(NodeBehaviourEvent::RequestResponse(event)) => {
+                match event {
+                    RequestResponseEvent::Message { peer, message, .. } => match message {
+                        RequestResponseMessage::Request {
+                            request, channel, ..
+                        } => match request {
+                            QDSRequest::GetBalance { address } => {
+                                let utxos_guard = self.utxos.read().await;
+                                let confirmed: i64 = utxos_guard
+                                    .values()
+                                    .filter(|u| u.address == address)
+                                    .map(|u| u.amount as i64)
+                                    .sum();
+                                let response = QDSResponse::Balance {
+                                    address,
+                                    confirmed_balance: confirmed as u64,
+                                };
+                                if let Err(e) = self
+                                    .swarm
+                                    .behaviour_mut()
+                                    .qds
+                                    .send_response(channel, response)
+                                {
+                                    warn!("Failed to send QDS response: {:?}", e);
+                                }
+                            }
+                        },
+                        RequestResponseMessage::Response { response, .. } => {
+                            info!("Received QDS response from {}: {:?}", peer, response);
+                        }
+                    },
+                    RequestResponseEvent::InboundFailure { peer, error, .. } => {
+                        warn!("QDS inbound failure from {}: {:?}", peer, error);
+                    }
+                    RequestResponseEvent::OutboundFailure { peer, error, .. } => {
+                        warn!("QDS outbound failure to {}: {:?}", peer, error);
+                    }
+                    RequestResponseEvent::ResponseSent { .. } => {
+                        // No action needed
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -765,8 +829,8 @@ impl P2PServer {
             let cache = PeerCache {
                 peers: cache_peers.into_iter().collect(),
             };
-            let cache_json = serde_json::to_string_pretty(&cache)?;
-            fs::write(&self.peer_cache_path, cache_json)?;
+            let cache_bytes = bincode::serialize(&cache)?;
+            fs::write(&self.peer_cache_path, cache_bytes)?;
         }
         Ok(())
     }
@@ -1384,6 +1448,132 @@ impl P2PServer {
     }
 }
 
+fn convert_proto_block(pb: proto::QantoBlock) -> Result<crate::qantodag::QantoBlock, String> {
+    use crate::qantodag::{CrossChainSwap, SmartContract, SwapState};
+    use crate::types::{HomomorphicEncrypted, QuantumResistantSignature};
+
+    // Transactions
+    let transactions = pb
+        .transactions
+        .into_iter()
+        .map(convert_proto_tx)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Cross-chain references
+    let cross_chain_references = pb
+        .cross_chain_references
+        .into_iter()
+        .map(|r| (r.chain_id, r.block_id))
+        .collect::<Vec<_>>();
+
+    // Cross-chain swaps
+    let cross_chain_swaps = pb
+        .cross_chain_swaps
+        .into_iter()
+        .map(|s| {
+            let state = match s.state {
+                x if x == proto::SwapState::Initiated as i32 => SwapState::Initiated,
+                x if x == proto::SwapState::Redeemed as i32 => SwapState::Redeemed,
+                x if x == proto::SwapState::Refunded as i32 => SwapState::Refunded,
+                _ => return Err(format!("Unknown SwapState value: {}", s.state)),
+            };
+            Ok(CrossChainSwap {
+                swap_id: s.swap_id,
+                source_chain: s.source_chain,
+                target_chain: s.target_chain,
+                amount: s.amount,
+                initiator: s.initiator,
+                responder: s.responder,
+                timelock: s.timelock,
+                state,
+                secret_hash: s.secret_hash,
+                secret: s.secret,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+
+    // Signature
+    let signature = match pb.signature {
+        Some(sig) => QuantumResistantSignature {
+            signer_public_key: sig.signer_public_key,
+            signature: sig.signature,
+        },
+        None => return Err("Missing block signature".to_string()),
+    };
+
+    // Homomorphic encrypted data
+    let homomorphic_encrypted = pb
+        .homomorphic_encrypted
+        .into_iter()
+        .map(|h| HomomorphicEncrypted {
+            ciphertext: h.ciphertext,
+            public_key: h.public_key,
+        })
+        .collect::<Vec<_>>();
+
+    // Smart contracts
+    let smart_contracts = pb
+        .smart_contracts
+        .into_iter()
+        .map(|sc| SmartContract {
+            contract_id: sc.contract_id,
+            code: sc.code,
+            storage: sc.storage,
+            owner: sc.owner,
+            gas_balance: sc.gas_balance,
+        })
+        .collect::<Vec<_>>();
+
+    // Carbon credentials
+    let carbon_credentials = pb
+        .carbon_credentials
+        .into_iter()
+        .map(convert_proto_credential)
+        .collect::<Vec<_>>();
+
+    Ok(crate::qantodag::QantoBlock {
+        chain_id: pb.chain_id,
+        id: pb.id,
+        parents: pb.parents,
+        transactions,
+        difficulty: pb.difficulty,
+        validator: pb.validator,
+        miner: pb.miner,
+        nonce: pb.nonce,
+        timestamp: pb.timestamp,
+        height: pb.height,
+        reward: pb.reward,
+        effort: pb.effort,
+        cross_chain_references,
+        cross_chain_swaps,
+        merkle_root: pb.merkle_root,
+        signature,
+        homomorphic_encrypted,
+        smart_contracts,
+        carbon_credentials,
+        epoch: pb.epoch,
+        reservation_miner_id: None,
+        finality_proof: None,
+    })
+}
+
+fn convert_proto_credential(
+    pc: proto::CarbonOffsetCredential,
+) -> crate::saga::CarbonOffsetCredential {
+    crate::saga::CarbonOffsetCredential {
+        id: pc.id,
+        issuer_id: pc.issuer_id,
+        beneficiary_node: pc.beneficiary_node,
+        tonnes_co2_sequestered: pc.tonnes_co2_sequestered,
+        project_id: pc.project_id,
+        vintage_year: pc.vintage_year,
+        verification_signature: pc.verification_signature,
+        additionality_proof_hash: pc.additionality_proof_hash,
+        issuer_reputation_score: pc.issuer_reputation_score,
+        geospatial_consistency_score: pc.geospatial_consistency_score,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1686,129 +1876,5 @@ mod tests {
         } else {
             std::env::remove_var("HMAC_SECRET");
         }
-    }
-}
-
-fn convert_proto_block(pb: proto::QantoBlock) -> Result<crate::qantodag::QantoBlock, String> {
-    use crate::qantodag::{CrossChainSwap, SmartContract, SwapState};
-    use crate::types::{HomomorphicEncrypted, QuantumResistantSignature};
-
-    // Transactions
-    let transactions = pb
-        .transactions
-        .into_iter()
-        .map(convert_proto_tx)
-        .collect::<Result<Vec<_>, _>>()?;
-
-    // Cross-chain references
-    let cross_chain_references = pb
-        .cross_chain_references
-        .into_iter()
-        .map(|r| (r.chain_id, r.block_id))
-        .collect::<Vec<_>>();
-
-    // Cross-chain swaps
-    let cross_chain_swaps = pb
-        .cross_chain_swaps
-        .into_iter()
-        .map(|s| {
-            let state = match s.state {
-                x if x == proto::SwapState::Initiated as i32 => SwapState::Initiated,
-                x if x == proto::SwapState::Redeemed as i32 => SwapState::Redeemed,
-                x if x == proto::SwapState::Refunded as i32 => SwapState::Refunded,
-                _ => return Err(format!("Unknown SwapState value: {}", s.state)),
-            };
-            Ok(CrossChainSwap {
-                swap_id: s.swap_id,
-                source_chain: s.source_chain,
-                target_chain: s.target_chain,
-                amount: s.amount,
-                initiator: s.initiator,
-                responder: s.responder,
-                timelock: s.timelock,
-                state,
-                secret_hash: s.secret_hash,
-                secret: s.secret,
-            })
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-
-    // Signature
-    let signature = match pb.signature {
-        Some(sig) => QuantumResistantSignature {
-            signer_public_key: sig.signer_public_key,
-            signature: sig.signature,
-        },
-        None => return Err("Missing block signature".to_string()),
-    };
-
-    // Homomorphic encrypted data
-    let homomorphic_encrypted = pb
-        .homomorphic_encrypted
-        .into_iter()
-        .map(|h| HomomorphicEncrypted {
-            ciphertext: h.ciphertext,
-            public_key: h.public_key,
-        })
-        .collect::<Vec<_>>();
-
-    // Smart contracts
-    let smart_contracts = pb
-        .smart_contracts
-        .into_iter()
-        .map(|sc| SmartContract {
-            contract_id: sc.contract_id,
-            code: sc.code,
-            storage: sc.storage,
-            owner: sc.owner,
-            gas_balance: sc.gas_balance,
-        })
-        .collect::<Vec<_>>();
-
-    // Carbon credentials
-    let carbon_credentials = pb
-        .carbon_credentials
-        .into_iter()
-        .map(convert_proto_credential)
-        .collect::<Vec<_>>();
-
-    Ok(crate::qantodag::QantoBlock {
-        chain_id: pb.chain_id,
-        id: pb.id,
-        parents: pb.parents,
-        transactions,
-        difficulty: pb.difficulty,
-        validator: pb.validator,
-        miner: pb.miner,
-        nonce: pb.nonce,
-        timestamp: pb.timestamp,
-        height: pb.height,
-        reward: pb.reward,
-        effort: pb.effort,
-        cross_chain_references,
-        cross_chain_swaps,
-        merkle_root: pb.merkle_root,
-        signature,
-        homomorphic_encrypted,
-        smart_contracts,
-        carbon_credentials,
-        epoch: pb.epoch,
-    })
-}
-
-fn convert_proto_credential(
-    pc: proto::CarbonOffsetCredential,
-) -> crate::saga::CarbonOffsetCredential {
-    crate::saga::CarbonOffsetCredential {
-        id: pc.id,
-        issuer_id: pc.issuer_id,
-        beneficiary_node: pc.beneficiary_node,
-        tonnes_co2_sequestered: pc.tonnes_co2_sequestered,
-        project_id: pc.project_id,
-        vintage_year: pc.vintage_year,
-        verification_signature: pc.verification_signature,
-        additionality_proof_hash: pc.additionality_proof_hash,
-        issuer_reputation_score: pc.issuer_reputation_score,
-        geospatial_consistency_score: pc.geospatial_consistency_score,
     }
 }

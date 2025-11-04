@@ -5,6 +5,7 @@ use crate::increment_metric;
 use crate::qanto_storage::{QantoStorage, QantoStorageError, WriteBatch};
 use crate::set_metric;
 use crossbeam::channel::{bounded, Receiver, Sender, TryRecvError};
+use tokio::sync::oneshot;
 use tracing::{debug, error, info, warn};
 
 /// Genesis keys and helpers
@@ -102,6 +103,9 @@ pub enum PersistenceJob {
     Put(Vec<u8>, Vec<u8>),
     /// Delete a single key from storage.
     Delete(Vec<u8>),
+    /// Request graceful shutdown. The worker will flush pending jobs and exit,
+    /// then acknowledge via the provided channel.
+    Shutdown(oneshot::Sender<()>),
 }
 
 /// Asynchronous persistence writer that decouples storage I/O from hot paths.
@@ -128,7 +132,7 @@ impl PersistenceWriter {
                 const LARGE_VALUE_THRESHOLD: usize = 1024 * 1024; // 1 MB considered large
 
                 // Main worker loop
-                loop {
+                'worker: loop {
                     // Block until at least one job arrives
                     let first_job = match rx.recv() {
                         Ok(job) => job,
@@ -137,6 +141,65 @@ impl PersistenceWriter {
                             break;
                         }
                     };
+
+                    // Handle shutdown request: drain any remaining jobs, flush, acknowledge, and exit
+                    if let PersistenceJob::Shutdown(ack_tx) = first_job {
+                        // Drain any remaining jobs and process them in constrained batches
+                        let mut batch = WriteBatch::new();
+                        let mut batch_bytes = 0usize;
+                        let mut ops = 0usize;
+
+                        // Drain immediately available jobs
+                        loop {
+                            match rx.try_recv() {
+                                Ok(job) => {
+                                    match job {
+                                        PersistenceJob::Put(key, value) => {
+                                            let job_bytes = key.len() + value.len();
+                                            batch.put(key, value);
+                                            batch_bytes += job_bytes;
+                                            ops += 1;
+                                        }
+                                        PersistenceJob::Delete(key) => {
+                                            let job_bytes = key.len();
+                                            batch.delete(key);
+                                            batch_bytes += job_bytes;
+                                            ops += 1;
+                                        }
+                                        PersistenceJob::Shutdown(_) => {
+                                            // Ignore nested shutdowns; we'll exit after flushing
+                                        }
+                                    }
+                                    // If batch is getting large, write it and start a new one
+                                    if ops >= 64 || batch_bytes >= 8 * 1024 * 1024 {
+                                        let _ = db_clone.write_batch(batch);
+                                        batch = WriteBatch::new();
+                                        batch_bytes = 0;
+                                        ops = 0;
+                                    }
+                                }
+                                Err(TryRecvError::Empty) => break,
+                                Err(TryRecvError::Disconnected) => break,
+                            }
+                        }
+
+                        // Flush remaining batch
+                        if ops > 0 {
+                            let _ = db_clone.write_batch(batch);
+                        }
+                        // Best-effort flush and sync to ensure durability
+                        if let Err(e) = db_clone.flush() {
+                            warn!("Persistence flush on shutdown failed: {}", e);
+                        }
+                        if let Err(e) = db_clone.sync() {
+                            warn!("Persistence fsync on shutdown failed: {}", e);
+                        }
+
+                        // Acknowledge shutdown
+                        let _ = ack_tx.send(());
+                        info!("Persistence writer thread shutting down gracefully");
+                        break;
+                    }
 
                     // If the first job is large, write it individually and continue
                     match &first_job {
@@ -147,6 +210,10 @@ impl PersistenceWriter {
                                 debug!("Persistence write succeeded (single large value)");
                             }
                             continue;
+                        }
+                        &PersistenceJob::Shutdown(_) => {
+                            // Should have been handled above; keep exhaustive match
+                            unreachable!("Shutdown already handled prior to large-value pre-check");
                         }
                         _ => {}
                     }
@@ -168,6 +235,10 @@ impl PersistenceWriter {
                             batch_bytes += key.len();
                             ops += 1;
                         }
+                        &PersistenceJob::Shutdown(_) => {
+                            // Should have been handled above; keep exhaustive match
+                            unreachable!("Shutdown already handled prior to batch assembly");
+                        }
                     }
 
                     // Overflow buffer for jobs that exceed limits mid-batch
@@ -177,10 +248,18 @@ impl PersistenceWriter {
                     loop {
                         match rx.try_recv() {
                             Ok(job) => {
+                                // If this job is a shutdown, acknowledge and exit immediately
+                                if let PersistenceJob::Shutdown(ack_tx) = job {
+                                    let _ = ack_tx.send(());
+                                    info!("Persistence writer thread shutting down during batch fill");
+                                    break 'worker;
+                                }
+
                                 // Estimate size impact
                                 let job_bytes = match &job {
                                     PersistenceJob::Put(k, v) => k.len() + v.len(),
                                     PersistenceJob::Delete(k) => k.len(),
+                                    _ => 0,
                                 };
 
                                 // Respect batch limits
@@ -202,6 +281,7 @@ impl PersistenceWriter {
                                         batch_bytes += job_bytes;
                                         ops += 1;
                                     }
+                                    _ => {}
                                 }
                             }
                             Err(TryRecvError::Empty) => {
@@ -218,7 +298,7 @@ impl PersistenceWriter {
                     // Execute batch
                     if ops == 1 {
                         // Single-operation optimization
-                        match &first_job {
+                        match first_job {
                             PersistenceJob::Put(key, value) => {
                                 if let Err(e) = db_clone.put(key.clone(), value.clone()) {
                                     error!("Persistence write failed: {}", e);
@@ -227,11 +307,15 @@ impl PersistenceWriter {
                                 }
                             }
                             PersistenceJob::Delete(key) => {
-                                if let Err(e) = db_clone.delete(key) {
+                                if let Err(e) = db_clone.delete(&key) {
                                     error!("Persistence delete failed: {}", e);
                                 } else {
                                     debug!("Persistence delete succeeded (single)");
                                 }
+                            }
+                            PersistenceJob::Shutdown(_) => {
+                                // Should have been handled above; keep exhaustive match
+                                unreachable!("Shutdown already handled prior to single-op path");
                             }
                         }
                         // Update batch metrics for single-op batch
@@ -252,7 +336,7 @@ impl PersistenceWriter {
 
                     // Process any deferred overflow job independently
                     if let Some(job) = overflow_job.take() {
-                        match &job {
+                        match job {
                             PersistenceJob::Put(key, value) => {
                                 if let Err(e) = db_clone.put(key.clone(), value.clone()) {
                                     error!("Persistence overflow write failed: {}", e);
@@ -261,11 +345,16 @@ impl PersistenceWriter {
                                 }
                             }
                             PersistenceJob::Delete(key) => {
-                                if let Err(e) = db_clone.delete(key) {
+                                if let Err(e) = db_clone.delete(&key) {
                                     error!("Persistence overflow delete failed: {}", e);
                                 } else {
                                     debug!("Persistence overflow delete succeeded");
                                 }
+                            }
+                            PersistenceJob::Shutdown(ack_tx) => {
+                                let _ = ack_tx.send(());
+                                info!("Persistence writer thread shutting down while processing overflow job");
+                                break 'worker;
                             }
                         }
                         increment_metric!(persistence_overflows);
@@ -289,5 +378,20 @@ impl PersistenceWriter {
         self.sender
             .send(PersistenceJob::Delete(key))
             .map_err(|e| format!("Failed to enqueue delete: {e}"))
+    }
+
+    /// Request graceful shutdown and wait for acknowledgement with a timeout.
+    pub async fn shutdown(&self) -> Result<(), String> {
+        let (ack_tx, ack_rx) = oneshot::channel();
+        self.sender
+            .send(PersistenceJob::Shutdown(ack_tx))
+            .map_err(|e| format!("Failed to enqueue shutdown: {e}"))?;
+
+        // Wait up to 5 seconds for the persistence thread to flush and exit
+        match tokio::time::timeout(std::time::Duration::from_secs(5), ack_rx).await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(_)) => Err("Persistence shutdown acknowledgement channel closed".to_string()),
+            Err(_) => Err("Persistence shutdown timed out".to_string()),
+        }
     }
 }

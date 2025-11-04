@@ -21,7 +21,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::sync::Semaphore;
-use tracing::{error, info};
+use tracing::{debug, info};
 
 #[derive(Error, Debug)]
 pub enum EliteMempoolError {
@@ -192,6 +192,10 @@ pub struct EliteMempool {
     adaptive_batching: Arc<AtomicBool>,
     current_batch_size: Arc<AtomicUsize>,
     target_latency_ns: Arc<AtomicU64>,
+    // Reservation system
+    reserved_transactions: Arc<DashMap<String, String>>, // tx_id -> miner_id
+    reservation_timestamps: Arc<DashMap<String, Instant>>, // tx_id -> reservation time
+    reservation_timeout: Duration,
 }
 
 impl EliteMempool {
@@ -242,6 +246,10 @@ impl EliteMempool {
             adaptive_batching: Arc::new(AtomicBool::new(true)),
             current_batch_size: Arc::new(AtomicUsize::new(1000)),
             target_latency_ns: Arc::new(AtomicU64::new(1_000_000)), // 1ms target
+            // Reservation system init
+            reserved_transactions: Arc::new(DashMap::new()),
+            reservation_timestamps: Arc::new(DashMap::new()),
+            reservation_timeout: Duration::from_secs(30),
         })
     }
 
@@ -567,20 +575,92 @@ impl EliteMempool {
             .store(new_avg, Ordering::Relaxed);
     }
 
-    /// Get high-priority transactions for mining
-    pub async fn get_priority_transactions(&self, max_count: usize) -> Vec<Transaction> {
-        let mut transactions = Vec::new();
-        let mut collected = 0;
+    // Reservation helpers
+    fn cleanup_expired_reservations(&self) {
+        let now = Instant::now();
+        let timeout = self.reservation_timeout;
+        for entry in self.reservation_timestamps.iter() {
+            let (tx_id, ts) = entry.pair();
+            if now.duration_since(*ts) > timeout {
+                self.reservation_timestamps.remove(tx_id);
+                self.reserved_transactions.remove(tx_id);
+                debug!("Released expired reservation for {}", tx_id);
+            }
+        }
+    }
 
-        // Collect from sharded queues using work-stealing
+    fn is_reserved_by_other(&self, tx_id: &str, miner_id: &Option<String>) -> bool {
+        if let Some(owner) = self.reserved_transactions.get(tx_id) {
+            match miner_id {
+                Some(mid) => owner.value() != mid,
+                None => true,
+            }
+        } else {
+            false
+        }
+    }
+
+    fn reserve_for_miner(&self, tx_id: &str, miner_id: &str) {
+        self.reserved_transactions
+            .insert(tx_id.to_string(), miner_id.to_string());
+        self.reservation_timestamps
+            .insert(tx_id.to_string(), Instant::now());
+        debug!("Reserved tx {} for miner {}", tx_id, miner_id);
+    }
+
+    pub async fn release_reserved_transactions(&self, miner_id: &str) {
+        let keys: Vec<String> = self
+            .reserved_transactions
+            .iter()
+            .filter_map(|e| {
+                let (k, v) = e.pair();
+                if v == miner_id {
+                    Some(k.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        for k in &keys {
+            self.reserved_transactions.remove(k);
+            self.reservation_timestamps.remove(k);
+        }
+        if !keys.is_empty() {
+            debug!(
+                "Released {} reservations for miner {}",
+                keys.len(),
+                miner_id
+            );
+        }
+    }
+
+    pub async fn get_priority_transactions_with_reservation(
+        &self,
+        max_count: usize,
+        miner_id: Option<String>,
+    ) -> Vec<Transaction> {
+        let mut transactions = Vec::new();
+        let mut collected = 0usize;
+
+        self.cleanup_expired_reservations();
+
         while collected < max_count {
             if let Some(elite_tx) = self.sharded_queues.pop_balanced() {
                 if matches!(elite_tx.validation_status, ValidationStatus::Valid) {
-                    transactions.push(elite_tx.tx);
-                    collected += 1;
+                    let tx_id = elite_tx.tx.id.clone();
+                    if !self.is_reserved_by_other(&tx_id, &miner_id) {
+                        if let Some(ref mid) = miner_id {
+                            self.reserve_for_miner(&tx_id, mid);
+                        }
+                        transactions.push(elite_tx.tx);
+                        collected += 1;
+                    } else {
+                        // Push back if reserved by another miner
+                        let _ = self.sharded_queues.push(elite_tx);
+                    }
                 }
             } else {
-                break; // No more transactions available
+                break;
             }
         }
 
@@ -600,6 +680,13 @@ impl EliteMempool {
         });
 
         transactions
+    }
+
+    /// Get high-priority transactions for mining
+    pub async fn get_priority_transactions(&self, max_count: usize) -> Vec<Transaction> {
+        // Delegate to reservation-aware selection without miner id for backward compatibility
+        self.get_priority_transactions_with_reservation(max_count, None)
+            .await
     }
 
     /// Get comprehensive performance metrics

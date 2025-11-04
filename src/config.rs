@@ -98,7 +98,7 @@ pub struct Config {
     pub mining_threads: usize,
     pub mining_enabled: bool,
     pub adaptive_mining_enabled: bool, // Enable adaptive mining with difficulty adjustments
-    
+
     // --- Block Producer Configuration ---
     pub producer_type: Option<String>, // "solo" or "decoupled" (default: "solo")
 

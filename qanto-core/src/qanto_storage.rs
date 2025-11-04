@@ -14,14 +14,18 @@
 
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::{File, OpenOptions};
+use std::hash::{Hash, Hasher};
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Mutex, RwLock};
-use std::time::SystemTime;
+use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::time::{Duration, SystemTime};
 use thiserror::Error;
+use tokio::sync::{mpsc, Semaphore};
+use tokio::task::JoinHandle;
 
 // Native serialization (will replace serde)
 use crate::qanto_serde::{QantoDeserialize, QantoDeserializer, QantoSerialize, QantoSerializer};
@@ -50,6 +54,8 @@ pub enum QantoStorageError {
     Compression(String),
     #[error("Encryption error: {0}")]
     Encryption(String),
+    #[error("Initialization error: {0}")]
+    Initialization(String),
 }
 
 /// Storage configuration
@@ -62,8 +68,19 @@ pub struct StorageConfig {
     pub wal_enabled: bool,
     pub sync_writes: bool,
     pub cache_size: usize,
-    pub compaction_threshold: f64,
+    pub compaction_threshold: usize, // Changed from f64 to usize
     pub max_open_files: usize,
+
+    // Enhanced configuration for 32 BPS and 10M+ TPS
+    pub memtable_size: usize,
+    pub write_buffer_size: usize,
+    pub batch_size: usize,
+    pub parallel_writers: usize,
+    pub enable_write_batching: bool,
+    pub enable_bloom_filters: bool,
+    pub enable_async_io: bool,
+    pub sync_interval: Duration,
+    pub compression_level: i32,
 }
 
 impl Default for StorageConfig {
@@ -76,8 +93,19 @@ impl Default for StorageConfig {
             wal_enabled: true,
             sync_writes: true,
             cache_size: 128 * 1024 * 1024, // 128MB
-            compaction_threshold: 0.5,
+            compaction_threshold: 10,      // 10 segments
             max_open_files: 1000,
+
+            // Enhanced defaults for high performance
+            memtable_size: 64 * 1024 * 1024,     // 64MB
+            write_buffer_size: 16 * 1024 * 1024, // 16MB
+            batch_size: 10000,
+            parallel_writers: 8,
+            enable_write_batching: true,
+            enable_bloom_filters: true,
+            enable_async_io: true,
+            sync_interval: Duration::from_millis(100),
+            compression_level: 3,
         }
     }
 }
@@ -253,6 +281,7 @@ impl CacheEntry {
         }
     }
 
+    #[allow(dead_code)]
     fn touch(&self) -> u64 {
         self.access_count.fetch_add(1, Ordering::Relaxed)
     }
@@ -312,6 +341,65 @@ impl WriteAheadLog {
     }
 }
 
+/// High-level account state cache for fast balance lookups
+#[derive(Debug, Default, Clone)]
+pub struct AccountStateCache {
+    balances: Arc<DashMap<String, u128>>, // address -> balance (base units)
+}
+
+impl AccountStateCache {
+    /// Create a new account state cache.
+    pub fn new() -> Self {
+        Self {
+            balances: Arc::new(DashMap::new()),
+        }
+    }
+
+    /// Get current balance for an address.
+    /// Returns `None` if the address is not in cache.
+    pub fn get_balance(&self, address: &str) -> Option<u128> {
+        self.balances.get(address).map(|v| *v)
+    }
+
+    /// Set the absolute balance for an address.
+    pub fn set_balance<A: Into<String>>(&self, address: A, balance: u128) {
+        self.balances.insert(address.into(), balance);
+    }
+
+    /// Apply a signed delta to an address balance with saturating semantics.
+    /// Negative deltas decrease the balance but never go below zero.
+    pub fn apply_delta(&self, address: &str, delta: i128) -> u128 {
+        use std::cmp::Ordering;
+        let next = match delta.cmp(&0) {
+            Ordering::Equal => self.get_balance(address).unwrap_or(0),
+            Ordering::Greater => {
+                let incr = delta as u128;
+                self.get_balance(address).unwrap_or(0).saturating_add(incr)
+            }
+            Ordering::Less => {
+                let decr = (-delta) as u128;
+                self.get_balance(address).unwrap_or(0).saturating_sub(decr)
+            }
+        };
+        self.set_balance(address.to_string(), next);
+        next
+    }
+
+    /// Clear all cached balances.
+    pub fn clear(&self) {
+        self.balances.clear();
+    }
+
+    /// Snapshot all balances into a HashMap.
+    pub fn snapshot(&self) -> HashMap<String, u128> {
+        let mut map = HashMap::new();
+        for entry in self.balances.iter() {
+            map.insert(entry.key().clone(), *entry.value());
+        }
+        map
+    }
+}
+
 /// Storage segment (SSTable-like structure)
 #[derive(Debug)]
 struct StorageSegment {
@@ -349,6 +437,10 @@ impl StorageSegment {
     fn get(&mut self, key: &[u8]) -> Result<Option<Vec<u8>>, QantoStorageError> {
         // Clone the offset and length to avoid borrowing issues
         if let Some((offset, length)) = self.index.get(key).map(|(o, l)| (*o, *l)) {
+            // Treat zero-length values as tombstones
+            if length == 0 {
+                return Ok(None);
+            }
             self.open()?;
 
             if let Some(ref mut file) = self.file {
@@ -371,7 +463,18 @@ impl StorageSegment {
 
     #[allow(dead_code)] // May be used for future key existence checks
     fn contains_key(&self, key: &[u8]) -> bool {
-        self.index.contains_key(key)
+        match self.index.get(key) {
+            Some((_, length)) => *length > 0,
+            None => false,
+        }
+    }
+
+    // Detect if a key maps to a tombstone (zero-length value)
+    fn is_tombstone(&self, key: &[u8]) -> bool {
+        self.index
+            .get(key)
+            .map(|(_, length)| *length == 0)
+            .unwrap_or(false)
     }
 
     #[allow(dead_code)] // May be used for future key iteration features
@@ -461,7 +564,7 @@ impl Transaction {
 pub struct QantoStorage {
     config: StorageConfig,
     segments: RwLock<Vec<StorageSegment>>,
-    memtable: RwLock<BTreeMap<Vec<u8>, Vec<u8>>>,
+    sharded_memtable: ShardedMemtable,
     cache: DashMap<Vec<u8>, CacheEntry>,
     wal: Mutex<Option<WriteAheadLog>>,
     stats: RwLock<StorageStats>,
@@ -470,6 +573,9 @@ pub struct QantoStorage {
     next_transaction_id: AtomicU64,
     active_transactions: RwLock<HashMap<u64, Transaction>>,
     compaction_in_progress: AtomicBool,
+    async_io_processor: Option<AsyncIOProcessor>,
+    #[allow(dead_code)]
+    write_semaphore: Arc<Semaphore>,
 }
 
 impl Clone for QantoStorage {
@@ -491,8 +597,17 @@ impl QantoStorage {
             wal_enabled: true,                // Keep WAL for safety
             sync_writes: false, // Critical: disable sync writes for mining performance
             cache_size: 1024 * 1024 * 50, // 50MB cache for better performance
-            compaction_threshold: 2.0, // Higher threshold to reduce compaction frequency
-            max_open_files: 500, // Reasonable limit
+            compaction_threshold: 2, // Higher threshold to reduce compaction frequency (changed to usize)
+            max_open_files: 500,     // Reasonable limit
+            memtable_size: 1024 * 1024 * 16, // 16MB memtable
+            write_buffer_size: 1024 * 1024 * 4, // 4MB write buffer
+            batch_size: 1000,        // Batch size for writes
+            parallel_writers: 4,     // Number of parallel writers
+            enable_write_batching: true,
+            enable_bloom_filters: true,
+            enable_async_io: true,
+            sync_interval: Duration::from_millis(100),
+            compression_level: 3,
         }
     }
 
@@ -507,106 +622,87 @@ impl QantoStorage {
         Ok(())
     }
 
-    /// Optimized write batch for mining operations with pre-allocation
+    /// Optimized batch write for mining operations with sharded writes
     pub fn write_mining_batch(&self, batch: WriteBatch) -> Result<(), QantoStorageError> {
         if batch.is_empty() {
             return Ok(());
         }
 
-        // Pre-allocate vectors for better performance
-        let batch_size = batch.operations.len();
-        let mut keys = Vec::with_capacity(batch_size);
-        let mut values = Vec::with_capacity(batch_size);
+        let _tx_id = self.begin_transaction();
 
-        // Use transaction for atomicity
-        let tx_id = self.begin_transaction();
+        // Collect all keys and values for batch processing
+        let mut operations = Vec::new();
 
-        // Batch WAL writes without sync for mining performance
-        if let Some(ref mut wal) = *self.wal.lock().unwrap() {
-            let entry = LogEntry::Transaction {
-                id: tx_id,
-                entries: batch.operations.clone(),
-            };
-            wal.append(&entry)?;
-            // Skip sync for mining performance - will sync on commit
-        }
-
-        // Pre-process operations for batch efficiency
-        for operation in &batch.operations {
-            match operation {
+        for entry in &batch.operations {
+            match entry {
                 LogEntry::Put { key, value } => {
-                    keys.push(key.clone());
-                    values.push(value.clone());
+                    operations.push((key.clone(), Some(value.clone())));
                 }
                 LogEntry::Delete { key } => {
-                    keys.push(key.clone());
-                    values.push(Vec::new()); // Empty value for delete
+                    operations.push((key.clone(), None));
                 }
                 _ => {}
             }
         }
 
-        // Batch update memtable
-        {
-            let mut memtable = self
-                .memtable
-                .write()
-                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
+        // Log to WAL first for durability
+        if let Some(ref mut wal) = *self.wal.lock().unwrap() {
+            for entry in &batch.operations {
+                wal.append(entry)?;
+            }
+            if self.config.sync_writes {
+                wal.sync()?;
+            }
+        }
 
-            for operation in batch.operations.iter() {
-                match operation {
-                    LogEntry::Put { key, value } => {
-                        memtable.insert(key.clone(), value.clone());
+        // Batch update sharded memtable
+        for (key, value_opt) in operations {
+            match value_opt {
+                Some(value) => {
+                    self.sharded_memtable.put(key.clone(), value.clone())?;
 
-                        // Update cache efficiently
-                        let entry = CacheEntry::new(value.clone());
-                        self.cache.insert(key.clone(), entry);
+                    // Update cache using DashMap for lock-free access
+                    let entry = CacheEntry::new(value.clone());
+                    self.cache.insert(key.clone(), entry);
+
+                    // Update cache size atomically
+                    let value_size = key.len() + value.len();
+                    let current_size = self.cache_size.fetch_add(value_size, Ordering::Relaxed);
+
+                    // Evict cache if too large
+                    if current_size + value_size > self.config.cache_size {
+                        self.evict_cache_lockfree();
                     }
-                    LogEntry::Delete { key } => {
-                        memtable.remove(key);
-                        self.cache.remove(key);
-                    }
-                    _ => {}
+                }
+                None => {
+                    self.sharded_memtable.delete(&key)?;
+                    self.cache.remove(&key);
                 }
             }
         }
 
-        // Update cache size atomically
-        let total_size: usize = keys
-            .iter()
-            .zip(values.iter())
-            .map(|(k, v)| k.len() + v.len())
-            .sum();
-
-        let current_size = self.cache_size.fetch_add(total_size, Ordering::Relaxed);
-
-        // Evict cache if necessary
-        if current_size + total_size > self.config.cache_size {
-            self.evict_cache_lockfree();
-        }
-
-        // Update stats in batch
+        // Update stats
         {
             let mut stats = self
                 .stats
                 .write()
                 .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
-            stats.writes += batch_size as u64;
+            stats.writes += batch.len() as u64;
         }
 
-        self.commit_transaction(tx_id)
+        // Check if memtable needs flushing
+        let memtable_size = self.sharded_memtable.size() * 1024; // Rough estimate
+        if memtable_size > self.config.memtable_size {
+            let _flushed_data = self.sharded_memtable.flush_all()?;
+        }
+
+        Ok(())
     }
 
     /// Flush and sync for mining checkpoint (called after block mining)
     pub fn mining_checkpoint(&self) -> Result<(), QantoStorageError> {
         // Flush memtable if needed
-        let memtable_size = {
-            let memtable = self
-                .memtable
-                .read()
-                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
-            memtable.len() * 1024 // Rough estimate
-        };
+        let memtable_size = self.sharded_memtable.size() * 1024; // Rough estimate
 
         if memtable_size > self.config.cache_size / 8 {
             self.flush_memtable()?;
@@ -621,15 +717,18 @@ impl QantoStorage {
         Ok(())
     }
 
-    /// Create a new storage engine
+    /// Create a new storage engine with enhanced parallel processing
     pub fn new(config: StorageConfig) -> Result<Self, QantoStorageError> {
         // Create data directory
         std::fs::create_dir_all(&config.data_dir)?;
 
-        let storage = Self {
+        // Calculate optimal shard count based on parallel writers
+        let shard_count = config.parallel_writers.max(16); // Minimum 16 shards
+
+        let storage = Arc::new(Self {
             config: config.clone(),
             segments: RwLock::new(Vec::new()),
-            memtable: RwLock::new(BTreeMap::new()),
+            sharded_memtable: ShardedMemtable::new(shard_count),
             cache: DashMap::with_capacity(config.cache_size / 1024),
             wal: Mutex::new(None),
             stats: RwLock::new(StorageStats::default()),
@@ -638,7 +737,9 @@ impl QantoStorage {
             next_transaction_id: AtomicU64::new(1),
             active_transactions: RwLock::new(HashMap::new()),
             compaction_in_progress: AtomicBool::new(false),
-        };
+            async_io_processor: None,
+            write_semaphore: Arc::new(Semaphore::new(config.parallel_writers)),
+        });
 
         // Initialize WAL if enabled
         if config.wal_enabled {
@@ -647,37 +748,108 @@ impl QantoStorage {
             *storage.wal.lock().unwrap() = Some(wal);
         }
 
-        // Load existing segments
-        storage.load_segments()?;
+        // Initialize async I/O processor if enabled
+        let mut storage_mut = Arc::try_unwrap(storage).map_err(|_| {
+            QantoStorageError::Initialization("Failed to initialize storage".to_string())
+        })?;
 
-        Ok(storage)
+        if config.enable_async_io {
+            let storage_arc = Arc::new(storage_mut);
+            let storage_weak = Arc::downgrade(&storage_arc);
+            let processor =
+                AsyncIOProcessor::new(storage_weak, config.batch_size, config.sync_interval);
+
+            // This is a bit tricky - we need to get the storage back
+            let mut storage_final = Arc::try_unwrap(storage_arc).map_err(|_| {
+                QantoStorageError::Initialization("Failed to finalize storage".to_string())
+            })?;
+
+            storage_final.async_io_processor = Some(processor);
+            storage_mut = storage_final;
+        }
+
+        // Load existing segments
+        storage_mut.load_segments()?;
+
+        Ok(storage_mut)
     }
 
     /// Check if key exists
+    /// Check if a key exists in the storage
     pub fn contains_key(&self, key: &[u8]) -> Result<bool, QantoStorageError> {
-        Ok(self.get(key)?.is_some())
+        // Check cache first
+        if self.cache.contains_key(key) {
+            return Ok(true);
+        }
+
+        // Check sharded memtable
+        if let Some(val) = self.sharded_memtable.get(key)? {
+            // Empty value indicates a tombstone
+            if val.is_empty() {
+                return Ok(false);
+            }
+            return Ok(true);
+        }
+
+        // Check segments
+        let segments = self
+            .segments
+            .read()
+            .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
+
+        // Newest to oldest: tombstone masks older values
+        for segment in segments.iter().rev() {
+            if segment.is_tombstone(key) {
+                return Ok(false);
+            }
+            if segment.contains_key(key) {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 
     /// Get all keys with a prefix
+    /// Get all keys with a given prefix using sharded memtable
     pub fn keys_with_prefix(&self, prefix: &[u8]) -> Result<Vec<Vec<u8>>, QantoStorageError> {
         let mut keys = HashSet::new();
+        let mut tombstoned = HashSet::new();
 
-        // Check memtable
+        // Check sharded memtable using iterator over shard indices
+        for shard_lock in (0..self.sharded_memtable.shard_count())
+            .filter_map(|idx| self.sharded_memtable.get_shard(idx))
         {
-            let memtable = self.memtable.read().unwrap();
-            for key in memtable.keys() {
+            let shard = shard_lock
+                .read()
+                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
+
+            for (key, value) in shard.iter() {
                 if key.starts_with(prefix) {
-                    keys.insert(key.clone());
+                    if value.is_empty() {
+                        tombstoned.insert(key.clone());
+                        keys.remove(key);
+                    } else if !tombstoned.contains(key) {
+                        keys.insert(key.clone());
+                    }
                 }
             }
         }
 
         // Check segments
-        {
-            let segments = self.segments.read().unwrap();
-            for segment in segments.iter() {
-                for key in segment.keys() {
-                    if key.starts_with(prefix) {
+        let segments = self
+            .segments
+            .read()
+            .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
+
+        // Newest to oldest: tombstones mask older values
+        for segment in segments.iter().rev() {
+            for key in segment.keys() {
+                if key.starts_with(prefix) {
+                    if segment.is_tombstone(key) {
+                        tombstoned.insert(key.clone());
+                        keys.remove(key);
+                    } else if !tombstoned.contains(key) {
                         keys.insert(key.clone());
                     }
                 }
@@ -702,6 +874,7 @@ impl QantoStorage {
 
     /// Commit a transaction
     pub fn commit_transaction(&self, tx_id: u64) -> Result<(), QantoStorageError> {
+        // Extract and remove transaction from active set
         let transaction = {
             let mut transactions = self.active_transactions.write().unwrap();
             transactions.remove(&tx_id).ok_or_else(|| {
@@ -709,34 +882,97 @@ impl QantoStorage {
             })?
         };
 
-        // Log commit to WAL
+        // 1) Write Transaction envelope to WAL first for durability
         if let Some(ref mut wal) = *self.wal.lock().unwrap() {
             let entry = LogEntry::Transaction {
                 id: tx_id,
                 entries: transaction.operations.clone(),
             };
             wal.append(&entry)?;
+        }
 
+        // 2) Apply operations directly to memtable/cache without duplicating WAL entries
+        //    Prepare inverse ops to enable rollback in case of failure
+        let mut inverses: Vec<LogEntry> = Vec::with_capacity(transaction.operations.len());
+        let mut applied_count: usize = 0;
+        let apply_result: Result<(), QantoStorageError> = (|| {
+            for operation in &transaction.operations {
+                match operation {
+                    LogEntry::Put { key, value } => {
+                        // Capture previous value to form inverse
+                        let prev = self.get(key.as_slice())?;
+                        match prev {
+                            Some(prev_val) => {
+                                inverses.push(LogEntry::Put {
+                                    key: key.clone(),
+                                    value: prev_val,
+                                });
+                            }
+                            None => {
+                                inverses.push(LogEntry::Delete { key: key.clone() });
+                            }
+                        }
+                        // Apply directly
+                        self.apply_put_direct(key.clone(), value.clone())?;
+                        applied_count += 1;
+                    }
+                    LogEntry::Delete { key } => {
+                        // Capture previous value to form inverse
+                        let prev = self.get(key.as_slice())?;
+                        if let Some(prev_val) = prev {
+                            inverses.push(LogEntry::Put {
+                                key: key.clone(),
+                                value: prev_val,
+                            });
+                        } else {
+                            // No-op inverse if key did not exist
+                            inverses.push(LogEntry::Delete { key: key.clone() });
+                        }
+                        // Apply directly
+                        self.apply_delete_direct(key.as_slice())?;
+                        applied_count += 1;
+                    }
+                    _ => {}
+                }
+            }
+            Ok(())
+        })();
+
+        if let Err(e) = apply_result {
+            // Append Rollback entry and revert applied changes in reverse order
+            if let Some(ref mut wal) = *self.wal.lock().unwrap() {
+                let rollback_entry = LogEntry::Rollback {
+                    transaction_id: tx_id,
+                };
+                wal.append(&rollback_entry)?;
+                if self.config.sync_writes {
+                    wal.sync()?;
+                }
+            }
+            // Revert only the operations that were successfully applied
+            for inverse in inverses.into_iter().take(applied_count).rev() {
+                match inverse {
+                    LogEntry::Put { key, value } => {
+                        // Use direct apply to avoid WAL duplication during rollback
+                        let _ = self.apply_put_direct(key, value);
+                    }
+                    LogEntry::Delete { key } => {
+                        let _ = self.apply_delete_direct(key.as_slice());
+                    }
+                    _ => {}
+                }
+            }
+            return Err(e);
+        }
+
+        // 3) Append Commit entry after successful application; sync if configured
+        if let Some(ref mut wal) = *self.wal.lock().unwrap() {
             let commit_entry = LogEntry::Commit {
                 transaction_id: tx_id,
             };
             wal.append(&commit_entry)?;
-
             if self.config.sync_writes {
                 wal.sync()?;
-            }
-        }
-
-        // Apply operations
-        for operation in transaction.operations {
-            match operation {
-                LogEntry::Put { key, value } => {
-                    self.put(key, value)?;
-                }
-                LogEntry::Delete { key } => {
-                    self.delete(&key)?;
-                }
-                _ => {}
             }
         }
 
@@ -944,16 +1180,12 @@ impl QantoStorage {
     }
 
     fn flush_memtable(&self) -> Result<(), QantoStorageError> {
-        let memtable_data = {
-            let mut memtable = self.memtable.write().unwrap();
-            if memtable.is_empty() {
-                return Ok(());
-            }
+        // Get all data from sharded memtable
+        let memtable_data = self.sharded_memtable.flush_all()?;
 
-            let data = memtable.clone();
-            memtable.clear();
-            data
-        };
+        if memtable_data.is_empty() {
+            return Ok(());
+        }
 
         // Create new segment
         let segment_id = self.next_segment_id.fetch_add(1, Ordering::SeqCst);
@@ -1058,6 +1290,24 @@ impl QantoStorage {
     pub fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), QantoStorageError> {
         let value_size = key.len() + value.len();
 
+        // If async I/O is enabled, queue the write and update cache for read-your-writes
+        if let Some(ref processor) = self.async_io_processor {
+            processor.queue_write(key.clone(), value.clone())?;
+
+            // Update cache using DashMap for lock-free access
+            let entry = CacheEntry::new(value.clone());
+            self.cache.insert(key, entry);
+
+            // Update cache size atomically and evict if necessary
+            let current_size = self.cache_size.fetch_add(value_size, Ordering::Relaxed);
+            if current_size + value_size > self.config.cache_size {
+                self.evict_cache_lockfree();
+            }
+
+            // Defer WAL and memtable updates to the async processor batch
+            return Ok(());
+        }
+
         // Log to WAL first
         if let Some(ref mut wal) = *self
             .wal
@@ -1075,13 +1325,7 @@ impl QantoStorage {
         }
 
         // Update memtable
-        {
-            let mut memtable = self
-                .memtable
-                .write()
-                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
-            memtable.insert(key.clone(), value.clone());
-        }
+        self.sharded_memtable.put(key.clone(), value.clone())?;
 
         // Update cache using DashMap for lock-free access
         let entry = CacheEntry::new(value.clone());
@@ -1105,13 +1349,7 @@ impl QantoStorage {
         }
 
         // Check if memtable needs flushing
-        let memtable_size = {
-            let memtable = self
-                .memtable
-                .read()
-                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
-            memtable.len() * 1024 // Rough estimate
-        };
+        let memtable_size = self.sharded_memtable.size() * 1024; // Rough estimate
 
         if memtable_size > self.config.cache_size / 4 {
             self.flush_memtable()?;
@@ -1120,79 +1358,72 @@ impl QantoStorage {
         Ok(())
     }
 
-    /// Get a value by key with optimized cache access
+    /// High-performance get operation with sharded reads
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, QantoStorageError> {
-        // Check cache first using DashMap for lock-free read
+        // Check cache first (lock-free with DashMap)
         if let Some(entry) = self.cache.get(key) {
-            entry.touch();
-
             let mut stats = self
                 .stats
                 .write()
                 .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
             stats.cache_hits += 1;
-            stats.reads += 1;
-
             return Ok(Some(entry.value.clone()));
         }
 
-        // Check memtable
-        {
-            let memtable = self
-                .memtable
-                .read()
+        // Check sharded memtable (lock-free per shard)
+        if let Some(value) = self.sharded_memtable.get(key)? {
+            // Empty value indicates a tombstone; stop and return None
+            if value.is_empty() {
+                return Ok(None);
+            }
+            // Update cache for future reads
+            let entry = CacheEntry::new(value.clone());
+            self.cache.insert(key.to_vec(), entry);
+            self.cache_size
+                .fetch_add(key.len() + value.len(), Ordering::Relaxed);
+
+            let mut stats = self
+                .stats
+                .write()
                 .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
-            if let Some(value) = memtable.get(key) {
-                // Add to cache
+            stats.reads += 1;
+            return Ok(Some(value));
+        }
+
+        // Check segments if not in memtable (need mutable access for file operations)
+        let mut segments = self
+            .segments
+            .write()
+            .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
+
+        for segment in segments.iter_mut().rev() {
+            // If a tombstone exists in a newer segment, do not search older segments
+            if segment.is_tombstone(key) {
+                return Ok(None);
+            }
+            if let Some(value) = segment.get(key)? {
+                // Update cache for future reads
                 let entry = CacheEntry::new(value.clone());
-                let value_size = key.len() + value.len();
                 self.cache.insert(key.to_vec(), entry);
-                self.cache_size.fetch_add(value_size, Ordering::Relaxed);
+                self.cache_size
+                    .fetch_add(key.len() + value.len(), Ordering::Relaxed);
 
                 let mut stats = self
                     .stats
                     .write()
                     .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
                 stats.reads += 1;
-
-                return Ok(Some(value.clone()));
+                return Ok(Some(value));
             }
         }
 
-        // Check segments (newest first)
-        {
-            let mut segments = self
-                .segments
-                .write()
-                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
-            for segment in segments.iter_mut().rev() {
-                if let Some(value) = segment.get(key)? {
-                    // Add to cache
-                    let entry = CacheEntry::new(value.clone());
-                    let value_size = key.len() + value.len();
-                    self.cache.insert(key.to_vec(), entry);
-                    self.cache_size.fetch_add(value_size, Ordering::Relaxed);
-
-                    let mut stats = self
-                        .stats
-                        .write()
-                        .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
-                    stats.cache_misses += 1;
-                    stats.reads += 1;
-
-                    return Ok(Some(value));
-                }
-            }
-        }
-
-        // Update stats
+        // Update cache miss stats
         {
             let mut stats = self
                 .stats
                 .write()
                 .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
             stats.cache_misses += 1;
-            stats.reads += 1;
         }
 
         Ok(None)
@@ -1200,6 +1431,22 @@ impl QantoStorage {
 
     /// Delete a key with optimized cache removal
     pub fn delete(&self, key: &[u8]) -> Result<(), QantoStorageError> {
+        // If async I/O is enabled, queue the delete and update cache
+        if let Some(ref processor) = self.async_io_processor {
+            processor.queue_delete(key.to_vec())?;
+
+            // Remove from cache and update size atomically
+            if let Some((_, entry)) = self.cache.remove(key) {
+                let value_size = key.len() + entry.value.len();
+                self.cache_size.fetch_sub(value_size, Ordering::Relaxed);
+            }
+
+            // Immediately insert tombstone in memtable for consistency
+            self.sharded_memtable.delete(key)?;
+
+            // Defer WAL updates to the async processor batch
+            return Ok(());
+        }
         // Log to WAL first
         if let Some(ref mut wal) = *self.wal.lock().unwrap() {
             let entry = LogEntry::Delete { key: key.to_vec() };
@@ -1210,10 +1457,7 @@ impl QantoStorage {
         }
 
         // Remove from memtable
-        {
-            let mut memtable = self.memtable.write().unwrap();
-            memtable.remove(key);
-        }
+        self.sharded_memtable.delete(key)?;
 
         // Remove from cache and update size atomically
         if let Some((_, entry)) = self.cache.remove(key) {
@@ -1275,34 +1519,301 @@ impl QantoStorage {
             return Ok(());
         }
 
-        // Use transaction for atomicity
+        // Begin a transaction and attach operations to it
         let tx_id = self.begin_transaction();
 
-        // Log all operations to WAL first
-        if let Some(ref mut wal) = *self.wal.lock().unwrap() {
-            let entry = LogEntry::Transaction {
-                id: tx_id,
-                entries: batch.operations.clone(),
-            };
-            wal.append(&entry)?;
-            if self.config.sync_writes {
-                wal.sync()?;
-            }
+        {
+            let mut transactions = self
+                .active_transactions
+                .write()
+                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
+            let tx = transactions.get_mut(&tx_id).ok_or_else(|| {
+                QantoStorageError::Transaction(format!("Transaction {tx_id} not found"))
+            })?;
+            tx.operations.extend(batch.operations);
         }
 
-        // Apply operations
-        for operation in batch.operations {
-            match operation {
-                LogEntry::Put { key, value } => {
-                    self.put(key, value)?;
-                }
-                LogEntry::Delete { key } => {
-                    self.delete(&key)?;
-                }
-                _ => {}
-            }
-        }
-
+        // Commit will log the transaction and apply operations exactly once
         self.commit_transaction(tx_id)
     }
+
+    /// Apply a put directly to memtable/cache without WAL or async queue
+    #[allow(dead_code)]
+    fn apply_put_direct(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), QantoStorageError> {
+        let value_size = key.len() + value.len();
+
+        // Update memtable
+        self.sharded_memtable.put(key.clone(), value.clone())?;
+
+        // Update cache using DashMap for lock-free access
+        let entry = CacheEntry::new(value.clone());
+        self.cache.insert(key, entry);
+
+        // Update cache size atomically and evict if necessary
+        let current_size = self.cache_size.fetch_add(value_size, Ordering::Relaxed);
+        if current_size + value_size > self.config.cache_size {
+            self.evict_cache_lockfree();
+        }
+
+        // Update stats
+        {
+            let mut stats = self
+                .stats
+                .write()
+                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
+            stats.writes += 1;
+        }
+
+        Ok(())
+    }
+
+    /// Apply a delete directly to memtable/cache without WAL or async queue
+    #[allow(dead_code)]
+    fn apply_delete_direct(&self, key: &[u8]) -> Result<(), QantoStorageError> {
+        // Insert tombstone in memtable (empty value)
+        self.sharded_memtable.delete(key)?;
+
+        // Remove from cache and update size atomically
+        if let Some((_, entry)) = self.cache.remove(key) {
+            let value_size = key.len() + entry.value.len();
+            self.cache_size.fetch_sub(value_size, Ordering::Relaxed);
+        }
+
+        // Update stats
+        {
+            let mut stats = self
+                .stats
+                .write()
+                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
+            stats.deletes += 1;
+        }
+
+        Ok(())
+    }
 }
+
+/// Sharded memtable for parallel writes
+#[derive(Debug)]
+struct ShardedMemtable {
+    shards: Vec<RwLock<BTreeMap<Vec<u8>, Vec<u8>>>>,
+    shard_count: usize,
+}
+
+impl ShardedMemtable {
+    fn new(shard_count: usize) -> Self {
+        let mut shards = Vec::with_capacity(shard_count);
+        for _ in 0..shard_count {
+            shards.push(RwLock::new(BTreeMap::new()));
+        }
+        Self {
+            shards,
+            shard_count,
+        }
+    }
+
+    fn get_shard_index(&self, key: &[u8]) -> usize {
+        let mut hasher = DefaultHasher::new();
+        key.hash(&mut hasher);
+        (hasher.finish() as usize) % self.shard_count
+    }
+
+    pub fn shard_count(&self) -> usize {
+        self.shard_count
+    }
+
+    pub fn get_shard(&self, index: usize) -> Option<&RwLock<BTreeMap<Vec<u8>, Vec<u8>>>> {
+        self.shards.get(index)
+    }
+
+    /// High-performance put operation with sharded writes
+    pub fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), QantoStorageError> {
+        let shard_index = self.get_shard_index(&key);
+        let shard = &self.shards[shard_index];
+
+        let mut shard_map = shard
+            .write()
+            .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
+
+        shard_map.insert(key, value);
+        Ok(())
+    }
+
+    fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, QantoStorageError> {
+        let shard_index = self.get_shard_index(key);
+        let shard = self.shards[shard_index]
+            .read()
+            .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
+        Ok(shard.get(key).cloned())
+    }
+
+    fn delete(&self, key: &[u8]) -> Result<Option<Vec<u8>>, QantoStorageError> {
+        let shard_index = self.get_shard_index(key);
+        let mut shard = self.shards[shard_index]
+            .write()
+            .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
+        let previous = shard.get(key).cloned();
+        shard.insert(key.to_vec(), Vec::new()); // Insert tombstone (empty value)
+        Ok(previous)
+    }
+
+    fn flush_all(&self) -> Result<BTreeMap<Vec<u8>, Vec<u8>>, QantoStorageError> {
+        let mut merged = BTreeMap::new();
+        for shard in &self.shards {
+            let mut shard_data = shard
+                .write()
+                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
+            // Collect all entries and clear the shard
+            let entries: Vec<_> = shard_data
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            shard_data.clear();
+            for (key, value) in entries {
+                merged.insert(key, value);
+            }
+        }
+        Ok(merged)
+    }
+
+    fn size(&self) -> usize {
+        self.shards
+            .iter()
+            .map(|shard| shard.read().map(|s| s.len()).unwrap_or(0))
+            .sum()
+    }
+}
+
+/// Async write operation for batching
+#[derive(Debug, Clone)]
+pub struct AsyncWriteOp {
+    pub key: Vec<u8>,
+    pub value: Option<Vec<u8>>, // None for delete
+    pub timestamp: SystemTime,
+}
+
+/// Async I/O batch processor
+#[derive(Debug)]
+struct AsyncIOProcessor {
+    #[allow(dead_code)]
+    write_queue: mpsc::UnboundedSender<AsyncWriteOp>,
+    #[allow(dead_code)]
+    batch_size: usize,
+    #[allow(dead_code)]
+    flush_interval: Duration,
+    _handle: JoinHandle<()>,
+    #[allow(dead_code)]
+    runtime_guard: Option<tokio::runtime::Runtime>,
+}
+
+impl AsyncIOProcessor {
+    fn new(storage_weak: Weak<QantoStorage>, batch_size: usize, flush_interval: Duration) -> Self {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+
+        let task = async move {
+            let mut batch = Vec::with_capacity(batch_size);
+            let mut last_flush = tokio::time::Instant::now();
+
+            loop {
+                tokio::select! {
+                    op = rx.recv() => {
+                        match op {
+                            Some(write_op) => {
+                                batch.push(write_op);
+
+                                if batch.len() >= batch_size ||
+                                   last_flush.elapsed() >= flush_interval {
+                                    if let Err(e) = Self::flush_batch(&storage_weak, &mut batch).await {
+                                        eprintln!("Async I/O flush error: {}", e);
+                                    }
+                                    last_flush = tokio::time::Instant::now();
+                                }
+                            }
+                            None => break,
+                        }
+                    }
+                    _ = tokio::time::sleep(flush_interval) => {
+                        if !batch.is_empty() {
+                            if let Err(e) = Self::flush_batch(&storage_weak, &mut batch).await {
+                                eprintln!("Async I/O flush error: {}", e);
+                            }
+                            last_flush = tokio::time::Instant::now();
+                        }
+                    }
+                }
+            }
+        };
+
+        // Spawn on existing Tokio runtime if available, otherwise create a lightweight runtime
+        let (handle, runtime_guard) = match tokio::runtime::Handle::try_current() {
+            Ok(h) => (h.spawn(task), None),
+            Err(_) => {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_time()
+                    .build()
+                    .expect("Failed to build Tokio runtime for AsyncIOProcessor");
+                let h = rt.spawn(task);
+                (h, Some(rt))
+            }
+        };
+
+        Self {
+            write_queue: tx,
+            batch_size,
+            flush_interval,
+            _handle: handle,
+            runtime_guard,
+        }
+    }
+
+    async fn flush_batch(
+        storage_weak: &Weak<QantoStorage>,
+        batch: &mut Vec<AsyncWriteOp>,
+    ) -> Result<(), QantoStorageError> {
+        if batch.is_empty() {
+            return Ok(());
+        }
+        if let Some(storage_arc) = storage_weak.upgrade() {
+            // Create write batch
+            let mut write_batch = WriteBatch::with_capacity(batch.len());
+            for op in batch.drain(..) {
+                match op.value {
+                    Some(value) => write_batch.put(op.key, value),
+                    None => write_batch.delete(op.key),
+                }
+            }
+
+            // Execute batch synchronously without requiring a multi-thread runtime
+            storage_arc.write_batch(write_batch)
+        } else {
+            // Storage is gone; drop pending ops gracefully
+            batch.clear();
+            Ok(())
+        }
+    }
+
+    #[allow(dead_code)]
+    fn queue_write(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), QantoStorageError> {
+        let op = AsyncWriteOp {
+            key,
+            value: Some(value),
+            timestamp: SystemTime::now(),
+        };
+        self.write_queue
+            .send(op)
+            .map_err(|_| QantoStorageError::InvalidOperation("Write queue closed".to_string()))
+    }
+
+    #[allow(dead_code)]
+    fn queue_delete(&self, key: Vec<u8>) -> Result<(), QantoStorageError> {
+        let op = AsyncWriteOp {
+            key,
+            value: Some(vec![]), // Use empty value as tombstone instead of None
+            timestamp: SystemTime::now(),
+        };
+        self.write_queue
+            .send(op)
+            .map_err(|_| QantoStorageError::InvalidOperation("Write queue closed".to_string()))
+    }
+}
+
+// ... existing code ...

@@ -7,6 +7,21 @@ service QantoRpc {
   rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
   rpc GetBlock(GetBlockRequest) returns (GetBlockResponse);
   rpc GetNetworkStats(GetNetworkStatsRequest) returns (GetNetworkStatsResponse);
+  rpc SubscribeBalance(SubscribeBalanceRequest) returns (stream BalanceUpdate);
+}
+
+// Wallet-focused service for API-driven wallet clients
+service WalletService {
+  rpc GetBalance(WalletGetBalanceRequest) returns (BalanceResponse);
+}
+
+message WalletGetBalanceRequest {
+  string address = 1;
+}
+
+message BalanceResponse {
+  uint64 balance = 1;               // Confirmed balance in base units
+  uint64 unconfirmed_balance = 2;   // Net delta from pending mempool transactions
 }
 
 // ----- Core Transaction Types -----
@@ -179,6 +194,16 @@ message GetNetworkStatsResponse {
   uint64 block_count = 6;
   uint64 finality_ms = 7;
   double network_throughput_mbps = 8;
+}
+
+message SubscribeBalanceRequest {
+  string address_filter = 1; // empty for all addresses
+}
+
+message BalanceUpdate {
+  string address = 1;
+  uint64 base_units = 2;
+  uint64 timestamp = 3;
 }
 
 // ----- P2P Networking Messages -----

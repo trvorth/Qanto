@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{atomic::Ordering, Arc};
+use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
@@ -522,8 +523,17 @@ impl InteroperabilityCoordinator {
             encryption_enabled: false,
             wal_enabled: true,
             sync_writes: true,
-            compaction_threshold: 0.7,
+            compaction_threshold: 1, // Changed to usize
             max_open_files: 1000,
+            memtable_size: 1024 * 1024 * 16,    // 16MB memtable
+            write_buffer_size: 1024 * 1024 * 4, // 4MB write buffer
+            batch_size: 1000,                   // Batch size for writes
+            parallel_writers: 4,                // Number of parallel writers
+            enable_write_batching: true,
+            enable_bloom_filters: true,
+            enable_async_io: true,
+            sync_interval: Duration::from_millis(100),
+            compression_level: 3,
         };
 
         let db = QantoStorage::new(storage_config)

@@ -115,7 +115,96 @@ Confirm password:
 
 ---
 
-## 4. Using a Custom Wallet Path
+## 4. Checking Your Balance
+
+The `qantowallet` provides multiple ways to check your balance, optimized for different scenarios and network conditions.
+
+### Local-First Balance Query (Fastest)
+
+For the fastest balance lookup, use the `--local` flag to query only from your local storage:
+
+**Command:**
+```bash
+cargo run --bin qantowallet -- balance <ADDRESS> --local
+```
+
+**What Happens:**
+
+1. **Local Storage Query:** Checks your local node's storage for cached balance data
+2. **UTXO Fallback:** If no direct balance is found, scans local UTXOs to calculate balance
+3. **No Network Access:** Operates entirely offline for maximum speed and privacy
+
+**Example:**
+```bash
+cargo run --bin qantowallet -- balance ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3 --local
+```
+
+**When to Use:**
+- When you need the fastest possible response
+- For offline or air-gapped environments
+- When network connectivity is limited or unreliable
+- For privacy-focused queries (no network traffic)
+
+### Live Balance (Default)
+
+By default, the `balance` command follows live updates over WebSocket and falls back to gRPC if WebSocket is unavailable.
+
+**Command:**
+```bash
+cargo run --bin qantowallet -- balance <ADDRESS>
+```
+
+**What Happens:**
+
+1. **WebSocket Stream:** Subscribes to real-time balance updates from the node API
+2. **gRPC Fallback:** If WebSocket is unavailable, performs a one-shot balance query via gRPC
+
+**Example:**
+```bash
+cargo run --bin qantowallet -- balance ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3
+```
+
+### Live Balance Updates
+
+Real-time balance monitoring is the default behavior. You can still use `--follow` to be explicit:
+
+**Command:**
+```bash
+cargo run --bin qantowallet -- balance <ADDRESS> --follow
+```
+
+**What Happens:**
+- Establishes a WebSocket connection for live updates
+- Displays balance changes in real-time as transactions are processed
+- Useful for monitoring active wallets or during transaction processing
+
+**One-Shot Alternatives:**
+- Use `--local` for local-only lookup (fastest, no network)
+- Use `balance-rt` to read directly from the node DB
+
+### Advanced Balance Options
+
+You can combine balance queries with other network options:
+
+**QDS-Specific Query:**
+```bash
+cargo run --bin qantowallet -- balance <ADDRESS> --qds-multiaddr "/ip4/127.0.0.1/tcp/30333/p2p/<peer_id>"
+```
+
+**Custom Node Connection:**
+```bash
+cargo run --bin qantowallet -- balance <ADDRESS> --node-url "127.0.0.1:50051"
+```
+
+> ### Performance Tips
+> * Use `--local` for the fastest queries when you have a synced local node
+> * Use standard balance queries for the most reliable results across network conditions
+> * Use `--follow` for monitoring active wallets during transaction processing
+> * The wallet automatically chooses the best available data source for optimal performance
+
+---
+
+## 5. Using a Custom Wallet Path
 
 By default, the wallet file is named `wallet.key`. You can specify a different name or location for any of the commands using the `--wallet` flag.
 

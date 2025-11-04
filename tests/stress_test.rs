@@ -27,8 +27,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         encryption_enabled: false,
         wal_enabled: true,
         sync_writes: false,
-        compaction_threshold: 0.7,
+        compaction_threshold: 10,
         max_open_files: 1000,
+        ..StorageConfig::default()
     };
     let storage = QantoStorage::new(storage_config)?;
 

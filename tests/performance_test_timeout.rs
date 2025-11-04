@@ -78,8 +78,9 @@ async fn create_test_environment() -> Result<(Arc<QantoDAG>, Wallet)> {
         wal_enabled: false,         // Disabled for speed
         sync_writes: false,
         cache_size: 64 * 1024 * 1024, // 64MB cache
-        compaction_threshold: 0.7,
+        compaction_threshold: 10,
         max_open_files: 100,
+        ..StorageConfig::default()
     };
 
     let storage = QantoStorage::new(storage_config)
@@ -439,7 +440,7 @@ fn test_scale_configuration() {
 // Split test_performance_validation_with_timeout into smaller tests
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_performance_validation_small() -> Result<()> {
-    tracing_subscriber::fmt::try_init().ok();
+    qanto::init_test_tracing();
     info!("Starting small performance validation test");
 
     let test_future = async {
@@ -469,7 +470,7 @@ async fn test_performance_validation_small() -> Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_performance_validation_medium() -> Result<()> {
-    tracing_subscriber::fmt::try_init().ok();
+    qanto::init_test_tracing();
     info!("Starting medium performance validation test");
 
     let test_future = async {

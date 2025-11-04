@@ -24,6 +24,7 @@ pub mod mining_metrics;
 pub mod node;
 pub mod omega;
 pub mod omega_enhanced;
+pub mod optimized_decoupled_producer;
 pub mod optimized_qdag;
 pub mod p2p;
 pub mod password_utils;
@@ -81,5 +82,24 @@ pub mod memory_optimization;
 pub use my_blockchain::qanhash;
 
 pub mod qantowallet;
+pub mod qds;
 
 pub mod start_node;
+// Test-safe tracing initialization to avoid double-init panics in tests
+use std::sync::Once;
+static INIT_TRACING: Once = Once::new();
+
+/// Initialize tracing subscriber once for tests.
+/// Uses `RUST_LOG` via `EnvFilter` when set; otherwise defaults to `info`.
+pub fn init_test_tracing() {
+    use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+
+    INIT_TRACING.call_once(|| {
+        let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+        // Try init; ignore error if already initialized by other harness
+        let _ = tracing_subscriber::registry()
+            .with(filter)
+            .with(fmt::layer())
+            .try_init();
+    });
+}

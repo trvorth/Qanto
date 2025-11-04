@@ -40,6 +40,7 @@ argon2 = "0.5.3"
 colored = "2.1.0"
 async-trait = "0.1.83"
 my-blockchain = { path = "../myblockchain" }
+zstd = "0.12"
 
 [dev-dependencies]
 mockall = "0.12"

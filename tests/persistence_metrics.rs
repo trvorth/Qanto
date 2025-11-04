@@ -26,8 +26,9 @@ fn persistence_metrics_update_and_prometheus_export() {
         encryption_enabled: false,
         wal_enabled: true,
         sync_writes: false,
-        compaction_threshold: 0.7,
+        compaction_threshold: 10, // number of segments before compaction
         max_open_files: 128,
+        ..StorageConfig::default()
     };
 
     let db = QantoStorage::new(storage_config).expect("Failed to initialize QantoStorage");

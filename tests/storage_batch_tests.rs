@@ -16,8 +16,9 @@ fn test_storage_batch_processing() {
         wal_enabled: true,
         sync_writes: false,
         cache_size: 1024 * 1024,
-        compaction_threshold: 0.5,
+        compaction_threshold: 10,
         max_open_files: 100,
+        ..StorageConfig::default()
     };
     let storage = QantoStorage::new(storage_config).expect("Failed to create storage");
 
@@ -67,8 +68,9 @@ fn test_empty_batch_processing() {
         wal_enabled: true,
         sync_writes: false,
         cache_size: 1024 * 1024,
-        compaction_threshold: 0.5,
+        compaction_threshold: 10,
         max_open_files: 100,
+        ..StorageConfig::default()
     };
     let storage = QantoStorage::new(storage_config).expect("Failed to create storage");
 
@@ -96,8 +98,9 @@ fn test_batch_with_mixed_operations() {
         wal_enabled: true,
         sync_writes: false,
         cache_size: 1024 * 1024,
-        compaction_threshold: 0.5,
+        compaction_threshold: 10,
         max_open_files: 100,
+        ..StorageConfig::default()
     };
     let storage = QantoStorage::new(storage_config).expect("Failed to create storage");
 

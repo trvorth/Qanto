@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 use toml;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Configuration validation errors
 #[derive(Error, Debug)]

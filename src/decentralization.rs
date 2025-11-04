@@ -23,6 +23,7 @@ fn to_core_block(block: &DagBlock) -> core_net::QantoBlock {
     core_net::QantoBlock {
         id: block.id.clone(),
         data: serde_json::to_vec(block).unwrap_or_default(),
+        ..Default::default()
     }
 }
 use crate::saga::{GovernanceProposal, PalletSaga};
@@ -37,7 +38,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 use uuid::Uuid;
 
 // --- Decentralization Constants ---

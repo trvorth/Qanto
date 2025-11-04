@@ -25,7 +25,12 @@
 #![allow(unsafe_code)]
 
 // Re-export core modules for external use
+pub mod balance_stream;
+pub mod dag_aware_mempool;
+pub mod docs;
 pub mod mining_celebration;
+#[cfg(test)]
+pub mod perf_bench;
 pub mod qanto_compat;
 pub mod qanto_native_crypto;
 pub mod qanto_net;
@@ -36,10 +41,14 @@ pub mod storage_adapter;
 pub mod storage_traits;
 
 // Re-export specific types to avoid ambiguous glob re-exports
+pub use balance_stream::{BalanceBroadcaster, BalanceSubscribe, BalanceUpdate};
+pub use dag_aware_mempool::{
+    DAGAwareMempool, DAGMempoolError, DAGTransaction, TransactionDependencyGraph,
+};
 pub use qanto_compat::QantoNativeCrypto;
 pub use qanto_native_crypto::QantoNativeCryptoError as QantoCompatError;
 pub use qanto_native_crypto::{
     QantoNativeCrypto as NativeCrypto, QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature,
 };
-pub use qanto_net::{NetworkMessage, PeerId, QantoNetError, QantoNetServer};
+pub use qanto_net::{NetworkMessage, PeerId, QantoBlock, QantoNetError, QantoNetServer};
 pub use qanto_p2p::{NetworkConfig, QantoP2P};

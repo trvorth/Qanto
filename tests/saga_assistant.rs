@@ -82,8 +82,9 @@ async fn run_autonomous_simulation() -> Result<()> {
         encryption_enabled: false,
         wal_enabled: true,
         sync_writes: true,
-        compaction_threshold: 0.7,
+        compaction_threshold: 10,
         max_open_files: 1000,
+        ..StorageConfig::default()
     };
     let storage = QantoStorage::new(storage_config)?;
 
@@ -193,6 +194,7 @@ async fn run_autonomous_simulation() -> Result<()> {
             0,
             &miner,
             miner.get_homomorphic_public_key(),
+            None,
         )
         .await?;
 
@@ -231,7 +233,15 @@ async fn run_autonomous_simulation() -> Result<()> {
     println!("{} SAGA consensus validation passed.", "✓".green());
 
     let block_id = candidate_block.id.clone();
-    if dag_arc.add_block(candidate_block, &utxos_arc).await? {
+    if dag_arc
+        .add_block(
+            candidate_block,
+            &utxos_arc,
+            Some(&mempool_arc),
+            Some(&validator_address),
+        )
+        .await?
+    {
         println!(
             "{} Block {} added to the DAG successfully!",
             "✓".green(),

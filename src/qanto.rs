@@ -74,31 +74,6 @@ enum Commands {
     },
 }
 
-/// Cleanup routine for graceful shutdown
-async fn cleanup_resources(_wallet: &Arc<Wallet>, _db_path: &str) {
-    info!("Closing database connections...");
-    // The database will be closed when RocksDB handle is dropped
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-    info!("Closing network connections...");
-    // Network connections are closed when libp2p swarm is dropped
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-    info!("Flushing file handles and buffers...");
-    // Ensure any pending writes are flushed
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-    info!("Saving wallet state...");
-    // Wallet is already encrypted and saved, but we could add additional state saving here
-
-    // Optionally sync filesystem to ensure all data is written
-    if std::process::Command::new("sync").output().is_ok() {
-        info!("Filesystem sync completed.");
-    }
-
-    info!("Cleanup completed.");
-}
-
 pub async fn run() -> Result<()> {
     // Initialize logging with env_logger to support RUST_LOG environment variable
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -235,6 +210,9 @@ pub async fn run() -> Result<()> {
             )
             .await?;
 
+            // Hold the node in an Arc so we can trigger shutdown while it runs
+            let node = Arc::new(node);
+
             // Start background DAG preloading task (non-blocking)
             let qdag_gen_for_preload = node.dag.qdag_generator.clone();
             let shutdown_for_preload = shutdown.clone();
@@ -274,38 +252,76 @@ pub async fn run() -> Result<()> {
                 "🌟 Node services starting immediately (DAG preloading continues in background)..."
             );
 
-            // Start node with shutdown monitoring - use existing tokio runtime
-            let shutdown_monitor = shutdown.clone();
-            let node_handle = tokio::spawn(async move { node.start().await });
+            // Start node with shutdown monitoring using tokio::select!
+            let node_for_task = node.clone();
+            let node_handle = tokio::spawn(async move { node_for_task.start().await });
 
-            // Monitor shutdown flag
-            loop {
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-                // Check shutdown flag first
-                if shutdown_monitor.load(Ordering::Relaxed) {
-                    info!("Shutdown requested, stopping node...");
-                    node_handle.abort();
-                    break;
+            // Wire OS signals to the coordinated cancellation token
+            let cleanup_for_signals = node.resource_cleanup.clone();
+            let shutdown_signal_flag = shutdown.clone();
+            std::thread::spawn(move || {
+                let mut signals =
+                    Signals::new([SIGINT, SIGTERM]).expect("Failed to register signal handlers");
+                for sig in signals.forever() {
+                    match sig {
+                        SIGINT => {
+                            info!("Received SIGINT (Ctrl+C). Initiating graceful shutdown...");
+                            shutdown_signal_flag.store(true, Ordering::Relaxed);
+                            cleanup_for_signals.request_shutdown();
+                            break;
+                        }
+                        SIGTERM => {
+                            info!("Received SIGTERM. Initiating graceful shutdown...");
+                            shutdown_signal_flag.store(true, Ordering::Relaxed);
+                            cleanup_for_signals.request_shutdown();
+                            break;
+                        }
+                        _ => {}
+                    }
                 }
+            });
 
-                // Check if node task has ended unexpectedly
-                if node_handle.is_finished() {
-                    match node_handle.await {
+            // Concurrently await either cancellation or node task completion
+            let shutdown_token = node.resource_cleanup.get_cancellation_token();
+            tokio::select! {
+                _ = shutdown_token.cancelled() => {
+                    info!("Shutdown requested via cancellation token; stopping node...");
+                    // Unconditionally await the node's shutdown to completion
+                    info!("Waiting for node shutdown to complete...");
+                    if let Err(e) = node.shutdown().await {
+                        error!("Node shutdown error: {}", e);
+                    } else {
+                        info!("Node shutdown completed successfully.");
+                    }
+                }
+                res = node_handle => {
+                    match res {
                         Ok(Ok(_)) => {
                             info!("Node stopped normally.");
-                            break;
+                            // Still ensure proper shutdown even if node stopped normally
+                            if let Err(e) = node.shutdown().await {
+                                error!("Node shutdown error: {}", e);
+                            }
                         }
                         Ok(Err(e)) => {
                             error!("Node runtime error: {}", e);
+                            // Ensure shutdown even on error
+                            if let Err(shutdown_err) = node.shutdown().await {
+                                error!("Node shutdown error after runtime error: {}", shutdown_err);
+                            }
                             return Err(anyhow::anyhow!("Node runtime error: {e}"));
                         }
                         Err(e) => {
                             if e.is_cancelled() {
-                                info!("Node task was cancelled during shutdown.");
-                                break;
+                                info!("Node task was cancelled.");
                             } else {
                                 error!("Node task panicked: {}", e);
+                            }
+                            // Ensure shutdown even on panic/cancellation
+                            if let Err(shutdown_err) = node.shutdown().await {
+                                error!("Node shutdown error after task failure: {}", shutdown_err);
+                            }
+                            if !e.is_cancelled() {
                                 return Err(anyhow::anyhow!("Node task panicked: {e}"));
                             }
                         }
@@ -313,9 +329,6 @@ pub async fn run() -> Result<()> {
                 }
             }
 
-            // Cleanup routine
-            info!("Performing cleanup...");
-            cleanup_resources(&wallet_arc, &db_path).await;
             info!("Qanto node has shut down gracefully.");
         }
         Commands::GenerateWallet { output } => {

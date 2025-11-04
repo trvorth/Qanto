@@ -1,3 +1,4 @@
+use crate::qds::{QDSCodec, QDSRequest, QDSResponse, QDS_PROTOCOL};
 use crate::types::QuantumResistantSignature;
 use crate::{
     config::Config,
@@ -10,10 +11,22 @@ use anyhow::{anyhow, Context, Result};
 use bincode::deserialize;
 use bytes::Bytes;
 use clap::{Parser, Subcommand};
+use libp2p::{
+    identity,
+    multiaddr::Protocol,
+    noise,
+    request_response::{
+        Behaviour as RequestResponseBehaviour, Event as RequestResponseEvent,
+        Message as RequestResponseMessage, ProtocolSupport,
+    },
+    swarm::SwarmEvent,
+    yamux, Multiaddr, Swarm, SwarmBuilder,
+};
 use my_blockchain::qanto_standalone::hash::QantoHash;
 use reqwest::Client;
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
+use qanto_core::balance_stream::{BalanceSubscribe, BalanceUpdate};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::future::pending;
@@ -33,8 +46,8 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 
 // Add storage and persistence imports for direct DB reads
+use crate::persistence::{balance_key, decode_balance, decode_utxo, utxos_prefix};
 use crate::qanto_storage::{QantoStorage, StorageConfig};
-use crate::persistence::{balance_key, decode_balance, utxos_prefix, decode_utxo};
 
 // --- Constants ---
 #[allow(dead_code)]
@@ -83,6 +96,12 @@ struct Cli {
         help = "RPC server address for gRPC client (host:port)"
     )]
     node_url: Option<String>,
+    #[arg(
+        long,
+        global = true,
+        help = "Libp2p multiaddr of a Qanto node supporting QDS (e.g., /ip4/127.0.0.1/tcp/30333/p2p/<peerid>)"
+    )]
+    qds_multiaddr: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -113,6 +132,21 @@ enum Commands {
         address: String,
         #[arg(long, help = "Follow live balance updates via WebSocket")]
         follow: bool,
+        #[arg(long, help = "Follow live balance updates via P2P")]
+        live: bool,
+        #[arg(
+            long,
+            help = "Query balance from local storage only (fastest, no network)"
+        )]
+        local: bool,
+    },
+    /// [balance-rt] Instant balance from local node database (no network).
+    #[command(alias = "realtime-balance", alias = "rt-balance")]
+    BalanceRt {
+        #[arg()]
+        address: String,
+        #[arg(long, help = "Override node data directory for storage lookups")]
+        db_dir: Option<PathBuf>,
     },
     /// [watch] Follows live balance updates via WebSocket.
     Watch {
@@ -148,6 +182,8 @@ async fn initialize_p2p_client(
         enable_encryption: true,
         bootstrap_nodes: direct_peer.into_iter().collect(),
         listen_port: port,
+        // Compression-related fields are filled from defaults
+        ..Default::default()
     };
 
     let mut p2p = QantoP2P::new(config).context("Failed to initialize P2P network")?;
@@ -362,13 +398,25 @@ async fn get_balance_http(api_address: &str, address: &str) -> Result<()> {
 }
 
 // Direct storage-balanced lookup
+#[allow(dead_code)]
 async fn get_balance_storage(db_path: &str, address: &str) -> Result<Option<u64>> {
     // Initialize storage with read-only friendly config
-    let mut cfg = StorageConfig::default();
-    cfg.data_dir = PathBuf::from(db_path);
-    cfg.wal_enabled = false; // avoid creating WAL when just reading
+    let cfg = StorageConfig {
+        data_dir: PathBuf::from(db_path),
+        wal_enabled: false, // avoid creating WAL when just reading
+        ..StorageConfig::default()
+    };
 
     let storage = QantoStorage::new(cfg).map_err(|e| anyhow!("Storage init error: {e}"))?;
+    get_balance_storage_with_instance(&storage, address).await
+}
+
+// Direct storage-balanced lookup with storage instance
+#[allow(dead_code)]
+async fn get_balance_storage_with_instance(
+    storage: &QantoStorage,
+    address: &str,
+) -> Result<Option<u64>> {
     let key = balance_key(address);
 
     // Helper: scan UTXOs prefix and aggregate amounts for the given address
@@ -404,17 +452,104 @@ async fn get_balance_storage(db_path: &str, address: &str) -> Result<Option<u64>
                 Ok(v) => Ok(Some(v)),
                 Err(_) => {
                     // Fallback: compute balance by scanning UTXOs
-                    let total = scan_utxos_total(&storage)?;
+                    let total = scan_utxos_total(storage)?;
                     Ok(Some(total))
                 }
             }
         }
         Ok(None) => {
             // Fallback: compute balance by scanning UTXOs
-            let total = scan_utxos_total(&storage)?;
-            Ok(Some(total))
+            let total = scan_utxos_total(storage)?;
+            if total == 0 {
+                Ok(None) // Return None for empty wallets
+            } else {
+                Ok(Some(total))
+            }
         }
         Err(e) => Err(anyhow!("Storage read error: {e}")),
+    }
+}
+
+// Enhanced local-first balance query with intelligent fallback
+async fn get_balance_local_first(
+    data_dir: &str,
+    address: &str,
+    local_only: bool,
+    _config: &Config,
+    rpc_addr: &str,
+    qds_multiaddr: Option<&str>,
+) -> Result<()> {
+    let start_time = Instant::now();
+
+    // Step 1: Always try local storage first (fastest path)
+    match get_balance_storage(data_dir, address).await {
+        Ok(Some(balance)) => {
+            let elapsed = start_time.elapsed();
+            let qan_balance =
+                (balance as f64) / (crate::transaction::SMALLEST_UNITS_PER_QAN as f64);
+
+            println!(
+                "💰 Balance: {:.6} QANTO ({} base units)",
+                qan_balance, balance
+            );
+            println!("⚡ Local query completed in {:?}", elapsed);
+            println!("📍 Source: Local storage (instant)");
+            return Ok(());
+        }
+        Ok(None) => {
+            if local_only {
+                println!("❌ No local balance found for address: {}", address);
+                println!("💡 Tip: Run without --local to query network sources");
+                return Ok(());
+            }
+            println!("ℹ️ No local balance found, falling back to network...");
+        }
+        Err(e) => {
+            if local_only {
+                return Err(anyhow!("Local storage error: {}", e));
+            }
+            println!("⚠️ Local storage error ({}), falling back to network...", e);
+        }
+    }
+
+    // Step 2: Network fallback (only if not local-only mode)
+    if !local_only {
+        println!("🌐 Querying network sources...");
+
+        // Try QDS first if available (lightweight)
+        if let Some(ma) = qds_multiaddr {
+            match get_balance_qds(ma, address).await {
+                Ok(()) => {
+                    let total_elapsed = start_time.elapsed();
+                    println!(
+                        "⚡ Total query time: {:?} (local attempt + QDS)",
+                        total_elapsed
+                    );
+                    return Ok(());
+                }
+                Err(e) => {
+                    println!("⚠️ QDS query failed ({}), trying gRPC...", e);
+                }
+            }
+        }
+
+        // Final fallback to gRPC
+        match get_wallet_balance_grpc(rpc_addr, address).await {
+            Ok(()) => {
+                let total_elapsed = start_time.elapsed();
+                println!(
+                    "⚡ Total query time: {:?} (local attempt + gRPC)",
+                    total_elapsed
+                );
+                Ok(())
+            }
+            Err(e) => Err(anyhow!(
+                "All balance query methods failed. Last error: {}",
+                e
+            )),
+        }
+    } else {
+        Ok(())
     }
 }
 
@@ -512,6 +647,184 @@ async fn get_balance_grpc(rpc_address: &str, address: &str) -> Result<()> {
         }
         Err(status) => {
             eprintln!("RPC error: {}", status.message());
+            std::process::exit(1);
+        }
+    }
+}
+
+// QDS balance via libp2p request-response
+async fn get_balance_qds_with_timeout(
+    multiaddr: &str,
+    address: &str,
+    timeout: Duration,
+) -> Result<()> {
+    let target_addr: Multiaddr = multiaddr
+        .parse()
+        .map_err(|e| anyhow!("Invalid multiaddr '{multiaddr}': {e}"))?;
+
+    let peer_id = target_addr
+        .iter()
+        .find_map(|p| {
+            if let Protocol::P2p(id) = p {
+                Some(id)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| anyhow!("Multiaddr must include valid /p2p/<peerid>: {multiaddr}"))?;
+
+    let local_keypair = identity::Keypair::generate_ed25519();
+
+    let qds_behaviour = RequestResponseBehaviour::new(
+        std::iter::once((QDS_PROTOCOL.to_string(), ProtocolSupport::Full)),
+        Default::default(),
+    );
+
+    let mut swarm: Swarm<RequestResponseBehaviour<QDSCodec>> =
+        SwarmBuilder::with_existing_identity(local_keypair)
+            .with_tokio()
+            .with_tcp(
+                libp2p::tcp::Config::default().nodelay(true),
+                noise::Config::new,
+                yamux::Config::default,
+            )?
+            .with_behaviour(|_key| Ok(qds_behaviour))
+            .map_err(|e| anyhow!("Failed to build libp2p swarm: {e:?}"))?
+            .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(30)))
+            .build();
+
+    swarm
+        .dial(target_addr.clone())
+        .map_err(|e| anyhow!("Failed to dial {multiaddr}: {e:?}"))?;
+
+    // Send request once connected (or immediately; it will queue until connected)
+    let req_id = swarm.behaviour_mut().send_request(
+        &peer_id,
+        QDSRequest::GetBalance {
+            address: address.to_string(),
+        },
+    );
+
+    // Drive swarm until response or timeout
+    let start = Instant::now();
+    loop {
+        if start.elapsed() > timeout {
+            return Err(anyhow!("Timed out waiting for QDS balance response"));
+        }
+        match swarm.select_next_some().await {
+            SwarmEvent::Behaviour(event) => {
+                match event {
+                    RequestResponseEvent::Message { message, .. } => {
+                        if let RequestResponseMessage::Response {
+                            request_id,
+                            response,
+                        } = message
+                        {
+                            if request_id == req_id {
+                                match response {
+                                    QDSResponse::Balance {
+                                        address: resp_addr,
+                                        confirmed_balance,
+                                    } => {
+                                        // Convert base units to QANTO for display
+                                        let qan_base =
+                                            crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
+                                        let confirmed_qan = (confirmed_balance as f64) / qan_base;
+                                        println!(
+                                            "📊 Balance for {}: {:.6} QANTO ({} base units)",
+                                            resp_addr, confirmed_qan, confirmed_balance
+                                        );
+                                        return Ok(());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    RequestResponseEvent::OutboundFailure {
+                        peer,
+                        error,
+                        request_id,
+                        ..
+                    } => {
+                        if request_id == req_id {
+                            return Err(anyhow!("QDS outbound failure to {peer}: {error:?}"));
+                        }
+                    }
+                    RequestResponseEvent::InboundFailure { .. }
+                    | RequestResponseEvent::ResponseSent { .. } => {
+                        // Not relevant for client-side here
+                    }
+                }
+            }
+            SwarmEvent::ConnectionEstablished { peer_id: p, .. } => {
+                // Optionally log connection; request already queued
+                if p == peer_id {
+                    // Connected to target
+                }
+            }
+            _ => {
+                // Other events are not relevant for this simple client
+            }
+        }
+    }
+}
+
+async fn get_balance_qds(multiaddr: &str, address: &str) -> Result<()> {
+    get_balance_qds_with_timeout(multiaddr, address, Duration::from_secs(10)).await
+}
+
+async fn get_wallet_balance_grpc(rpc_address: &str, address: &str) -> Result<()> {
+    use qanto_rpc::server::generated::{
+        wallet_service_client::WalletServiceClient, WalletGetBalanceRequest,
+    };
+
+    let endpoint = format!("http://{rpc_address}");
+    let mut client = WalletServiceClient::connect(endpoint)
+        .await
+        .map_err(|e| anyhow!("Failed to connect to RPC server {rpc_address}: {e}"))?;
+
+    let req = WalletGetBalanceRequest {
+        address: address.to_string(),
+    };
+    match client.get_balance(req).await {
+        Ok(resp) => {
+            let payload = resp.into_inner();
+            let qan_base = crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
+            let confirmed_qan = (payload.balance as f64) / qan_base;
+            let unconfirmed_qan = (payload.unconfirmed_balance as f64) / qan_base;
+            println!("📊 Balance for {address}: {confirmed_qan:.6} QANTO");
+            if payload.unconfirmed_balance > 0 {
+                println!("⏳ Pending: +{unconfirmed_qan:.6} QANTO (mempool)");
+            }
+            Ok(())
+        }
+        Err(status) => {
+            let code = status.code();
+            let msg = status.message().to_string();
+            let details_len = status.details().len();
+            let code_num = code as i32;
+            let hint = if code_num == 14 {
+                "Node unreachable: check --node-url, port, firewall/TLS, or server is down."
+            } else if code_num == 5 {
+                "Address not found: verify address format, checksum, and network."
+            } else if code_num == 7 {
+                "Access denied: WalletService disabled or authentication required on node."
+            } else if code_num == 12 {
+                "RPC endpoint not enabled: ensure WalletService is compiled and configured."
+            } else if code_num == 4 {
+                "RPC timed out: node overloaded or network slow; retry later."
+            } else {
+                "Unexpected RPC error; check node logs for details."
+            };
+            eprintln!(
+                "RPC error: code={:?}, message='{}', details_bytes={}",
+                code, msg, details_len
+            );
+            eprintln!("Hint: {}", hint);
+            eprintln!(
+                "Diagnostics: Ensure node {} is reachable and WalletService is enabled.",
+                rpc_address
+            );
             std::process::exit(1);
         }
     }
@@ -773,9 +1086,7 @@ async fn subscribe_balance_ws(api_address: &str, address: &str) -> Result<()> {
         .await
         .map_err(|e| anyhow!("Failed to send subscribe message: {e}"))?;
 
-    println!(
-        "📡 Subscribed to balance updates for {address} via WebSocket at {api_address}"
-    );
+    println!("📡 Subscribed to balance updates for {address} via WebSocket at {api_address}");
 
     while let Some(msg) = read.next().await {
         match msg {
@@ -787,7 +1098,12 @@ async fn subscribe_balance_ws(api_address: &str, address: &str) -> Result<()> {
                 if v.get("type").and_then(|t| t.as_str()) == Some("balance_update") {
                     let addr = v.get("address").and_then(|a| a.as_str()).unwrap_or("");
                     let bal = v.get("balance").and_then(|b| b.as_u64()).unwrap_or(0);
-                    println!("📊 Balance update for {addr}: {bal} base units");
+                    let qan_base = crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
+                    let bal_qan = (bal as f64) / qan_base;
+                    println!(
+                        "📊 Balance update for {addr}: {:.6} QANTO ({} base units)",
+                        bal_qan, bal
+                    );
                 }
             }
             Ok(Message::Ping(data)) => {
@@ -804,6 +1120,129 @@ async fn subscribe_balance_ws(api_address: &str, address: &str) -> Result<()> {
             }
             _ => {}
         }
+    }
+
+    Ok(())
+}
+
+/// Subscribe to live balance updates via native P2P.
+///
+/// Executor: runs under the Tokio runtime initialized by the wallet CLI.
+/// Registers a message handler for `MessageType::BalanceUpdate` and broadcasts a
+/// `BalanceSubscribe` request for the provided address.
+async fn subscribe_balance_p2p(
+    p2p_client: &Option<Arc<QantoP2P>>,
+    address: &str,
+) -> Result<()> {
+    let p2p = p2p_client
+        .as_ref()
+        .ok_or_else(|| anyhow!("P2P node is not running; start the node and retry"))?;
+
+    println!("🔌 Subscribing to live balance via P2P for: {address}");
+
+    let subscription_id = Uuid::new_v4().to_string();
+    let subscribe = BalanceSubscribe {
+        address: address.to_string(),
+        subscription_id: subscription_id.clone(),
+        debounce_ms: Some(200),
+    };
+    let payload = bincode::serialize(&subscribe)?;
+
+    // Register handler for incoming balance updates
+    let watched_addr = address.to_string();
+    let handler = Arc::new(move |msg: NetworkMessage, _peer: QantoHash| -> Result<()> {
+        if msg.msg_type == MessageType::BalanceUpdate {
+            let update: BalanceUpdate = bincode::deserialize(&msg.payload)?;
+            if update.address == watched_addr {
+                let qan_base = crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
+                let display = (update.balance as f64) / qan_base;
+                println!(
+                    "📈 {addr} -> {bal:.6} QANTO (t={ts} ms)",
+                    addr = update.address,
+                    bal = display,
+                    ts = update.timestamp_ms
+                );
+            }
+        }
+        Ok(())
+    });
+    p2p.register_handler(MessageType::BalanceUpdate, handler);
+
+    // Broadcast the subscription request to peers
+    p2p.broadcast(MessageType::BalanceSubscribe, Bytes::from(payload))?;
+    println!("✅ Subscribed. Press Ctrl+C to stop.");
+
+    // Keep the task alive until user stops
+    tokio::signal::ctrl_c().await?;
+    Ok(())
+}
+
+// One-shot WebSocket balance query: subscribe and return first update
+#[allow(dead_code)]
+async fn get_balance_ws_once(api_address: &str, address: &str) -> Result<()> {
+    let url = format!("ws://{api_address}/ws");
+    let (ws_stream, _resp) = connect_async(&url)
+        .await
+        .map_err(|e| anyhow!("WS connect failed at {url}: {e}"))?;
+
+    let (mut write, mut read) = ws_stream.split();
+
+    let sub_msg = serde_json::json!({
+        "type": "subscribe",
+        "subscription_type": "balances",
+        "filters": {"address": address}
+    })
+    .to_string();
+
+    write
+        .send(Message::Text(sub_msg))
+        .await
+        .map_err(|e| anyhow!("Failed to send WS subscribe: {e}"))?;
+
+    let start = Instant::now();
+    let mut printed = false;
+    while let Some(msg) = read.next().await {
+        match msg {
+            Ok(Message::Text(text)) => {
+                let v: serde_json::Value = match serde_json::from_str(&text) {
+                    Ok(json) => json,
+                    Err(_) => continue,
+                };
+                if v.get("type").and_then(|t| t.as_str()) == Some("balance_update") {
+                    let addr = v.get("address").and_then(|a| a.as_str()).unwrap_or("");
+                    if addr == address {
+                        let bal = v.get("balance").and_then(|b| b.as_u64()).unwrap_or(0);
+                        let qan_base = crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
+                        let bal_qan = (bal as f64) / qan_base;
+                        println!(
+                            "📊 Balance for {address}: {:.6} QANTO ({} base units)",
+                            bal_qan, bal
+                        );
+                        printed = true;
+                        let _ = write.send(Message::Close(None)).await;
+                        break;
+                    }
+                }
+            }
+            Ok(Message::Ping(data)) => {
+                let _ = write.send(Message::Pong(data)).await;
+            }
+            Ok(Message::Close(_)) => {
+                break;
+            }
+            Err(e) => {
+                return Err(anyhow!("WS read error: {e}"));
+            }
+            _ => {}
+        }
+
+        if start.elapsed() > Duration::from_secs(5) {
+            break;
+        }
+    }
+
+    if !printed {
+        return Err(anyhow!("No balance update received over WebSocket"));
     }
 
     Ok(())
@@ -832,15 +1271,21 @@ pub async fn run() -> anyhow::Result<()> {
         let (new_data_dir, new_db_path, new_wallet_path, new_p2p_identity_path) =
             Config::get_default_paths(&base_dir);
 
-        config.data_dir = new_data_dir;
-        config.db_path = new_db_path;
-        // Only update wallet and p2p paths if they're still defaults
-        if config.wallet_path == "wallet.key" {
-            config.wallet_path = new_wallet_path;
-        }
-        if config.p2p_identity_path == "p2p_identity.key" {
-            config.p2p_identity_path = new_p2p_identity_path;
-        }
+        config = Config {
+            data_dir: new_data_dir,
+            db_path: new_db_path,
+            wallet_path: if config.wallet_path == "wallet.key" {
+                new_wallet_path
+            } else {
+                config.wallet_path
+            },
+            p2p_identity_path: if config.p2p_identity_path == "p2p_identity.key" {
+                new_p2p_identity_path
+            } else {
+                config.p2p_identity_path
+            },
+            ..config
+        };
     }
 
     // Resolve optional direct peer
@@ -855,8 +1300,12 @@ pub async fn run() -> anyhow::Result<()> {
         None => None,
     };
 
-    // Initialize P2P client if discovery is enabled; fall back to HTTP on failure
-    let p2p_client = if cli.p2p_discovery.unwrap_or(true) {
+    // Lightweight QDS mode: skip P2P init when querying balance via QDS
+    let qds_balance_mode = matches!(cli.command, Commands::Balance { follow: false, live: false, .. })
+        && cli.qds_multiaddr.is_some();
+
+    // Initialize P2P client if discovery is enabled and not in QDS lightweight mode; fall back to HTTP on failure
+    let p2p_client = if !qds_balance_mode && cli.p2p_discovery.unwrap_or(true) {
         match initialize_p2p_client(cli.p2p_port, direct_peer).await {
             Ok(client) => Some(client),
             Err(e) => {
@@ -887,29 +1336,83 @@ pub async fn run() -> anyhow::Result<()> {
             mnemonic,
             private_key,
         } => import_wallet(mnemonic, private_key).await,
-        Commands::Balance { address, follow } => {
-            if follow {
+        Commands::Balance {
+            address,
+            follow,
+            live,
+            local,
+        } => {
+            if local {
+                // Local-only mode: query from local storage only
+                get_balance_local_first(
+                    &config.data_dir,
+                    &address,
+                    true, // local_only = true
+                    &config,
+                    &rpc_addr,
+                    cli.qds_multiaddr.as_deref(),
+                )
+                .await
+            } else if follow {
+                // Explicit follow flag: stream live updates via WebSocket
                 let api_addr = config.api_address.clone();
-                subscribe_balance_ws(&api_addr, &address).await
+                match subscribe_balance_ws(&api_addr, &address).await {
+                    Ok(()) => Ok(()),
+                    Err(ws_err) => {
+                        eprintln!("⚠️ WebSocket not available ({ws_err}). Falling back to gRPC.");
+                        get_wallet_balance_grpc(&rpc_addr, &address).await
+                    }
+                }
+            } else if live {
+                // Stream via native P2P
+                match subscribe_balance_p2p(&p2p_client, &address).await {
+                    Ok(()) => Ok(()),
+                    Err(p2p_err) => {
+                        eprintln!("⚠️ P2P live subscribe failed ({p2p_err}). Falling back to WebSocket.");
+                        let api_addr = config.api_address.clone();
+                        match subscribe_balance_ws(&api_addr, &address).await {
+                            Ok(()) => Ok(()),
+                            Err(ws_err) => {
+                                eprintln!("⚠️ WebSocket not available ({ws_err}). Falling back to gRPC.");
+                                get_wallet_balance_grpc(&rpc_addr, &address).await
+                            }
+                        }
+                    }
+                }
             } else {
-                // Direct RocksDB read - authoritative balance source
-                match get_balance_storage(&config.db_path, &address).await {
-                    Ok(Some(amount)) => {
-                        // Format to 6-decimal QANTO display
-                        let qan_base = crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
-                        let qan = (amount as f64) / qan_base;
-                        println!("📊 Balance for {address}: {qan:.6} QANTO");
-                        Ok(())
+                // Default behavior now follows live updates via WebSocket (with gRPC fallback)
+                let api_addr = config.api_address.clone();
+                match subscribe_balance_ws(&api_addr, &address).await {
+                    Ok(()) => Ok(()),
+                    Err(ws_err) => {
+                        eprintln!("⚠️ WebSocket not available ({ws_err}). Falling back to gRPC.");
+                        get_wallet_balance_grpc(&rpc_addr, &address).await
                     }
-                    Ok(None) => {
-                        // No UTXOs found for this address
-                        println!("📊 Balance for {address}: 0.000000 QANTO");
-                        Ok(())
-                    }
-                    Err(e) => {
-                        eprintln!("❌ Failed to read balance from database: {e}");
-                        std::process::exit(1);
-                    }
+                }
+            }
+        }
+        Commands::BalanceRt { address, db_dir } => {
+            // Real-time local storage query against node DB
+            let dir = db_dir.unwrap_or_else(|| PathBuf::from(&config.data_dir));
+            let cfg = StorageConfig {
+                data_dir: dir.clone(),
+                wal_enabled: false,
+                sync_writes: false,
+                compression_enabled: false,
+                encryption_enabled: false,
+                ..StorageConfig::default()
+            };
+            let storage = QantoStorage::new(cfg).map_err(|e| anyhow!("Storage init error: {e}"))?;
+            match get_balance_storage_with_instance(&storage, address.as_str()).await? {
+                Some(amount) => {
+                    let qan_base = crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
+                    let display = (amount as f64) / qan_base;
+                    println!("📊 Balance for {address}: {display:.6} QANTO");
+                    Ok(())
+                }
+                None => {
+                    println!("📊 Balance for {address}: 0.000000 QANTO");
+                    Ok(())
                 }
             }
         }
@@ -943,12 +1446,11 @@ pub async fn run() -> anyhow::Result<()> {
 mod tests {
     use super::*;
     use crate::types::UTXO;
-    use std::collections::HashMap;
+    use libp2p::identity;
     use tempfile::TempDir;
-    use tokio::test;
 
-    #[test]
-    fn test_basic_arithmetic() {
+    #[tokio::test]
+    async fn test_basic_arithmetic() {
         assert_eq!(2 + 2, 4);
     }
 
@@ -965,12 +1467,17 @@ mod tests {
         // Test 1: Empty balance (no UTXOs)
         let balance = get_balance_storage(db_path_str, test_address).await;
         assert!(balance.is_ok());
-        assert_eq!(balance.unwrap(), None, "Empty wallet should have no balance");
+        assert_eq!(
+            balance.unwrap(),
+            None,
+            "Empty wallet should have no balance"
+        );
 
         // Test 2: Create storage and add test UTXOs
         let storage_config = StorageConfig {
-            db_path: db_path_str.to_string(),
+            data_dir: db_path.clone(),
             cache_size: 1024 * 1024, // 1MB cache
+            ..Default::default()
         };
         let storage = QantoStorage::new(storage_config).expect("Failed to create storage");
 
@@ -1006,35 +1513,71 @@ mod tests {
         };
 
         // Store UTXOs in database
-        let utxo1_key = format!("{}:tx1:0", utxos_prefix(test_address));
-        let utxo2_key = format!("{}:tx2:0", utxos_prefix(test_address));
-        let utxo3_key = format!("{}:tx3:0", utxos_prefix(test_address));
+        let utxo1_key = format!("{}:tx1:0", String::from_utf8_lossy(&utxos_prefix()));
+        let utxo2_key = format!("{}:tx2:0", String::from_utf8_lossy(&utxos_prefix()));
+        let utxo3_key = format!("{}:tx3:0", String::from_utf8_lossy(&utxos_prefix()));
 
-        storage.put(&utxo1_key, &bincode::serialize(&utxo1).unwrap()).expect("Failed to store UTXO1");
-        storage.put(&utxo2_key, &bincode::serialize(&utxo2).unwrap()).expect("Failed to store UTXO2");
-        storage.put(&utxo3_key, &bincode::serialize(&utxo3).unwrap()).expect("Failed to store UTXO3");
+        storage
+            .put(
+                utxo1_key.as_bytes().to_vec(),
+                crate::persistence::encode_utxo(&utxo1).unwrap(),
+            )
+            .expect("Failed to store UTXO1");
+        storage
+            .put(
+                utxo2_key.as_bytes().to_vec(),
+                crate::persistence::encode_utxo(&utxo2).unwrap(),
+            )
+            .expect("Failed to store UTXO2");
+        storage
+            .put(
+                utxo3_key.as_bytes().to_vec(),
+                crate::persistence::encode_utxo(&utxo3).unwrap(),
+            )
+            .expect("Failed to store UTXO3");
 
         // Store balance cache
         let expected_total = utxo1_amount + utxo2_amount + utxo3_amount;
-        let balance_key = balance_key(test_address);
-        storage.put(&balance_key, &bincode::serialize(&expected_total).unwrap()).expect("Failed to store balance");
+        let balance_key_bytes = balance_key(test_address);
+        storage
+            .put(
+                balance_key_bytes,
+                crate::persistence::encode_balance(expected_total),
+            )
+            .expect("Failed to store balance");
+
+        // Explicitly flush/sync storage to ensure data is written to disk
+        if let Err(e) = storage.flush() {
+            println!("Warning: Failed to flush storage: {}", e);
+        }
 
         // Test 3: Verify balance calculation
-        let balance = get_balance_storage(db_path_str, test_address).await;
+        let balance = get_balance_storage_with_instance(&storage, test_address).await;
         assert!(balance.is_ok());
-        let actual_balance = balance.unwrap().expect("Balance should exist");
-        assert_eq!(actual_balance, expected_total, "Balance should match sum of UTXOs");
+        let actual_balance = balance.unwrap().unwrap_or(0); // Handle None case
+        assert_eq!(
+            actual_balance, expected_total,
+            "Balance should match sum of UTXOs"
+        );
 
         // Test 4: Verify balance formatting
         let qan_display = (actual_balance as f64) / (qan_base as f64);
         let expected_display = 1.623456; // 1 + 0.5 + 0.123456
-        assert!((qan_display - expected_display).abs() < 0.000001, "Balance display should be accurate");
+        assert!(
+            (qan_display - expected_display).abs() < 0.000001,
+            "Balance display should be accurate"
+        );
 
         // Test 5: Test with different address (should be empty)
-        let other_address = "other_address_12345678901234567890123456789012345678901234567890123456";
-        let other_balance = get_balance_storage(db_path_str, other_address).await;
+        let other_address =
+            "other_address_12345678901234567890123456789012345678901234567890123456";
+        let other_balance = get_balance_storage_with_instance(&storage, other_address).await;
         assert!(other_balance.is_ok());
-        assert_eq!(other_balance.unwrap(), None, "Different address should have no balance");
+        assert_eq!(
+            other_balance.unwrap(),
+            None,
+            "Different address should have no balance"
+        );
 
         // Test 6: Test balance overflow protection
         let max_amount = u64::MAX - 1000; // Near max value
@@ -1046,17 +1589,32 @@ mod tests {
             explorer_link: String::new(),
         };
 
-        let overflow_key = format!("{}:tx_overflow:0", utxos_prefix(test_address));
-        storage.put(&overflow_key, &bincode::serialize(&overflow_utxo).unwrap()).expect("Failed to store overflow UTXO");
+        let overflow_key = format!("{}:tx_overflow:0", String::from_utf8_lossy(&utxos_prefix()));
+        storage
+            .put(
+                overflow_key.as_bytes().to_vec(),
+                crate::persistence::encode_utxo(&overflow_utxo).unwrap(),
+            )
+            .expect("Failed to store overflow UTXO");
 
         // Update balance cache with saturating add
         let new_total = expected_total.saturating_add(max_amount);
-        storage.put(&balance_key, &bincode::serialize(&new_total).unwrap()).expect("Failed to update balance");
+        storage
+            .put(
+                balance_key(test_address),
+                crate::persistence::encode_balance(new_total),
+            )
+            .expect("Failed to update balance");
 
-        let overflow_balance = get_balance_storage(db_path_str, test_address).await;
+        let overflow_balance = get_balance_storage_with_instance(&storage, test_address).await;
         assert!(overflow_balance.is_ok());
-        let overflow_result = overflow_balance.unwrap().expect("Overflow balance should exist");
-        assert!(overflow_result >= expected_total, "Balance should handle overflow gracefully");
+        let overflow_result = overflow_balance
+            .unwrap()
+            .expect("Overflow balance should exist");
+        assert!(
+            overflow_result >= expected_total,
+            "Balance should handle overflow gracefully"
+        );
 
         println!("✅ Wallet balance integrity test passed");
         println!("   - Empty balance: ✓");
@@ -1065,5 +1623,62 @@ mod tests {
         println!("   - Display formatting: ✓");
         println!("   - Address isolation: ✓");
         println!("   - Overflow protection: ✓");
+    }
+
+    #[test]
+    fn test_cli_parses_qds_multiaddr_and_lightweight_mode() {
+        let args = vec![
+            "qantowallet",
+            "balance",
+            "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3",
+            "--qds-multiaddr",
+            "/ip4/127.0.0.1/tcp/30333/p2p/12D3KooWAbCdEfGhijkLmNoPqrStuVwxyz1234567890AbCdE",
+        ];
+        let cli = Cli::parse_from(&args);
+
+        match &cli.command {
+            Commands::Balance {
+                address,
+                follow,
+                live,
+                local,
+            } => {
+                assert_eq!(follow, &false);
+                assert_eq!(live, &false);
+                assert_eq!(local, &false);
+                assert_eq!(
+                    address,
+                    "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3"
+                );
+            }
+            _ => panic!("expected Balance command"),
+        }
+        assert!(cli.qds_multiaddr.is_some(), "qds_multiaddr should be set");
+
+        // Lightweight mode should be active
+        let qds_balance_mode = matches!(cli.command, Commands::Balance { follow: false, live: false, .. })
+            && cli.qds_multiaddr.is_some();
+        assert!(qds_balance_mode, "QDS lightweight mode should be detected");
+    }
+
+    #[tokio::test]
+    async fn test_qds_single_shot_unreachable_fast_timeout() {
+        // Generate a valid peer id for multiaddr construction
+        let local_keypair = identity::Keypair::generate_ed25519();
+        let peer_id = local_keypair.public().to_peer_id();
+        let ma = format!("/ip4/127.0.0.1/tcp/9/p2p/{}", peer_id);
+
+        // Use short timeout to avoid long waits
+        let res =
+            get_balance_qds_with_timeout(&ma, "test_address", Duration::from_millis(250)).await;
+        assert!(res.is_err(), "Unreachable QDS should error quickly");
+        let err = format!("{:?}", res.err().unwrap());
+        assert!(
+            err.contains("Timed out")
+                || err.contains("Failed to dial")
+                || err.contains("DialFailure"),
+            "Error should indicate dial failure or timeout; got: {}",
+            err
+        );
     }
 }

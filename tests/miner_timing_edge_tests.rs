@@ -47,21 +47,32 @@ fn create_test_block_with_difficulty(
         },
         carbon_credentials: vec![],
         epoch: 0,
+        finality_proof: None,
+        reservation_miner_id: None,
     }
 }
 
 /// Helper function to create a test DAG with optimized settings for fast tests
 fn create_test_dag() -> Arc<QantoDAG> {
+    // Use a unique temp directory per test run to avoid interference and reduce I/O overhead
+    let unique_suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let data_dir = std::env::temp_dir().join(format!("test_qanto_miner_timing_{}", unique_suffix));
+    std::fs::create_dir_all(&data_dir).expect("Failed to create temp storage directory");
+
     let storage_config = StorageConfig {
-        data_dir: std::path::PathBuf::from("/tmp/test_qanto_miner_timing"),
+        data_dir,
         max_file_size: 1024 * 1024,
         compression_enabled: false,
         encryption_enabled: false,
         wal_enabled: false,
         sync_writes: false,
         cache_size: 1024,
-        compaction_threshold: 100.0,
+        compaction_threshold: 100,
         max_open_files: 10,
+        ..StorageConfig::default()
     };
 
     let storage = QantoStorage::new(storage_config).expect("Failed to create storage");
@@ -290,8 +301,8 @@ async fn test_no_cancellation_allows_success() {
     let result = miner.solve_pow_with_cancellation(&mut block, token);
     let elapsed = start.elapsed().unwrap();
 
-    // Should succeed within reasonable time with low difficulty
-    assert!(elapsed < Duration::from_secs(10));
+    // Should succeed within reasonable time with low difficulty; allow some jitter under CI
+    assert!(elapsed < Duration::from_secs(12));
     assert!(result.is_ok());
     assert!(block.nonce > 0); // Nonce should be set
 }

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{broadcast, mpsc, RwLock};
 
 use crate::mempool::Mempool;
 use crate::p2p::P2PCommand;
@@ -10,6 +10,7 @@ use crate::persistence::{balance_key, decode_balance};
 use crate::qantodag::QantoDAG;
 use crate::transaction::Transaction;
 use crate::types::UTXO;
+use crate::websocket_server::BalanceEvent;
 use qanto_rpc::server::generated as proto;
 
 pub struct NodeRpcBackend {
@@ -17,6 +18,8 @@ pub struct NodeRpcBackend {
     pub utxos: Arc<RwLock<HashMap<String, UTXO>>>,
     pub mempool: Arc<RwLock<Mempool>>,
     pub p2p_sender: mpsc::Sender<P2PCommand>,
+    pub rpc_balance_sender: broadcast::Sender<proto::BalanceUpdate>,
+    pub balance_cache: Arc<RwLock<HashMap<String, u64>>>,
 }
 
 impl NodeRpcBackend {
@@ -25,12 +28,45 @@ impl NodeRpcBackend {
         utxos: Arc<RwLock<HashMap<String, UTXO>>>,
         mempool: Arc<RwLock<Mempool>>,
         p2p_sender: mpsc::Sender<P2PCommand>,
+        ws_balance_sender: broadcast::Sender<BalanceEvent>,
     ) -> Self {
+        let (rpc_balance_sender, _) = broadcast::channel(1000);
+        let balance_cache = Arc::new(RwLock::new(HashMap::new()));
+        {
+            let mut ws_rx = ws_balance_sender.subscribe();
+            let rpc_tx = rpc_balance_sender.clone();
+            let cache = balance_cache.clone();
+            tokio::spawn(async move {
+                loop {
+                    match ws_rx.recv().await {
+                        Ok(ev) => {
+                            // Update live cache
+                            {
+                                let mut cache_guard = cache.write().await;
+                                cache_guard.insert(ev.address.clone(), ev.balance);
+                            }
+                            // Bridge to RPC subscribers
+                            let update = proto::BalanceUpdate {
+                                address: ev.address,
+                                base_units: ev.balance,
+                                timestamp: ev.timestamp,
+                            };
+                            let _ = rpc_tx.send(update);
+                        }
+                        Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(broadcast::error::RecvError::Closed) => break,
+                    }
+                }
+            });
+        }
+
         Self {
             dag,
             utxos,
             mempool,
             p2p_sender,
+            rpc_balance_sender,
+            balance_cache,
         }
     }
 }
@@ -290,43 +326,84 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
         Ok(())
     }
 
-    async fn get_balance(&self, address: String) -> Result<u64, String> {
+    async fn get_wallet_balance(&self, address: String) -> Result<(u64, u64), String> {
         if address.len() != 64 || !address.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err("Invalid address format".to_string());
         }
 
-        // Prefer storage-backed balance for O(1) lookup
-        let key = balance_key(&address);
-        match self.dag.db.get(&key) {
-            Ok(Some(bytes)) => match decode_balance(&bytes) {
-                Ok(v) => return Ok(v),
-                Err(e) => {
-                    // Fall back to UTXO scan if decoding fails
-                    tracing::warn!(
-                        "Decode balance failed for {}: {}. Falling back to UTXO scan.",
-                        address,
-                        e
-                    );
+        // Confirmed balance: prefer live cache, fallback to UTXO scan, then storage
+        let confirmed = {
+            // Try live cache first
+            if let Some(v) = { self.balance_cache.read().await.get(&address).cloned() } {
+                v
+            } else {
+                // UTXO scan
+                let utxos = self.utxos.read().await;
+                let mut total: u64 = 0;
+                for (_k, utxo) in utxos.iter() {
+                    if utxo.address == address {
+                        total = total.saturating_add(utxo.amount);
+                    }
                 }
-            },
-            Ok(None) => {
-                // Not yet persisted; fall back to UTXO scan
+                // If UTXO scan yielded a value, update cache and use it. Otherwise, fallback to storage.
+                if total > 0 {
+                    let mut cache = self.balance_cache.write().await;
+                    cache.insert(address.clone(), total);
+                    total
+                } else {
+                    let key = balance_key(&address);
+                    match self.dag.db.get(&key) {
+                        Ok(Some(bytes)) => match decode_balance(&bytes) {
+                            Ok(v) => {
+                                let mut cache = self.balance_cache.write().await;
+                                cache.insert(address.clone(), v);
+                                v
+                            }
+                            Err(_) => 0,
+                        },
+                        _ => 0,
+                    }
+                }
             }
-            Err(e) => {
-                // Storage error; surface error to caller
-                return Err(format!("Storage error: {e}"));
+        };
+
+        // Unconfirmed delta: net effect from mempool transactions
+        let mempool_map = {
+            let mp = self.mempool.read().await;
+            mp.get_transactions().await
+        };
+        let utxos = self.utxos.read().await;
+
+        let mut incoming: u64 = 0;
+        let mut outgoing: u64 = 0;
+
+        for tx in mempool_map.values() {
+            // Sum outputs directed to this address
+            for o in &tx.outputs {
+                if o.address == address {
+                    incoming = incoming.saturating_add(o.amount);
+                }
+            }
+            // Sum inputs that spend this address's UTXOs
+            for i in &tx.inputs {
+                let utxo_key = format!("{}_{}", i.tx_id, i.output_index);
+                if let Some(u) = utxos.get(&utxo_key) {
+                    if u.address == address {
+                        outgoing = outgoing.saturating_add(u.amount);
+                    }
+                }
             }
         }
 
-        // Fallback: scan in-memory UTXOs
-        let utxos = self.utxos.read().await;
-        let mut total: u64 = 0;
-        for (_k, utxo) in utxos.iter() {
-            if utxo.address == address {
-                total = total.saturating_add(utxo.amount);
-            }
+        let unconfirmed_delta = incoming.saturating_sub(outgoing);
+        Ok((confirmed, unconfirmed_delta))
+    }
+
+    async fn get_balance(&self, address: String) -> Result<u64, String> {
+        match self.get_wallet_balance(address).await {
+            Ok((confirmed, _)) => Ok(confirmed),
+            Err(e) => Err(e),
         }
-        Ok(total)
     }
 
     async fn get_block(&self, block_id: String) -> Result<proto::QantoBlock, String> {
@@ -382,5 +459,9 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
             finality_ms,
             network_throughput_mbps,
         })
+    }
+
+    fn balance_updates_receiver(&self) -> tokio::sync::broadcast::Receiver<proto::BalanceUpdate> {
+        self.rpc_balance_sender.subscribe()
     }
 }

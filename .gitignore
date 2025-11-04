@@ -14,6 +14,8 @@
 *.a
 *.ll
 *.bc
+*.dhat-heap
+*.json
 
 # --- Qanto-specific files ---
 /target/
@@ -27,9 +29,12 @@ node*/cert.pem
 /integrate_isnm.sh
 /.wrangler
 /data
+/data-flood
+/data-flood2
 /logs
 /monitoring
 /.trae
+/dhat-heap.json
 
 # --- IDE & Editor Files ---
 .idea/
@@ -164,6 +169,8 @@ cleanup-*.log
 /package.json
 /package-lock.json
 /cargo-flamegraph.trace
+/GoogleDrive
+/cloudflare
 
 # --- Language & Framework Specific ---
 # Python
@@ -415,3 +422,4 @@ helm/*/secrets-prod.yaml
 wallet_password.txt
 
 node_modules
+integration_test_db/

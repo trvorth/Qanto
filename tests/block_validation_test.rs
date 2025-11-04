@@ -21,11 +21,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_block_validation_with_saga_reward() {
-        // Initialize logging
-        tracing_subscriber::fmt()
-            .with_env_filter("debug")
-            .try_init()
-            .ok();
+        // Initialize logging once for tests
+        qanto::init_test_tracing();
 
         info!("🚀 Starting block validation test with SAGA reward calculation");
 
@@ -88,8 +85,9 @@ mod tests {
             wal_enabled: true,
             sync_writes: true,
             cache_size: 1024 * 1024,
-            compaction_threshold: 0.5,
+            compaction_threshold: 10,
             max_open_files: 100,
+            ..StorageConfig::default()
         })
         .expect("Failed to create storage1");
         let storage2 = QantoStorage::new(StorageConfig {
@@ -100,8 +98,9 @@ mod tests {
             wal_enabled: true,
             sync_writes: true,
             cache_size: 1024 * 1024,
-            compaction_threshold: 0.5,
+            compaction_threshold: 10,
             max_open_files: 100,
+            ..StorageConfig::default()
         })
         .expect("Failed to create storage2");
 
@@ -159,6 +158,7 @@ mod tests {
                     .expect("Failed to create miner"),
                 ),
                 None, // No homomorphic public key for tests
+                None, // parents override
             )
             .await
             .expect("Failed to create candidate block");
@@ -207,7 +207,7 @@ mod tests {
 
         // Add the block to DAG1 first
         info!("📝 Adding block to DAG1");
-        dag1.add_block(block.clone(), &utxos1)
+        dag1.add_block(block.clone(), &utxos1, Some(&mempool1), Some(&block.miner))
             .await
             .expect("Failed to add block to DAG1");
         info!("✅ Block successfully added to DAG1");
@@ -222,7 +222,7 @@ mod tests {
                 info!("✅ Block validation successful on DAG2");
 
                 // Try to add the block to DAG2
-                match dag2.add_block(block.clone(), &utxos2).await {
+                match dag2.add_block(block.clone(), &utxos2, None, None).await {
                     Ok(_) => info!("✅ Block successfully added to DAG2"),
                     Err(e) => info!("❌ Failed to add block to DAG2: {}", e),
                 }

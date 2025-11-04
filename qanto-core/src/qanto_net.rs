@@ -43,12 +43,63 @@ impl Mempool {
 }
 
 /// Basic block representation for the native networking layer.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 pub struct QantoBlock {
     /// Unique block identifier.
     pub id: String,
     /// Opaque block payload, typically serialized header/body.
     pub data: Vec<u8>,
+    /// Chain ID the block belongs to.
+    #[serde(default)]
+    pub chain_id: u32,
+    /// Block height.
+    #[serde(default)]
+    pub height: u64,
+    /// Block timestamp (seconds since UNIX_EPOCH).
+    #[serde(default)]
+    pub timestamp: u64,
+    /// Parent block IDs.
+    #[serde(default)]
+    pub parents: Vec<String>,
+    /// Number of transactions in the block (for logging fast path).
+    #[serde(default)]
+    pub transactions_len: usize,
+}
+
+impl fmt::Display for QantoBlock {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Micro-optimized single-line formatter for high-throughput logging.
+        // Avoid heap allocations and string joins; write directly into the formatter.
+        // Merges the essential content from qantodag's concise and decorative formats.
+
+        // Helper: write truncated id or parent with ellipsis without allocation.
+        fn write_short(f: &mut fmt::Formatter<'_>, s: &str) -> fmt::Result {
+            const N: usize = 12;
+            if s.len() > N {
+                f.write_str(&s[..N])?;
+                f.write_str("…")
+            } else {
+                f.write_str(s)
+            }
+        }
+
+        f.write_str("[")?;
+        f.write_str("Chain: ")?;
+        write!(f, "{}", self.chain_id)?;
+        f.write_str(", Height: ")?;
+        write!(f, "{}", self.height)?;
+        f.write_str(", ID: ")?;
+        write_short(f, &self.id)?;
+        f.write_str(", Txs: ")?;
+        write!(f, "{}", self.transactions_len)?;
+        f.write_str(", Parent: ")?;
+        if let Some(p) = self.parents.first() {
+            write_short(f, p)?;
+        } else {
+            f.write_str("<none>")?;
+        }
+        f.write_str("]")
+    }
 }
 
 /// Minimal DAG placeholder used for networking integration tests.
@@ -101,6 +152,7 @@ use my_blockchain::qanto_hash;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
+use std::io::Cursor;
 use std::net::SocketAddr;
 use std::sync::Arc;
 #[allow(unused_imports)]
@@ -114,6 +166,8 @@ use tokio::sync::{mpsc, RwLock};
 #[allow(dead_code)]
 const GOSSIP_FANOUT: usize = 6;
 const DHT_BUCKET_SIZE: usize = 20;
+const ZSTD_MAGIC: [u8; 4] = *b"ZSTD";
+const ZSTD_DEFAULT_LEVEL: i32 = 3;
 
 /// Errors produced by the native networking layer.
 #[derive(Debug, thiserror::Error)]
@@ -734,8 +788,17 @@ impl QantoNetServer {
         mut message: NetworkMessage,
     ) -> Result<(), QantoNetError> {
         // Compress message data if applicable
-        if let NetworkMessage::GossipMessage { ref mut data, .. } = message {
-            *data = qanto_compress(data);
+        match &mut message {
+            NetworkMessage::GossipMessage { data, .. } => {
+                *data = qanto_compress(data);
+            }
+            NetworkMessage::Block(block) => {
+                block.data = zstd_frame_compress(&block.data);
+            }
+            NetworkMessage::Transaction(tx) => {
+                tx.data = zstd_frame_compress(&tx.data);
+            }
+            _ => {}
         }
         let mut connections = self.peers.write().await;
         let connection = connections
@@ -802,8 +865,14 @@ impl QantoNetServer {
         }
 
         match message {
-            NetworkMessage::Block(block) => self.handle_block_message(from_peer, block).await?,
-            NetworkMessage::Transaction(tx) => {
+            NetworkMessage::Block(mut block) => {
+                // Decompress block payload before processing
+                block.data = zstd_frame_try_decompress(&block.data);
+                self.handle_block_message(from_peer, block).await?
+            }
+            NetworkMessage::Transaction(mut tx) => {
+                // Decompress transaction payload before processing
+                tx.data = zstd_frame_try_decompress(&tx.data);
                 self.handle_transaction_message(from_peer, tx).await?
             }
             NetworkMessage::Ping { timestamp } => self.handle_ping(from_peer, timestamp).await?,
@@ -1179,4 +1248,66 @@ fn qanto_decompress(compressed: &[u8]) -> Vec<u8> {
     decompressed
 }
 
+fn zstd_frame_compress(data: &[u8]) -> Vec<u8> {
+    match zstd::encode_all(Cursor::new(data), ZSTD_DEFAULT_LEVEL) {
+        Ok(compressed) => {
+            let mut framed = Vec::with_capacity(4 + compressed.len());
+            framed.extend_from_slice(&ZSTD_MAGIC);
+            framed.extend_from_slice(&compressed);
+            framed
+        }
+        Err(_) => data.to_vec(),
+    }
+}
+
+fn zstd_frame_try_decompress(data: &[u8]) -> Vec<u8> {
+    if data.len() >= 4 && data[..4] == ZSTD_MAGIC {
+        match zstd::decode_all(Cursor::new(&data[4..])) {
+            Ok(decompressed) => decompressed,
+            Err(_) => data.to_vec(),
+        }
+    } else {
+        data.to_vec()
+    }
+}
+
 // Native runtime implemented using threads and std::net
+
+#[cfg(test)]
+mod display_tests {
+    use super::*;
+
+    #[test]
+    fn qantoblock_display_truncates_and_handles_none_parent() {
+        let blk = QantoBlock {
+            id: "0123456789abcdef0123456789abcdef".to_string(),
+            data: vec![],
+            chain_id: 7,
+            height: 42,
+            timestamp: 1_700_000_000,
+            parents: vec![],
+            transactions_len: 1234,
+        };
+        let s = format!("{}", blk);
+        assert!(s.contains("Chain: 7"));
+        assert!(s.contains("Height: 42"));
+        assert!(s.contains("ID: 0123456789ab…"));
+        assert!(s.contains("Txs: 1234"));
+        assert!(s.contains("Parent: <none>"));
+    }
+
+    #[test]
+    fn qantoblock_display_shows_short_parent() {
+        let blk = QantoBlock {
+            id: "aaaaaaaaaaaaaaaa".to_string(),
+            data: vec![],
+            chain_id: 1,
+            height: 1,
+            timestamp: 0,
+            parents: vec!["parent0123456789abcdef".to_string()],
+            transactions_len: 0,
+        };
+        let s = format!("{}", blk);
+        assert!(s.contains("Parent: parent012345…"));
+    }
+}

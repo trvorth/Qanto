@@ -584,7 +584,10 @@ async fn handle_client_message(
             if let Some(client) = clients.get_mut(client_id) {
                 if !client.balance_subscriptions.contains(&address) {
                     client.balance_subscriptions.push(address.clone());
-                    info!("Client {} subscribed to balance updates for {}", client_id, address);
+                    info!(
+                        "Client {} subscribed to balance updates for {}",
+                        client_id, address
+                    );
                 }
             }
         }
@@ -602,7 +605,10 @@ async fn handle_client_message(
             let mut clients = state.clients.write().await;
             if let Some(client) = clients.get_mut(client_id) {
                 client.balance_subscriptions.retain(|a| a != &address);
-                info!("Client {} unsubscribed from balance updates for {}", client_id, address);
+                info!(
+                    "Client {} unsubscribed from balance updates for {}",
+                    client_id, address
+                );
             }
         }
         _ => {
@@ -661,7 +667,6 @@ pub async fn start_websocket_server(port: u16, state: WebSocketServerState) -> R
 
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -727,7 +732,9 @@ mod tests {
             .expect("channel closed");
         assert_eq!(received_health.sync_status, health.sync_status);
 
-        state.broadcast_balance_update("addr1".to_string(), 42).await;
+        state
+            .broadcast_balance_update("addr1".to_string(), 42)
+            .await;
         let received_bal = tokio::time::timeout(std::time::Duration::from_secs(1), bal_rx.recv())
             .await
             .expect("timeout waiting for balance update")

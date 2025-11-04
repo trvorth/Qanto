@@ -2,6 +2,7 @@ use my_blockchain::qanto_hash;
 use qanto::mempool::Mempool;
 use qanto::miner::MiningError;
 use qanto::miner::{Miner, MinerConfig};
+use qanto::persistence::has_genesis_block;
 use qanto::post_quantum_crypto::pq_sign;
 use qanto::qanto_storage::{QantoStorage, StorageConfig};
 use qanto::qantodag::SigningData;
@@ -82,7 +83,7 @@ impl MockPoW {
 #[tokio::test]
 async fn test_simple_mining_consolidated() {
     // Initialize logging only if not already initialized
-    let _ = tracing_subscriber::fmt::try_init();
+    qanto::init_test_tracing();
 
     info!("Starting consolidated mining test...");
 
@@ -100,8 +101,9 @@ async fn test_simple_mining_consolidated() {
         wal_enabled: true,
         sync_writes: false,
         cache_size: 1024 * 1024 * 10, // 10MB
-        compaction_threshold: 1000.0,
+        compaction_threshold: 1000,
         max_open_files: 100,
+        ..StorageConfig::default()
     };
 
     // Initialize storage
@@ -177,6 +179,7 @@ async fn test_simple_mining_consolidated() {
             0, // chain_id
             &Arc::new(miner),
             None, // No homomorphic public key for tests
+            None,
         )
         .await
         .unwrap_or_else(|e| panic!("Failed to create candidate block: {e}"));
@@ -230,9 +233,14 @@ async fn test_simple_mining_consolidated() {
 
 #[tokio::test]
 async fn test_multi_block_mining_without_dag_regeneration() {
-    let _ = tracing_subscriber::fmt::try_init();
+    qanto::init_test_tracing();
 
-    let temp_dir = std::env::temp_dir().join("qanto_test_multi_mining");
+    // Use a unique temp directory per test run to avoid cross-test interference
+    let unique_suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!("qanto_test_multi_mining_{}", unique_suffix));
     std::fs::create_dir_all(&temp_dir).unwrap();
 
     let storage_config = StorageConfig {
@@ -243,8 +251,9 @@ async fn test_multi_block_mining_without_dag_regeneration() {
         wal_enabled: true,
         sync_writes: false,
         cache_size: 1024 * 1024 * 10,
-        compaction_threshold: 1000.0,
+        compaction_threshold: 1000,
         max_open_files: 100,
+        ..StorageConfig::default()
     };
 
     let storage = QantoStorage::new(storage_config).unwrap();
@@ -265,6 +274,40 @@ async fn test_multi_block_mining_without_dag_regeneration() {
         qanto::config::LoggingConfig::default(),
     )
     .unwrap();
+
+    // Ensure genesis is fully initialized and persisted before mining begins.
+    // We open a read-only storage view on the same data_dir and wait until the
+    // genesis marker is present. This guards against transient I/O races.
+    {
+        // Retry opening a read-only storage view until the DB is initialized,
+        // then wait for the genesis marker to appear.
+        let start = std::time::Instant::now();
+        let timeout = std::time::Duration::from_millis(1500);
+        loop {
+            let reader_cfg = StorageConfig {
+                data_dir: temp_dir.clone(),
+                wal_enabled: false,
+                enable_async_io: false,
+                max_open_files: 32,
+                cache_size: 1024 * 1024,
+                ..StorageConfig::default()
+            };
+            match QantoStorage::new(reader_cfg) {
+                Ok(reader_db) => {
+                    if has_genesis_block(&reader_db).unwrap_or(false) {
+                        break;
+                    }
+                }
+                Err(_e) => {
+                    // DB may not be initialized yet; keep retrying until timeout
+                }
+            }
+            if start.elapsed() > timeout {
+                panic!("Timeout waiting for genesis initialization");
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    }
 
     let wallet = Wallet::new().unwrap();
     let miner_address = wallet.address();
@@ -298,6 +341,7 @@ async fn test_multi_block_mining_without_dag_regeneration() {
             0,
             &Arc::new(miner.clone()),
             None,
+            None,
         )
         .await
         .unwrap();
@@ -326,7 +370,15 @@ async fn test_multi_block_mining_without_dag_regeneration() {
         signature: new_signature.as_bytes().to_vec(),
     };
     // Add to DAG
-    dag_arc.add_block(block1.clone(), &utxos_arc).await.unwrap();
+    dag_arc
+        .add_block(
+            block1.clone(),
+            &utxos_arc,
+            Some(&mempool_arc),
+            Some(&miner_address),
+        )
+        .await
+        .unwrap();
 
     // Second block
     let mut block2 = dag_arc
@@ -338,6 +390,7 @@ async fn test_multi_block_mining_without_dag_regeneration() {
             &utxos_arc,
             0,
             &Arc::new(miner.clone()),
+            None,
             None,
         )
         .await
@@ -385,12 +438,16 @@ async fn test_multi_block_mining_without_dag_regeneration() {
 #[tokio::test]
 async fn test_mining_with_multiple_transactions() {
     // Initialize logging only if not already initialized
-    let _ = tracing_subscriber::fmt::try_init();
+    qanto::init_test_tracing();
 
     info!("Starting multi-transaction mining test...");
 
-    // Create a temporary directory for storage
-    let temp_dir = std::env::temp_dir().join("qanto_test_multi_mining");
+    // Create a unique temporary directory for storage to avoid cross-test interference
+    let unique_suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let temp_dir = std::env::temp_dir().join(format!("qanto_test_multi_mining_{}", unique_suffix));
     std::fs::create_dir_all(&temp_dir)
         .unwrap_or_else(|e| panic!("Failed to create temp directory: {e}"));
 
@@ -403,8 +460,9 @@ async fn test_mining_with_multiple_transactions() {
         wal_enabled: true,
         sync_writes: false,
         cache_size: 1024 * 1024 * 10, // 10MB
-        compaction_threshold: 1000.0,
+        compaction_threshold: 1000,
         max_open_files: 100,
+        ..StorageConfig::default()
     };
 
     // Initialize storage
@@ -483,6 +541,7 @@ async fn test_mining_with_multiple_transactions() {
                 chain_id,
                 &Arc::new(miner.clone()),
                 None, // No homomorphic public key for tests
+                None,
             )
             .await
             .unwrap_or_else(|e| panic!("Failed to create candidate block: {e}"));
@@ -500,17 +559,15 @@ async fn test_mining_with_multiple_transactions() {
             Ok(()) => {
                 info!("✅ Chain {} mining successful!", chain_id);
 
-                // Verify the hash meets the target
-                let block_hash_str = block.hash();
-                let block_pow_hash_bytes = hex::decode(&block_hash_str).unwrap_or_else(|e| {
-                    panic!("Failed to decode block hash '{block_hash_str}': {e}")
-                });
+                // Verify the hash meets the target using canonical PoW hash
+                let block_pow_hash = block.hash_for_pow();
+                let block_pow_hash_bytes = block_pow_hash.as_bytes();
                 let target_hash_bytes =
                     qanto::miner::Miner::calculate_target_from_difficulty(block.difficulty);
 
                 assert!(
                     qanto::miner::Miner::hash_meets_target(
-                        &block_pow_hash_bytes,
+                        block_pow_hash_bytes,
                         &target_hash_bytes
                     ),
                     "Chain {chain_id} PoW validation failed",
@@ -550,8 +607,9 @@ async fn test_mining_performance_benchmark() {
         wal_enabled: true,
         sync_writes: false,
         cache_size: 1024 * 1024 * 50, // Larger cache for performance
-        compaction_threshold: 1000.0,
+        compaction_threshold: 1000,
         max_open_files: 200,
+        ..StorageConfig::default()
     };
 
     // Initialize storage
@@ -634,6 +692,7 @@ async fn test_mining_performance_benchmark() {
                 chain_id,
                 &Arc::new(miner.clone()),
                 None, // No homomorphic public key for tests
+                None,
             )
             .await
             .unwrap_or_else(|e| panic!("Failed to create candidate block: {e}"));
@@ -702,8 +761,9 @@ async fn test_miner_cancellation_returns_timeout_or_cancelled() {
         wal_enabled: true,
         sync_writes: false,
         cache_size: 1024 * 1024 * 10, // 10MB
-        compaction_threshold: 1000.0,
+        compaction_threshold: 1000,
         max_open_files: 100,
+        ..StorageConfig::default()
     };
 
     // Initialize storage
@@ -766,6 +826,7 @@ async fn test_miner_cancellation_returns_timeout_or_cancelled() {
             0, // chain_id
             &Arc::new(miner.clone()),
             None, // No homomorphic public key for tests
+            None,
         )
         .await
         .unwrap_or_else(|e| panic!("Failed to create candidate block: {e}"));
@@ -804,7 +865,7 @@ async fn test_miner_cancellation_returns_timeout_or_cancelled() {
 #[tokio::test]
 async fn test_miner_shutdown_returns_timeout_or_cancelled() {
     // Initialize logging only if not already initialized
-    let _ = tracing_subscriber::fmt::try_init();
+    qanto::init_test_tracing();
 
     // Create a temporary directory for storage
     let temp_dir = std::env::temp_dir().join("qanto_test_mining_shutdown");
@@ -820,8 +881,9 @@ async fn test_miner_shutdown_returns_timeout_or_cancelled() {
         wal_enabled: true,
         sync_writes: false,
         cache_size: 1024 * 1024 * 10, // 10MB
-        compaction_threshold: 1000.0,
+        compaction_threshold: 1000,
         max_open_files: 100,
+        ..StorageConfig::default()
     };
 
     // Initialize storage
@@ -884,6 +946,7 @@ async fn test_miner_shutdown_returns_timeout_or_cancelled() {
             0, // chain_id
             &Arc::new(miner.clone()),
             None, // No homomorphic public key for tests
+            None,
         )
         .await
         .unwrap_or_else(|e| panic!("Failed to create candidate block: {e}"));

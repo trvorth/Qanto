@@ -927,10 +927,12 @@ impl EnhancedOmegaOrchestrator {
             smart_contracts: vec![],
             carbon_credentials: vec![],
             epoch: 0,
+            reservation_miner_id: None,
+            finality_proof: None,
         };
 
         // Add the block to the DAG
-        dag.add_block(block, utxos).await?;
+        dag.add_block(block, utxos, None, None).await?;
 
         debug!(
             "Added transaction to DAG: dimension={}, gas={}, stability={}",
@@ -1126,8 +1128,17 @@ pub mod enhanced_simulation {
             encryption_enabled: false,
             wal_enabled: true,
             sync_writes: true,
-            compaction_threshold: 0.7,
+            compaction_threshold: 1, // Changed to usize
             max_open_files: 1000,
+            memtable_size: 1024 * 1024 * 16,    // 16MB memtable
+            write_buffer_size: 1024 * 1024 * 4, // 4MB write buffer
+            batch_size: 1000,                   // Batch size for writes
+            parallel_writers: 4,                // Number of parallel writers
+            enable_write_batching: true,
+            enable_bloom_filters: true,
+            enable_async_io: true,
+            sync_interval: Duration::from_millis(100),
+            compression_level: 3,
         };
         let mock_storage = QantoStorage::new(storage_config)
             .map_err(|e| anyhow::anyhow!("Failed to create test storage: {e}"))?;

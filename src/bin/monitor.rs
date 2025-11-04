@@ -64,6 +64,10 @@ async fn main() {
         connection_timeout: Duration::from_secs(10),
         heartbeat_interval: Duration::from_secs(30),
         enable_encryption: true,
+        // Explicitly set compression fields to satisfy struct initialization
+        enable_compression: true,
+        compression_level: 3,
+        compression_min_size: 1024,
     };
 
     let mut p2p_node = match QantoP2P::new(p2p_config) {

@@ -141,8 +141,9 @@ async fn create_integration_test_environment(
         wal_enabled: false,
         sync_writes: false,
         cache_size: 1024 * 1024 * 10, // 10MB cache
-        compaction_threshold: 0.9,
+        compaction_threshold: 10,
         max_open_files: 100,
+        ..StorageConfig::default()
     };
 
     let storage = QantoStorage::new(storage_config)?;
@@ -175,7 +176,7 @@ async fn create_integration_test_environment(
 
 #[tokio::test]
 async fn test_mempool_overflow_and_eviction() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    qanto::init_test_tracing();
     info!("Starting mempool overflow and eviction test");
 
     let test_future = async {
@@ -364,6 +365,8 @@ async fn test_block_size_validation_32mb_limit() -> Result<()> {
             smart_contracts: vec![],
             carbon_credentials: vec![],
             epoch: 1,
+            finality_proof: None,
+            reservation_miner_id: None,
         };
 
         // Verify block size exceeds 32MB
@@ -428,6 +431,8 @@ async fn test_block_size_validation_32mb_limit() -> Result<()> {
             smart_contracts: vec![],
             carbon_credentials: vec![],
             epoch: 1,
+            finality_proof: None,
+            reservation_miner_id: None,
         };
 
         // Verify block size is under 32MB
@@ -498,6 +503,8 @@ async fn test_individual_transaction_size_limit() -> Result<()> {
             smart_contracts: vec![],
             carbon_credentials: vec![],
             epoch: 1,
+            finality_proof: None,
+            reservation_miner_id: None,
         };
 
         // Validate that oversized transaction is rejected
@@ -547,6 +554,8 @@ async fn test_individual_transaction_size_limit() -> Result<()> {
             smart_contracts: vec![],
             carbon_credentials: vec![],
             epoch: 1,
+            finality_proof: None,
+            reservation_miner_id: None,
         };
 
         // Validate that valid transaction is accepted

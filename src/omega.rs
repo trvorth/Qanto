@@ -32,14 +32,15 @@ use tracing::{debug, warn};
 // --- Core ΩMEGA Constants ---
 const IDENTITY_STATE_SIZE: usize = 32;
 const ACTION_HISTORY_CAPACITY: usize = 256;
-const STABILITY_THRESHOLD: f64 = 0.65;
-const ENTROPY_HALFLIFE_MICROS: u64 = 500_000;
-const REFLECTION_TIMEOUT: Duration = Duration::from_millis(50);
-// --- ENHANCED: Constants for a more sensitive stability metric ---
-const RECENT_ACTION_PENALTY_FACTOR: f64 = 0.1;
-const LOW_ENTROPY_PENALTY: f64 = 1.5;
-const LOW_ENTROPY_THRESHOLD: f64 = 0.5;
-const CRITICAL_ENTROPY_OVERRIDE: f64 = 0.2; // New constant for immediate rejection
+const STABILITY_THRESHOLD: f64 = 0.45; // Lowered threshold to reduce false rejections in high TPS
+const ENTROPY_HALFLIFE_MICROS: u64 = 5_000_000; // Increased half-life to 5 seconds for even slower decay under high load
+                                                // --- ENHANCED: Constants for a more sensitive stability metric ---
+const RECENT_ACTION_PENALTY_FACTOR: f64 = 0.005; // Further reduced penalty factor for ultra-high TPS
+const LOW_ENTROPY_PENALTY: f64 = 0.3; // Further reduced penalty
+const LOW_ENTROPY_THRESHOLD: f64 = 0.2; // Further lowered threshold to minimize penalties
+const CRITICAL_ENTROPY_OVERRIDE: f64 = 0.05; // Lowered for more tolerance
+const REFLECTION_TIMEOUT: Duration = Duration::from_millis(20); // Reduced timeout for faster processing
+                                                                // Retained the enhanced constants with reduced penalties for high TPS support
 
 // Global Threat Level: Atomically accessible indicator of network-wide perceived threat.
 static GLOBAL_THREAT_LEVEL: AtomicU64 = AtomicU64::new(0);
@@ -384,16 +385,19 @@ impl OmegaState {
 
         // --- ENHANCED STABILITY CHECK ---
         let recent_actions = self.calculate_recent_action_count();
-        let temporal_penalty = recent_actions as f64 * RECENT_ACTION_PENALTY_FACTOR;
+        let temporal_penalty = ((recent_actions as f64).min(1000.0).log2().max(0.0)
+            * RECENT_ACTION_PENALTY_FACTOR)
+            / (1.0 + (recent_actions as f64 / 10000000.0)); // Scale penalty inversely with TPS for 10M+ tolerance
 
         // Add a severe penalty for operating from a low-entropy state, as any action is risky.
         let low_entropy_penalty = if self.current_entropy < LOW_ENTROPY_THRESHOLD {
-            LOW_ENTROPY_PENALTY
+            LOW_ENTROPY_PENALTY * (LOW_ENTROPY_THRESHOLD - self.current_entropy)
+        // Scaled penalty
         } else {
             0.0
         };
 
-        let stability_metric = (self.current_entropy * 0.4) + (next_entropy * 0.6)
+        let stability_metric = (self.current_entropy * 0.2) + (next_entropy * 0.8) // Further increased weight on next_entropy for forward-looking stability in high TPS
             - temporal_penalty
             - low_entropy_penalty;
 
@@ -422,7 +426,8 @@ impl OmegaState {
         self.record_action(action_hash);
 
         // If the system is stable, gradually lower the threat level.
-        if self.action_history.len().is_multiple_of(10) {
+        if self.action_history.len().is_multiple_of(50) {
+            // Further slowed de-escalation for sustained stability under load
             let old_level = GLOBAL_THREAT_LEVEL.load(Ordering::Relaxed);
             if old_level > 0 {
                 GLOBAL_THREAT_LEVEL.fetch_sub(1, Ordering::Relaxed);
@@ -481,6 +486,15 @@ impl OmegaState {
 
 /// Public function to reflect on a transaction or other critical action.
 pub async fn reflect_on_action(action_hash: H256) -> bool {
+    // Environment-controlled bypass for local testing or controlled deployments.
+    // Set `QANTO_OMEGA_DISABLE=true` (or "1") to always approve actions.
+    if std::env::var("QANTO_OMEGA_DISABLE")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "True"))
+        .unwrap_or(false)
+    {
+        return true;
+    }
+
     let state = OMEGA_STATE.clone();
     let result = match tokio::time::timeout(REFLECTION_TIMEOUT, state.lock()).await {
         Ok(mut locked_state) => locked_state.reflect(action_hash),

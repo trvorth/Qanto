@@ -25,6 +25,10 @@ use thiserror::Error;
 use tokio::sync::broadcast;
 use tracing::{debug, info, instrument, span, warn, Level};
 
+// Threshold below use a lightweight single-threaded fast path
+// to minimize overhead during performance tests and very low difficulty runs.
+const FAST_MINING_DIFFICULTY_THRESHOLD: f64 = 0.01;
+
 #[derive(Error, Debug)]
 pub enum MiningError {
     #[error("Invalid block: {0}")]
@@ -540,25 +544,31 @@ impl Miner {
             block_template.difficulty
         );
 
-        // Create a temporary block with nonce 0 to ensure consistent hash calculation
-        // This matches the behavior in test_nonce where we create a temp block and set the nonce
-        let mut temp_block = block_template.clone();
-        temp_block.nonce = 0;
-        let header_hash_hex = temp_block.hash();
-        let header_hash_bytes = hex::decode(&header_hash_hex).map_err(|e| {
-            let mut error_msg = String::with_capacity(20 + e.to_string().len());
-            error_msg.push_str("Invalid header hash: ");
-            error_msg.push_str(&e.to_string());
-            MiningError::InvalidBlock(error_msg)
-        })?;
+        // Construct canonical header data (without nonce) to compute header hash
+        // Must match QantoBlock::hash_for_pow header serialization exactly.
+        let mut header_data = Vec::with_capacity(280 + (block_template.parents.len() * 64));
+        header_data.extend_from_slice(&block_template.timestamp.to_be_bytes());
+        header_data.extend_from_slice(&block_template.chain_id.to_be_bytes());
+        header_data.extend_from_slice(&block_template.height.to_be_bytes());
+        header_data.extend_from_slice(&block_template.difficulty.to_be_bytes());
+        header_data.extend_from_slice(block_template.merkle_root.as_bytes());
+        header_data.extend_from_slice(block_template.validator.as_bytes());
+        header_data.extend_from_slice(block_template.miner.as_bytes());
+        for parent in &block_template.parents {
+            header_data.extend_from_slice(parent.as_bytes());
+        }
 
-        let header_hash = self.convert_to_hash_array(&header_hash_bytes)?;
+        // Compute header hash using qanto_hash
+        let header_hash_qanto = my_blockchain::qanto_standalone::hash::qanto_hash(&header_data);
+        let header_hash = *header_hash_qanto.as_bytes();
+
         let target = self.convert_to_target_array(target_hash_bytes);
 
         Ok((header_hash, target))
     }
 
     /// Convert header hash bytes to fixed-size array
+    #[allow(dead_code)]
     fn convert_to_hash_array(&self, header_hash_bytes: &[u8]) -> Result<[u8; 32], MiningError> {
         let mut header_hash = [0u8; 32];
         if header_hash_bytes.len() >= 32 {
@@ -654,10 +664,34 @@ impl Miner {
         let start_time = SystemTime::now();
 
         // Adaptive timeout based on difficulty and target block time
-        // Reduced from 2x to 1.5x target time for faster mining cycles
-        let adaptive_timeout = Duration::from_secs(30); // Increased timeout to 30 seconds for feasible mining at difficulty 1.0
+        // For very low difficulties (< 1.0), use a modest timeout to accommodate feature-enabled builds
+        let adaptive_timeout = if block_template.difficulty < 1.0 {
+            // Allow up to 10s to avoid false timeouts when extra features are enabled
+            Duration::from_secs(10)
+        } else {
+            // For normal mining, use longer timeout based on target block time
+            Duration::from_secs((self.target_block_time * 2).max(30))
+        };
+
+        // Fast path for extremely low difficulty: avoid heavy DAG/RT setup
+        if block_template.difficulty <= FAST_MINING_DIFFICULTY_THRESHOLD {
+            self.log_mining_start(block_template);
+            let result = self.mine_cpu_fast_path(
+                block_template,
+                start_time,
+                adaptive_timeout,
+                cancellation_token.clone(),
+            )?;
+            return self.process_mining_result(block_template, result);
+        }
 
         self.log_mining_start(block_template);
+
+        // Check cancellation before expensive DAG fetch to ensure responsive setup phase
+        if cancellation_token.is_cancelled() {
+            debug!("Mining cancelled during setup - aborting before DAG fetch");
+            return Err(MiningError::TimeoutOrCancelled);
+        }
 
         // Fetch pre-cached DAG for the current block's epoch to eliminate regeneration bottleneck
         let qdag = {
@@ -666,6 +700,12 @@ impl Miner {
             debug!("Fetching DAG for block index: {}", block_index);
             get_qdag_sync(block_index)
         };
+
+        // Check cancellation immediately after DAG fetch since it may be blocking
+        if cancellation_token.is_cancelled() {
+            debug!("Mining cancelled during setup - after DAG fetch");
+            return Err(MiningError::TimeoutOrCancelled);
+        }
 
         debug!(
             "Successfully fetched pre-cached DAG for block {}",
@@ -745,6 +785,48 @@ impl Miner {
         self.process_mining_result(block_template, mining_result)
     }
 
+    /// Extremely lightweight single-threaded mining loop for very low difficulty blocks.
+    /// Avoids per-call threadpool/runtime setup to maximize throughput in performance tests.
+    fn mine_cpu_fast_path(
+        &self,
+        block_template: &QantoBlock,
+        start_time: SystemTime,
+        timeout_duration: Duration,
+        cancellation_token: tokio_util::sync::CancellationToken,
+    ) -> Result<MiningResult, MiningError> {
+        // Local clone for nonce testing without mutating caller's template
+        let mut nonce = get_nonce_with_deterministic_fallback();
+        let mut iter_count: u64 = 0;
+
+        loop {
+            // Periodic cancellation check to keep overhead minimal
+            if iter_count.is_multiple_of(10_000) {
+                if cancellation_token.is_cancelled() {
+                    return Ok(MiningResult::Cancelled);
+                }
+                // Timeout check
+                if let Ok(elapsed) = start_time.elapsed() {
+                    if elapsed > timeout_duration {
+                        return Ok(MiningResult::Timeout);
+                    }
+                }
+            }
+
+            // Attempt current nonce
+            if Self::test_nonce_optimized(nonce, block_template) {
+                let hash = Self::compute_hash_for_nonce(nonce, block_template);
+                return Ok(MiningResult::Found { nonce, hash });
+            }
+
+            // Housekeeping
+            iter_count = iter_count.wrapping_add(1);
+            if iter_count.is_multiple_of(1_000) {
+                increment_hash_attempts();
+            }
+            nonce = nonce.wrapping_add(1);
+        }
+    }
+
     /// Fallback mining method without DAG optimization (existing logic)
     #[allow(dead_code)]
     fn solve_pow_with_cancellation_fallback(
@@ -753,7 +835,12 @@ impl Miner {
         cancellation_token: tokio_util::sync::CancellationToken,
     ) -> Result<(), MiningError> {
         let start_time = SystemTime::now();
-        let adaptive_timeout = Duration::from_secs(30);
+        // Use adaptive timeout based on difficulty - low difficulty gets modest timeout
+        let adaptive_timeout = if block_template.difficulty < 1.0 {
+            Duration::from_secs(10)
+        } else {
+            Duration::from_secs((self.target_block_time * 2).max(30))
+        };
 
         let target_hash_bytes = Self::calculate_target_from_difficulty(block_template.difficulty);
         let (_header_hash, _target) =
@@ -785,6 +872,7 @@ impl Miner {
 
     /// Checks if CUDA is available for GPU mining
     #[cfg(feature = "gpu")]
+    #[allow(dead_code)]
     fn is_cuda_available() -> bool {
         // This would typically check for CUDA runtime availability
         // For now, we'll implement a basic check
@@ -827,17 +915,22 @@ impl Miner {
             }
 
             // Perform a GPU mining batch using precomputed DAG
-            if let Some((found_nonce, hash)) = self
-                .qanhash_miner
-                .mine_with_dag(&header_hash, nonce, &target, qdag.clone())
+            let qanto_hash = QantoHash::new(header_hash);
+            if let Some((found_nonce, hash)) =
+                self.qanhash_miner
+                    .mine_with_dag(&qanto_hash, nonce, target, qdag.clone())
             {
-                return Ok(MiningResult::Found { nonce: found_nonce, hash });
+                return Ok(MiningResult::Found {
+                    nonce: found_nonce,
+                    hash,
+                });
             }
 
             // Advance nonce space and record progress
             nonce = nonce.wrapping_add(GPU_BATCH_SIZE);
-            self.total_hashes.fetch_add(GPU_BATCH_SIZE, Ordering::Relaxed);
-            increment_hash_attempts(GPU_BATCH_SIZE);
+            self.total_hashes
+                .fetch_add(GPU_BATCH_SIZE, Ordering::Relaxed);
+            increment_hash_attempts();
 
             // Yield to other threads to keep event loop responsive
             std::thread::yield_now();
@@ -1367,8 +1460,8 @@ impl Miner {
 
         // To avoid floating-point non-determinism in consensus, we convert the difficulty
         // to a fixed-point integer representation.
-        // We use a smaller scaling factor to make mining feasible at low difficulties.
-        const SCALE: u128 = 1_000; // 1e3 for reasonable precision without making targets too small
+        // We use a larger scaling factor to handle small difficulties like 0.0001
+        const SCALE: u128 = 1_000_000; // 1e6 for better precision with small difficulties
         let difficulty_scaled = (difficulty_value * SCALE as f64) as u128;
 
         // Ensure difficulty is at least 1 to prevent division by zero, although the
@@ -1670,7 +1763,20 @@ pub async fn mine_cpu_with_dag_inner(
     let nonce_range_per_thread = u64::MAX / thread_count as u64;
     let base_nonce = get_nonce_with_deterministic_fallback();
 
-    // No manual header construction needed - use canonical methods
+    // Precompute canonical header hash (nonce-independent) to avoid redundant work per nonce
+    // Must exactly match QantoBlock::hash_for_pow header serialization.
+    let mut header_data = Vec::with_capacity(280 + (block_template.parents.len() * 64));
+    header_data.extend_from_slice(&block_template.timestamp.to_be_bytes());
+    header_data.extend_from_slice(&block_template.chain_id.to_be_bytes());
+    header_data.extend_from_slice(&block_template.height.to_be_bytes());
+    header_data.extend_from_slice(&block_template.difficulty.to_be_bytes());
+    header_data.extend_from_slice(block_template.merkle_root.as_bytes());
+    header_data.extend_from_slice(block_template.validator.as_bytes());
+    header_data.extend_from_slice(block_template.miner.as_bytes());
+    for parent in &block_template.parents {
+        header_data.extend_from_slice(parent.as_bytes());
+    }
+    let precomputed_header_hash = my_blockchain::qanto_standalone::hash::qanto_hash(&header_data);
 
     // Spawn parallel mining threads using mine_with_dag
     for thread_id in 0..thread_count {
@@ -1683,6 +1789,7 @@ pub async fn mine_cpu_with_dag_inner(
         let cancellation_token = cancellation_token.clone();
         let _qdag = _qdag.clone(); // Keep for future DAG optimization
         let block_template = block_template.clone(); // Clone for each thread
+        let header_hash = precomputed_header_hash; // Copy for move into closure
 
         let thread_start_nonce = base_nonce.wrapping_add(thread_id as u64 * nonce_range_per_thread);
         let thread_end_nonce = thread_start_nonce.wrapping_add(nonce_range_per_thread);
@@ -1691,7 +1798,6 @@ pub async fn mine_cpu_with_dag_inner(
             // Use canonical hashing for perfect mining-validation symmetry
             const BATCH_SIZE: u64 = 1000; // Larger batch size for DAG-optimized mining
             let mut current_nonce = thread_start_nonce;
-            let mut test_block = block_template.clone();
 
             loop {
                 // Early termination if solution found by another thread or cancellation requested
@@ -1706,14 +1812,14 @@ pub async fn mine_cpu_with_dag_inner(
 
                 // Process nonces in batch using canonical methods
                 for nonce in current_nonce..batch_end {
-                    // Update block's nonce
-                    test_block.nonce = nonce;
+                    // Calculate PoW hash using precomputed header and qanhash
+                    let pow_hash_bytes =
+                        my_blockchain::qanhash::hash(&header_hash, nonce, block_template.height);
+                    let pow_hash =
+                        my_blockchain::qanto_standalone::hash::QantoHash::new(pow_hash_bytes);
 
-                    // Calculate PoW hash exclusively using canonical method
-                    let pow_hash = test_block.hash_for_pow();
-
-                    // Validate using canonical method for perfect symmetry
-                    if test_block.is_pow_valid_with_pow_hash(pow_hash) {
+                    // Validate using canonical consensus method for perfect symmetry
+                    if block_template.is_pow_valid_with_pow_hash(pow_hash) {
                         // Atomic completion flag prevents timeout cancellation
                         if !completion_flag.swap(true, Ordering::AcqRel) {
                             // Store results atomically

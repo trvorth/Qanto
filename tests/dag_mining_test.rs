@@ -21,7 +21,7 @@ fn new_saga() -> Arc<PalletSaga> {
 /// Test DAG mining functionality with performance verification
 #[tokio::test]
 async fn test_dag_mining_performance() {
-    let _ = tracing_subscriber::fmt::try_init();
+    qanto::init_test_tracing();
 
     let temp_dir = std::env::temp_dir().join("qanto_dag_mining_test");
     std::fs::create_dir_all(&temp_dir).unwrap();
@@ -34,8 +34,9 @@ async fn test_dag_mining_performance() {
         wal_enabled: true,
         sync_writes: false,
         cache_size: 1024 * 1024 * 10,
-        compaction_threshold: 1000.0,
+        compaction_threshold: 1000,
         max_open_files: 100,
+        ..StorageConfig::default()
     };
 
     let storage = QantoStorage::new(storage_config).unwrap();
@@ -122,6 +123,7 @@ async fn test_dag_mining_performance() {
             &utxos_arc,
             0,
             &Arc::new(miner.clone()),
+            None,
             None,
         )
         .await
@@ -211,7 +213,7 @@ async fn test_dag_mining_performance() {
 /// Test DAG memory efficiency and caching behavior
 #[tokio::test]
 async fn test_dag_memory_efficiency() {
-    let _ = tracing_subscriber::fmt::try_init();
+    qanto::init_test_tracing();
 
     info!("Testing DAG memory efficiency and caching...");
 

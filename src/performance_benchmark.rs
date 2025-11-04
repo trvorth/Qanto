@@ -205,8 +205,18 @@ impl PerformanceBenchmark {
             wal_enabled: true,
             sync_writes: true,
             cache_size: 128 * 1024 * 1024,
-            compaction_threshold: 0.5,
+            compaction_threshold: 10, // number of segments before compaction
             max_open_files: 1000,
+            // Sensible defaults aligned with StorageConfig::default()
+            memtable_size: 64 * 1024 * 1024,
+            write_buffer_size: 16 * 1024 * 1024,
+            batch_size: 10000,
+            parallel_writers: 8,
+            enable_write_batching: true,
+            enable_bloom_filters: true,
+            enable_async_io: true,
+            sync_interval: Duration::from_millis(100),
+            compression_level: 3,
         };
         let storage = Arc::new(QantoStorage::new(storage_config)?);
 

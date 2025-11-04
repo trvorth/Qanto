@@ -4,15 +4,19 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tonic::{transport::Server, Request, Response, Status};
 
+use std::pin::Pin;
+use tokio_stream::{wrappers::BroadcastStream, StreamExt};
+
 pub mod generated {
     tonic::include_proto!("qanto");
 }
 
 use generated::qanto_rpc_server::{QantoRpc, QantoRpcServer};
+use generated::wallet_service_server::{WalletService, WalletServiceServer};
 use generated::{
-    GetBalanceRequest, GetBalanceResponse, GetBlockRequest, GetBlockResponse,
+    BalanceResponse, GetBalanceRequest, GetBalanceResponse, GetBlockRequest, GetBlockResponse,
     GetNetworkStatsRequest, GetNetworkStatsResponse, SubmitTransactionRequest,
-    SubmitTransactionResponse,
+    SubmitTransactionResponse, WalletGetBalanceRequest,
 };
 
 #[derive(Clone, Debug)]
@@ -33,6 +37,11 @@ pub trait RpcBackend: Send + Sync + 'static {
     async fn get_balance(&self, address: String) -> Result<u64, String>;
     async fn get_block(&self, block_id: String) -> Result<generated::QantoBlock, String>;
     async fn get_network_stats(&self) -> Result<NetworkStats, String>;
+    fn balance_updates_receiver(
+        &self,
+    ) -> tokio::sync::broadcast::Receiver<generated::BalanceUpdate>;
+    // Wallet-specific balance with unconfirmed delta
+    async fn get_wallet_balance(&self, address: String) -> Result<(u64, u64), String>;
 }
 
 #[derive(Clone)]
@@ -53,6 +62,9 @@ impl RpcService {
 
 #[tonic::async_trait]
 impl QantoRpc for RpcService {
+    type SubscribeBalanceStream =
+        Pin<Box<dyn tokio_stream::Stream<Item = Result<generated::BalanceUpdate, Status>> + Send>>;
+
     async fn submit_transaction(
         &self,
         request: Request<SubmitTransactionRequest>,
@@ -114,6 +126,50 @@ impl QantoRpc for RpcService {
             Err(e) => Err(Status::unavailable(e)),
         }
     }
+
+    async fn subscribe_balance(
+        &self,
+        request: Request<generated::SubscribeBalanceRequest>,
+    ) -> Result<Response<Self::SubscribeBalanceStream>, Status> {
+        let filter = request.into_inner().address_filter;
+        let filter_opt = if filter.is_empty() {
+            None
+        } else {
+            Some(filter)
+        };
+        let rx = self.backend.balance_updates_receiver();
+        let stream = BroadcastStream::new(rx).filter_map(move |item| {
+            let filter_opt = filter_opt.clone();
+            match item {
+                Ok(update) => {
+                    if filter_opt.as_ref().is_none_or(|f| update.address == *f) {
+                        Some(Ok(update))
+                    } else {
+                        None
+                    }
+                }
+                Err(_) => None,
+            }
+        });
+        Ok(Response::new(Box::pin(stream)))
+    }
+}
+
+#[tonic::async_trait]
+impl WalletService for RpcService {
+    async fn get_balance(
+        &self,
+        request: Request<WalletGetBalanceRequest>,
+    ) -> Result<Response<BalanceResponse>, Status> {
+        let addr = request.into_inner().address;
+        match self.backend.get_wallet_balance(addr).await {
+            Ok((confirmed, unconfirmed_delta)) => Ok(Response::new(BalanceResponse {
+                balance: confirmed,
+                unconfirmed_balance: unconfirmed_delta,
+            })),
+            Err(e) => Err(Status::invalid_argument(e)),
+        }
+    }
 }
 
 pub async fn start(
@@ -123,7 +179,8 @@ pub async fn start(
     let svc = RpcService::new(backend);
 
     Server::builder()
-        .add_service(QantoRpcServer::new(svc))
+        .add_service(QantoRpcServer::new(svc.clone()))
+        .add_service(WalletServiceServer::new(svc))
         .serve(addr)
         .await
 }

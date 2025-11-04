@@ -23,8 +23,9 @@ fn create_test_dag() -> Arc<QantoDAG> {
         wal_enabled: false,
         sync_writes: false,
         cache_size: 1024,
-        compaction_threshold: 100.0,
+        compaction_threshold: 100,
         max_open_files: 10,
+        ..StorageConfig::default()
     };
 
     let storage = QantoStorage::new(storage_config).expect("Failed to create storage");

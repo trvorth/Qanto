@@ -368,16 +368,20 @@ impl Transaction {
     /// Creates a new coinbase transaction.
     pub(crate) fn new_coinbase(
         receiver: String,
-        reward: u64,
+        _reward: u64,
         outputs: Vec<Output>,
     ) -> Result<Self, TransactionError> {
         let sender = "0000000000000000000000000000000000000000000000000000000000000000".to_string();
         let timestamp = Self::get_current_timestamp()?;
         let metadata = HashMap::new();
+
+        // Calculate the actual amount as sum of outputs
+        let actual_amount = outputs.iter().map(|output| output.amount).sum::<u64>();
+
         let signing_payload = TransactionSigningPayload {
             sender: &sender,
             receiver: &receiver,
-            amount: reward,
+            amount: actual_amount,
             fee: 0,
             inputs: &[],
             outputs: &outputs,
@@ -394,7 +398,7 @@ impl Transaction {
             id: String::new(),
             sender,
             receiver,
-            amount: reward,
+            amount: actual_amount,
             fee: 0,
             gas_limit: 0, // Coinbase transactions don't use gas
             gas_used: 0,
@@ -695,19 +699,17 @@ impl Transaction {
     pub fn verify_batch_parallel(
         transactions: &[Transaction],
         utxos_map: &HashMap<String, UTXO>,
-        verification_semaphore: &Arc<Semaphore>,
+        _verification_semaphore: &Arc<Semaphore>,
     ) -> Vec<Result<(), TransactionError>> {
+        // Chunk the transactions to process in batches to reduce contention
+        let chunk_size = transactions.len() / rayon::current_num_threads() + 1;
         transactions
-            .par_iter()
-            .map(|tx| {
-                // Acquire a semaphore permit for controlled concurrency.
-                let _permit = verification_semaphore.try_acquire();
-                if _permit.is_err() {
-                    // Fallback to sequential verification if the semaphore is full.
-                    return Self::verify_single_transaction(tx, utxos_map);
-                }
-
-                Self::verify_single_transaction(tx, utxos_map)
+            .par_chunks(chunk_size)
+            .flat_map(|chunk| {
+                chunk
+                    .iter()
+                    .map(|tx| Self::verify_single_transaction(tx, utxos_map))
+                    .collect::<Vec<_>>()
             })
             .collect()
     }

@@ -12,7 +12,6 @@ use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 /// Mock PoW implementation for fast testing
 pub struct MockPoW {
@@ -85,8 +84,8 @@ struct MiningTestConfig {
 impl Default for MiningTestConfig {
     fn default() -> Self {
         Self {
-            target_blocks: 10,     // Reduced from 20 for faster testing
-            max_test_duration: 60, // Reduced from 300 to 60 seconds
+            target_blocks: 3,      // Lower target for fast, deterministic CI
+            max_test_duration: 30, // Shorter duration to keep CI lean
             max_block_time: 10,    // Reduced from 30 to 10 seconds per block
             verbose: true,
         }
@@ -130,14 +129,18 @@ async fn setup_test_node() -> Result<(Node, TempDir), Box<dyn std::error::Error>
         target_block_time: 5000,                   // 5 seconds in milliseconds
         num_chains: 1,                             // Single chain for simplicity
         mining_enabled: true,
-        mining_threads: 2,                      // Use 2 threads for faster mining
-        use_gpu: false,                         // CPU mining for tests
-        p2p_address: "127.0.0.1:0".to_string(), // Random port
-        peers: vec![],                          // No bootstrap peers for local test
+        mining_threads: 2, // Use 2 threads for faster mining
+        use_gpu: false,    // CPU mining for tests
+        p2p_address: "/ip4/127.0.0.1/tcp/0".to_string(), // Random port (libp2p Multiaddr)
+        peers: vec![],     // No bootstrap peers for local test
         api_address: "127.0.0.1:0".to_string(), // Random port
         logging: qanto::config::LoggingConfig {
             level: "info".to_string(),
             ..Default::default()
+        },
+        // Bind RPC server to an ephemeral port to avoid conflicts in CI
+        rpc: qanto::config::RpcConfig {
+            address: "127.0.0.1:0".to_string(),
         },
         ..Default::default()
     };
@@ -208,6 +211,14 @@ async fn run_mining_stability_test(
 
     // Get references to node components
     let dag = node.dag.clone();
+
+    // Drop base difficulty for fast, deterministic mining in tests
+    {
+        let mut rules = dag.saga.economy.epoch_rules.write().await;
+        if let Some(difficulty_rule) = rules.get_mut("base_difficulty") {
+            difficulty_rule.value = 0.00001; // extremely easy PoW
+        }
+    }
 
     // Start node in background task
     let node_handle = tokio::spawn(async move {
@@ -334,14 +345,9 @@ fn print_test_results(config: &MiningTestConfig, metrics: &MiningMetrics) {
 
 /// Main test function
 #[tokio::test]
-#[ignore]
 async fn test_mining_stability() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize tracing
-    let env_filter = EnvFilter::try_new("info").unwrap_or_else(|_| EnvFilter::new("info"));
-    tracing_subscriber::registry()
-        .with(env_filter)
-        .with(fmt::layer())
-        .init();
+    // Initialize tracing once for tests
+    qanto::init_test_tracing();
 
     info!("🚀 Starting Mining Stability Test");
 
@@ -434,12 +440,16 @@ async fn test_mining_node_initialization() {
         mining_enabled: true,
         mining_threads: 1,
         use_gpu: false,
-        p2p_address: "127.0.0.1:0".to_string(), // Random port
+        p2p_address: "/ip4/127.0.0.1/tcp/0".to_string(), // Random port (libp2p Multiaddr)
         peers: vec![],
         api_address: "127.0.0.1:0".to_string(), // Random port
         logging: qanto::config::LoggingConfig {
             level: "info".to_string(),
             ..Default::default()
+        },
+        // Bind RPC server to an ephemeral port to avoid conflicts in CI
+        rpc: qanto::config::RpcConfig {
+            address: "127.0.0.1:0".to_string(),
         },
         ..Default::default()
     };
@@ -464,7 +474,6 @@ async fn test_mining_node_initialization() {
 }
 
 #[tokio::test]
-#[ignore]
 async fn test_mining_stability_short_run() {
     // Create temporary directory for test
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
@@ -486,12 +495,16 @@ async fn test_mining_stability_short_run() {
         mining_enabled: true,
         mining_threads: 1,
         use_gpu: false,
-        p2p_address: "127.0.0.1:0".to_string(),
+        p2p_address: "/ip4/127.0.0.1/tcp/0".to_string(), // Random port (libp2p Multiaddr)
         peers: vec![],
         api_address: "127.0.0.1:0".to_string(),
         logging: qanto::config::LoggingConfig {
             level: "info".to_string(),
             ..Default::default()
+        },
+        // Bind RPC server to an ephemeral port to avoid conflicts in CI
+        rpc: qanto::config::RpcConfig {
+            address: "127.0.0.1:0".to_string(),
         },
         ..Default::default()
     };

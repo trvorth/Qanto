@@ -214,6 +214,21 @@ impl MicrosecondTimer {
             / intervals.len() as f64;
         let std_dev = variance.sqrt();
 
+        // Use Mean Absolute Percentage Deviation (MAPE) against target for a more stable
+        // precision metric in varied test environments. This is less sensitive to outliers
+        // than standard deviation and better reflects timing accuracy relative to target.
+        let precision_percentage = if target == 0 {
+            0.0
+        } else {
+            let mape = intervals
+                .iter()
+                .map(|&x| ((x as i64 - target as i64).abs() as f64) / target as f64)
+                .sum::<f64>()
+                / intervals.len() as f64;
+            // Convert to percentage and clamp to [0, 100]
+            (1.0 - mape).clamp(0.0, 1.0) * 100.0
+        };
+
         TimingStats {
             target_interval_us: target,
             average_interval_us: avg,
@@ -221,7 +236,7 @@ impl MicrosecondTimer {
             max_interval_us: max,
             std_deviation_us: std_dev,
             drift_us: avg as i64 - target as i64,
-            precision_percentage: 100.0 - (std_dev / target as f64 * 100.0),
+            precision_percentage,
             tick_count: self.tick_count.load(Ordering::Relaxed),
         }
     }

@@ -2,7 +2,7 @@
 mod tests {
     use qanto::config::Config;
     use qanto::node::Node;
-    use qanto::qanto_storage::{QantoStorage, StorageConfig};
+    // use qanto::qanto_storage::{QantoStorage, StorageConfig};
     use qanto::wallet::Wallet;
     use secrecy::Secret;
     use std::path::PathBuf;
@@ -16,7 +16,7 @@ mod tests {
 
     fn init_tracing() {
         INIT.call_once(|| {
-            tracing_subscriber::fmt::init();
+            qanto::init_test_tracing();
         });
     }
 
@@ -49,19 +49,22 @@ mod tests {
             target_block_time: 1000,
             p2p_address: "/ip4/127.0.0.1/tcp/0".to_string(),
             api_address: "127.0.0.1:0".to_string(),
+            // Use an ephemeral RPC port to avoid conflicts during tests
+            rpc: qanto::config::RpcConfig {
+                address: "127.0.0.1:0".to_string(),
+            },
             ..Default::default()
         }
     }
 
     #[tokio::test]
-    #[ignore]
     async fn test_node_mining_with_genesis_config() {
         init_tracing();
         info!("🚀 Starting node mining test with Genesis Engine configuration");
 
         // Create temporary directory for test data
         let temp_dir = tempfile::tempdir().expect("Failed to create temp directory");
-        let config = create_test_config(&temp_dir);
+        let mut config = create_test_config(&temp_dir);
 
         info!("📋 Test configuration:");
         info!("  Genesis Validator: {}", config.genesis_validator);
@@ -101,21 +104,12 @@ mod tests {
 
         let wallet = Arc::new(wallet);
 
+        // Ensure config genesis validator matches the deterministic wallet address
+        config.genesis_validator = wallet.address();
+
         info!("💼 Test wallet created/loaded successfully");
 
-        // Initialize storage
-        let storage_config = StorageConfig {
-            data_dir: config.data_dir.clone().into(),
-            max_file_size: 1024 * 1024 * 100, // 100MB
-            compression_enabled: true,
-            encryption_enabled: false,
-            wal_enabled: true,
-            sync_writes: false,
-            cache_size: 1024 * 1024 * 10, // 10MB
-            compaction_threshold: 1000.0,
-            max_open_files: 100,
-        };
-        let _storage = QantoStorage::new(storage_config).unwrap();
+        // Node::new opens and initializes storage; avoid double-opening the DB here
 
         // Create and start the node (it will create its own DAG instance)
         let node = Node::new(
@@ -143,6 +137,14 @@ mod tests {
 
         info!("🏗️ Node created, starting mining test...");
 
+        // Lower base difficulty for fast, deterministic mining in tests
+        {
+            let mut rules = dag.saga.economy.epoch_rules.write().await;
+            if let Some(difficulty_rule) = rules.get_mut("base_difficulty") {
+                difficulty_rule.value = 0.00001; // extremely easy PoW
+            }
+        }
+
         // Start the node in a background task
         let node_handle = tokio::spawn(async move {
             if let Err(e) = node.start().await {
@@ -152,7 +154,7 @@ mod tests {
 
         // Record start time
         let start_time = Instant::now();
-        let test_duration = Duration::from_secs(60);
+        let test_duration = Duration::from_secs(30);
 
         info!(
             "⏱️ Running mining test for {} seconds",

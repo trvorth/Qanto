@@ -51,7 +51,7 @@ impl MockPoW {
 
 #[tokio::test]
 async fn test_height_parent_selection_and_balance() {
-    let _ = tracing_subscriber::fmt::try_init();
+    qanto::init_test_tracing();
 
     // Storage setup
     let temp_dir = std::env::temp_dir().join("qanto_test_height_balance");
@@ -64,8 +64,9 @@ async fn test_height_parent_selection_and_balance() {
         wal_enabled: true,
         sync_writes: false,
         cache_size: 1024 * 1024 * 10,
-        compaction_threshold: 1000.0,
+        compaction_threshold: 1000,
         max_open_files: 100,
+        ..StorageConfig::default()
     };
     let storage = QantoStorage::new(storage_config).unwrap();
 
@@ -124,6 +125,7 @@ async fn test_height_parent_selection_and_balance() {
             0,
             &Arc::new(miner.clone()),
             None,
+            None,
         )
         .await
         .unwrap();
@@ -151,7 +153,15 @@ async fn test_height_parent_selection_and_balance() {
         signature: sig1.as_bytes().to_vec(),
     };
 
-    dag_arc.add_block(block1.clone(), &utxos_arc).await.unwrap();
+    dag_arc
+        .add_block(
+            block1.clone(),
+            &utxos_arc,
+            Some(&mempool_arc),
+            Some(&miner_address),
+        )
+        .await
+        .unwrap();
 
     // After adding block1, fast tips must reflect block1.id
     let fast_tips_after_b1 = dag_arc.get_fast_tips(0).await.unwrap();
@@ -170,6 +180,7 @@ async fn test_height_parent_selection_and_balance() {
             &utxos_arc,
             0,
             &Arc::new(miner.clone()),
+            None,
             None,
         )
         .await
@@ -206,7 +217,15 @@ async fn test_height_parent_selection_and_balance() {
         signature: sig2.as_bytes().to_vec(),
     };
 
-    dag_arc.add_block(block2.clone(), &utxos_arc).await.unwrap();
+    dag_arc
+        .add_block(
+            block2.clone(),
+            &utxos_arc,
+            Some(&mempool_arc),
+            Some(&miner_address),
+        )
+        .await
+        .unwrap();
 
     // Validate latest tip and height progression again
     let fast_tips_after_b2 = dag_arc.get_fast_tips(0).await.unwrap();

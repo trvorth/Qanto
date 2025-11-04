@@ -209,6 +209,7 @@ impl SoloProducer {
                 chain_id_to_mine,
                 miner,
                 homomorphic_public_key,
+                None,
             )
             .await
         {
@@ -379,7 +380,16 @@ impl SoloProducer {
                 MAX_ADD_RETRIES
             );
 
-            match self.dag.add_block(mined_block.clone(), utxos).await {
+            match self
+                .dag
+                .add_block(
+                    mined_block.clone(),
+                    utxos,
+                    Some(mempool),
+                    mined_block.reservation_miner_id.as_deref(),
+                )
+                .await
+            {
                 Ok(true) => {
                     let new_block_count = self.dag.get_block_count().await;
                     info!(
@@ -437,7 +447,7 @@ impl SoloProducer {
                 Ok(false) => {
                     let final_block_count = self.dag.get_block_count().await;
                     warn!(
-                        "⚠️ Block {} already exists or was rejected (attempt {}/{}). Block count: {} -> {}",
+                        "⚠️ Block {} already exists or was rejected (attempt {}/{})\nBlock count: {} -> {}",
                         block_id, add_retry_count + 1, MAX_ADD_RETRIES, current_block_count, final_block_count
                     );
 
@@ -449,6 +459,12 @@ impl SoloProducer {
                     } else {
                         error!("❌ Block {} was rejected but doesn't exist in DAG! This indicates a validation failure.", block_id);
                     }
+
+                    if let Some(miner_id) = mined_block.reservation_miner_id.as_deref() {
+                        let mut guard = mempool.write().await;
+                        guard.release_reserved_transactions(miner_id);
+                        info!("Released reserved transactions for miner: {}", miner_id);
+                    }
                     break;
                 }
                 Err(e) => {
@@ -458,6 +474,14 @@ impl SoloProducer {
                             "SOLO MINER: Failed to add block after {} retries: {}",
                             MAX_ADD_RETRIES, e
                         );
+                        if let Some(miner_id) = mined_block.reservation_miner_id.as_deref() {
+                            let mut guard = mempool.write().await;
+                            guard.release_reserved_transactions(miner_id);
+                            warn!(
+                                "Released reserved transactions after failure for miner: {}",
+                                miner_id
+                            );
+                        }
                         return Err(e);
                     }
 
@@ -502,15 +526,23 @@ mod tests {
 
     fn create_test_dag() -> Arc<QantoDAG> {
         let storage_config = StorageConfig {
-            data_dir: std::path::PathBuf::from("/tmp/test_qanto_solo_producer_unit"),
+            data_dir: std::env::temp_dir().join(format!(
+                "test_qanto_solo_producer_unit_{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            )),
             max_file_size: 1024 * 1024,
             compression_enabled: false,
             encryption_enabled: false,
             wal_enabled: false,
             sync_writes: false,
             cache_size: 1024,
-            compaction_threshold: 100.0,
+            compaction_threshold: 100,
             max_open_files: 10,
+            ..StorageConfig::default()
         };
 
         let storage = QantoStorage::new(storage_config).expect("Failed to create storage");

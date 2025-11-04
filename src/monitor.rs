@@ -65,6 +65,8 @@ pub async fn run() {
         connection_timeout: Duration::from_secs(10),
         heartbeat_interval: Duration::from_secs(30),
         enable_encryption: true,
+        // Compression settings: use defaults unless explicitly configured
+        ..Default::default()
     };
 
     let mut p2p_node = match QantoP2P::new(p2p_config) {

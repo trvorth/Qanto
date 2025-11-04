@@ -22,7 +22,7 @@
 
 use crate::adaptive_mining::AdaptiveMiningLoop;
 use crate::analytics_dashboard::{AnalyticsDashboard, DashboardConfig};
-use crate::block_producer::{BlockProducer, DecoupledProducer, SoloProducer};
+use crate::block_producer::DecoupledProducer;
 use crate::config::{Config, ConfigError};
 use crate::elite_mempool::EliteMempool;
 use crate::graphql_server::{create_graphql_router, create_graphql_schema, GraphQLContext};
@@ -43,6 +43,7 @@ use crate::transaction::Transaction;
 use crate::types::UTXO;
 use crate::wallet::Wallet;
 use crate::websocket_server::{create_websocket_router, WebSocketServerState};
+use qanto_core::balance_stream::BalanceBroadcaster;
 use axum::{
     body::Body,
     extract::{Path as AxumPath, State, State as MiddlewareState},
@@ -306,10 +307,19 @@ impl Node {
             compression_enabled: true,
             encryption_enabled: true,
             max_file_size: 1024 * 1024 * 50, // 50MB max file size
-            compaction_threshold: 0.7,
+            compaction_threshold: 1,         // Changed to usize
             wal_enabled: true,
             sync_writes: true,
             max_open_files: 1000,
+            memtable_size: 1024 * 1024 * 16,    // 16MB memtable
+            write_buffer_size: 1024 * 1024 * 4, // 4MB write buffer
+            batch_size: 1000,                   // Batch size for writes
+            parallel_writers: 4,                // Number of parallel writers
+            enable_write_batching: true,
+            enable_bloom_filters: true,
+            enable_async_io: true,
+            sync_interval: Duration::from_millis(100),
+            compression_level: 3,
         };
         let db = QantoStorage::new(storage_config)?;
         info!("Qanto native storage opened successfully");
@@ -516,7 +526,9 @@ impl Node {
                             info!("\n{}", block);
                             debug!("P2P received BroadcastBlock command for block {}", block.id);
 
-                            let add_result = dag_clone.add_block(block.clone(), &utxos_clone).await;
+                            let add_result = dag_clone
+                                .add_block(block.clone(), &utxos_clone, None, None)
+                                .await;
 
                             match add_result {
                                 Ok(true) => {
@@ -574,6 +586,7 @@ impl Node {
                                 let mut utxos_writer = utxos_clone.write().await;
                                 let initial_utxo_count = utxos_writer.len();
                                 utxos_writer.extend(utxos);
+
                                 info!(
                                     "UTXO set updated with {} new entries from sync.",
                                     utxos_writer.len() - initial_utxo_count
@@ -586,7 +599,7 @@ impl Node {
                                 let mut added_count = 0;
                                 let mut failed_count = 0;
                                 for b in sorted_blocks {
-                                    match dag_clone.add_block(b, &utxos_clone).await {
+                                    match dag_clone.add_block(b, &utxos_clone, None, None).await {
                                         Ok(true) => added_count += 1,
                                         Ok(false) => { /* block already exists, not an error */ }
                                         Err(e) => {
@@ -684,254 +697,61 @@ impl Node {
             })
             .await?;
 
-        // --- P2P Server / Solo Miner Task ---
-        // If peers are configured, start the P2P server. Otherwise, run in solo mining mode.
-        if !self.config.peers.is_empty() {
-            info!("Peers detected in config, initializing P2P server task...");
-            let p2p_dag_clone = self.dag.clone();
-            let p2p_mempool_clone = self.mempool.clone();
-            let p2p_utxos_clone = self.utxos.clone();
-            let p2p_proposals_clone = self.proposals.clone();
-            let p2p_command_sender_clone = tx_p2p_commands.clone();
-            let p2p_identity_keypair_clone = self.p2p_identity_keypair.clone();
-            let p2p_listen_address_config_clone = self.config.p2p_address.clone();
-            let p2p_initial_peers_config_clone = self.config.peers.clone();
-            let p2p_settings_clone = self.config.p2p.clone();
-            let (node_signing_key, node_public_key) = self.wallet.get_keypair()?;
-            let peer_cache_path_clone = self.peer_cache_path.clone();
-            let network_id_clone = self.config.network_id.clone();
-
-            let p2p_task_fut = async move {
-                let mut attempts = 0;
-                // Retry loop for P2P server initialization with exponential backoff.
-                let mut p2p_server = loop {
-                    let p2p_config = P2PConfig {
-                        topic_prefix: &network_id_clone,
-                        listen_addresses: vec![p2p_listen_address_config_clone.clone()],
-                        initial_peers: p2p_initial_peers_config_clone.clone(),
-                        dag: p2p_dag_clone.clone(),
-                        mempool: p2p_mempool_clone.clone(),
-                        utxos: p2p_utxos_clone.clone(),
-                        proposals: p2p_proposals_clone.clone(),
-                        local_keypair: p2p_identity_keypair_clone.clone(),
-                        p2p_settings: p2p_settings_clone.clone(),
-                        node_qr_sk: &node_signing_key,
-                        node_qr_pk: &node_public_key,
-                        peer_cache_path: peer_cache_path_clone.clone(),
-                    };
-                    info!(
-                        "Attempting to initialize P2P server (attempt {})...",
-                        attempts + 1
-                    );
-                    match timeout(
-                        Duration::from_secs(15),
-                        P2PServer::new(p2p_config, p2p_command_sender_clone.clone()),
-                    )
-                    .await
-                    {
-                        Ok(Ok(server)) => {
-                            info!("P2P server initialized successfully.");
-                            break server;
-                        }
-                        Ok(Err(e)) => {
-                            warn!("P2P server failed to initialize: {e}.");
-                        }
-                        Err(_) => {
-                            warn!("P2P server initialization timed out.");
-                        }
-                    }
-                    attempts += 1;
-                    let backoff_duration = Duration::from_secs(2u64.pow(attempts.min(6)));
-                    warn!("Retrying P2P initialization in {:?}", backoff_duration);
-                    tokio::time::sleep(backoff_duration).await;
-                };
-
-                // Request state from peers on startup to sync the DAG.
-                if !p2p_initial_peers_config_clone.is_empty() {
-                    if let Err(e) = p2p_command_sender_clone
-                        .send(P2PCommand::RequestState)
-                        .await
-                    {
-                        error!("Failed to send initial RequestState P2P command: {e}");
-                    }
-                }
-
-                // Run the P2P server's event loop.
-                let (_p2p_tx, p2p_rx) = mpsc::channel::<P2PCommand>(100);
-                p2p_server.run(p2p_rx).await.map_err(|e| anyhow::anyhow!("P2P server error: {}", e))
-            };
-            let _p2p_task_handle = join_set.spawn(p2p_task_fut);
-
-            // Register the P2P task with resource cleanup
-            self.resource_cleanup
-                .register_task(|_token| async move {
-                    // Note: p2p_task_handle is an AbortHandle, not awaitable
-                    // The task will be aborted when the cancellation token is triggered
-                    Ok(())
-                })
-                .await?;
-        } else if self.config.mining_enabled {
-            if self.config.adaptive_mining_enabled {
-                info!("No peers found. Running in single-node mode. Spawning adaptive miner...");
-
-                // Create adaptive mining configuration
-                let adaptive_config = crate::adaptive_mining::TestnetMiningConfig::default();
-
-                // Create mining metrics for adaptive mining
-                let mining_metrics = Arc::new(crate::mining_metrics::MiningMetrics::new());
-
-                // Create adaptive mining loop
-                let mut adaptive_loop = AdaptiveMiningLoop::new(
-                    adaptive_config,
-                    None, // diagnostics
-                    mining_metrics,
-                );
-
-                // Clone necessary components for the adaptive mining task
-                let adaptive_dag_clone = self.dag.clone();
-                let adaptive_wallet_clone = self.wallet.clone();
-                let adaptive_miner_clone = self.miner.clone();
-                let adaptive_mempool_clone = self.mempool.clone();
-                let adaptive_utxos_clone = self.utxos.clone();
-                let adaptive_shutdown_token = shutdown_token.clone();
-
-                let _adaptive_miner_task_handle = join_set.spawn(async move {
-                    debug!("[DEBUG] Spawning adaptive mining task");
-                    if let Err(e) = adaptive_loop
-                        .run_adaptive_mining_loop(
-                            adaptive_dag_clone,
-                            adaptive_wallet_clone,
-                            adaptive_miner_clone,
-                            adaptive_mempool_clone,
-                            adaptive_utxos_clone,
-                            adaptive_shutdown_token,
-                        )
-                        .await
-                    {
-                        error!("Adaptive mining loop failed: {}", e);
-                        return Err(anyhow::anyhow!("Adaptive mining loop failed: {}", e));
-                    }
-                    Ok(())
-                });
-
-                // Register the adaptive miner task with resource cleanup
-                self.resource_cleanup
-                    .register_task(|_token| async move {
-                        // Note: adaptive_miner_task_handle is an AbortHandle, not awaitable
-                        // The task will be aborted when the cancellation token is triggered
-                        Ok(())
-                    })
-                    .await?;
-            } else {
-                info!("No peers found. Running in single-node mode. Spawning solo miner...");
-                
-                // Capture values before moving into async closure
-                let producer_type = self.config.producer_type.as_deref().unwrap_or("solo").to_string();
-                let target_block_time = self.config.target_block_time;
-                
-                // Clone all Arc references outside the spawn closure
-                let dag = self.dag.clone();
-                let wallet = self.wallet.clone();
-                let mempool = self.mempool.clone();
-                let utxos = self.utxos.clone();
-                let miner = self.miner.clone();
-                let shutdown_token = shutdown_token.clone();
-                
-                let _solo_miner_task_handle = join_set.spawn(async move {
-                    debug!("[DEBUG] Spawning mining task");
-                    
-                    // Calculate mining interval inside the async closure using captured value
-                    #[cfg(feature = "performance-test")]
-                    let mining_interval_secs = if target_block_time < 1000 {
-                        // For performance testing with sub-second intervals, use at least 1 second
-                        // but log the actual target for reference
-                        info!("Performance test mode: target_block_time {} ms, using 1 second mining interval", 
-                              target_block_time);
-                        1
-                    } else {
-                        (target_block_time as f64 / 1000.0) as u64
-                    };
-
-                    #[cfg(not(feature = "performance-test"))]
-                    let mining_interval_secs = {
-                        // Calculate mining interval from target_block_time without forcing minimum
-                        // Allow sub-second intervals for high-performance mining (e.g., 200ms target)
-                        let target_secs = target_block_time as f64 / 1000.0;
-                        if target_secs < 1.0 {
-                            // For sub-second intervals, use 0 to indicate millisecond precision
-                            0
-                        } else {
-                            target_secs as u64
-                        }
-                    };
-
-                    info!(
-                        "Using mining interval: {} seconds (from target_block_time: {} ms)",
-                        mining_interval_secs, target_block_time
-                    );
-                    
-                    let result = match producer_type.as_str() {
-                        "decoupled" => {
-                            info!("Starting DecoupledProducer for high-throughput mining");
-                            let block_creation_interval_ms = if mining_interval_secs == 0 {
-                                // For sub-second intervals, use target_block_time directly
-                                target_block_time
-                            } else {
-                                // Convert seconds to milliseconds
-                                mining_interval_secs * 1000
-                            };
-                            let decoupled_producer = DecoupledProducer::new(
-                                dag,
-                                wallet,
-                                mempool,
-                                utxos,
-                                miner,
-                                block_creation_interval_ms,
-                                4,    // mining_workers
-                                100,  // candidate_buffer_size
-                                50,   // mined_buffer_size
-                                shutdown_token,
-                            );
-                            decoupled_producer.run().await
-                        }
-                        "solo" | _ => {
-                            info!("Starting SoloProducer for traditional mining");
-                            let solo_producer = SoloProducer::new(
-                                dag,
-                                wallet,
-                                mempool,
-                                utxos,
-                                miner,
-                                mining_interval_secs,
-                                shutdown_token,
-                            );
-                            solo_producer.run().await
-                        }
-                    };
-                    
-                    // Convert to a simple error type that doesn't capture self
-                    result.map_err(|e| {
-                        let error_msg = format!("DAG error: {}", e);
-                        // Create a simple anyhow error instead of NodeError
-                        anyhow::anyhow!(error_msg)
-                    })
-                });
-            }
-        }
-
         // --- WebSocket Server State ---
         let dag_for_websocket = self.dag.clone();
         let saga_for_websocket = self.saga_pallet.clone();
         let analytics_for_websocket = self.analytics.clone();
-        
+
         let websocket_state = Arc::new(WebSocketServerState::new(
             dag_for_websocket.clone(),
             saga_for_websocket,
             analytics_for_websocket,
         ));
+        // Balance events flow via BalanceBroadcaster bridge; no direct DAG → WS attachment.
+
+        // Initialize high-throughput BalanceBroadcaster and attach to DAG
+        // Capacity defaults to 65,536 (min 1,024 enforced in BalanceBroadcaster::new)
+        let balance_broadcaster = Arc::new(BalanceBroadcaster::new(1 << 16));
         dag_for_websocket
-            .attach_balance_event_sender(websocket_state.balance_sender.clone())
+            .attach_balance_broadcaster(balance_broadcaster.clone())
             .await;
+
+        // Bridge BalanceBroadcaster → WebSocket balance channel
+        // Subscribes to high-throughput core updates and forwards them to WS/RPC.
+        {
+            let ws_state = websocket_state.clone();
+            let bb = balance_broadcaster.clone();
+            let balance_bridge_task = async move {
+                let mut rx = bb.subscribe();
+                loop {
+                    match rx.recv().await {
+                        Ok(update) => {
+                            // Clamp u128 base units to u64 for WebSocket/RPC consumers.
+                            let base_units = (update.balance.min(u128::from(u64::MAX))) as u64;
+                            // Forward using existing helper (computes seconds timestamp).
+                            ws_state
+                                .broadcast_balance_update(update.address.clone(), base_units)
+                                .await;
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                            // Skip lagged frames; next recv will get latest
+                            continue;
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                            // Broadcaster dropped; exit bridge task
+                            break;
+                        }
+                    }
+                }
+                #[allow(unreachable_code)]
+                Ok(())
+            };
+            let _balance_bridge_task_handle = join_set.spawn(balance_bridge_task);
+            // Register bridge task for cleanup symmetry
+            self.resource_cleanup
+                .register_task(|_token| async move { Ok(()) })
+                .await?;
+        }
 
         // --- WebSocket Broadcasting Task ---
         // This task monitors DAG and mempool changes and broadcasts updates to WebSocket clients
@@ -939,7 +759,7 @@ impl Node {
         let mempool_for_broadcast = self.mempool.clone();
         let utxos_for_broadcast = self.utxos.clone();
         let saga_for_broadcast = self.saga_pallet.clone();
-        
+
         let websocket_broadcast_task = {
             let ws_state = websocket_state.clone();
 
@@ -1047,6 +867,234 @@ impl Node {
                 Ok(())
             })
             .await?;
+
+        // --- P2P Server / Solo Miner Task ---
+        // If peers are configured, start the P2P server. Otherwise, run in solo mining mode.
+        if !self.config.peers.is_empty() {
+            info!("Peers detected in config, initializing P2P server task...");
+            let p2p_dag_clone = self.dag.clone();
+            let p2p_mempool_clone = self.mempool.clone();
+            let p2p_utxos_clone = self.utxos.clone();
+            let p2p_proposals_clone = self.proposals.clone();
+            let p2p_command_sender_clone = tx_p2p_commands.clone();
+            let p2p_identity_keypair_clone = self.p2p_identity_keypair.clone();
+            let p2p_listen_address_config_clone = self.config.p2p_address.clone();
+            let p2p_initial_peers_config_clone = self.config.peers.clone();
+            let p2p_settings_clone = self.config.p2p.clone();
+            let (node_signing_key, node_public_key) = self.wallet.get_keypair()?;
+            let peer_cache_path_clone = self.peer_cache_path.clone();
+            let network_id_clone = self.config.network_id.clone();
+
+            let p2p_task_fut = async move {
+                let mut attempts = 0;
+                // Retry loop for P2P server initialization with exponential backoff.
+                let mut p2p_server = loop {
+                    let p2p_config = P2PConfig {
+                        topic_prefix: &network_id_clone,
+                        listen_addresses: vec![p2p_listen_address_config_clone.clone()],
+                        initial_peers: p2p_initial_peers_config_clone.clone(),
+                        dag: p2p_dag_clone.clone(),
+                        mempool: p2p_mempool_clone.clone(),
+                        utxos: p2p_utxos_clone.clone(),
+                        proposals: p2p_proposals_clone.clone(),
+                        local_keypair: p2p_identity_keypair_clone.clone(),
+                        p2p_settings: p2p_settings_clone.clone(),
+                        node_qr_sk: &node_signing_key,
+                        node_qr_pk: &node_public_key,
+                        peer_cache_path: peer_cache_path_clone.clone(),
+                    };
+                    info!(
+                        "Attempting to initialize P2P server (attempt {})...",
+                        attempts + 1
+                    );
+                    match timeout(
+                        Duration::from_secs(15),
+                        P2PServer::new(p2p_config, p2p_command_sender_clone.clone()),
+                    )
+                    .await
+                    {
+                        Ok(Ok(server)) => {
+                            info!("P2P server initialized successfully.");
+                            break server;
+                        }
+                        Ok(Err(e)) => {
+                            warn!("P2P server failed to initialize: {e}.");
+                        }
+                        Err(_) => {
+                            warn!("P2P server initialization timed out.");
+                        }
+                    }
+                    attempts += 1;
+                    let backoff_duration = Duration::from_secs(2u64.pow(attempts.min(6)));
+                    warn!("Retrying P2P initialization in {:?}", backoff_duration);
+                    tokio::time::sleep(backoff_duration).await;
+                };
+
+                // Request state from peers on startup to sync the DAG.
+                if !p2p_initial_peers_config_clone.is_empty() {
+                    if let Err(e) = p2p_command_sender_clone
+                        .send(P2PCommand::RequestState)
+                        .await
+                    {
+                        error!("Failed to send initial RequestState P2P command: {e}");
+                    }
+                }
+
+                // Run the P2P server's event loop.
+                let (_p2p_tx, p2p_rx) = mpsc::channel::<P2PCommand>(100);
+                p2p_server
+                    .run(p2p_rx)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("P2P server error: {e}"))
+            };
+            let _p2p_task_handle = join_set.spawn(p2p_task_fut);
+
+            // Register the P2P task with resource cleanup
+            self.resource_cleanup
+                .register_task(|_token| async move {
+                    // Note: p2p_task_handle is an AbortHandle, not awaitable
+                    // The task will be aborted when the cancellation token is triggered
+                    Ok(())
+                })
+                .await?;
+        } else if self.config.mining_enabled {
+            if self.config.adaptive_mining_enabled {
+                info!("No peers found. Running in single-node mode. Spawning adaptive miner...");
+
+                // Create adaptive mining configuration
+                let adaptive_config = crate::adaptive_mining::TestnetMiningConfig::default();
+
+                // Create mining metrics for adaptive mining
+                let mining_metrics = Arc::new(crate::mining_metrics::MiningMetrics::new());
+
+                // Create adaptive mining loop
+                let mut adaptive_loop = AdaptiveMiningLoop::new(
+                    adaptive_config,
+                    None, // diagnostics
+                    mining_metrics,
+                );
+
+                // Clone necessary components for the adaptive mining task
+                let adaptive_dag_clone = self.dag.clone();
+                let adaptive_wallet_clone = self.wallet.clone();
+                let adaptive_miner_clone = self.miner.clone();
+                let adaptive_mempool_clone = self.mempool.clone();
+                let adaptive_utxos_clone = self.utxos.clone();
+                let adaptive_shutdown_token = shutdown_token.clone();
+
+                let _adaptive_miner_task_handle = join_set.spawn(async move {
+                    debug!("[DEBUG] Spawning adaptive mining task");
+                    if let Err(e) = adaptive_loop
+                        .run_adaptive_mining_loop(
+                            adaptive_dag_clone,
+                            adaptive_wallet_clone,
+                            adaptive_miner_clone,
+                            adaptive_mempool_clone,
+                            adaptive_utxos_clone,
+                            adaptive_shutdown_token,
+                        )
+                        .await
+                    {
+                        error!("Adaptive mining loop failed: {e}");
+                        return Err(anyhow::anyhow!("Adaptive mining loop failed: {e}"));
+                    }
+                    Ok(())
+                });
+
+                // Register the adaptive miner task with resource cleanup
+                self.resource_cleanup
+                    .register_task(|_token| async move {
+                        // Note: adaptive_miner_task_handle is an AbortHandle, not awaitable
+                        // The task will be aborted when the cancellation token is triggered
+                        Ok(())
+                    })
+                    .await?;
+            } else {
+                info!("No peers found. Running in single-node mode. Spawning solo miner...");
+
+                // Capture values before moving into async closure
+                let _producer_type = self
+                    .config
+                    .producer_type
+                    .as_deref()
+                    .unwrap_or("solo")
+                    .to_string();
+                let target_block_time = self.config.target_block_time;
+
+                // Clone all Arc references outside the spawn closure
+                let dag = self.dag.clone();
+                let wallet = self.wallet.clone();
+                let mempool = self.mempool.clone();
+                let utxos = self.utxos.clone();
+                let miner = self.miner.clone();
+                let shutdown_token = shutdown_token.clone();
+                let logging_config = self.config.logging.clone();
+
+                let _solo_miner_task_handle = join_set.spawn(async move {
+                    debug!("[DEBUG] Spawning mining task");
+
+                    // Calculate mining interval inside the async closure using captured value
+                    #[cfg(feature = "performance-test")]
+                    let mining_interval_secs = if target_block_time < 1000 {
+                        // For performance testing with sub-second intervals, use at least 1 second
+                        // but log the actual target for reference
+                        info!("Performance test mode: target_block_time {} ms, using 1 second mining interval", 
+                              target_block_time);
+                        1
+                    } else {
+                        (target_block_time as f64 / 1000.0) as u64
+                    };
+
+                    #[cfg(not(feature = "performance-test"))]
+                    let mining_interval_secs = {
+                        // Calculate mining interval from target_block_time without forcing minimum
+                        // Allow sub-second intervals for high-performance mining (e.g., 200ms target)
+                        let target_secs = target_block_time as f64 / 1000.0;
+                        if target_secs < 1.0 {
+                            // For sub-second intervals, use 0 to indicate millisecond precision
+                            0
+                        } else {
+                            target_secs as u64
+                        }
+                    };
+
+                    info!(
+                        "Using mining interval: {} seconds (from target_block_time: {} ms)",
+                        mining_interval_secs, target_block_time
+                    );
+
+                    // Always use DecoupledProducer for block production
+                    let block_creation_interval_ms = if mining_interval_secs == 0 {
+                        // For sub-second intervals, use target_block_time directly
+                        target_block_time
+                    } else {
+                        // Convert seconds to milliseconds
+                        mining_interval_secs * 1000
+                    };
+                    info!("Starting DecoupledProducer for high-throughput mining (forced)");
+                    let decoupled_producer = DecoupledProducer::new(
+                        dag,
+                        wallet,
+                        mempool,
+                        utxos,
+                        miner,
+                        block_creation_interval_ms,
+                        4,    // mining_workers
+                        100,  // candidate_buffer_size
+                        50,   // mined_buffer_size
+                        logging_config,
+                        shutdown_token,
+                    );
+                    let result = decoupled_producer.run().await;
+                    // Convert to a simple error type that doesn't capture self
+                    result.map_err(|e| {
+                        let error_msg = format!("DAG error: {e}");
+                        // Create a simple anyhow error instead of NodeError
+                        anyhow::anyhow!(error_msg)
+                    })
+                });
+            }
+        }
 
         // --- Prepare API Server Components ---
         // Clone all necessary data outside the async block to avoid lifetime issues
@@ -1182,7 +1230,7 @@ impl Node {
                         }
 
                         warn!("Node shutdown initiated by API server failure.");
-                        return Err(e.into());
+                        return Err(e);
                     }
                 }
             },
@@ -1199,6 +1247,7 @@ impl Node {
                     self.utxos.clone(),
                     self.mempool.clone(),
                     tx_p2p_commands.clone(),
+                    websocket_state.balance_sender.clone(),
                 ));
 
                 match qanto_rpc::start(rpc_addr, backend).await {
@@ -1219,7 +1268,7 @@ impl Node {
                         }
 
                         warn!("Node shutdown initiated by RPC server failure.");
-                        return Err(e.into());
+                        return Err(e);
                     }
                 }
             },
@@ -1266,6 +1315,25 @@ impl Node {
         // Gracefully shut down all spawned tasks.
         join_set.shutdown().await;
         info!("Node shutdown complete.");
+        Ok(())
+    }
+
+    /// Gracefully shut down node services and flush DAG persistence.
+    pub async fn shutdown(&self) -> Result<(), NodeError> {
+        info!("Node shutdown requested");
+
+        // Signal resource cleanup manager
+        self.resource_cleanup.request_shutdown();
+
+        // Flush DAG persistence and storage
+        self.dag.shutdown().await.map_err(NodeError::from)?;
+
+        // Wait for graceful shutdown with timeout for managed tasks
+        if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
+            warn!("Graceful shutdown failed: {}, forcing shutdown", e);
+        }
+
+        info!("Node shutdown complete");
         Ok(())
     }
 

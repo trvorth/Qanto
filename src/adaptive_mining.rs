@@ -322,15 +322,39 @@ impl AdaptiveMiningLoop {
                         continue;
                     }
 
-                    // Check if we should mine based on mempool state
-                    let should_mine = {
+                    // Decide whether to mine using mempool state OR heartbeat cadence
+                    // Broadening sliding-window usage: when mempool is empty, mine a heartbeat
+                    // block once the average target interval has elapsed since last success.
+                    let (mempool_size, allow_heartbeat) = {
                         let mempool_guard = mempool.read().await;
-                        mempool_guard.len().await > 0
+                        let mempool_size = mempool_guard.len().await;
+
+                        // Use sliding-window average if available; fallback to configured target
+                        let avg_interval_ms = if !self.state.recent_block_times.is_empty() {
+                            self.calculate_sliding_window_average() as u64
+                        } else {
+                            self.config.target_block_time_ms
+                        };
+
+                        let since_last_block_ms = self
+                            .state
+                            .last_block_time
+                            .elapsed()
+                            .as_millis() as u64;
+
+                        // Heartbeat mining is allowed when mempool is empty and the interval has elapsed
+                        let allow_heartbeat = mempool_size == 0 && since_last_block_ms >= avg_interval_ms;
+                        (mempool_size, allow_heartbeat)
                     };
 
-                    if !should_mine {
+                    if mempool_size == 0 && !allow_heartbeat {
+                        // Nothing to mine and not time for a heartbeat candidate yet
                         tokio::task::yield_now().await;
                         continue;
+                    }
+
+                    if mempool_size == 0 && allow_heartbeat {
+                        debug!("⏱️  Mining heartbeat candidate (coinbase-only) based on sliding-window interval");
                     }
 
                     // Log circuit breaker state periodically
@@ -516,6 +540,7 @@ impl AdaptiveMiningLoop {
                 chain_id,
                 miner,
                 None, // homomorphic_public_key
+                None, // parents_override
             )
             .await?;
 
@@ -664,7 +689,10 @@ impl AdaptiveMiningLoop {
         let mut add_retry_count = 0;
 
         while add_retry_count < MAX_ADD_RETRIES {
-            match qanto_dag.add_block(mined_block.clone(), utxos).await {
+            match qanto_dag
+                .add_block(mined_block.clone(), utxos, Some(mempool), None)
+                .await
+            {
                 Ok(true) => {
                     info!("✅ Block #{} successfully added to DAG", block_height);
                     break;
@@ -803,11 +831,13 @@ impl AdaptiveMiningLoop {
         let stall_threshold = Duration::from_secs(self.config.stall_threshold_secs);
         let time_since_last_block = now.duration_since(self.state.last_block_time);
 
-        // Calculate sliding window average if we have enough history
-        let avg_block_time_ms = if self.state.recent_block_times.len() >= 3 {
+        // Calculate sliding window average if we have any history; fallback only when empty
+        let avg_block_time_ms = if !self.state.recent_block_times.is_empty() {
+            // Use available window (works for 1..=window_size entries)
             self.calculate_sliding_window_average()
         } else {
-            // Fallback to simple heuristic for insufficient history
+            // Fallback heuristic: use time since last block when no history
+            // This avoids aggressive swings at startup and respects target timing later
             time_since_last_block.as_millis() as f64
         };
 

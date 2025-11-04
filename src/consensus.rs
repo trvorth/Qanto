@@ -113,6 +113,16 @@ impl Consensus {
         // It secures the network against spam and ensures that computational effort was expended.
         self.validate_proof_of_work(block).await?;
 
+        // --- Rule 2.1: Optional Finality Proof Check ---
+        // If a block includes a `finality_proof`, verify it matches the canonical PoW hash.
+        // A mismatch is logged as a warning but does NOT invalidate the block.
+        if let Err(e) = self.validate_finality_proof_optional(block) {
+            warn!(
+                "Finality proof warning for block {}: {}. Block remains valid due to PoW.",
+                block.id, e
+            );
+        }
+
         // --- Rule 3: Transaction Validity (MEMORY OPTIMIZED: Shared Reference Processing) ---
         // Ensures every transaction in the block is valid using memory-efficient parallel verification.
         // MEMORY OPTIMIZATION: Use Arc reference instead of cloning the entire UTXO set.
@@ -274,6 +284,24 @@ impl Consensus {
             msg.push_str(" is below the nominal threshold of ");
             msg.push_str(&min_stake_for_full_confidence.to_string());
             return Err(ConsensusError::ProofOfStakeFailed(msg));
+        }
+        Ok(())
+    }
+
+    /// Optional finality proof validation.
+    /// If present, the `finality_proof` must match the canonical PoW hash string.
+    /// Any mismatch is reported as an error here, but callers should treat it as a warning.
+    fn validate_finality_proof_optional(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
+        if let Some(ref proof) = block.finality_proof {
+            let expected = format!("{}", block.hash_for_pow());
+            if &expected != proof {
+                let mut msg = String::with_capacity(96);
+                msg.push_str("Finality proof mismatch. Provided: ");
+                msg.push_str(proof);
+                msg.push_str(", Expected: ");
+                msg.push_str(&expected);
+                return Err(ConsensusError::InvalidBlockStructure(msg));
+            }
         }
         Ok(())
     }
