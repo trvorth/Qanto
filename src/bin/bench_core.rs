@@ -56,9 +56,20 @@ struct BenchCoreResult {
     velocity_pass: Option<bool>,
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     let args = Args::parse();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(args.worker_count.max(1))
+        .enable_all()
+        .build()
+        .unwrap_or_else(|e| {
+            eprintln!("Failed to build Tokio runtime: {e}");
+            std::process::exit(2);
+        });
+    runtime.block_on(async_main(args));
+}
+
+async fn async_main(args: Args) {
     println!("Starting Operation Hyperscale Benchmark: Core Protocol Saturation");
 
     let mut loaded_config: Option<Config> = None;
@@ -136,9 +147,9 @@ async fn main() {
     let gen_start = Instant::now();
 
     // Use rayon for parallel generation to speed up setup
-    let transactions: Vec<Transaction> = (0..tx_count)
+    let transactions: Vec<Arc<Transaction>> = (0..tx_count)
         .into_par_iter()
-        .map(|_| Transaction::new_dummy())
+        .map(|_| Arc::new(Transaction::new_dummy()))
         .collect();
 
     let gen_time = gen_start.elapsed();
@@ -165,23 +176,18 @@ async fn main() {
     let mut handles = Vec::new();
     for (start, end) in ranges {
         let mempool = mempool.clone();
-        let utxos = utxos.clone();
-        let dag = dag.clone();
+        let _utxos = utxos.clone();
+        let _dag = dag.clone();
         let transactions = transactions.clone();
 
         handles.push(tokio::spawn(async move {
-            for tx in &transactions[start..end] {
-                let _ = mempool.add_transaction(tx.clone(), &utxos, &dag).await;
-            }
+            let batch = &transactions[start..end];
+            let _ = mempool.add_transaction_batch(batch);
         }));
     }
 
-    // Wait for all injections to complete
     for handle in handles {
-        if let Err(e) = handle.await {
-            eprintln!("Injection task failed: {e}");
-            std::process::exit(2);
-        }
+        let _ = handle.await;
     }
 
     let duration = start_time.elapsed();

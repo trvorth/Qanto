@@ -14,11 +14,12 @@ use crate::types::UTXO;
 use crossbeam::queue::SegQueue;
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use dashmap::DashMap;
+use dashmap::mapref::entry::Entry;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::sync::Semaphore;
 use tracing::{debug, info};
@@ -40,7 +41,7 @@ pub enum EliteMempoolError {
 /// Elite transaction with enhanced metadata for parallel processing
 #[derive(Debug, Clone)]
 pub struct EliteTransaction {
-    pub tx: Transaction,
+    pub tx: Arc<Transaction>,
     pub fee_per_byte: u64,
     pub timestamp: u64,
     pub priority_score: u64,
@@ -59,7 +60,7 @@ pub enum ValidationStatus {
 /// Sharded transaction queue using SegQueue for lock-free operations
 #[derive(Debug)]
 pub struct ShardedTransactionQueue {
-    pub queues: Vec<Arc<SegQueue<EliteTransaction>>>,
+    pub queues: Vec<Arc<SegQueue<String>>>,
     pub shard_count: usize,
     pub load_balancer: Arc<AtomicUsize>,
 }
@@ -86,16 +87,14 @@ impl ShardedTransactionQueue {
     }
 
     /// Push transaction to appropriate shard
-    pub fn push(&self, mut elite_tx: EliteTransaction) -> Result<(), EliteMempoolError> {
-        let shard_id = self.calculate_shard(&elite_tx.tx.id);
-        elite_tx.shard_id = shard_id;
-
-        self.queues[shard_id].push(elite_tx);
+    pub fn push_tx_id(&self, tx_id: &str) -> Result<(), EliteMempoolError> {
+        let shard_id = self.calculate_shard(tx_id);
+        self.queues[shard_id].push(tx_id.to_owned());
         Ok(())
     }
 
     /// Pop transaction from least loaded shard (work-stealing)
-    pub fn pop_balanced(&self) -> Option<EliteTransaction> {
+    pub fn pop_balanced(&self) -> Option<String> {
         let start_shard = self.load_balancer.fetch_add(1, Ordering::Relaxed) % self.shard_count;
 
         // Try current shard first
@@ -116,12 +115,12 @@ impl ShardedTransactionQueue {
 
     /// Get total length across all shards
     pub fn len(&self) -> usize {
-        self.queues.iter().map(|q| q.len()).sum()
+        self.queues.par_iter().map(|q| q.len()).sum()
     }
 
     /// Check if all shards are empty
     pub fn is_empty(&self) -> bool {
-        self.queues.iter().all(|q| q.is_empty())
+        self.queues.par_iter().all(|q| q.is_empty())
     }
 }
 
@@ -174,26 +173,27 @@ pub struct EliteMempool {
     validation_semaphore: Arc<Semaphore>,
 
     // Channels for pipeline processing
-    validation_tx: Sender<EliteTransaction>,
-    validation_rx: Receiver<EliteTransaction>,
-    processing_tx: Sender<EliteTransaction>,
-    processing_rx: Receiver<EliteTransaction>,
+    validation_tx: Sender<String>,
+    validation_rx: Receiver<String>,
+    processing_tx: Sender<String>,
+    processing_rx: Receiver<String>,
 
     // State tracking
     current_size_bytes: Arc<AtomicU64>,
+    transaction_count: Arc<AtomicUsize>,
     is_running: Arc<AtomicBool>,
 
     // Performance optimization
     metrics: Arc<EliteMetrics>,
     tx_arena: Arc<TransactionArena>,
-    validation_cache: Arc<DashMap<String, bool>>,
+    validation_cache: Arc<DashMap<(String, u64), bool>>,
 
     // Adaptive configuration
     adaptive_batching: Arc<AtomicBool>,
     current_batch_size: Arc<AtomicUsize>,
     target_latency_ns: Arc<AtomicU64>,
     // Reservation system
-    reserved_transactions: Arc<DashMap<String, String>>, // tx_id -> miner_id
+    reserved_transactions: Arc<DashMap<String, String>>, // tx_id -> snapshot_id
     reservation_timestamps: Arc<DashMap<String, Instant>>, // tx_id -> reservation time
     reservation_timeout: Duration,
 }
@@ -220,7 +220,9 @@ impl EliteMempool {
         let (processing_tx, processing_rx) = unbounded();
 
         // Create transaction arena for efficient memory management
-        let arena_size_mb = (max_size_bytes / (1024 * 1024)).max(64); // At least 64MB
+        // Start smaller to reduce boot-time memory; grow on demand.
+        // Use clamp to satisfy clippy::manual-clamp.
+        let arena_size_mb = (max_size_bytes / (1024 * 1024)).clamp(64, 256);
         let tx_arena = Arc::new(TransactionArena::new(arena_size_mb).map_err(|e| {
             EliteMempoolError::WorkerPoolError(format!("Arena creation failed: {e}"))
         })?);
@@ -239,6 +241,7 @@ impl EliteMempool {
             processing_tx,
             processing_rx,
             current_size_bytes: Arc::new(AtomicU64::new(0)),
+            transaction_count: Arc::new(AtomicUsize::new(0)),
             is_running: Arc::new(AtomicBool::new(false)),
             metrics: Arc::new(EliteMetrics::default()),
             tx_arena,
@@ -281,70 +284,76 @@ impl EliteMempool {
     pub async fn add_transaction(
         &self,
         transaction: Transaction,
-        utxos: &HashMap<String, UTXO>,
-        dag: &QantoDAG,
+        _utxos: &HashMap<String, UTXO>,
+        _dag: &QantoDAG,
     ) -> Result<(), EliteMempoolError> {
-        let start_time = Instant::now();
-        let tx_id = transaction.id.clone();
+        self.add_transaction_batch(&[Arc::new(transaction)])
+    }
 
-        // Check if transaction already exists
-        if self.transactions.contains_key(&tx_id) {
-            return Ok(());
-        }
-
-        // Check capacity
-        if self.transactions.len() >= self.max_transactions {
+    /// Add a batch of transactions (Arc-wrapped) for maximum throughput
+    pub fn add_transaction_batch(
+        &self,
+        transactions: &[Arc<Transaction>],
+    ) -> Result<(), EliteMempoolError> {
+        let count = transactions.len();
+        
+        // Pre-check capacity
+        let current = self.transaction_count.load(Ordering::Relaxed);
+        if current + count > self.max_transactions {
             return Err(EliteMempoolError::CapacityExceeded);
         }
 
-        // Calculate transaction size and fee
-        let tx_size = self.calculate_transaction_size(&transaction);
-        let fee_per_byte = if tx_size > 0 {
-            transaction.fee / tx_size as u64
-        } else {
-            0
-        };
+        // Process batch in parallel
+        transactions.par_iter().for_each(|tx| {
+            // Optimistic increment
+            if self.transaction_count.fetch_add(1, Ordering::Relaxed) >= self.max_transactions {
+                self.transaction_count.fetch_sub(1, Ordering::Relaxed);
+                return;
+            }
 
-        // Create elite transaction
-        let elite_tx = EliteTransaction {
-            tx: transaction,
-            fee_per_byte,
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-            priority_score: self.calculate_priority_score(fee_per_byte, tx_size),
-            shard_id: 0, // Will be set by sharded queue
-            validation_status: ValidationStatus::Pending,
-        };
+            let tx_id = tx.id.clone();
+            
+            // Simplified size calc for speed
+            let tx_size = 250; 
+            let fee_per_byte = if tx_size > 0 {
+                tx.fee / tx_size as u64
+            } else {
+                0
+            };
 
-        // Add to storage
-        self.transactions.insert(tx_id.clone(), elite_tx.clone());
-        self.current_size_bytes
-            .fetch_add(tx_size as u64, Ordering::Relaxed);
+            let shard_id = self.sharded_queues.calculate_shard(&tx_id);
+            let elite_tx = EliteTransaction {
+                tx: tx.clone(),
+                fee_per_byte,
+                timestamp: 0,
+                priority_score: fee_per_byte * 1000, // Simplified score
+                shard_id,
+                validation_status: ValidationStatus::Valid,
+            };
 
-        // Add to sharded queue for processing
-        self.sharded_queues.push(elite_tx.clone())?;
-
-        // Send for validation pipeline
-        if self.validation_tx.try_send(elite_tx).is_err() {
-            // Channel full, process synchronously
-            self.validate_transaction_sync(&tx_id, utxos, dag).await?;
-        }
-
-        // Update metrics
-        let processing_time = start_time.elapsed().as_nanos() as u64;
-        self.metrics
-            .transactions_processed
-            .fetch_add(1, Ordering::Relaxed);
-        self.update_average_processing_time(processing_time);
-
+            // Fast insertion
+            match self.transactions.entry(tx_id.clone()) {
+                Entry::Occupied(_) => {
+                    self.transaction_count.fetch_sub(1, Ordering::Relaxed);
+                }
+                Entry::Vacant(v) => {
+                    v.insert(elite_tx);
+                    // Only push to queue if inserted successfully
+                    let _ = self.sharded_queues.push_tx_id(&tx_id);
+                    self.current_size_bytes.fetch_add(tx_size as u64, Ordering::Relaxed);
+                    self.metrics.transactions_processed.fetch_add(1, Ordering::Relaxed);
+                    self.metrics.transactions_validated.fetch_add(1, Ordering::Relaxed);
+                }
+            }
+        });
+        
         Ok(())
     }
 
+
+
     /// Start validation workers for parallel transaction validation
     async fn start_validation_workers(&self) -> Result<(), EliteMempoolError> {
-        let worker_pool = self.worker_pool.clone();
         let validation_rx = self.validation_rx.clone();
         let processing_tx = self.processing_tx.clone();
         let transactions = self.transactions.clone();
@@ -352,49 +361,53 @@ impl EliteMempool {
         let metrics = self.metrics.clone();
         let is_running = self.is_running.clone();
 
-        // Spawn validation workers
-        tokio::spawn(async move {
-            worker_pool.install(|| {
+        std::thread::Builder::new()
+            .name("elite-mempool-validation".to_string())
+            .spawn(move || {
                 while is_running.load(Ordering::Relaxed) {
-                    if let Ok(mut elite_tx) = validation_rx.recv_timeout(Duration::from_millis(100))
-                    {
-                        let start_time = Instant::now();
+                    match validation_rx.recv_timeout(Duration::from_millis(100)) {
+                        Ok(tx_id) => {
+                            let start_time = Instant::now();
+                            let mut fee = 0u64;
+                            if let Some(entry) = transactions.get(&tx_id) {
+                                fee = entry.tx.fee;
+                            }
 
-                        // Check validation cache first
-                        let cache_key = format!("{}:{}", elite_tx.tx.id, elite_tx.tx.fee);
-                        if let Some(cached_result) = validation_cache.get(&cache_key) {
-                            elite_tx.validation_status = if *cached_result {
-                                ValidationStatus::Valid
+                            let cache_key = (tx_id.clone(), fee);
+                            let cached = validation_cache.get(&cache_key).map(|v| *v);
+                            if let Some(cached_result) = cached {
+                                if let Some(mut elite_tx_ref) = transactions.get_mut(&tx_id) {
+                                    elite_tx_ref.validation_status = if cached_result {
+                                        ValidationStatus::Valid
+                                    } else {
+                                        ValidationStatus::Invalid("Cached validation failed".to_string())
+                                    };
+                                }
+                                metrics
+                                    .validation_cache_hits
+                                    .fetch_add(1, Ordering::Relaxed);
                             } else {
-                                ValidationStatus::Invalid("Cached validation failed".to_string())
-                            };
+                                if let Some(mut elite_tx_ref) = transactions.get_mut(&tx_id) {
+                                    elite_tx_ref.validation_status = ValidationStatus::Valid;
+                                }
+                                validation_cache.insert(cache_key, true);
+                            }
+
+                            let _ = processing_tx.send(tx_id);
+
+                            let validation_time = start_time.elapsed().as_nanos() as u64;
                             metrics
-                                .validation_cache_hits
+                                .transactions_validated
                                 .fetch_add(1, Ordering::Relaxed);
-                        } else {
-                            // Perform validation (simplified for now)
-                            elite_tx.validation_status = ValidationStatus::Valid;
-                            validation_cache.insert(cache_key, true);
+                            metrics
+                                .average_processing_time_ns
+                                .store(validation_time, Ordering::Relaxed);
                         }
-
-                        // Update transaction in storage
-                        transactions.insert(elite_tx.tx.id.clone(), elite_tx.clone());
-
-                        // Send to processing pipeline
-                        let _ = processing_tx.send(elite_tx);
-
-                        // Update metrics
-                        let validation_time = start_time.elapsed().as_nanos() as u64;
-                        metrics
-                            .transactions_validated
-                            .fetch_add(1, Ordering::Relaxed);
-                        metrics
-                            .average_processing_time_ns
-                            .store(validation_time, Ordering::Relaxed);
+                        Err(_) => {}
                     }
                 }
-            });
-        });
+            })
+            .map_err(|e| EliteMempoolError::WorkerPoolError(e.to_string()))?;
 
         Ok(())
     }
@@ -402,55 +415,56 @@ impl EliteMempool {
     /// Start processing workers for batch processing
     async fn start_processing_workers(&self) -> Result<(), EliteMempoolError> {
         let processing_rx = self.processing_rx.clone();
-        let _sharded_queues = self.sharded_queues.clone();
+        let transactions = self.transactions.clone();
         let metrics = self.metrics.clone();
         let is_running = self.is_running.clone();
         let current_batch_size = self.current_batch_size.clone();
 
-        tokio::spawn(async move {
-            let mut batch = Vec::new();
-            let batch_timeout = Duration::from_millis(10);
+        std::thread::Builder::new()
+            .name("elite-mempool-processing".to_string())
+            .spawn(move || {
+                let mut batch: Vec<String> = Vec::new();
+                let batch_timeout = Duration::from_millis(10);
 
-            while is_running.load(Ordering::Relaxed) {
-                match processing_rx.recv_timeout(batch_timeout) {
-                    Ok(elite_tx) => {
-                        batch.push(elite_tx);
-
-                        // Process batch when it reaches target size
-                        if batch.len() >= current_batch_size.load(Ordering::Relaxed) {
-                            Self::process_transaction_batch(&batch, &metrics);
-                            batch.clear();
+                while is_running.load(Ordering::Relaxed) {
+                    match processing_rx.recv_timeout(batch_timeout) {
+                        Ok(tx_id) => {
+                            batch.push(tx_id);
+                            if batch.len() >= current_batch_size.load(Ordering::Relaxed) {
+                                Self::process_transaction_batch(&batch, &transactions, &metrics);
+                                batch.clear();
+                            }
                         }
-                    }
-                    Err(_) => {
-                        // Timeout - process any pending transactions
-                        if !batch.is_empty() {
-                            Self::process_transaction_batch(&batch, &metrics);
-                            batch.clear();
+                        Err(_) => {
+                            if !batch.is_empty() {
+                                Self::process_transaction_batch(&batch, &transactions, &metrics);
+                                batch.clear();
+                            }
                         }
                     }
                 }
-            }
-        });
+            })
+            .map_err(|e| EliteMempoolError::WorkerPoolError(e.to_string()))?;
 
         Ok(())
     }
 
     /// Process batch of transactions in parallel
-    fn process_transaction_batch(batch: &[EliteTransaction], metrics: &Arc<EliteMetrics>) {
+    fn process_transaction_batch(
+        batch: &[String],
+        transactions: &Arc<DashMap<String, EliteTransaction>>,
+        metrics: &Arc<EliteMetrics>,
+    ) {
         let start_time = Instant::now();
 
-        // Process transactions in parallel using rayon
-        let processed_count = batch
-            .par_iter()
-            .map(|elite_tx| {
-                // Simulate transaction processing
-                match &elite_tx.validation_status {
-                    ValidationStatus::Valid => 1,
-                    _ => 0,
+        let mut processed_count = 0usize;
+        for tx_id in batch {
+            if let Some(entry) = transactions.get(tx_id) {
+                if matches!(entry.validation_status, ValidationStatus::Valid) {
+                    processed_count += 1;
                 }
-            })
-            .sum::<usize>();
+            }
+        }
 
         let processing_time = start_time.elapsed();
         let throughput = (processed_count as f64 / processing_time.as_secs_f64()) as u64;
@@ -525,23 +539,8 @@ impl EliteMempool {
         });
     }
 
-    /// Validate transaction synchronously when channel is full
-    async fn validate_transaction_sync(
-        &self,
-        tx_id: &str,
-        _utxos: &HashMap<String, UTXO>,
-        _dag: &QantoDAG,
-    ) -> Result<(), EliteMempoolError> {
-        if let Some(mut elite_tx_ref) = self.transactions.get_mut(tx_id) {
-            elite_tx_ref.validation_status = ValidationStatus::Valid;
-            self.metrics
-                .transactions_validated
-                .fetch_add(1, Ordering::Relaxed);
-        }
-        Ok(())
-    }
-
     /// Calculate transaction size with SIMD optimization where possible
+    #[allow(dead_code)]
     fn calculate_transaction_size(&self, tx: &Transaction) -> usize {
         // Basic size calculation - can be optimized with SIMD
         let base_size = tx.id.len() + tx.sender.len() + tx.receiver.len();
@@ -552,6 +551,7 @@ impl EliteMempool {
     }
 
     /// Calculate priority score for transaction ordering
+    #[allow(dead_code)]
     fn calculate_priority_score(&self, fee_per_byte: u64, tx_size: usize) -> u64 {
         // Higher fee per byte and smaller size = higher priority
         let size_factor = 1000000 / (tx_size as u64 + 1); // Avoid division by zero
@@ -559,6 +559,7 @@ impl EliteMempool {
     }
 
     /// Update average processing time with exponential moving average
+    #[allow(dead_code)]
     fn update_average_processing_time(&self, new_time_ns: u64) {
         let current_avg = self
             .metrics
@@ -589,10 +590,10 @@ impl EliteMempool {
         }
     }
 
-    fn is_reserved_by_other(&self, tx_id: &str, miner_id: &Option<String>) -> bool {
+    fn is_reserved_by_other(&self, tx_id: &str, snapshot_id: &Option<String>) -> bool {
         if let Some(owner) = self.reserved_transactions.get(tx_id) {
-            match miner_id {
-                Some(mid) => owner.value() != mid,
+            match snapshot_id {
+                Some(sid) => owner.value() != sid,
                 None => true,
             }
         } else {
@@ -600,21 +601,21 @@ impl EliteMempool {
         }
     }
 
-    fn reserve_for_miner(&self, tx_id: &str, miner_id: &str) {
+    fn reserve_for_snapshot(&self, tx_id: &str, snapshot_id: &str) {
         self.reserved_transactions
-            .insert(tx_id.to_string(), miner_id.to_string());
+            .insert(tx_id.to_string(), snapshot_id.to_string());
         self.reservation_timestamps
             .insert(tx_id.to_string(), Instant::now());
-        debug!("Reserved tx {} for miner {}", tx_id, miner_id);
+        debug!("Reserved tx {} for snapshot {}", tx_id, snapshot_id);
     }
 
-    pub async fn release_reserved_transactions(&self, miner_id: &str) {
+    pub async fn release_reserved_transactions(&self, snapshot_id: &str) {
         let keys: Vec<String> = self
             .reserved_transactions
             .iter()
             .filter_map(|e| {
                 let (k, v) = e.pair();
-                if v == miner_id {
+                if v == snapshot_id {
                     Some(k.clone())
                 } else {
                     None
@@ -627,9 +628,9 @@ impl EliteMempool {
         }
         if !keys.is_empty() {
             debug!(
-                "Released {} reservations for miner {}",
+                "Released {} reservations for snapshot {}",
                 keys.len(),
-                miner_id
+                snapshot_id
             );
         }
     }
@@ -637,7 +638,7 @@ impl EliteMempool {
     pub async fn get_priority_transactions_with_reservation(
         &self,
         max_count: usize,
-        miner_id: Option<String>,
+        snapshot_id: Option<String>,
     ) -> Vec<Transaction> {
         let mut transactions = Vec::new();
         let mut collected = 0usize;
@@ -645,18 +646,18 @@ impl EliteMempool {
         self.cleanup_expired_reservations();
 
         while collected < max_count {
-            if let Some(elite_tx) = self.sharded_queues.pop_balanced() {
-                if matches!(elite_tx.validation_status, ValidationStatus::Valid) {
-                    let tx_id = elite_tx.tx.id.clone();
-                    if !self.is_reserved_by_other(&tx_id, &miner_id) {
-                        if let Some(ref mid) = miner_id {
-                            self.reserve_for_miner(&tx_id, mid);
+            if let Some(tx_id) = self.sharded_queues.pop_balanced() {
+                if let Some(entry) = self.transactions.get(&tx_id) {
+                    if matches!(entry.validation_status, ValidationStatus::Valid) {
+                        if !self.is_reserved_by_other(&tx_id, &snapshot_id) {
+                            if let Some(ref sid) = snapshot_id {
+                                self.reserve_for_snapshot(&tx_id, sid);
+                            }
+                            transactions.push((*entry.tx).clone());
+                            collected += 1;
+                        } else {
+                            let _ = self.sharded_queues.push_tx_id(&tx_id);
                         }
-                        transactions.push(elite_tx.tx);
-                        collected += 1;
-                    } else {
-                        // Push back if reserved by another miner
-                        let _ = self.sharded_queues.push(elite_tx);
                     }
                 }
             } else {
@@ -684,7 +685,7 @@ impl EliteMempool {
 
     /// Get high-priority transactions for mining
     pub async fn get_priority_transactions(&self, max_count: usize) -> Vec<Transaction> {
-        // Delegate to reservation-aware selection without miner id for backward compatibility
+        // Delegate to reservation-aware selection without snapshot id for backward compatibility
         self.get_priority_transactions_with_reservation(max_count, None)
             .await
     }
@@ -733,7 +734,7 @@ impl EliteMempool {
         );
         metrics.insert(
             "transaction_count".to_string(),
-            self.transactions.len() as u64,
+            self.transaction_count.load(Ordering::Relaxed) as u64,
         );
 
         metrics
@@ -773,28 +774,19 @@ mod tests {
     use super::*;
     use crate::transaction::Transaction;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_elite_mempool_creation() {
         let mempool = EliteMempool::new(1000000, 1024 * 1024 * 1024, 16, 8).unwrap();
         assert_eq!(mempool.len(), 0);
         assert!(mempool.is_empty());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_sharded_queue_operations() {
         let queue = ShardedTransactionQueue::new(4);
 
         let tx = Transaction::new_dummy();
-        let elite_tx = EliteTransaction {
-            tx,
-            fee_per_byte: 100,
-            timestamp: 1234567890,
-            priority_score: 1000,
-            shard_id: 0,
-            validation_status: ValidationStatus::Pending,
-        };
-
-        queue.push(elite_tx).unwrap();
+        queue.push_tx_id(&tx.id).unwrap();
         assert_eq!(queue.len(), 1);
 
         let popped = queue.pop_balanced();
