@@ -8,11 +8,61 @@
 use crate::post_quantum_crypto::{pq_sign, pq_verify};
 use qanto_core::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "tfhe")]
 use tfhe::{generate_keys, prelude::FheDecrypt, ConfigBuilder, FheUint64};
 
 // GraphQL types
 pub type Address = String;
 pub type Hash = String;
+
+/// WalletBalance represents a minimal, maturity-aware balance snapshot for an address.
+///
+/// Fields are expressed in base units (smallest divisible unit of QANTO) to avoid
+/// cross-crate constants and rounding ambiguity. Consumers can format values into
+/// human-readable QANTO amounts using their own unit constants.
+///
+/// Examples
+///
+/// ```rust
+/// use qanto::types::WalletBalance;
+/// // Construct from raw components (all values are base units)
+/// let wb = WalletBalance {
+///     spendable_confirmed: 1_000_000u64,
+///     immature_coinbase_confirmed: 250_000u64,
+///     unconfirmed_delta: 50_000u64,
+///     total_confirmed: 1_250_000u64,
+/// };
+/// assert_eq!(wb.total_confirmed, wb.spendable_confirmed + wb.immature_coinbase_confirmed);
+///
+/// // Convert from a tuple returned by RPC backends
+/// let wb2: WalletBalance = (900, 100, 10, 1000).into();
+/// assert_eq!(wb2.spendable_confirmed, 900);
+/// assert_eq!(wb2.immature_coinbase_confirmed, 100);
+/// assert_eq!(wb2.unconfirmed_delta, 10);
+/// assert_eq!(wb2.total_confirmed, 1000);
+/// ```
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+pub struct WalletBalance {
+    /// Confirmed and immediately spendable funds (excludes immature coinbase outputs)
+    pub spendable_confirmed: u64,
+    /// Confirmed but not yet spendable coinbase outputs (awaiting finality/maturity)
+    pub immature_coinbase_confirmed: u64,
+    /// Net delta from unconfirmed transactions in mempool (incoming - outgoing)
+    pub unconfirmed_delta: u64,
+    /// Total confirmed balance (spendable + immature_coinbase)
+    pub total_confirmed: u64,
+}
+
+impl From<(u64, u64, u64, u64)> for WalletBalance {
+    fn from(t: (u64, u64, u64, u64)) -> Self {
+        Self {
+            spendable_confirmed: t.0,
+            immature_coinbase_confirmed: t.1,
+            unconfirmed_delta: t.2,
+            total_confirmed: t.3,
+        }
+    }
+}
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct UTXO {
@@ -65,6 +115,12 @@ impl HomomorphicEncrypted {
         }
     }
 
+    #[cfg(not(feature = "tfhe"))]
+    pub fn decrypt(&self, _private_key_material: &[u8]) -> Result<u64, String> {
+        Err("Homomorphic decrypt unavailable (tfhe feature disabled)".to_string())
+    }
+
+    #[cfg(feature = "tfhe")]
     pub fn decrypt(&self, _private_key_material: &[u8]) -> Result<u64, String> {
         // For TFHE decryption, we need the client key
         // In a real implementation, the private_key_material would contain the serialized client key
@@ -81,6 +137,12 @@ impl HomomorphicEncrypted {
         Ok(decrypted_amount)
     }
 
+    #[cfg(not(feature = "tfhe"))]
+    pub fn add(&self, _other: &Self) -> Result<Self, String> {
+        Err("Homomorphic add unavailable (tfhe feature disabled)".to_string())
+    }
+
+    #[cfg(feature = "tfhe")]
     pub fn add(&self, other: &Self) -> Result<Self, String> {
         // For homomorphic addition, we need the server key
         let config = ConfigBuilder::default().build();
