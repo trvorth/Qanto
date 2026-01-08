@@ -209,8 +209,8 @@ pub enum MiningOperationError {
     Critical { message: String },
 }
 
-impl From<crate::wallet::WalletError> for MiningOperationError {
-    fn from(e: crate::wallet::WalletError) -> Self {
+impl From<crate::node_keystore::WalletError> for MiningOperationError {
+    fn from(e: crate::node_keystore::WalletError) -> Self {
         MiningOperationError::Wallet {
             message: e.to_string(),
         }

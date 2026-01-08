@@ -53,4 +53,4 @@ Reporting vulnerabilities to Qanto implies agreement to act in good faith. Malic
 
 ## Contact
 
-For security-related inquiries beyond vulnerability reports, use the [Qanto GitHub Discussions](https://github.com/trvorth/Qanto/discussions) until a dedicated contact method is established. For general support, refer to community channels to be announced with the project website (https://Qanto.pro, forthcoming).
+For security-related inquiries beyond vulnerability reports, use the [Qanto GitHub Discussions](https://github.com/trvorth/Qanto/discussions) until a dedicated contact method is established. For general support, refer to community channels to be announced with the project website (https://Qanto.org, forthcoming).

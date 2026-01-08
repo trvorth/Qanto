@@ -10,13 +10,13 @@
 use qanto::config::LoggingConfig;
 use qanto::mempool::Mempool;
 use qanto::miner::Miner;
+use qanto::node_keystore::Wallet;
 use qanto::optimized_decoupled_producer::OptimizedDecoupledProducer;
 use qanto::qanto_storage::{QantoStorage, StorageConfig};
 use qanto::qantodag::{QantoDAG, QantoDagConfig};
 use qanto::saga::PalletSaga;
 use qanto::transaction::{Input, Output, Transaction};
 use qanto::types::{HomomorphicEncrypted, QuantumResistantSignature, UTXO};
-use qanto::wallet::Wallet;
 use qanto_core::dag_aware_mempool::{DAGAwareMempool, DAGTransaction};
 
 use std::collections::HashMap;
@@ -108,6 +108,8 @@ pub struct UltraPerformanceBenchmark {
     system_errors: Arc<RwLock<Vec<String>>>,
 }
 
+static UNIQUE_DATA_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 impl UltraPerformanceBenchmark {
     pub async fn new(config: PerformanceTestConfig) -> Result<Self, Box<dyn std::error::Error>> {
         info!("ULTRA BENCHMARK: Initializing with config: {:?}", config);
@@ -116,8 +118,15 @@ impl UltraPerformanceBenchmark {
         let wallet = Arc::new(Wallet::new()?);
 
         // Set up storage for DAG (temporary location for test)
+        let now_nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let counter = UNIQUE_DATA_DIR_COUNTER.fetch_add(1, Ordering::Relaxed) as u128;
+        let pid = std::process::id() as u128;
+        let unique_id = (now_nanos << 32) ^ (pid << 16) ^ counter;
         let storage_config = StorageConfig {
-            data_dir: std::env::temp_dir().join("ultra_perf_benchmark_db"),
+            data_dir: std::env::temp_dir().join(format!("ultra_perf_benchmark_db_{}", unique_id)),
             cache_size: 1024 * 1024, // 1MB cache
             ..Default::default()
         };

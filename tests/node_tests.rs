@@ -7,13 +7,13 @@
 mod tests {
     use qanto::config::Config;
     use qanto::node::*;
-    use qanto::wallet::Wallet;
+    use qanto::node_keystore::Wallet;
     use rand::Rng;
     use serial_test::serial;
     use std::fs as std_fs;
     use std::sync::Arc;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[serial]
     async fn test_node_creation_and_config_save() -> Result<(), Box<dyn std::error::Error>> {
         // Setup paths for test artifacts.

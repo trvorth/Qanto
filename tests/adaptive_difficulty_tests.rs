@@ -1,15 +1,92 @@
 #[cfg(test)]
 mod adaptive_difficulty_tests {
-    use qanto::adaptive_mining::{AdaptiveMiningLoop, TestnetMiningConfig};
-    use qanto::mining_metrics::MiningMetrics;
-    use std::sync::Arc;
+    use qanto_core::adaptive_mining::{
+        AdaptiveMiningLoop, MiningAdapter, MiningAttemptReport, TestnetMiningConfig,
+    };
     use std::time::{Duration, Instant};
 
+    /// Minimal no-op adapter for testing pure difficulty logic.
+    struct NoopAdapter;
+
+    #[derive(Clone)]
+    struct MockBlock;
+    impl std::fmt::Display for MockBlock {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "MockBlock")
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl MiningAdapter for NoopAdapter {
+        type Block = MockBlock;
+        type Error = String;
+
+        async fn connected_peers_len(&self) -> usize {
+            0
+        }
+
+        fn get_block_target(&self, _block: &Self::Block) -> [u8; 32] {
+            [0u8; 32]
+        }
+
+        fn get_block_header_hash(&self, _block: &Self::Block) -> [u8; 32] {
+            [0u8; 32]
+        }
+
+        fn set_block_nonce(&self, _block: &mut Self::Block, _nonce: u64, _effort: u64) {}
+
+        async fn pending_transactions_len(&self) -> usize {
+            0
+        }
+
+        async fn create_candidate_block(
+            &self,
+            _difficulty: f64,
+        ) -> Result<Self::Block, Self::Error> {
+            Ok(MockBlock)
+        }
+
+        fn set_block_difficulty(&self, _block: &mut Self::Block, _difficulty: f64) {}
+
+        async fn mine_block(
+            &self,
+            _block: &mut Self::Block,
+            _shutdown: &tokio_util::sync::CancellationToken,
+        ) -> Result<Self::Block, Self::Error> {
+            Err("not used in tests".into())
+        }
+
+        async fn add_block(&self, _block: &Self::Block) -> Result<bool, Self::Error> {
+            Ok(false)
+        }
+
+        async fn post_add_block(&self, _block: &Self::Block) -> Result<(), Self::Error> {
+            Ok(())
+        }
+
+        async fn record_attempt(&self, _report: MiningAttemptReport) {}
+
+        async fn record_success_metrics(&self, _mining_duration: Duration, _retries: u32) {}
+
+        async fn record_failure_metrics(&self, _failure_label: &'static str) {}
+
+        fn block_height(&self, _block: &Self::Block) -> u64 {
+            0
+        }
+
+        fn block_id(&self, _block: &Self::Block) -> String {
+            "".into()
+        }
+
+        fn tx_count(&self, _block: &Self::Block) -> usize {
+            0
+        }
+    }
+
     /// Helper function to create a test mining loop with default configuration
-    fn create_test_mining_loop() -> AdaptiveMiningLoop {
+    fn create_test_mining_loop() -> AdaptiveMiningLoop<NoopAdapter> {
         let config = TestnetMiningConfig::default();
-        let metrics = Arc::new(MiningMetrics::new());
-        AdaptiveMiningLoop::new(config, None, metrics)
+        AdaptiveMiningLoop::new(config, NoopAdapter)
     }
 
     #[tokio::test]

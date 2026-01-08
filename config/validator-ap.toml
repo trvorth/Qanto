@@ -1,0 +1,54 @@
+p2p_address = "/ip4/0.0.0.0/tcp/8333"
+api_address = "0.0.0.0:8080"
+peers = []
+local_full_p2p_address = "/ip4/0.0.0.0/tcp/8333/p2p/12D3KooWHU9BHvYiuFsdmQUoseUsFJxGSx77rsMA31tcUhNgXbKF"
+network_id = "qanto-mainnet-performance"
+genesis_validator = "1f3d8b36045c42a81ae251bc23e50340d812a3d2ae4f5b7046f8741e32839a28"
+contract_address = "1f3d8b36045c42a81ae251bc23e50340d812a3d2ae4f5b7046f8741e32839a28"
+target_block_time = 31
+difficulty = 1000
+max_amount = 21000000000
+use_gpu = true
+zk_enabled = true
+mining_threads = 8
+mining_enabled = true
+adaptive_mining_enabled = false
+producer_type = "decoupled"
+num_chains = 4
+mining_chain_id = 0
+mining_interval_ms = 5
+dummy_tx_interval_ms = 5
+dummy_tx_per_cycle = 100000
+mempool_max_age_secs = 60
+mempool_max_size_bytes = 17179869184
+mempool_max_size = 10000000
+mempool_batch_size = 1000000
+mempool_backpressure_threshold = 0.75
+tx_batch_size = 1000000
+adaptive_batch_threshold = 0.8
+memory_soft_limit = 17179869184
+memory_hard_limit = 21474836480
+dev_fee_rate = 0.1
+data_dir = "./data"
+db_path = "./data/qanto.db"
+wallet_path = "wallet.key"
+p2p_identity_path = "p2p_identity.key"
+log_file_path = "./logs/qanto.log"
+
+[logging]
+level = "error"
+enable_block_celebrations = false
+celebration_log_level = "error"
+
+[p2p]
+heartbeat_interval = 50
+mesh_n_low = 8
+mesh_n = 16
+mesh_n_high = 16
+mesh_outbound_min = 8
+gossip_lazy = 3
+history_gossip = 1000
+
+[rpc]
+address = "127.0.0.1:50051"
+websocket_max_message_bytes = 10485760

@@ -1,10 +1,9 @@
 // The primary modules that define the Qanto node and its behavior.
-pub mod adaptive_mining;
 pub mod analytics_dashboard;
 pub mod block_producer;
 pub mod config;
 pub mod config_validator;
-pub mod consensus;
+pub mod consensus_engine;
 pub mod decentralization;
 pub mod decoupled_producer;
 pub mod deterministic_mining;
@@ -15,6 +14,7 @@ pub mod gas_fee_model;
 pub mod graphql_server;
 pub mod hame;
 pub mod interoperability;
+pub mod json_rpc;
 pub mod keygen;
 pub mod mempool;
 pub mod metrics;
@@ -22,10 +22,11 @@ pub mod miner;
 pub mod mining_celebration;
 pub mod mining_metrics;
 pub mod node;
+pub mod node_mining_adapter;
 pub mod omega;
 pub mod omega_enhanced;
 pub mod optimized_decoupled_producer;
-pub mod optimized_qdag;
+pub use qanto_core::optimized_qdag;
 pub mod p2p;
 pub mod password_utils;
 pub mod performance_monitoring;
@@ -55,12 +56,14 @@ pub use qanto_core::{
     qanto_compat, qanto_native_crypto, qanto_net, qanto_p2p, qanto_serde, qanto_storage,
     storage_adapter, storage_traits,
 };
+pub mod node_keystore;
+pub mod qanto_common;
 pub mod qantodag;
 pub mod rpc_backend;
 pub mod saga;
 pub mod transaction;
 pub mod types;
-pub mod wallet;
+pub mod utxo_snapshot;
 pub mod websocket_server;
 pub mod x_phyrus;
 
@@ -79,7 +82,7 @@ pub mod zkp;
 pub mod zkp;
 
 pub mod memory_optimization;
-pub use my_blockchain::qanhash;
+pub use qanto_core::crypto::qanhash;
 
 pub mod qantowallet;
 pub mod qds;

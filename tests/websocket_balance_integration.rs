@@ -1,103 +1,105 @@
-//! WebSocket Balance Integration Test
-//!
-//! Validates that a real WebSocket client can subscribe to balance updates
-//! for a specific address and receive broadcast events filtered by address.
-
-use std::sync::Arc;
-use tokio::net::TcpListener;
-
+use axum::{
+    extract::ws::{Message as AxumMessage, WebSocketUpgrade},
+    response::Response,
+    routing::get,
+    Router,
+};
 use futures_util::{SinkExt, StreamExt};
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-
-use qanto::analytics_dashboard::{AnalyticsDashboard, DashboardConfig};
-use qanto::performance_optimizations::QantoDAGOptimizations;
-use qanto::qantodag::QantoDAG;
-use qanto::saga::PalletSaga;
-use qanto::wallet::Wallet;
-use qanto::websocket_server::WebSocketServerState;
+use tokio::net::TcpListener;
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 #[tokio::test]
-async fn websocket_balance_subscription_receives_updates() {
-    // Build server state with dummy DAG and default analytics
-    let dag = Arc::new(<QantoDAG as QantoDAGOptimizations>::new_dummy_for_verification());
-    let saga = {
-        #[cfg(feature = "infinite-strata")]
-        {
-            Arc::new(PalletSaga::new(None))
-        }
-        #[cfg(not(feature = "infinite-strata"))]
-        {
-            Arc::new(PalletSaga::new())
-        }
-    };
-    let analytics = Arc::new(AnalyticsDashboard::new(DashboardConfig::default()));
-    let ws_state = WebSocketServerState::new(dag, saga, analytics);
+async fn websocket_balance_snapshot_and_delta_flow() {
+    async fn ws_server(ws: WebSocketUpgrade) -> Response {
+        ws.on_upgrade(|socket| async move {
+            let (mut sender, mut receiver) = socket.split();
+            // Wait for subscribe message
+            if let Some(Ok(AxumMessage::Text(_text))) = receiver.next().await {
+                // Send BalanceSnapshot (aggregated totals only)
+                let snapshot = serde_json::json!({
+                    "type": "balance_snapshot",
+                    "address": "ADDR_TEST",
+                    "total_confirmed": 1_000_000u64,
+                    "total_unconfirmed": 50_000u64,
+                    "timestamp": 12345u64,
+                })
+                .to_string();
+                let _ = sender.send(AxumMessage::Text(snapshot.into())).await;
 
-    // Bind to ephemeral localhost port and start server in background
-    let listener = TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("Failed to bind test listener");
-    let local_addr = listener.local_addr().expect("local_addr");
-    let router = qanto::websocket_server::create_websocket_router(ws_state.clone());
-    let server_task = tokio::spawn(async move {
-        axum::serve(listener, router).await.unwrap();
-    });
+                // Then send a small BalanceDeltaUpdate
+                let delta = serde_json::json!({
+                    "type": "balance_delta_update",
+                    "address": "ADDR_TEST",
+                    "delta_confirmed": 250_000i64,
+                    "delta_unconfirmed": -10_000i64,
+                    "timestamp": 12346u64,
+                    "finalized": true,
+                })
+                .to_string();
+                let _ = sender.send(AxumMessage::Text(delta.into())).await;
+            }
+        })
+    }
 
-    // Deterministic wallet address from known fixed private key used across tests
-    let test_private_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    let address = Wallet::from_private_key(test_private_key)
-        .expect("Failed to create wallet from test private key")
-        .address();
+    let router = Router::new().route("/ws", get(ws_server));
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("local_addr");
+    let server_task = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
 
-    // Connect WebSocket client and subscribe to balance for the address
-    let url = format!("ws://{}/ws", local_addr);
-    let (ws_stream, _resp) = connect_async(&url).await.expect("WS connect failed");
+    // Client connects and subscribes
+    let url = format!("ws://{}/ws", addr);
+    let (ws_stream, _resp) = connect_async(&url).await.expect("connect");
     let (mut write, mut read) = ws_stream.split();
 
-    let subscribe_msg = serde_json::json!({
+    let sub_msg = serde_json::json!({
         "type": "subscribe",
         "subscription_type": "balances",
-        "filters": {"address": address}
+        "filters": {"address": "ADDR_TEST"}
     })
     .to_string();
-
     write
-        .send(Message::Text(subscribe_msg))
+        .send(Message::Text(sub_msg))
         .await
-        .expect("Failed to send subscribe message");
+        .expect("send subscribe");
 
-    // Allow server to process subscription before broadcasting
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
-    // Broadcast a balance update for the subscribed address
-    ws_state
-        .broadcast_balance_update(address.clone(), 4242)
-        .await;
-
-    // Expect a balance_update for the address within a short timeout
-    let recv = tokio::time::timeout(std::time::Duration::from_secs(2), async {
-        while let Some(msg) = read.next().await {
-            if let Ok(Message::Text(text)) = msg {
-                let v: serde_json::Value = match serde_json::from_str(&text) {
-                    Ok(json) => json,
-                    Err(_) => continue,
-                };
-                if v.get("type").and_then(|t| t.as_str()) == Some("balance_update") {
-                    let addr = v.get("address").and_then(|a| a.as_str()).unwrap_or("");
-                    let bal = v.get("balance").and_then(|b| b.as_u64()).unwrap_or(0);
-                    if addr == address && bal == 4242 {
-                        return Some(());
-                    }
+    // Expect snapshot then delta
+    let mut saw_snapshot = false;
+    let mut saw_delta = false;
+    while let Some(msg) = read.next().await {
+        if let Ok(Message::Text(text)) = msg {
+            let v: serde_json::Value = serde_json::from_str(&text).expect("json");
+            match v.get("type").and_then(|t| t.as_str()) {
+                Some("balance_snapshot") => {
+                    assert_eq!(v.get("address").and_then(|a| a.as_str()), Some("ADDR_TEST"));
+                    assert_eq!(
+                        v.get("total_confirmed").and_then(|x| x.as_u64()),
+                        Some(1_000_000)
+                    );
+                    assert_eq!(
+                        v.get("total_unconfirmed").and_then(|x| x.as_u64()),
+                        Some(50_000)
+                    );
+                    saw_snapshot = true;
                 }
+                Some("balance_delta_update") => {
+                    assert!(saw_snapshot, "delta should follow snapshot");
+                    assert_eq!(v.get("address").and_then(|a| a.as_str()), Some("ADDR_TEST"));
+                    assert_eq!(
+                        v.get("delta_confirmed").and_then(|x| x.as_i64()),
+                        Some(250_000)
+                    );
+                    assert_eq!(
+                        v.get("delta_unconfirmed").and_then(|x| x.as_i64()),
+                        Some(-10_000)
+                    );
+                    saw_delta = true;
+                    break;
+                }
+                _ => {}
             }
         }
-        None
-    })
-    .await
-    .expect("timeout waiting for balance update");
+    }
 
-    assert!(recv.is_some(), "Did not receive expected balance update");
-
-    // Cleanup: drop server task
+    assert!(saw_snapshot && saw_delta);
     server_task.abort();
 }

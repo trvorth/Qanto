@@ -13,7 +13,9 @@
 
 // Stub types for qanto-core compatibility
 /// In-memory transaction pool for pending unconfirmed transactions.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, Archive, RkyvSerialize, RkyvDeserialize,
+)]
 pub struct Mempool {
     // Empty struct for now
 }
@@ -43,7 +45,16 @@ impl Mempool {
 }
 
 /// Basic block representation for the native networking layer.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
+#[derive(
+    Debug,
+    Clone,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    RkyvSerialize,
+    RkyvDeserialize,
+    Default,
+)]
 pub struct QantoBlock {
     /// Unique block identifier.
     pub id: String,
@@ -103,7 +114,9 @@ impl fmt::Display for QantoBlock {
 }
 
 /// Minimal DAG placeholder used for networking integration tests.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, Archive, RkyvSerialize, RkyvDeserialize,
+)]
 pub struct QantoDAG {
     // Stub implementation
 }
@@ -121,7 +134,9 @@ impl QantoDAG {
 }
 
 /// Carbon credit credential attached to transactions or blocks.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, Archive, RkyvSerialize, RkyvDeserialize,
+)]
 pub struct CarbonOffsetCredential {
     /// Credential identifier.
     pub id: String,
@@ -130,7 +145,9 @@ pub struct CarbonOffsetCredential {
 }
 
 /// Basic transaction structure for message passing and tests.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, Archive, RkyvSerialize, RkyvDeserialize,
+)]
 pub struct Transaction {
     /// Unique transaction id.
     pub id: String,
@@ -139,7 +156,9 @@ pub struct Transaction {
 }
 
 /// Unspent transaction output tracked by the networking layer.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, serde::Serialize, serde::Deserialize, Archive, RkyvSerialize, RkyvDeserialize,
+)]
 pub struct UTXO {
     /// Output identifier.
     pub id: String,
@@ -147,9 +166,11 @@ pub struct UTXO {
     pub value: u64,
 }
 
-use crate::qanto_native_crypto::QantoKeyPair;
-use my_blockchain::qanto_hash;
+use crate::qanto_native_crypto::{qanto_hash, QantoKeyPair};
+use crate::qanto_serde::{from_bytes, to_bytes};
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 
+use bytes::Bytes;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::io::Cursor;
@@ -220,7 +241,18 @@ impl From<Box<bincode::ErrorKind>> for QantoNetError {
 }
 
 /// Unique identifier for network peers.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    Archive,
+    RkyvSerialize,
+    RkyvDeserialize,
+)]
 pub struct PeerId {
     /// Raw 32-byte identifier derived from the peer public key.
     pub id: [u8; 32],
@@ -706,8 +738,7 @@ impl QantoNetServer {
                                         Ok(0) => break,
                                         Ok(n) => {
                                             // Process received data
-                                            match bincode::deserialize::<NetworkMessage>(&buf[..n])
-                                            {
+                                            match from_bytes::<NetworkMessage>(&buf[..n]) {
                                                 Ok(message) => {
                                                     println!("[QantoNet] Received message from {from_peer}: {message:?}");
                                                 }
@@ -815,7 +846,8 @@ impl QantoNetServer {
         connection.last_activity = Instant::now();
 
         if let Some(write_stream) = &mut connection.write_stream {
-            let serialized = bincode::serialize(&message)?;
+            let serialized =
+                to_bytes(&message).map_err(|e| QantoNetError::Serialization(e.to_string()))?;
             write_stream.write_all(&serialized).await?;
         } else {
             return Err(QantoNetError::NoConnection);
@@ -906,6 +938,8 @@ impl QantoNetServer {
     }
 
     // Private helper methods
+
+
 
     async fn start_heartbeat_task(&self) {
         std::thread::spawn(|| {
@@ -1128,7 +1162,8 @@ impl QantoNetServer {
             timestamp,
         };
 
-        let serialized = bincode::serialize(&handshake)?;
+        let serialized =
+            to_bytes(&handshake).map_err(|e| QantoNetError::Serialization(e.to_string()))?;
         stream.write_all(&serialized).await?;
 
         // Return a dummy peer ID for now
@@ -1309,5 +1344,64 @@ mod display_tests {
         };
         let s = format!("{}", blk);
         assert!(s.contains("Parent: parent012345…"));
+    }
+}
+
+#[cfg(test)]
+mod serialization_tests {
+    use super::*;
+
+    #[test]
+    fn test_zero_copy_serialization() {
+        let message = NetworkMessage::Ping {
+            timestamp: 1234567890,
+        };
+
+        let serialized = to_bytes(&message).expect("Failed to serialize Ping");
+        let deserialized: NetworkMessage =
+            from_bytes(&serialized).expect("Failed to deserialize Ping");
+
+        match deserialized {
+            NetworkMessage::Ping { timestamp } => {
+                assert_eq!(timestamp, 1234567890);
+            }
+            _ => panic!("Deserialized wrong message type"),
+        }
+    }
+
+    #[test]
+    fn test_complex_serialization() {
+        let block = QantoBlock {
+            id: "block1".to_string(),
+            data: vec![1, 2, 3, 4],
+            chain_id: 1,
+            height: 100,
+            timestamp: 1234567890,
+            parents: vec!["parent1".to_string(), "parent2".to_string()],
+            transactions_len: 10,
+        };
+
+        let message = NetworkMessage::Block(block.clone());
+        let serialized = to_bytes(&message).expect("Failed to serialize Block message");
+        let deserialized: NetworkMessage =
+            from_bytes(&serialized).expect("Failed to deserialize Block message");
+
+        match deserialized {
+            NetworkMessage::Block(b) => {
+                assert_eq!(b.id, block.id);
+                assert_eq!(b.data, block.data);
+                assert_eq!(b.parents, block.parents);
+            }
+            _ => panic!("Deserialized wrong message type"),
+        }
+    }
+}
+pub fn validate_block_header(data: &[u8]) -> bool {
+    !data.is_empty()
+}
+
+pub fn on_gossip_message(topic: &str, data: Bytes) {
+    if topic == "blocks/header" && validate_block_header(&data) {
+        // enqueue body fetch path
     }
 }

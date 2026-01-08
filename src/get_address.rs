@@ -1,6 +1,6 @@
 // src/get_address.rs
 
-use crate::{config::Config, wallet::Wallet};
+use crate::{config::Config, node_keystore::Wallet};
 use clap::{Arg, Command};
 use secrecy::SecretString;
 

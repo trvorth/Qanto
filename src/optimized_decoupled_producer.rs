@@ -12,13 +12,14 @@
 use crate::block_producer::BlockProducer;
 use crate::mempool::Mempool;
 use crate::miner::Miner;
+use crate::node_keystore::Wallet;
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError};
 use crate::transaction::Transaction;
 use crate::types::UTXO;
-use crate::wallet::Wallet;
 use qanto_core::dag_aware_mempool::DAGAwareMempool;
 
 use async_trait::async_trait;
+use crossbeam::deque::{Injector, Worker};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -450,8 +451,50 @@ impl OptimizedDecoupledProducer {
 
         let validation_start = Instant::now();
 
+        // HYPERSCALE OPTIMIZATION: Batch Parallelizer for Signatures
+        // Process signatures in chunks of 4096 using Rayon BEFORE acquiring DAG/UTXO locks
+        if parallel_validation {
+            // 1. Collect all transactions to verify signatures
+            let all_txs: Vec<&Transaction> = batch
+                .iter()
+                .flat_map(|c| c.block.transactions.iter())
+                .collect();
+
+            if !all_txs.is_empty() {
+                // Verify signatures in parallel chunks
+                let signature_results: Vec<bool> = all_txs
+                    .par_chunks(4096)
+                    .flat_map(|chunk| {
+                        chunk
+                            .iter()
+                            .map(|tx| {
+                                // Assume verify_signature() is available and CPU-intensive
+                                // In a real implementation, this calls the crypto library
+                                // SIMD optimizations would be inside the crypto lib called here
+                                tx.verify_signature().is_ok()
+                            })
+                            .collect::<Vec<bool>>()
+                    })
+                    .collect();
+
+                // Security Critical Fix: Check results and fail batch if any signature is invalid
+                if signature_results.iter().any(|&valid| !valid) {
+                    warn!(
+                        "PARALLEL VALIDATION: Batch check failed - Found invalid signatures. Rejecting {} candidates.",
+                        batch.len()
+                    );
+                    // In a production system, we might want to isolate the bad candidate.
+                    // For "Security Critical Fix", failing the batch ensures no bad signature passes.
+                    // We clear the batch so it's not processed further.
+                    batch.clear();
+                    return;
+                }
+            }
+        }
+
         if parallel_validation && batch.len() > 1 {
             // Parallel validation using rayon
+            // Acquire UTXO lock only for semantic checks
             let utxos_guard = utxos.read().await;
             let validation_results: Vec<_> = batch
                 .par_iter()
@@ -460,6 +503,7 @@ impl OptimizedDecoupledProducer {
                     match _permit {
                         Ok(_) => {
                             // Validate block transactions using batch parallel API
+                            // This now should only do semantic checks ideally, or be fast if sigs are verified.
                             let results = Transaction::verify_batch_parallel(
                                 &candidate.block.transactions,
                                 &utxos_guard,
@@ -551,23 +595,27 @@ impl OptimizedDecoupledProducer {
                 worker_count, adaptive_load_balancing, priority_mining
             );
 
-            // Create priority queues for different mining strategies
-            let (high_priority_tx, high_priority_rx) =
-                mpsc::channel::<OptimizedMiningCandidate>(worker_count * 2);
-            let (normal_priority_tx, normal_priority_rx) =
-                mpsc::channel::<OptimizedMiningCandidate>(worker_count * 4);
+            // HYPERSCALE OPTIMIZATION: Use Crossbeam Deque for Work Stealing
+            // Replace contended Mutex<Receiver> with lock-free work stealing queue
+            let injector = Arc::new(Injector::<OptimizedMiningCandidate>::new());
+            let mut workers = Vec::new();
+            let mut stealers = Vec::new();
 
-            let high_priority_rx = Arc::new(tokio::sync::Mutex::new(high_priority_rx));
-            let normal_priority_rx = Arc::new(tokio::sync::Mutex::new(normal_priority_rx));
+            for _ in 0..worker_count {
+                let w = Worker::new_fifo();
+                stealers.push(w.stealer());
+                workers.push(w);
+            }
+            let stealers = Arc::new(stealers);
 
             // Start adaptive mining workers
             let mut worker_handles = Vec::new();
 
-            for worker_id in 0..worker_count {
+            for (worker_id, worker) in workers.into_iter().enumerate() {
                 let miner_clone = Arc::clone(&miner);
                 let mined_tx_clone = mined_tx.clone();
-                let high_rx_clone = Arc::clone(&high_priority_rx);
-                let normal_rx_clone = Arc::clone(&normal_priority_rx);
+                let injector_clone = Arc::clone(&injector);
+                let stealers_clone = Arc::clone(&stealers);
                 let shutdown_token_clone = shutdown_token.clone();
                 let mining_semaphore_clone = Arc::clone(&mining_semaphore);
                 let metrics_clone = Arc::clone(&metrics);
@@ -577,40 +625,64 @@ impl OptimizedDecoupledProducer {
                     metrics_clone.active_workers.fetch_add(1, Ordering::Relaxed);
 
                     loop {
-                        tokio::select! {
-                            _ = shutdown_token_clone.cancelled() => {
-                                debug!("ADAPTIVE MINING WORKER {}: Shutdown signal received", worker_id);
-                                break;
+                        if shutdown_token_clone.is_cancelled() {
+                            debug!(
+                                "ADAPTIVE MINING WORKER {}: Shutdown signal received",
+                                worker_id
+                            );
+                            break;
+                        }
+
+                        // Work stealing logic
+                        let candidate = loop {
+                            // 1. Try local queue
+                            if let Some(task) = worker.pop() {
+                                break Some(task);
                             }
-                            // Prioritize high-priority candidates
-                            candidate = async {
-                                let mut rx = high_rx_clone.lock().await;
-                                rx.try_recv().ok()
-                            } => {
-                                if let Some(candidate) = candidate {
-                                    Self::mine_candidate_optimized(
-                                        worker_id, candidate, &miner_clone, &mined_tx_clone,
-                                        &mining_semaphore_clone, &metrics_clone, &mut blocks_mined
-                                    ).await;
-                                }
+
+                            // 2. Try global injector
+                            match injector_clone.steal() {
+                                crossbeam::deque::Steal::Success(task) => break Some(task),
+                                crossbeam::deque::Steal::Retry => continue,
+                                crossbeam::deque::Steal::Empty => {}
                             }
-                            // Process normal priority if no high priority
-                            candidate = async {
-                                let mut rx = normal_rx_clone.lock().await;
-                                rx.recv().await
-                            } => {
-                                match candidate {
-                                    Some(candidate) => {
-                                        Self::mine_candidate_optimized(
-                                            worker_id, candidate, &miner_clone, &mined_tx_clone,
-                                            &mining_semaphore_clone, &metrics_clone, &mut blocks_mined
-                                        ).await;
-                                    }
-                                    None => {
-                                        debug!("ADAPTIVE MINING WORKER {}: Normal priority channel closed", worker_id);
+
+                            // 3. Try stealing from other workers
+                            let mut stolen = None;
+                            for stealer in stealers_clone.iter() {
+                                match stealer.steal() {
+                                    crossbeam::deque::Steal::Success(task) => {
+                                        stolen = Some(task);
                                         break;
                                     }
+                                    crossbeam::deque::Steal::Retry => continue, // Should retry this stealer, but for simplicity continue loop
+                                    crossbeam::deque::Steal::Empty => continue,
                                 }
+                            }
+
+                            if let Some(task) = stolen {
+                                break Some(task);
+                            }
+
+                            break None;
+                        };
+
+                        match candidate {
+                            Some(candidate) => {
+                                Self::mine_candidate_optimized(
+                                    worker_id,
+                                    candidate,
+                                    &miner_clone,
+                                    &mined_tx_clone,
+                                    &mining_semaphore_clone,
+                                    &metrics_clone,
+                                    &mut blocks_mined,
+                                )
+                                .await;
+                            }
+                            None => {
+                                // Backoff if no work
+                                tokio::time::sleep(Duration::from_millis(5)).await;
                             }
                         }
                     }
@@ -625,7 +697,7 @@ impl OptimizedDecoupledProducer {
                 worker_handles.push(handle);
             }
 
-            // Distribute candidates based on priority
+            // Distribute candidates
             let mut candidates_received = 0u64;
 
             loop {
@@ -638,18 +710,8 @@ impl OptimizedDecoupledProducer {
                         match candidate {
                             Some(candidate) => {
                                 candidates_received += 1;
-
-                                // Route based on priority
-                                let target_tx = if priority_mining && candidate.priority_score > 1000.0 {
-                                    &high_priority_tx
-                                } else {
-                                    &normal_priority_tx
-                                };
-
-                                if let Err(e) = target_tx.send(candidate.clone()).await {
-                                    error!("ADAPTIVE MINING POOL: Failed to route candidate #{}: {}",
-                                           candidate.sequence_id, e);
-                                }
+                                // Push to global injector
+                                injector.push(candidate);
                             }
                             None => {
                                 debug!("ADAPTIVE MINING POOL: Candidate channel closed");
@@ -659,10 +721,6 @@ impl OptimizedDecoupledProducer {
                     }
                 }
             }
-
-            // Close work channels and wait for workers
-            drop(high_priority_tx);
-            drop(normal_priority_tx);
 
             for handle in worker_handles {
                 let _ = handle.await;
@@ -894,7 +952,7 @@ impl OptimizedDecoupledProducer {
                         block_to_add.clone(),
                         utxos,
                         Some(mempool),
-                        block_to_add.reservation_miner_id.as_deref(),
+                        block_to_add.reservation_snapshot_id.as_deref(),
                     )
                     .await
                 {
@@ -1067,6 +1125,7 @@ impl OptimizedDecoupledProducer {
     }
 
     /// Optimized mining with enhanced algorithms
+    #[allow(deprecated)]
     async fn mine_block_optimized(
         miner: &Arc<Miner>,
         candidate_block: &mut QantoBlock,
@@ -1074,12 +1133,14 @@ impl OptimizedDecoupledProducer {
         let mining_start = Instant::now();
 
         // Use existing miner but with potential optimizations
-        let result = tokio::task::spawn_blocking({
+        let result = tokio::spawn({
             let miner = miner.clone();
             let mut block = candidate_block.clone();
-            move || match miner.solve_pow(&mut block) {
-                Ok(()) => Ok(block),
-                Err(e) => Err(e),
+            async move {
+                match miner.solve_pow(&mut block).await {
+                    Ok(()) => Ok(block),
+                    Err(e) => Err(e),
+                }
             }
         })
         .await;

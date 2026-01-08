@@ -3,7 +3,7 @@ use secrecy::SecretString;
 use std::path::PathBuf;
 
 use qanto::config::Config;
-use qanto::wallet::Wallet;
+use qanto::node_keystore::Wallet;
 
 #[derive(Parser, Debug)]
 #[command(

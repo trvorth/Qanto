@@ -24,9 +24,9 @@
 
 use crate::post_quantum_crypto::{generate_pq_keypair, pq_verify};
 use anyhow::{anyhow, Result};
-use my_blockchain::qanto_hash;
 use num_bigint::BigUint;
 use num_traits::One;
+use qanto_core::qanto_native_crypto::qanto_hash;
 use qanto_core::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature};
 
 use serde::{Deserialize, Serialize};

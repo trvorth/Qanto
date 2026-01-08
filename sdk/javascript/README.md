@@ -74,6 +74,38 @@ await client.ws.subscribeToBlocks();
 await client.ws.subscribeToTransactions();
 ```
 
+#### Balance Subscriptions
+
+```typescript
+// Confirm subscription
+client.ws.on('balance_subscription_confirmed', ({ address, client_id }) => {
+  console.log('Balance subscription confirmed:', address, client_id);
+});
+
+// Handle balance updates
+client.ws.on('balance_update', (update) => {
+  // update.balance is a WalletBalance object
+  const total = update.balance.total_confirmed;
+  console.log(`Balance update for ${update.address}`, {
+    total,
+    finalized: update.finalized,
+    timestamp: update.timestamp,
+    spendable_confirmed: update.balance.spendable_confirmed,
+    immature_coinbase_confirmed: update.balance.immature_coinbase_confirmed,
+    unconfirmed_delta: update.balance.unconfirmed_delta,
+  });
+});
+
+// Subscribe to balances for an address
+await client.ws.subscribeToBalances('qanto1abc...');
+// Optionally only receive finalized updates
+// await client.ws.subscribeToBalances('qanto1abc...', { finalizedOnly: true });
+```
+
+Note:
+- Balance updates include `address`, `balance` (WalletBalance), `timestamp` (ms), and `finalized`.
+- The server supports alias topics like `wallet_balance:<address>`; the SDK method uses structured balance subscriptions for `finalizedOnly`.
+
 ### GraphQL Queries
 
 ```typescript
@@ -142,6 +174,7 @@ Real-time event subscriptions.
 - `subscribeToTransactions()`: Subscribe to transaction notifications
 - `subscribeToNetworkHealth()`: Subscribe to network health updates
 - `subscribeToAnalytics()`: Subscribe to analytics updates
+- `subscribeToBalances(address: string, options?: { finalizedOnly?: boolean })`: Subscribe to balance updates for an address
 
 ### GraphQL Client
 
@@ -249,6 +282,18 @@ npm run build
 
 ```bash
 npm test
+```
+
+#### Unit Tests
+
+- GraphQL: `src/__tests__/graphql_balance.test.ts` validates `getBalance(address)` returns typed `{ confirmed, unconfirmed, total }`.
+- WebSocket: `src/__tests__/websocket_balance_update.test.ts` verifies `balance_update` emits `WalletBalance` with `spendable_confirmed`, `immature_coinbase_confirmed`, `unconfirmed_delta`, `total_confirmed`.
+
+Useful commands:
+
+```bash
+npm run test:watch     # run tests in watch mode
+npx jest --coverage    # generate coverage report
 ```
 
 ### Linting

@@ -186,14 +186,30 @@ export interface TimeSeriesDataPoint {
 
 // WebSocket message types
 export interface WebSocketMessage {
-  type: 'block_notification' | 'transaction_confirmation' | 'network_health' | 'mempool_update' | 'analytics_update' | 'security_alert' | 'subscription_confirmation' | 'error';
-  data: any;
+  type: 'block_notification' | 'transaction_confirmation' | 'network_health' | 'mempool_update' | 'analytics_update' | 'security_alert' | 'subscription_confirmation' | 'subscription_confirmed' | 'balance_update' | 'balance_subscription_confirmed' | 'balance_snapshot' | 'balance_delta_update' | 'error';
+  data?: any;
   timestamp: number;
+}
+
+// Wallet balance schema from server (see Rust WalletBalance)
+export interface WalletBalance {
+  spendable_confirmed: number;
+  immature_coinbase_confirmed: number;
+  unconfirmed_delta: number;
+  total_confirmed: number;
+}
+
+// Balance update payload from server (aligned to websocket_server.rs)
+export interface BalanceUpdate {
+  address: string;
+  balance: WalletBalance;
+  timestamp: number;
+  finalized: boolean;
 }
 
 export interface SubscriptionMessage {
   action: 'subscribe' | 'unsubscribe';
-  subscription_type: 'blocks' | 'transactions' | 'network_health' | 'analytics' | 'security_alerts' | 'economic_indicators';
+  subscription_type: 'blocks' | 'transactions' | 'network_health' | 'analytics' | 'security_alerts' | 'economic_indicators' | 'balances';
   filters?: Record<string, any>;
 }
 

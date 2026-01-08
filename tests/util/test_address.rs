@@ -4,7 +4,7 @@
 //! ensuring all test addresses conform to the 64-character hexadecimal format
 //! required by the miner validation logic.
 
-use qanto::wallet::Wallet;
+use qanto::node_keystore::Wallet;
 
 /// Generates a deterministic test miner address.
 ///

@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    #![allow(deprecated)]
     use qanto::mempool::Mempool;
     use qanto::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey};
     use qanto::qanto_storage::{QantoStorage, StorageConfig};
@@ -163,8 +164,6 @@ mod tests {
             .await
             .expect("Failed to create candidate block");
 
-        // Override difficulty for fast PoW solving
-        block.difficulty = 0.000001;
         info!(
             "Block created with reward: {} and difficulty: {}",
             block.reward, block.difficulty
@@ -187,6 +186,7 @@ mod tests {
         let cancellation_token = tokio_util::sync::CancellationToken::new();
         miner
             .solve_pow_with_cancellation(&mut block, cancellation_token)
+            .await
             .expect("Failed to solve proof-of-work");
         let pow_duration = pow_start_time.elapsed();
         info!("✅ PoW solving completed in {:?}", pow_duration);
@@ -207,9 +207,14 @@ mod tests {
 
         // Add the block to DAG1 first
         info!("📝 Adding block to DAG1");
-        dag1.add_block(block.clone(), &utxos1, Some(&mempool1), Some(&block.miner))
-            .await
-            .expect("Failed to add block to DAG1");
+        dag1.add_block(
+            block.clone(),
+            &utxos1,
+            Some(&mempool1),
+            block.reservation_snapshot_id.as_deref(),
+        )
+        .await
+        .expect("Failed to add block to DAG1");
         info!("✅ Block successfully added to DAG1");
 
         // Now test if DAG2 can validate the same block

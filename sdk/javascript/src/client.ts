@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import { EventEmitter } from 'eventemitter3';
 import { QantoWebSocket } from './websocket';
 import { QantoGraphQL } from './graphql';
@@ -10,7 +10,6 @@ import {
   NodeInfo,
   NetworkHealth,
   AnalyticsDashboardData,
-  ApiResponse,
   PaginatedResponse,
   WalletInfo,
   QantoSDKError,
@@ -30,22 +29,22 @@ export class QantoClient extends EventEmitter {
   constructor(config: QantoClientConfig = {}) {
     super();
     
-    // Set default configuration
-    this.config = {
-      network: config.network || 'local',
-      timeout: config.timeout || 30000,
-      retryAttempts: config.retryAttempts || 3,
-      retryDelay: config.retryDelay || 1000,
-      apiKey: config.apiKey || '',
-      userAgent: config.userAgent || `@qanto/sdk/1.0.0`,
-      ...config
-    };
+    // Resolve network and endpoints to satisfy Required<QantoClientConfig>
+    const network: Network = (config.network as Network) || 'local';
+    const endpoints = DEFAULT_ENDPOINTS[network];
 
-    // Set endpoints based on network if not provided
-    const networkEndpoints = DEFAULT_ENDPOINTS[this.config.network as Network];
-    this.config.httpEndpoint = this.config.httpEndpoint || networkEndpoints.http;
-    this.config.websocketEndpoint = this.config.websocketEndpoint || networkEndpoints.websocket;
-    this.config.graphqlEndpoint = this.config.graphqlEndpoint || networkEndpoints.graphql;
+    // Set configuration with all required fields present
+    this.config = {
+      network,
+      timeout: config.timeout ?? 30000,
+      retryAttempts: config.retryAttempts ?? 3,
+      retryDelay: config.retryDelay ?? 1000,
+      apiKey: config.apiKey ?? '',
+      userAgent: config.userAgent ?? `@qanto/sdk/1.0.0`,
+      httpEndpoint: config.httpEndpoint ?? endpoints.http,
+      websocketEndpoint: config.websocketEndpoint ?? endpoints.websocket,
+      graphqlEndpoint: config.graphqlEndpoint ?? endpoints.graphql
+    };
 
     // Initialize HTTP client
     this.httpClient = axios.create({
@@ -78,7 +77,7 @@ export class QantoClient extends EventEmitter {
 
     // Initialize WebSocket and GraphQL clients
     this.websocket = new QantoWebSocket(this.config.websocketEndpoint, this);
-    this.graphql = new QantoGraphQL(this.config.graphqlEndpoint, this);
+    this.graphql = new QantoGraphQL(this.config.graphqlEndpoint, this.buildDefaultHeaders());
   }
 
   // Node information methods
@@ -159,8 +158,23 @@ export class QantoClient extends EventEmitter {
       throw new ValidationError('Invalid address format');
     }
     
-    const response = await this.httpClient.get<number>(`/balance/${address}`);
-    return response.data;
+    const response = await this.httpClient.get<any>(`/balance/${address}`);
+    const data = response.data;
+    if (typeof data === 'number') {
+      return data;
+    }
+    if (data && typeof data === 'object') {
+      if (typeof data.base_units === 'number') {
+        return data.base_units;
+      }
+      if (typeof data.balance === 'string') {
+        const parsed = Number(data.balance);
+        if (!Number.isNaN(parsed)) {
+          return parsed;
+        }
+      }
+    }
+    throw new QantoSDKError('Unexpected balance response format');
   }
 
   async getUTXOs(address: string): Promise<Record<string, UTXO>> {
@@ -264,27 +278,13 @@ export class QantoClient extends EventEmitter {
     this.removeAllListeners();
   }
 
-  // Private helper method for retrying requests
-  private async retryRequest<T>(
-    requestFn: () => Promise<T>,
-    attempts: number = this.config.retryAttempts
-  ): Promise<T> {
-    let lastError: Error;
-    
-    for (let i = 0; i < attempts; i++) {
-      try {
-        return await requestFn();
-      } catch (error) {
-        lastError = error as Error;
-        
-        if (i < attempts - 1) {
-          await new Promise(resolve => 
-            setTimeout(resolve, this.config.retryDelay * Math.pow(2, i))
-          );
-        }
-      }
+  private buildDefaultHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      'User-Agent': this.config.userAgent
+    };
+    if (this.config.apiKey) {
+      headers['Authorization'] = `Bearer ${this.config.apiKey}`;
     }
-    
-    throw lastError!;
+    return headers;
   }
 }

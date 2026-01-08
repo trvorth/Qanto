@@ -1,0 +1,12 @@
+[Unit]
+Description=Qanto Blockchain Node
+After=network.target
+
+[Service]
+User=qanto
+ExecStart=/usr/local/bin/qanto start
+Restart=always
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

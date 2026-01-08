@@ -12,7 +12,7 @@
 //! - Byzantine fault tolerance
 //! - Shard coordination and cross-shard communication
 
-use crate::consensus::{Consensus, ConsensusError};
+use crate::consensus_engine::{Consensus, ConsensusError};
 use crate::metrics::QantoMetrics;
 
 use crate::qanto_net::{NetworkMessage, PeerId, QantoNetServer};
@@ -23,7 +23,11 @@ fn to_core_block(block: &DagBlock) -> core_net::QantoBlock {
     core_net::QantoBlock {
         id: block.id.clone(),
         data: serde_json::to_vec(block).unwrap_or_default(),
-        ..Default::default()
+        chain_id: block.chain_id,
+        height: block.height,
+        timestamp: block.timestamp,
+        parents: block.parents.clone(),
+        transactions_len: block.transactions.len(),
     }
 }
 use crate::saga::{GovernanceProposal, PalletSaga};

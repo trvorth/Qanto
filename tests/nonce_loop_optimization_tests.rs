@@ -10,7 +10,13 @@ use std::sync::Arc;
 
 fn create_test_dag() -> Arc<QantoDAG> {
     // Create temporary storage
-    let temp_dir = std::env::temp_dir().join("qanto_test_nonce_optimization");
+    let base = std::env::temp_dir().join("qanto_test_nonce_optimization");
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let extra = rand::random::<u64>();
+    let temp_dir = base.join(format!("{}_{}", unique, extra));
     std::fs::create_dir_all(&temp_dir).expect("Failed to create temp directory");
 
     let storage_config = StorageConfig {
@@ -26,7 +32,21 @@ fn create_test_dag() -> Arc<QantoDAG> {
         ..StorageConfig::default()
     };
 
-    let storage = QantoStorage::new(storage_config).expect("Failed to create storage");
+    let storage = {
+        let mut attempts = 0;
+        loop {
+            match QantoStorage::new(storage_config.clone()) {
+                Ok(s) => break s,
+                Err(e) => {
+                    attempts += 1;
+                    if attempts >= 10 {
+                        panic!("Failed to create storage: {}", e);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+            }
+        }
+    };
     let saga = Arc::new(PalletSaga::new(
         #[cfg(feature = "infinite-strata")]
         None,

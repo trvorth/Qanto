@@ -4,7 +4,6 @@ import {
   Transaction,
   NodeInfo,
   NetworkHealth,
-  AnalyticsDashboardData,
   GraphQLError
 } from './types';
 
@@ -47,7 +46,7 @@ export class QantoGraphQL {
     `;
 
     try {
-      const data = await this.client.request(query);
+      const data = await this.client.request<{ blockchainInfo: NodeInfo }>(query);
       return data.blockchainInfo;
     } catch (error) {
       throw new GraphQLError(`Failed to get blockchain info: ${(error as Error).message}`);
@@ -100,7 +99,7 @@ export class QantoGraphQL {
     `;
 
     try {
-      const data = await this.client.request(query, {
+      const data = await this.client.request<{ block: QantoBlock }>(query, {
         identifier: hashOrHeight.toString()
       });
       return data.block;
@@ -143,7 +142,7 @@ export class QantoGraphQL {
     `;
 
     try {
-      const data = await this.client.request(query, { hash });
+      const data = await this.client.request<{ transaction: Transaction }>(query, { hash });
       return data.transaction;
     } catch (error) {
       throw new GraphQLError(`Failed to get transaction: ${(error as Error).message}`);
@@ -165,7 +164,7 @@ export class QantoGraphQL {
     `;
 
     try {
-      const data = await this.client.request(query, { address });
+      const data = await this.client.request<{ balance: { confirmed: number; unconfirmed: number; total: number } }>(query, { address });
       return data.balance;
     } catch (error) {
       throw new GraphQLError(`Failed to get balance: ${(error as Error).message}`);
@@ -188,7 +187,7 @@ export class QantoGraphQL {
     `;
 
     try {
-      const data = await this.client.request(query);
+      const data = await this.client.request<{ mempoolInfo: { size: number; bytes: number; usage: number; maxMempool: number } }>(query);
       return data.mempoolInfo;
     } catch (error) {
       throw new GraphQLError(`Failed to get mempool info: ${(error as Error).message}`);
@@ -216,7 +215,7 @@ export class QantoGraphQL {
     `;
 
     try {
-      const data = await this.client.request(query);
+      const data = await this.client.request<{ networkStats: NetworkHealth }>(query);
       return data.networkStats;
     } catch (error) {
       throw new GraphQLError(`Failed to get network stats: ${(error as Error).message}`);
@@ -237,7 +236,7 @@ export class QantoGraphQL {
     `;
 
     try {
-      const data = await this.client.request(mutation, { transactionHex });
+      const data = await this.client.request<{ submitTransaction: { hash: string; success: boolean } }>(mutation, { transactionHex });
       return data.submitTransaction;
     } catch (error) {
       throw new GraphQLError(`Failed to submit transaction: ${(error as Error).message}`);

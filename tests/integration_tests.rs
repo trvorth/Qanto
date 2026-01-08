@@ -11,6 +11,7 @@ use qanto::resource_cleanup::{CleanupPriority, CleanupResource, ResourceCleanup,
 use qanto::saga::PalletSaga;
 use qanto::transaction::{Input, Output, Transaction};
 use qanto::types::QuantumResistantSignature;
+#[allow(unused_imports)]
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -133,8 +134,13 @@ async fn create_integration_test_environment(
     ));
 
     // Create storage config for integration tests
+    let unique_suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let data_dir = std::env::temp_dir().join(format!("integration_test_db_{}", unique_suffix));
     let storage_config = StorageConfig {
-        data_dir: PathBuf::from("integration_test_db"),
+        data_dir,
         max_file_size: 1024 * 1024 * 50, // 50MB
         compression_enabled: false,
         encryption_enabled: false,
@@ -347,10 +353,11 @@ async fn test_block_size_validation_32mb_limit() -> Result<()> {
             parents: vec!["0".repeat(64)],
             transactions: large_transactions,
             difficulty: 1.0,
+            target: None,
             validator: "test_validator".to_string(),
             miner: "test_miner".to_string(),
             nonce: 0,
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64,
             height: 1,
             reward: 100,
             effort: 50,
@@ -366,7 +373,7 @@ async fn test_block_size_validation_32mb_limit() -> Result<()> {
             carbon_credentials: vec![],
             epoch: 1,
             finality_proof: None,
-            reservation_miner_id: None,
+            reservation_snapshot_id: None,
         };
 
         // Verify block size exceeds 32MB
@@ -413,10 +420,11 @@ async fn test_block_size_validation_32mb_limit() -> Result<()> {
             parents: vec!["0".repeat(64)],
             transactions: valid_transactions,
             difficulty: 1.0,
+            target: None,
             validator: "test_validator".to_string(),
             miner: "test_miner".to_string(),
             nonce: 0,
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64,
             height: 1,
             reward: 100,
             effort: 50,
@@ -432,7 +440,7 @@ async fn test_block_size_validation_32mb_limit() -> Result<()> {
             carbon_credentials: vec![],
             epoch: 1,
             finality_proof: None,
-            reservation_miner_id: None,
+            reservation_snapshot_id: None,
         };
 
         // Verify block size is under 32MB
@@ -485,10 +493,11 @@ async fn test_individual_transaction_size_limit() -> Result<()> {
             parents: vec!["0".repeat(64)],
             transactions: vec![oversized_tx],
             difficulty: 1.0,
+            target: None,
             validator: "test_validator".to_string(),
             miner: "test_miner".to_string(),
             nonce: 0,
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64,
             height: 1,
             reward: 100,
             effort: 50,
@@ -504,7 +513,7 @@ async fn test_individual_transaction_size_limit() -> Result<()> {
             carbon_credentials: vec![],
             epoch: 1,
             finality_proof: None,
-            reservation_miner_id: None,
+            reservation_snapshot_id: None,
         };
 
         // Validate that oversized transaction is rejected
@@ -536,10 +545,11 @@ async fn test_individual_transaction_size_limit() -> Result<()> {
             parents: vec!["0".repeat(64)],
             transactions: vec![valid_tx],
             difficulty: 1.0,
+            target: None,
             validator: "test_validator".to_string(),
             miner: "test_miner".to_string(),
             nonce: 0,
-            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis() as u64,
             height: 1,
             reward: 100,
             effort: 50,
@@ -555,7 +565,7 @@ async fn test_individual_transaction_size_limit() -> Result<()> {
             carbon_credentials: vec![],
             epoch: 1,
             finality_proof: None,
-            reservation_miner_id: None,
+            reservation_snapshot_id: None,
         };
 
         // Validate that valid transaction is accepted
@@ -764,7 +774,7 @@ fn test_size_constants() {
 #[tokio::test]
 async fn test_graceful_shutdown_integration() -> Result<()> {
     // Set environment variable for better debugging
-    std::env::set_var("RUST_BACKTRACE", "1");
+    unsafe { std::env::set_var("RUST_BACKTRACE", "1") };
 
     let cleanup = ResourceCleanup::new(Duration::from_secs(5));
 
@@ -874,7 +884,7 @@ async fn test_graceful_shutdown_integration() -> Result<()> {
 #[tokio::test]
 async fn test_double_shutdown_edge_case() -> Result<()> {
     // Set environment variable for better debugging
-    std::env::set_var("RUST_BACKTRACE", "1");
+    unsafe { std::env::set_var("RUST_BACKTRACE", "1") };
 
     let cleanup = ResourceCleanup::new(Duration::from_secs(3));
 
@@ -939,7 +949,7 @@ async fn test_double_shutdown_edge_case() -> Result<()> {
 #[tokio::test]
 async fn test_empty_shutdown_edge_case() -> Result<()> {
     // Set environment variable for better debugging
-    std::env::set_var("RUST_BACKTRACE", "1");
+    unsafe { std::env::set_var("RUST_BACKTRACE", "1") };
 
     let cleanup = ResourceCleanup::new(Duration::from_secs(1));
 
@@ -979,7 +989,7 @@ async fn test_empty_shutdown_edge_case() -> Result<()> {
 #[tokio::test]
 async fn test_mixed_priority_shutdown_edge_case() -> Result<()> {
     // Set environment variable for better debugging
-    std::env::set_var("RUST_BACKTRACE", "1");
+    unsafe { std::env::set_var("RUST_BACKTRACE", "1") };
 
     let cleanup = ResourceCleanup::new(Duration::from_secs(5));
 
@@ -1046,7 +1056,7 @@ async fn test_mixed_priority_shutdown_edge_case() -> Result<()> {
 #[tokio::test]
 async fn test_concurrent_task_shutdown_integration() -> Result<()> {
     // Set environment variable for better debugging
-    std::env::set_var("RUST_BACKTRACE", "1");
+    unsafe { std::env::set_var("RUST_BACKTRACE", "1") };
 
     let cleanup = ResourceCleanup::new(Duration::from_secs(3));
     let task_count = 10;
@@ -1110,7 +1120,7 @@ async fn test_concurrent_task_shutdown_integration() -> Result<()> {
 #[tokio::test]
 async fn test_resource_cleanup_timeout_integration() -> Result<()> {
     // Set environment variable for better debugging
-    std::env::set_var("RUST_BACKTRACE", "1");
+    unsafe { std::env::set_var("RUST_BACKTRACE", "1") };
 
     // Increase timeout to 2000ms for better CI stability
     let cleanup = ResourceCleanup::new(Duration::from_millis(2000));
@@ -1197,7 +1207,7 @@ async fn test_runtime_shutdown_hooks_integration() -> Result<()> {
     use std::sync::atomic::{AtomicU32, Ordering};
 
     // Set environment variable for better debugging
-    std::env::set_var("RUST_BACKTRACE", "1");
+    unsafe { std::env::set_var("RUST_BACKTRACE", "1") };
 
     let cleanup = ResourceCleanup::new(Duration::from_secs(5));
     let hook_counter = Arc::new(AtomicU32::new(0));

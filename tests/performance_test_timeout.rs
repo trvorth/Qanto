@@ -4,11 +4,11 @@
 //! with timeout protection to prevent test hangs and optimized sample data for faster execution.
 
 use anyhow::Result;
+use qanto::node_keystore::Wallet;
 use qanto::performance_validation::{PerformanceValidator, ValidationResults};
 use qanto::qanto_storage::{QantoStorage, StorageConfig};
 use qanto::qantodag::{QantoDAG, QantoDagConfig};
 use qanto::saga::PalletSaga;
-use qanto::wallet::Wallet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -193,7 +193,7 @@ async fn test_tps_validation_with_sample_data() -> Result<()> {
     info!("Starting TPS validation with sample data");
 
     let test_future = async {
-        let (dag, _wallet) = create_test_environment().await?;
+        let (dag, _wallet): (Arc<QantoDAG>, Wallet) = create_test_environment().await?;
         let validator = PerformanceValidator::new(Arc::new(AsyncRwLock::new((*dag).clone())));
 
         // Generate sample data for testing
@@ -421,20 +421,22 @@ fn test_timeout_configuration() {
 
 #[test]
 fn test_scale_configuration() {
-    // Test default scale
-    std::env::remove_var("TEST_SCALE");
-    assert_eq!(get_test_scale(), 1.0);
+    unsafe {
+        // Test default scale
+        std::env::remove_var("TEST_SCALE");
+        assert_eq!(get_test_scale(), 1.0);
 
-    // Test custom scale
-    std::env::set_var("TEST_SCALE", "0.5");
-    assert_eq!(get_test_scale(), 0.5);
+        // Test custom scale
+        std::env::set_var("TEST_SCALE", "0.5");
+        assert_eq!(get_test_scale(), 0.5);
 
-    // Test minimum scale
-    std::env::set_var("TEST_SCALE", "0.05");
-    assert_eq!(get_test_scale(), 0.1); // Should be clamped to minimum
+        // Test minimum scale
+        std::env::set_var("TEST_SCALE", "0.05");
+        assert_eq!(get_test_scale(), 0.1); // Should be clamped to minimum
 
-    // Clean up
-    std::env::remove_var("TEST_SCALE");
+        // Clean up
+        std::env::remove_var("TEST_SCALE");
+    }
 }
 
 // Split test_performance_validation_with_timeout into smaller tests
@@ -764,8 +766,8 @@ async fn test_performance_targets_edge_cases() -> Result<()> {
                 tps_achieved: tps,
                 avg_block_time_ms: 1000.0 / bps,
                 avg_tx_processing_time_us: 1_000_000.0 / tps,
-                total_blocks_processed: (bps * 1.0) as u64,
-                total_transactions_processed: (tps * 1.0) as u64,
+                total_blocks_processed: bps.round() as u64,
+                total_transactions_processed: tps.round() as u64,
                 test_duration_secs: 1.0,
                 memory_usage_mb: 256.0,
                 cpu_utilization: 50.0,

@@ -19,7 +19,7 @@ use crate::zkp::{ZKProof, ZKProofSystem, ZKProofType};
 // use crate::qanto_net::{NetworkMessage, PeerId}; // Commented out as qanto_net module doesn't exist
 
 use anyhow::Result;
-use my_blockchain::qanto_hash; // Replaced sha3 with internal QanHash
+use qanto_core::qanto_native_crypto::qanto_hash; // Replaced sha3 with internal QanHash
 use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};

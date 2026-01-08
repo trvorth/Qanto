@@ -92,7 +92,7 @@ impl Default for QantoCryptoAdapter {
 #[async_trait]
 impl CryptoOperations for QantoCryptoAdapter {
     async fn hash(&self, data: &[u8]) -> Vec<u8> {
-        let h = my_blockchain::qanto_hash(data);
+        let h = crate::qanto_native_crypto::qanto_hash(data);
         h.as_bytes().to_vec()
     }
 

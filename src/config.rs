@@ -48,9 +48,13 @@ const MAX_MEMPOOL_BACKPRESSURE_THRESHOLD: f64 = 0.95; // Maximum 95% utilization
 const SOFT_MEMORY_LIMIT: usize = 8 * 1024 * 1024; // 8MB soft limit for backpressure // 8MB soft limit
 const HARD_MEMORY_LIMIT: usize = 10 * 1024 * 1024; // 10MB hard limit
 const MIN_TX_BATCH_SIZE: usize = 1; // Minimum 1 transaction per batch
-const MAX_TX_BATCH_SIZE: usize = 200000; // Maximum 200K transactions per batch (increased for high performance)
+const MAX_TX_BATCH_SIZE: usize = 1_000_000; // Maximum 1M transactions per batch (increased for high performance)
 const MIN_ADAPTIVE_BATCH_THRESHOLD: f64 = 0.6; // Minimum 60% memory utilization for adaptive batching
 const MAX_ADAPTIVE_BATCH_THRESHOLD: f64 = 0.9; // Maximum 90% memory utilization for adaptive batching
+
+// --- WebSocket message size validation ---
+const MIN_WEBSOCKET_MESSAGE_BYTES: usize = 1024; // 1KB minimum to avoid trivial limits
+const MAX_WEBSOCKET_MESSAGE_BYTES: usize = 16 * 1024 * 1024; // 16MB upper bound
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -73,6 +77,16 @@ pub enum ConfigError {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RpcConfig {
     pub address: String,
+    /// Maximum allowed size for a single WebSocket message (bytes)
+    /// If None, a sensible default will be used by the node.
+    pub websocket_max_message_bytes: Option<usize>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct MiningConfig {
+    pub author: Option<String>,
+    #[serde(default)]
+    pub reuse_author: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -80,6 +94,7 @@ pub struct Config {
     // --- Network Configuration ---
     pub p2p_address: String,
     pub api_address: String,
+    #[serde(alias = "bootnodes")]
     pub peers: Vec<String>,
     pub local_full_p2p_address: Option<String>,
     pub network_id: String,
@@ -90,6 +105,10 @@ pub struct Config {
     pub target_block_time: u64, // Now in milliseconds
     pub difficulty: u64,
     pub max_amount: u64,
+
+    // --- Mining Configuration ---
+    #[serde(default)]
+    pub mining: MiningConfig,
 
     // --- Performance & Hardware ---
     #[serde(alias = "gpu_enabled")]
@@ -182,16 +201,20 @@ pub struct P2pConfig {
     pub mesh_n: usize,
     pub mesh_n_high: usize,
     pub mesh_outbound_min: usize,
+    pub gossip_lazy: usize,
+    pub history_gossip: usize,
 }
 
 impl Default for P2pConfig {
     fn default() -> Self {
         Self {
-            heartbeat_interval: 2000, // 2 seconds - compatible with 1 second block time
-            mesh_n_low: 2,            // Reduced for lower resource usage
-            mesh_n: 4,                // Reduced from 8 to 4
-            mesh_n_high: 8,           // Reduced from 16 to 8
-            mesh_outbound_min: 2,     // Reduced from 4 to 2
+            heartbeat_interval: 100,
+            mesh_n_low: 6,
+            mesh_n: 12,
+            mesh_n_high: 16,
+            mesh_outbound_min: 8,
+            gossip_lazy: 3,
+            history_gossip: 1000,
         }
     }
 }
@@ -217,6 +240,7 @@ impl Default for Config {
             mining_threads: Self::get_optimized_thread_count(),
             mining_enabled: false,
             adaptive_mining_enabled: false,
+            mining: Default::default(),
 
             // --- Producer Configuration ---
             producer_type: Some("solo".to_string()), // Default to solo producer
@@ -233,7 +257,7 @@ impl Default for Config {
             difficulty_min: Some(1),
 
             // --- Memory & Profiling Configuration ---
-            db_cache_bytes: Some(64 * 1024 * 1024), // 64MB default
+            db_cache_bytes: Some(512 * 1024 * 1024), // 512MB default
             mempool_max_bytes: Some(128 * 1024 * 1024), // 128MB default
 
             // --- Dummy Transactions Configuration ---
@@ -277,7 +301,8 @@ impl Default for Config {
             },
             p2p: P2pConfig::default(),
             rpc: RpcConfig {
-                address: "127.0.0.1:50051".to_string(),
+                address: "127.0.0.1:8332".to_string(),
+                websocket_max_message_bytes: Some(512 * 1024),
             },
         }
     }
@@ -404,6 +429,7 @@ impl Config {
             mining_threads: 1,              // Single thread for free-tier
             mining_enabled: false,          // Disabled by default for free-tier
             adaptive_mining_enabled: false, // Disabled for free-tier to save resources
+            mining: Default::default(),
 
             // --- Producer Configuration ---
             producer_type: Some("solo".to_string()), // Default to solo producer for free-tier
@@ -467,9 +493,12 @@ impl Config {
                 mesh_n: 2,
                 mesh_n_high: 4,
                 mesh_outbound_min: 1,
+                gossip_lazy: 6,
+                history_gossip: 100,
             },
             rpc: RpcConfig {
                 address: "127.0.0.1:50051".to_string(),
+                websocket_max_message_bytes: Some(256 * 1024),
             },
         }
     }
@@ -502,6 +531,7 @@ impl Config {
             mining_threads: thread_count,   // Use all available threads
             mining_enabled: true,           // Enable mining for high performance
             adaptive_mining_enabled: false, // Disabled by default, can be enabled via CLI
+            mining: Default::default(),
 
             // --- Producer Configuration ---
             producer_type: Some("decoupled".to_string()), // Use decoupled producer for high performance
@@ -563,11 +593,14 @@ impl Config {
                 heartbeat_interval: 100, // Very fast heartbeat for rapid consensus (100ms)
                 mesh_n_low: 8,
                 mesh_n: 16,
-                mesh_n_high: 32,
+                mesh_n_high: 16, // Optimized for 32 BPS
                 mesh_outbound_min: 8,
+                gossip_lazy: 3,
+                history_gossip: 1000,
             },
             rpc: RpcConfig {
                 address: "127.0.0.1:50051".to_string(),
+                websocket_max_message_bytes: Some(1024 * 1024),
             },
         }
     }
@@ -633,6 +666,16 @@ impl Config {
             error_msg.push('\'');
             ConfigError::Validation(error_msg)
         })?;
+
+        // Validate optional WebSocket max message size
+        if let Some(ws_max) = self.rpc.websocket_max_message_bytes {
+            if !(MIN_WEBSOCKET_MESSAGE_BYTES..=MAX_WEBSOCKET_MESSAGE_BYTES).contains(&ws_max) {
+                return Err(ConfigError::Validation(format!(
+                    "rpc.websocket_max_message_bytes must be between {} and {} bytes",
+                    MIN_WEBSOCKET_MESSAGE_BYTES, MAX_WEBSOCKET_MESSAGE_BYTES
+                )));
+            }
+        }
 
         if !(MIN_TARGET_BLOCK_TIME..=MAX_TARGET_BLOCK_TIME).contains(&self.target_block_time) {
             let mut error_msg = String::with_capacity(64);

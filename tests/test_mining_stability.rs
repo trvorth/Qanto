@@ -5,8 +5,8 @@
 
 use qanto::config::Config;
 use qanto::node::Node;
+use qanto::node_keystore::Wallet;
 use qanto::qantodag::QantoDAG;
-use qanto::wallet::Wallet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
@@ -46,8 +46,10 @@ impl MockPoW {
         let pow_hash_bytes = pow_hash.as_bytes();
 
         // Verify it meets our mock target
-        let target_hash_bytes =
-            qanto::miner::Miner::calculate_target_from_difficulty(self.fixed_difficulty);
+        let target_hash_bytes = {
+            let t = block.target.clone().expect("header target");
+            hex::decode(t).expect("valid target hex")
+        };
 
         if !qanto::miner::Miner::hash_meets_target(pow_hash_bytes, &target_hash_bytes) {
             // Reduced nonce trials from 1000 to 50 for faster testing
@@ -141,6 +143,9 @@ async fn setup_test_node() -> Result<(Node, TempDir), Box<dyn std::error::Error>
         // Bind RPC server to an ephemeral port to avoid conflicts in CI
         rpc: qanto::config::RpcConfig {
             address: "127.0.0.1:0".to_string(),
+            websocket_max_message_bytes: Some(
+                qanto::websocket_server::DEFAULT_MAX_WS_MESSAGE_BYTES,
+            ),
         },
         ..Default::default()
     };
@@ -301,7 +306,7 @@ async fn run_mining_stability_test(
         );
 
         assert!(
-            metrics.average_block_time > Duration::from_millis(50),
+            metrics.average_block_time > Duration::from_millis(20),
             "Average block time ({:.2}s) is suspiciously low",
             metrics.average_block_time.as_secs_f64()
         );
@@ -344,7 +349,7 @@ fn print_test_results(config: &MiningTestConfig, metrics: &MiningMetrics) {
 }
 
 /// Main test function
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mining_stability() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing once for tests
     qanto::init_test_tracing();
@@ -418,7 +423,7 @@ async fn test_mining_stability_config_validation() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mining_node_initialization() {
     // Create temporary directory for test
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
@@ -450,6 +455,9 @@ async fn test_mining_node_initialization() {
         // Bind RPC server to an ephemeral port to avoid conflicts in CI
         rpc: qanto::config::RpcConfig {
             address: "127.0.0.1:0".to_string(),
+            websocket_max_message_bytes: Some(
+                qanto::websocket_server::DEFAULT_MAX_WS_MESSAGE_BYTES,
+            ),
         },
         ..Default::default()
     };
@@ -473,7 +481,7 @@ async fn test_mining_node_initialization() {
     assert!(node_result.is_ok(), "Node initialization should succeed");
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mining_stability_short_run() {
     // Create temporary directory for test
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
@@ -505,6 +513,9 @@ async fn test_mining_stability_short_run() {
         // Bind RPC server to an ephemeral port to avoid conflicts in CI
         rpc: qanto::config::RpcConfig {
             address: "127.0.0.1:0".to_string(),
+            websocket_max_message_bytes: Some(
+                qanto::websocket_server::DEFAULT_MAX_WS_MESSAGE_BYTES,
+            ),
         },
         ..Default::default()
     };

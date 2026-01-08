@@ -15,12 +15,12 @@ use tracing::info;
 
 use crate::performance_optimizations::OptimizedTransactionProcessor;
 
+use crate::node_keystore::Wallet;
 use crate::post_quantum_crypto::QantoPQPrivateKey;
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDagConfig};
 use crate::saga::PalletSaga;
 use crate::transaction::Transaction;
 use crate::types::HomomorphicEncrypted;
-use crate::wallet::Wallet;
 
 /// Performance validation results
 #[derive(Debug, Clone)]
@@ -238,7 +238,7 @@ impl PerformanceValidator {
                 }
 
                 let transactions = self
-                    .generate_test_transactions(tx_batch as usize, signing_key, public_key)
+                    .generate_test_transactions(tx_batch, signing_key, public_key)
                     .await;
 
                 // Process transactions using optimized batch processor
@@ -631,6 +631,7 @@ pub async fn validate_performance_targets(
         enable_write_batching: true,
         enable_bloom_filters: true,
         enable_async_io: true,
+        use_rocksdb: true,
         sync_interval: Duration::from_millis(100),
         compression_level: 3,
     };

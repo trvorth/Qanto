@@ -400,7 +400,7 @@ qanto-cli swap complete --swap-id 0x123... --secret-key your-secret
 |-----------|-----|-----|---------|----------|
 | Full Validator | 8 cores | 8-16GB | 50GB NVMe | 100Mbps |
 | Light Validator | 4 cores | 8GB | 25GB SSD | 50Mbps |
-| Archive Node | 32 cores | 32GB | 500GB HDD | 1Gbps |
+| Archive Node | 32 cores | 32GB | 250GB HDD | 1Gbps |
 | RPC Node | 16 cores | 16-32GB | 100GB SSD | 500Mbps |
 
 ### Mining Performance

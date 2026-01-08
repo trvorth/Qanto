@@ -9,19 +9,21 @@
 //! - BUILD FIX (E0277): Added the required `.await` keyword to the `Transaction::new`
 //!   function call, as it is now an async function.
 
+#![allow(deprecated)]
+
 use anyhow::Result;
 use colored::*;
 
 use qanto::qanto_storage::{QantoStorage, StorageConfig};
 use qanto::{
-    consensus::Consensus,
+    consensus_engine::Consensus,
     mempool::Mempool,
     miner::Miner,
+    node_keystore::Wallet,
     qantodag::{QantoDAG, QantoDagConfig},
     saga::PalletSaga,
     transaction::{Input, Output, Transaction, TransactionConfig},
     types::UTXO,
-    wallet::Wallet,
 };
 use std::{
     collections::HashMap,
@@ -202,7 +204,7 @@ async fn run_autonomous_simulation() -> Result<()> {
         "{}",
         "SAGA is now solving Proof-of-Work... this may take a moment.".dimmed()
     );
-    miner.solve_pow(&mut candidate_block)?;
+    miner.solve_pow(&mut candidate_block).await?;
     println!("{}", "✓ Proof-of-Work Satisfied.".green());
 
     let total_fees = candidate_block
@@ -233,12 +235,13 @@ async fn run_autonomous_simulation() -> Result<()> {
     println!("{} SAGA consensus validation passed.", "✓".green());
 
     let block_id = candidate_block.id.clone();
+    let snapshot_id_opt = candidate_block.reservation_snapshot_id.clone();
     if dag_arc
         .add_block(
             candidate_block,
             &utxos_arc,
             Some(&mempool_arc),
-            Some(&validator_address),
+            snapshot_id_opt.as_deref(),
         )
         .await?
     {

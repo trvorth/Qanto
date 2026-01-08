@@ -118,6 +118,52 @@ async def main():
 asyncio.run(main())
 ```
 
+#### Balance Subscriptions
+
+```python
+import asyncio
+from qanto import QantoWebSocket, Network
+
+async def on_balance_confirmed(info):
+    # info contains at least: { 'address': str, 'client_id': Optional[str] }
+    print(f"Balance subscription confirmed for {info['address']}")
+
+async def on_balance_update(update):
+    # update has: address, balance (int), balance_bigint (str), timestamp (int), finalized (bool)
+    total = int(update['balance_bigint'])  # parse u128 string
+    print(f"Balance update for {update['address']}: total={total}, finalized={update['finalized']}")
+    # Optional enriched breakdown fields may be present when the server supports them
+    if 'spendable_confirmed' in update and update['spendable_confirmed'] is not None:
+        print('  Spendable confirmed:', update['spendable_confirmed'])
+    if 'immature_coinbase_confirmed' in update and update['immature_coinbase_confirmed'] is not None:
+        print('  Immature coinbase confirmed:', update['immature_coinbase_confirmed'])
+    if 'total_confirmed' in update and update['total_confirmed'] is not None:
+        print('  Total confirmed:', update['total_confirmed'])
+    if 'unconfirmed_delta' in update and update['unconfirmed_delta'] is not None:
+        print('  Pending delta:', update['unconfirmed_delta'])
+
+async def main():
+    ws = QantoWebSocket(network=Network.MAINNET)
+    ws.on('balance_subscription_confirmed', on_balance_confirmed)
+    ws.on('balance_update', on_balance_update)
+
+    await ws.connect()
+    await ws.subscribe_to_balances(address='qanto1abc123...', finalized_only=False)
+
+    try:
+        while True:
+            await asyncio.sleep(1)
+    except KeyboardInterrupt:
+        await ws.disconnect()
+
+asyncio.run(main())
+```
+
+Note:
+- `balance_bigint` is a decimal string representing a `u128` total balance; convert with `int(...)`.
+- Balance updates include `address`, `balance`, `balance_bigint`, `timestamp` (ms), and `finalized`.
+- When supported by the server, updates may also include enrichment fields: `spendable_confirmed`, `immature_coinbase_confirmed`, `total_confirmed`, and `unconfirmed_delta`.
+
 ### GraphQL Queries
 
 ```python
@@ -226,9 +272,22 @@ await ws.subscribe_to_blocks()
 await ws.subscribe_to_transactions(address="qanto1abc123...")
 await ws.subscribe_to_network_health()
 
+# Subscribe to balances
+ws.on('balance_subscription_confirmed', lambda info: print(f"Confirmed: {info['address']}"))
+ws.on('balance_update', lambda u: print(f"Update {u['address']} total={int(u['balance_bigint'])}"))
+await ws.subscribe_to_balances(address="qanto1abc123...", finalized_only=False)
+
 # Disconnect
 await ws.disconnect()
 ```
+
+#### Methods
+
+- `connect()` / `disconnect()`
+- `subscribe_to_blocks()`
+- `subscribe_to_transactions(address: Optional[str] = None)`
+- `subscribe_to_network_health()`
+- `subscribe_to_balances(address: str, finalized_only: bool = False)`
 
 ### QantoGraphQL
 

@@ -41,7 +41,7 @@ fn create_test_dag() -> Arc<QantoDAG> {
     QantoDAG::new(dag_config, saga_pallet, storage, logging_config).expect("Failed to create DAG")
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn concurrent_miners_do_not_select_duplicate_transactions() {
     // Create DAG and EliteMempool
     let dag = create_test_dag();

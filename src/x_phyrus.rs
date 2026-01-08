@@ -7,7 +7,7 @@ use crate::config::Config;
 use crate::qanto_storage::{QantoStorage, StorageConfig};
 use anyhow::{Context, Result};
 use log::{debug, error, info, warn};
-use my_blockchain::qanto_hash; // For cryptographic hashing in integrity checks
+use qanto_core::qanto_native_crypto::qanto_hash; // For cryptographic hashing in integrity checks
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;
@@ -1481,6 +1481,7 @@ async fn check_chain_state_integrity() -> Result<()> {
         enable_write_batching: true,
         enable_bloom_filters: true,
         enable_async_io: true,
+        use_rocksdb: true,
         sync_interval: Duration::from_millis(100),
         compression_level: 3,
     };

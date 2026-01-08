@@ -1,3 +1,4 @@
+/// <reference path="./types/ws.d.ts" />
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import {
@@ -7,9 +8,10 @@ import {
   QantoBlock,
   Transaction,
   NetworkHealth,
-  AnalyticsDashboardData
+  AnalyticsDashboardData,
+  BalanceUpdate
 } from './types';
-import { delay, retryWithBackoff } from './utils';
+// NOTE: Backoff helpers available in utils, not used directly here
 
 export interface WebSocketEvents {
   'connected': () => void;
@@ -23,6 +25,8 @@ export interface WebSocketEvents {
   'mempool_update': (size: number) => void;
   'security_alert': (alert: any) => void;
   'subscription_confirmed': (type: string) => void;
+  'balance_update': (update: BalanceUpdate) => void;
+  'balance_subscription_confirmed': (info: { address: string; client_id?: string }) => void;
 }
 
 export class QantoWebSocket extends EventEmitter {
@@ -34,7 +38,9 @@ export class QantoWebSocket extends EventEmitter {
   private isConnecting = false;
   private isManuallyDisconnected = false;
   private subscriptions = new Set<string>();
+  private balanceSubscriptions = new Set<string>();
   private heartbeatInterval: NodeJS.Timeout | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null;
   private client: any; // Reference to the main client
 
   constructor(url: string, client: any) {
@@ -47,6 +53,10 @@ export class QantoWebSocket extends EventEmitter {
    * Connect to the WebSocket server
    */
   async connect(): Promise<void> {
+    // NOTE: currently not used; reserve for future client-aware logic
+    if (this.client) {
+      // no-op read to satisfy TypeScript unused property lint
+    }
     if (this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) {
       return;
     }
@@ -68,6 +78,10 @@ export class QantoWebSocket extends EventEmitter {
   async disconnect(): Promise<void> {
     this.isManuallyDisconnected = true;
     this.stopHeartbeat();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     
     if (this.ws) {
       this.ws.close(1000, 'Manual disconnect');
@@ -149,6 +163,34 @@ export class QantoWebSocket extends EventEmitter {
   }
 
   /**
+   * Subscribe to balance updates for a specific address.
+   * When finalizedOnly is true, uses structured subscription with filters; otherwise uses alias topic.
+   */
+  async subscribeToBalances(address: string, options?: { finalizedOnly?: boolean }): Promise<void> {
+    if (!this.isConnected()) {
+      await this.connect();
+    }
+
+    const finalizedOnly = options?.finalizedOnly === true;
+    if (finalizedOnly) {
+      const msg = {
+        type: 'subscribe',
+        subscription_type: 'balances',
+        filters: { address, finalized_only: 'true' }
+      };
+      this.send(msg);
+    } else {
+      const aliasMsg = {
+        type: 'subscribe',
+        topics: [`wallet_balance:${address}`]
+      };
+      this.send(aliasMsg);
+    }
+
+    this.balanceSubscriptions.add(address);
+  }
+
+  /**
    * Check if WebSocket is connected
    */
   isConnected(): boolean {
@@ -198,7 +240,7 @@ export class QantoWebSocket extends EventEmitter {
           resolve();
         });
 
-        this.ws.on('message', (data: WebSocket.Data) => {
+        this.ws.on('message', (data: any) => {
           try {
             const message: WebSocketMessage = JSON.parse(data.toString());
             this.handleMessage(message);
@@ -236,30 +278,94 @@ export class QantoWebSocket extends EventEmitter {
     this.emit('message', message);
 
     switch (message.type) {
-      case 'block_notification':
-        this.emit('block', message.data);
+      case 'block_notification': {
+        const m: any = message as any;
+        this.emit('block', m.block ?? m.data);
         break;
-      case 'transaction_confirmation':
-        this.emit('transaction', message.data);
+      }
+      case 'transaction_confirmation': {
+        const m: any = message as any;
+        this.emit('transaction', m.transaction ?? m.data);
         break;
+      }
       case 'network_health':
-        this.emit('network_health', message.data);
+        this.emit('network_health', (message as any).data ?? (message as any));
         break;
       case 'analytics_update':
-        this.emit('analytics', message.data);
+        this.emit('analytics', (message as any).data ?? (message as any));
         break;
-      case 'mempool_update':
-        this.emit('mempool_update', message.data.size || message.data);
+      case 'mempool_update': {
+        const m: any = message as any;
+        this.emit('mempool_update', m.size ?? (m.data?.size ?? m.data));
         break;
+      }
       case 'security_alert':
-        this.emit('security_alert', message.data);
+        this.emit('security_alert', (message as any).alert ?? (message as any).data);
         break;
-      case 'subscription_confirmation':
-        this.emit('subscription_confirmed', message.data.subscription_type);
+      case 'subscription_confirmed': {
+        const m: any = message as any;
+        this.emit('subscription_confirmed', m.subscription_type);
         break;
-      case 'error':
-        this.emit('error', new WebSocketError(message.data.message || 'Unknown WebSocket error'));
+      }
+      case 'subscription_confirmation': {
+        const m: any = message as any;
+        this.emit('subscription_confirmed', m.data?.subscription_type ?? m.subscription_type);
         break;
+      }
+      case 'balance_subscription_confirmed': {
+        const m: any = message as any;
+        this.emit('balance_subscription_confirmed', { address: m.address, client_id: m.client_id });
+        break;
+      }
+      case 'balance_snapshot': {
+        const m: any = message as any;
+        this.emit('balance_update', {
+          address: m.address,
+          balance: {
+            spendable_confirmed: m.total_confirmed,
+            immature_coinbase_confirmed: 0,
+            unconfirmed_delta: m.total_unconfirmed ?? 0,
+            total_confirmed: m.total_confirmed,
+          },
+          timestamp: m.timestamp,
+          finalized: true,
+        });
+        break;
+      }
+      case 'balance_delta_update': {
+        const m: any = message as any;
+        this.emit('balance_update', {
+          address: m.address,
+          balance: {
+            spendable_confirmed: 0,
+            immature_coinbase_confirmed: 0,
+            unconfirmed_delta: 0,
+            total_confirmed: 0,
+          },
+          timestamp: m.timestamp,
+          finalized: m.finalized,
+          delta_confirmed: m.delta_confirmed,
+          delta_unconfirmed: m.delta_unconfirmed,
+        } as any);
+        break;
+      }
+      case 'balance_update': {
+        const m: any = message as any;
+        const update: BalanceUpdate = {
+          address: m.address,
+          balance: m.balance,
+          timestamp: m.timestamp,
+          finalized: m.finalized,
+        };
+        this.emit('balance_update', update);
+        break;
+      }
+      case 'error': {
+        const m: any = message as any;
+        const msg = (m.message ?? m.data?.message ?? 'Unknown WebSocket error');
+        this.emit('error', new WebSocketError(msg));
+        break;
+      }
       default:
         console.warn('Unknown message type:', message.type);
     }
@@ -278,22 +384,34 @@ export class QantoWebSocket extends EventEmitter {
   }
 
   private async scheduleReconnect(): Promise<void> {
+    if (this.isManuallyDisconnected) return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.reconnectAttempts++;
-    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
-    
-    console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-    
-    setTimeout(async () => {
-      try {
-        await this.connect();
-        // Re-establish subscriptions
-        for (const subscription of this.subscriptions) {
-          await this.subscribe(subscription);
+    const delayMs = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+    if (process.env['QANTO_WS_DEBUG'] === '1') {
+      console.log(`Reconnecting in ${delayMs}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    }
+    await new Promise<void>((resolve) => {
+      this.reconnectTimer = setTimeout(async () => {
+        try {
+          await this.connect();
+          for (const subscription of this.subscriptions) {
+            await this.subscribe(subscription);
+          }
+          for (const addr of this.balanceSubscriptions) {
+            await this.subscribeToBalances(addr);
+          }
+        } catch (error) {
+          console.error('Reconnection failed:', error);
+        } finally {
+          resolve();
         }
-      } catch (error) {
-        console.error('Reconnection failed:', error);
-      }
-    }, delay);
+      }, delayMs);
+      (this.reconnectTimer as any)?.unref?.();
+    });
   }
 
   private startHeartbeat(): void {
@@ -304,10 +422,12 @@ export class QantoWebSocket extends EventEmitter {
         try {
           this.ws!.ping();
         } catch (error) {
+          // eslint-disable-next-line no-console
           console.error('Heartbeat failed:', error);
         }
       }
     }, 30000); // Send ping every 30 seconds
+    (this.heartbeatInterval as any)?.unref?.();
   }
 
   private stopHeartbeat(): void {

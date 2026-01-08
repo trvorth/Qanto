@@ -7,6 +7,7 @@ use crate::memory_optimization::TransactionArena;
 use crate::qantodag::QantoDAG;
 use crate::transaction::{Transaction, TransactionError};
 use crate::types::UTXO;
+use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
 // use rayon::prelude::*; // Removed unused import
 use parking_lot::RwLock as ParkingRwLock;
@@ -73,6 +74,8 @@ pub struct Mempool {
     max_age: Duration,
     max_size_bytes: usize,
     current_size_bytes: Arc<AtomicUsize>,
+    // Atomic pending transactions count for O(1) reads by miners/metrics
+    pending_tx_count: Arc<AtomicUsize>,
     // Add counters for less verbose logging
     tx_counter: Arc<AtomicUsize>,
     last_log_time: Arc<RwLock<Instant>>,
@@ -81,12 +84,13 @@ pub struct Mempool {
     shard_count: usize,
     sharded_heaps: Vec<Arc<ParkingRwLock<BinaryHeap<PrioritizedTransaction>>>>,
     // Transaction reservation system to prevent race conditions
-    reserved_transactions: Arc<ParkingRwLock<HashMap<String, String>>>, // tx_id -> miner_id
+    reserved_transactions: Arc<ParkingRwLock<HashMap<String, String>>>, // tx_id -> snapshot_id
     reservation_timeout: Duration,
     reservation_timestamps: Arc<ParkingRwLock<HashMap<String, Instant>>>, // tx_id -> reservation_time
     // UTXO-level reservation to prevent double-spend races across miners
-    reserved_utxos: Arc<ParkingRwLock<HashMap<String, String>>>, // utxo_id -> miner_id
+    reserved_utxos: Arc<ParkingRwLock<HashMap<String, String>>>, // utxo_id -> snapshot_id
     utxo_reservation_timestamps: Arc<ParkingRwLock<HashMap<String, Instant>>>, // utxo_id -> reservation_time
+    pending_inputs: Arc<DashMap<String, String>>,                              // utxo_id -> tx_id
 }
 
 /// Optimized mempool implementation using DashMap and BinaryHeap for high performance
@@ -108,11 +112,11 @@ pub struct OptimizedMempool {
     shard_count: usize,
     sharded_heaps: Vec<Arc<ParkingRwLock<BinaryHeap<PrioritizedTransaction>>>>,
     // Transaction reservation fields
-    reserved_transactions: Arc<RwLock<HashMap<String, String>>>, // tx_id -> miner_id
+    reserved_transactions: Arc<RwLock<HashMap<String, String>>>, // tx_id -> snapshot_id
     reservation_timeout: Duration,
     reservation_timestamps: Arc<RwLock<HashMap<String, Instant>>>, // tx_id -> reservation_time
     // UTXO-level reservation to prevent double-spend races across miners
-    reserved_utxos: Arc<RwLock<HashMap<String, String>>>, // utxo_id -> miner_id
+    reserved_utxos: Arc<RwLock<HashMap<String, String>>>, // utxo_id -> snapshot_id
     utxo_reservation_timestamps: Arc<RwLock<HashMap<String, Instant>>>, // utxo_id -> reservation_time
 }
 
@@ -563,6 +567,16 @@ impl OptimizedMempool {
         self.transactions.len()
     }
 
+    /// Consistent transaction size calculation
+    fn calculate_transaction_size(&self, transaction: &Transaction) -> usize {
+        transaction.id.len()
+            + transaction.sender.len()
+            + transaction.receiver.len()
+            + transaction.inputs.len() * 64
+            + transaction.outputs.len() * 128
+            + 256 // Estimated overhead
+    }
+
     pub async fn prune_old_transactions(&self) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -585,9 +599,7 @@ impl OptimizedMempool {
         // Remove old transactions
         for tx_id in old_txs {
             if let Some((_, prioritized_tx)) = self.transactions.remove(&tx_id) {
-                let tx_size = serde_json::to_vec(&prioritized_tx.tx)
-                    .map(|data| data.len())
-                    .unwrap_or(0);
+                let tx_size = self.calculate_transaction_size(&prioritized_tx.tx);
                 self.current_size_bytes
                     .fetch_sub(tx_size, std::sync::atomic::Ordering::Relaxed);
                 info!("Pruned old transaction: {}", tx_id);
@@ -617,12 +629,7 @@ impl OptimizedMempool {
         }
 
         // Pre-calculate transaction size more efficiently
-        let tx_size = transaction.id.len()
-            + transaction.sender.len()
-            + transaction.receiver.len()
-            + transaction.inputs.len() * 64
-            + transaction.outputs.len() * 128
-            + 256; // Estimated overhead
+        let tx_size = self.calculate_transaction_size(&transaction);
 
         let current_size = self.current_size_bytes.load(Ordering::Relaxed);
         let projected_size = current_size + tx_size;
@@ -782,9 +789,7 @@ impl OptimizedMempool {
 
             // Check if transaction still exists (might have been removed)
             if let Some((_, removed_tx)) = self.transactions.remove(&tx_id) {
-                let tx_size = serde_json::to_vec(&removed_tx.tx)
-                    .map(|data| data.len())
-                    .unwrap_or(0);
+                let tx_size = self.calculate_transaction_size(&removed_tx.tx);
                 self.current_size_bytes
                     .fetch_sub(tx_size, std::sync::atomic::Ordering::Relaxed);
                 // Update global metric for mempool size
@@ -818,12 +823,19 @@ impl OptimizedMempool {
             .await
     }
 
-    /// Select transactions with optional miner ID for reservation
+    /// Select transactions with optional snapshot ID for reservation
     pub async fn select_transactions_with_reservation(
         &self,
         max_txs: usize,
-        miner_id: Option<String>,
+        snapshot_id: Option<String>,
     ) -> Vec<Transaction> {
+        // Performance-test feature: return zero transactions to create coinbase-only blocks
+        if cfg!(feature = "performance-test") {
+            tracing::debug!(
+                "MEMPOOL: performance-test enabled, gating transactions to 0 for coinbase-only blocks"
+            );
+            return Vec::new();
+        }
         // Clean up expired reservations first
         self.cleanup_expired_reservations().await;
 
@@ -838,15 +850,15 @@ impl OptimizedMempool {
                 if let Some(reverse_ptx) = heap.pop() {
                     let ptx = reverse_ptx.0; // Extract PrioritizedTransaction from Reverse
                     if self.transactions.contains_key(&ptx.tx.id) {
-                        // Skip if transaction is reserved by another miner
-                        if self.is_transaction_reserved(&ptx.tx.id, &miner_id).await {
+                        // Skip if transaction is reserved by another snapshot
+                        if self.is_transaction_reserved(&ptx.tx.id, &snapshot_id).await {
                             extracted.push(ptx);
                         } else {
-                            // Skip if any input UTXO is reserved by another miner
+                            // Skip if any input UTXO is reserved by another snapshot
                             let mut utxo_conflict = false;
                             for input in &ptx.tx.inputs {
                                 let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
-                                if self.is_utxo_reserved_by_other(&utxo_id, &miner_id).await {
+                                if self.is_utxo_reserved_by_other(&utxo_id, &snapshot_id).await {
                                     utxo_conflict = true;
                                     break;
                                 }
@@ -863,10 +875,10 @@ impl OptimizedMempool {
                             }
 
                             if !utxo_conflict && !has_dependency {
-                                // Reserve the transaction and its input UTXOs if miner_id is provided
-                                if let Some(ref mid) = miner_id {
-                                    self.reserve_transaction(&ptx.tx.id, mid).await;
-                                    self.reserve_utxos_for_transaction(&ptx.tx, mid).await;
+                                // Reserve the transaction and its input UTXOs if snapshot_id is provided
+                                if let Some(ref sid) = snapshot_id {
+                                    self.reserve_transaction(&ptx.tx.id, sid).await;
+                                    self.reserve_utxos_for_transaction(&ptx.tx, sid).await;
                                 }
                                 result.push(ptx.tx.clone());
                             }
@@ -884,9 +896,9 @@ impl OptimizedMempool {
             }
 
             debug!(
-                "Selected {} transactions for block creation (BinaryHeap persistent) with miner_id: {:?}",
+                "Selected {} transactions for block creation (BinaryHeap persistent) with snapshot_id: {:?}",
                 result.len(),
-                miner_id
+                snapshot_id
             );
             return result;
         }
@@ -925,15 +937,15 @@ impl OptimizedMempool {
                 Some(i) => {
                     let ptx = current[i].take().unwrap();
                     if self.transactions.contains_key(&ptx.tx.id) {
-                        // Skip if transaction is reserved by another miner
-                        if self.is_transaction_reserved(&ptx.tx.id, &miner_id).await {
+                        // Skip if transaction is reserved by another snapshot
+                        if self.is_transaction_reserved(&ptx.tx.id, &snapshot_id).await {
                             extracted_per_shard[i].push(ptx);
                         } else {
-                            // Skip if any input UTXO is reserved by another miner
+                            // Skip if any input UTXO is reserved by another snapshot
                             let mut utxo_conflict = false;
                             for input in &ptx.tx.inputs {
                                 let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
-                                if self.is_utxo_reserved_by_other(&utxo_id, &miner_id).await {
+                                if self.is_utxo_reserved_by_other(&utxo_id, &snapshot_id).await {
                                     utxo_conflict = true;
                                     break;
                                 }
@@ -951,9 +963,9 @@ impl OptimizedMempool {
 
                             if !utxo_conflict && !has_dependency {
                                 // Reserve the transaction and its input UTXOs
-                                if let Some(ref mid) = miner_id {
-                                    self.reserve_transaction(&ptx.tx.id, mid).await;
-                                    self.reserve_utxos_for_transaction(&ptx.tx, mid).await;
+                                if let Some(ref sid) = snapshot_id {
+                                    self.reserve_transaction(&ptx.tx.id, sid).await;
+                                    self.reserve_utxos_for_transaction(&ptx.tx, sid).await;
                                 }
                                 result.push(ptx.tx.clone());
                             }
@@ -975,52 +987,55 @@ impl OptimizedMempool {
         }
 
         debug!(
-            "Selected {} transactions for block creation (sharded merge) with miner_id: {:?}",
+            "Selected {} transactions for block creation (sharded merge) with snapshot_id: {:?}",
             result.len(),
-            miner_id
+            snapshot_id
         );
         result
     }
 
-    /// Check if a transaction is reserved by another miner
+    /// Check if a transaction is reserved by another snapshot
     async fn is_transaction_reserved(
         &self,
         tx_id: &str,
-        current_miner_id: &Option<String>,
+        current_snapshot_id: &Option<String>,
     ) -> bool {
         let reserved = self.reserved_transactions.read().await;
-        if let Some(reserved_miner) = reserved.get(tx_id) {
-            // Transaction is reserved - check if it's by the current miner
-            match current_miner_id {
-                Some(miner_id) => reserved_miner != miner_id,
-                None => true, // No miner ID provided, so it's reserved by someone else
+        if let Some(reserved_snapshot) = reserved.get(tx_id) {
+            // Transaction is reserved - check if it's by the current snapshot
+            match current_snapshot_id {
+                Some(snapshot_id) => reserved_snapshot != snapshot_id,
+                None => true, // No snapshot ID provided, so it's reserved by someone else
             }
         } else {
             false // Not reserved
         }
     }
 
-    /// Reserve a transaction for a specific miner
-    async fn reserve_transaction(&self, tx_id: &str, miner_id: &str) {
+    /// Reserve a transaction for a specific snapshot
+    async fn reserve_transaction(&self, tx_id: &str, snapshot_id: &str) {
         let mut reserved = self.reserved_transactions.write().await;
         let mut timestamps = self.reservation_timestamps.write().await;
 
-        reserved.insert(tx_id.to_string(), miner_id.to_string());
+        reserved.insert(tx_id.to_string(), snapshot_id.to_string());
         timestamps.insert(tx_id.to_string(), Instant::now());
 
-        debug!("Reserved transaction {} for miner {}", tx_id, miner_id);
+        debug!(
+            "Reserved transaction {} for snapshot {}",
+            tx_id, snapshot_id
+        );
     }
 
-    /// Check if a UTXO is reserved by another miner
+    /// Check if a UTXO is reserved by another snapshot
     async fn is_utxo_reserved_by_other(
         &self,
         utxo_id: &str,
-        current_miner_id: &Option<String>,
+        current_snapshot_id: &Option<String>,
     ) -> bool {
         let reserved = self.reserved_utxos.read().await;
-        if let Some(reserved_miner) = reserved.get(utxo_id) {
-            match current_miner_id {
-                Some(miner_id) => reserved_miner != miner_id,
+        if let Some(reserved_snapshot) = reserved.get(utxo_id) {
+            match current_snapshot_id {
+                Some(snapshot_id) => reserved_snapshot != snapshot_id,
                 None => true,
             }
         } else {
@@ -1028,31 +1043,31 @@ impl OptimizedMempool {
         }
     }
 
-    /// Reserve all input UTXOs for a transaction for a specific miner
-    async fn reserve_utxos_for_transaction(&self, tx: &Transaction, miner_id: &str) {
+    /// Reserve all input UTXOs for a transaction for a specific snapshot
+    async fn reserve_utxos_for_transaction(&self, tx: &Transaction, snapshot_id: &str) {
         let mut reserved = self.reserved_utxos.write().await;
         let mut timestamps = self.utxo_reservation_timestamps.write().await;
         for input in &tx.inputs {
             let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
-            reserved.insert(utxo_id.clone(), miner_id.to_string());
+            reserved.insert(utxo_id.clone(), snapshot_id.to_string());
             timestamps.insert(utxo_id, Instant::now());
         }
         debug!(
-            "Reserved {} input UTXOs for tx {} by miner {}",
+            "Reserved {} input UTXOs for tx {} by snapshot {}",
             tx.inputs.len(),
             tx.id,
-            miner_id
+            snapshot_id
         );
     }
 
-    /// Release reserved transactions for a specific miner
-    pub async fn release_reserved_transactions(&self, miner_id: &str) {
+    /// Release reserved transactions for a specific snapshot
+    pub async fn release_reserved_transactions(&self, snapshot_id: &str) {
         let mut reserved = self.reserved_transactions.write().await;
         let mut timestamps = self.reservation_timestamps.write().await;
 
         let tx_ids_to_remove: Vec<String> = reserved
             .iter()
-            .filter(|(_, mid)| *mid == miner_id)
+            .filter(|(_, sid)| *sid == snapshot_id)
             .map(|(tx_id, _)| tx_id.clone())
             .collect();
 
@@ -1061,12 +1076,12 @@ impl OptimizedMempool {
             timestamps.remove(tx_id);
         }
 
-        // Also release UTXO reservations held by this miner
+        // Also release UTXO reservations held by this snapshot
         let mut utxo_reserved = self.reserved_utxos.write().await;
         let mut utxo_timestamps = self.utxo_reservation_timestamps.write().await;
         let utxo_ids_to_remove: Vec<String> = utxo_reserved
             .iter()
-            .filter(|(_, mid)| *mid == miner_id)
+            .filter(|(_, sid)| *sid == snapshot_id)
             .map(|(utxo_id, _)| utxo_id.clone())
             .collect();
 
@@ -1077,10 +1092,10 @@ impl OptimizedMempool {
 
         if !tx_ids_to_remove.is_empty() || !utxo_ids_to_remove.is_empty() {
             debug!(
-                "Released {} reserved transactions and {} UTXOs for miner {}",
+                "Released {} reserved transactions and {} UTXOs for snapshot {}",
                 tx_ids_to_remove.len(),
                 utxo_ids_to_remove.len(),
-                miner_id
+                snapshot_id
             );
         }
     }
@@ -1127,9 +1142,7 @@ impl OptimizedMempool {
     pub async fn remove_transactions(&self, transaction_ids: &[String]) {
         for tx_id in transaction_ids {
             if let Some((_, removed_tx)) = self.transactions.remove(tx_id) {
-                let tx_size = serde_json::to_vec(&removed_tx.tx)
-                    .map(|data| data.len())
-                    .unwrap_or(0);
+                let tx_size = self.calculate_transaction_size(&removed_tx.tx);
                 self.current_size_bytes
                     .fetch_sub(tx_size, std::sync::atomic::Ordering::Relaxed);
                 info!("Removed transaction: {}", tx_id);
@@ -1281,9 +1294,7 @@ impl OptimizedMempool {
             // Remove old transactions
             for tx_id in old_txs {
                 if let Some((_, prioritized_tx)) = self.transactions.remove(&tx_id) {
-                    let tx_size = serde_json::to_vec(&prioritized_tx.tx)
-                        .map(|data| data.len())
-                        .unwrap_or(0);
+                    let tx_size = self.calculate_transaction_size(&prioritized_tx.tx);
                     self.current_size_bytes
                         .fetch_sub(tx_size, std::sync::atomic::Ordering::Relaxed);
                 }
@@ -1312,6 +1323,7 @@ impl Mempool {
             max_age: Duration::from_secs(max_age_secs),
             max_size_bytes,
             current_size_bytes: Arc::new(AtomicUsize::new(0)),
+            pending_tx_count: Arc::new(AtomicUsize::new(0)),
             tx_counter: Arc::new(AtomicUsize::new(0)),
             last_log_time: Arc::new(RwLock::new(Instant::now())),
             log_interval: Duration::from_secs(60), // Log summary every 60 seconds
@@ -1323,11 +1335,24 @@ impl Mempool {
             reservation_timestamps: Arc::new(ParkingRwLock::new(HashMap::new())),
             reserved_utxos: Arc::new(ParkingRwLock::new(HashMap::new())),
             utxo_reservation_timestamps: Arc::new(ParkingRwLock::new(HashMap::new())),
+            pending_inputs: Arc::new(DashMap::new()),
         }
     }
 
     pub async fn size(&self) -> usize {
         self.transactions.read().await.len()
+    }
+
+    pub async fn get_transaction_by_id(&self, tx_id: &str) -> Option<Transaction> {
+        let transactions = self.transactions.read().await;
+        transactions.get(tx_id).map(|ptx| ptx.tx.clone())
+    }
+
+    /// Returns the current number of pending transactions without awaiting.
+    /// Backed by an atomic counter synchronized with inserts and removals.
+    /// Prefer this on hot paths to reduce async lock contention.
+    pub fn pending_len_sync(&self) -> usize {
+        self.pending_tx_count.load(Ordering::Relaxed)
     }
 
     /// Prunes transactions that have exceeded their maximum age from the mempool.
@@ -1345,7 +1370,7 @@ impl Mempool {
 
         let ids_to_prune: Vec<String> = transactions
             .iter()
-            .filter(|(_, p_tx)| now.saturating_sub(p_tx.timestamp) > max_age_secs)
+            .filter(|(_, p_tx)| now.saturating_sub(p_tx.timestamp) >= max_age_secs)
             .map(|(id, _)| id.clone())
             .collect();
 
@@ -1359,13 +1384,19 @@ impl Mempool {
         );
         let mut priority_queue = self.priority_queue.write().await;
 
+        let mut pruned_count = 0usize;
         for id in ids_to_prune {
             if let Some(removed_ptx) = transactions.remove(&id) {
+                for input in &removed_ptx.tx.inputs {
+                    let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
+                    self.pending_inputs.remove(&utxo_id);
+                }
                 let tx_size = serde_json::to_vec(&removed_ptx.tx)
                     .unwrap_or_default()
                     .len();
                 self.current_size_bytes
                     .fetch_sub(tx_size, Ordering::Relaxed);
+                pruned_count += 1;
 
                 if let Some(ids_at_fee) = priority_queue.get_mut(&removed_ptx.fee_per_byte) {
                     ids_at_fee.retain(|tx_id| tx_id != &id);
@@ -1374,6 +1405,10 @@ impl Mempool {
                     }
                 }
             }
+        }
+        if pruned_count > 0 {
+            self.pending_tx_count
+                .fetch_sub(pruned_count, Ordering::Relaxed);
         }
     }
 
@@ -1410,6 +1445,7 @@ impl Mempool {
         }
 
         // Prefetch UTXO existence before full verification
+        let mut input_utxo_ids: Vec<String> = Vec::with_capacity(tx.inputs.len());
         for input in &tx.inputs {
             let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
             if !utxos.contains_key(&utxo_id) {
@@ -1421,35 +1457,38 @@ impl Mempool {
                     format!("UTXO {utxo_id} not found"),
                 )));
             }
+            input_utxo_ids.push(utxo_id);
         }
 
-        // Fast conflict pre-check against pending mempool inputs (double-spend prevention)
-        {
-            let tx_inputs: HashSet<String> = tx
-                .inputs
-                .iter()
-                .map(|i| format!("{}_{}", i.tx_id, i.output_index))
-                .collect();
-
-            let transactions_guard = self.transactions.read().await;
-            for (_, existing) in transactions_guard.iter() {
-                for ex_in in &existing.tx.inputs {
-                    let key = format!("{}_{}", ex_in.tx_id, ex_in.output_index);
-                    if tx_inputs.contains(&key) {
-                        warn!(
-                            "Rejected tx {}: input {} conflicts with pending tx {}",
-                            tx.id, key, existing.tx.id
-                        );
-                        return Err(MempoolError::TransactionValidation(
-                            "UTXO conflict with pending transaction".to_string(),
-                        ));
+        let mut reserved_inputs: Vec<String> = Vec::with_capacity(input_utxo_ids.len());
+        for utxo_id in &input_utxo_ids {
+            match self.pending_inputs.entry(utxo_id.clone()) {
+                Entry::Vacant(v) => {
+                    v.insert(tx.id.clone());
+                    reserved_inputs.push(utxo_id.clone());
+                }
+                Entry::Occupied(o) => {
+                    for r in reserved_inputs {
+                        self.pending_inputs.remove(&r);
                     }
+                    warn!(
+                        "Rejected tx {}: input {} conflicts with pending tx {}",
+                        tx.id,
+                        utxo_id,
+                        o.get()
+                    );
+                    return Err(MempoolError::TransactionValidation(
+                        "UTXO conflict with pending transaction".to_string(),
+                    ));
                 }
             }
         }
 
         // Full verification against UTXOs and DAG
         if let Err(e) = tx.verify(dag, utxos).await {
+            for r in reserved_inputs {
+                self.pending_inputs.remove(&r);
+            }
             warn!(
                 "Rejected tx {}: verification failed: {}; inputs={}, outputs={}, fee={}, sender={}, receiver={}",
                 tx.id,
@@ -1470,6 +1509,9 @@ impl Mempool {
         let current_size = self.current_size_bytes.load(Ordering::Relaxed);
         let projected_size = current_size + tx_size;
         if projected_size > self.max_size_bytes {
+            for r in reserved_inputs {
+                self.pending_inputs.remove(&r);
+            }
             let capacity_percentage = (projected_size as f64 / self.max_size_bytes as f64) * 100.0;
             let fee_per_byte_dbg = if tx_size > 0 {
                 tx.fee / tx_size as u64
@@ -1509,6 +1551,9 @@ impl Mempool {
         {
             let mut transactions = self.transactions.write().await;
             if transactions.contains_key(&tx_id) {
+                for r in reserved_inputs {
+                    self.pending_inputs.remove(&r);
+                }
                 warn!(
                     "Rejected tx {}: duplicate detected during atomic insertion",
                     tx_id
@@ -1518,6 +1563,8 @@ impl Mempool {
                 ));
             }
             transactions.insert(tx_id.clone(), prioritized_tx.clone());
+            // Maintain sync pending count on successful insertion
+            self.pending_tx_count.fetch_add(1, Ordering::Relaxed);
         }
 
         // Add to priority queue (BTreeMap keyed by fee per byte)
@@ -1607,17 +1654,24 @@ impl Mempool {
     }
 
     pub async fn select_transactions(&self, max_txs: usize) -> Vec<Transaction> {
-        // Use the reservation-based method with no specific miner ID for backward compatibility
+        // Use the reservation-based method with no specific snapshot ID for backward compatibility
         self.select_transactions_with_reservation(max_txs, None)
             .await
     }
 
-    /// Select transactions with optional miner ID for reservation (Mempool implementation)
+    /// Select transactions with optional snapshot ID for reservation (Mempool implementation)
     pub async fn select_transactions_with_reservation(
         &self,
         max_txs: usize,
-        miner_id: Option<String>,
+        snapshot_id: Option<String>,
     ) -> Vec<Transaction> {
+        // Performance-test feature: return zero transactions to create coinbase-only blocks
+        if cfg!(feature = "performance-test") {
+            tracing::debug!(
+                "MEMPOOL: performance-test enabled, gating transactions to 0 for coinbase-only blocks"
+            );
+            return Vec::new();
+        }
         // Two-phase selection with reservation to avoid duplicates across miners
         self.cleanup_expired_reservations();
 
@@ -1637,12 +1691,12 @@ impl Mempool {
 
             for _ in 0..take {
                 if let Some(ptx) = heap.pop() {
-                    // Skip if reserved by another miner or if any input UTXO is reserved by another miner
-                    if !self.is_transaction_reserved(&ptx.tx.id, &miner_id) {
+                    // Skip if reserved by another snapshot or if any input UTXO is reserved by another snapshot
+                    if !self.is_transaction_reserved(&ptx.tx.id, &snapshot_id) {
                         let mut utxo_conflict = false;
                         for input in &ptx.tx.inputs {
                             let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
-                            if self.is_utxo_reserved_by_other(&utxo_id, &miner_id) {
+                            if self.is_utxo_reserved_by_other(&utxo_id, &snapshot_id) {
                                 utxo_conflict = true;
                                 break;
                             }
@@ -1660,9 +1714,9 @@ impl Mempool {
                         }
 
                         if !utxo_conflict && !has_dependency {
-                            if let Some(ref mid) = miner_id {
-                                self.reserve_transaction(&ptx.tx.id, mid);
-                                self.reserve_utxos_for_transaction(&ptx.tx, mid);
+                            if let Some(ref sid) = snapshot_id {
+                                self.reserve_transaction(&ptx.tx.id, sid);
+                                self.reserve_utxos_for_transaction(&ptx.tx, sid);
                             }
                             result.push(ptx.tx.clone());
                         }
@@ -1716,11 +1770,11 @@ impl Mempool {
                 Some(i) => {
                     let ptx = current[i].take().unwrap();
                     // Check reservation and UTXO conflicts before adding
-                    if !self.is_transaction_reserved(&ptx.tx.id, &miner_id) {
+                    if !self.is_transaction_reserved(&ptx.tx.id, &snapshot_id) {
                         let mut utxo_conflict = false;
                         for input in &ptx.tx.inputs {
                             let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
-                            if self.is_utxo_reserved_by_other(&utxo_id, &miner_id) {
+                            if self.is_utxo_reserved_by_other(&utxo_id, &snapshot_id) {
                                 utxo_conflict = true;
                                 break;
                             }
@@ -1738,9 +1792,9 @@ impl Mempool {
                         }
 
                         if !utxo_conflict && !has_dependency {
-                            if let Some(ref mid) = miner_id {
-                                self.reserve_transaction(&ptx.tx.id, mid);
-                                self.reserve_utxos_for_transaction(&ptx.tx, mid);
+                            if let Some(ref sid) = snapshot_id {
+                                self.reserve_transaction(&ptx.tx.id, sid);
+                                self.reserve_utxos_for_transaction(&ptx.tx, sid);
                             }
                             result.push(ptx.tx.clone());
                         }
@@ -1761,9 +1815,9 @@ impl Mempool {
         }
 
         debug!(
-            "Selected {} transactions for block creation (sharded) with miner_id: {:?}",
+            "Selected {} transactions for block creation (sharded) with snapshot_id: {:?}",
             result.len(),
-            miner_id
+            snapshot_id
         );
         result
     }
@@ -1775,13 +1829,19 @@ impl Mempool {
 
         let mut transactions = self.transactions.write().await;
         let mut priority_queue = self.priority_queue.write().await;
+        let mut removed_count = 0usize;
 
         for tx in txs_to_remove {
             if let Some(removed_ptx) = transactions.remove(&tx.id) {
+                for input in &removed_ptx.tx.inputs {
+                    let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
+                    self.pending_inputs.remove(&utxo_id);
+                }
                 // Use accurate transaction size calculation for consistency
                 let tx_size = Self::calculate_transaction_size(&removed_ptx.tx);
                 self.current_size_bytes
                     .fetch_sub(tx_size, Ordering::Relaxed);
+                removed_count += 1;
 
                 if let Some(ids) = priority_queue.get_mut(&removed_ptx.fee_per_byte) {
                     ids.retain(|id| id != &tx.id);
@@ -1790,6 +1850,11 @@ impl Mempool {
                     }
                 }
             }
+        }
+
+        if removed_count > 0 {
+            self.pending_tx_count
+                .fetch_sub(removed_count, Ordering::Relaxed);
         }
 
         // Only log removal summary if removing multiple transactions or significant batch
@@ -1902,6 +1967,140 @@ impl Mempool {
         self.current_size_bytes.load(Ordering::Relaxed)
     }
 
+    /// Add a batch of transactions that have already been verified by the caller (e.g. node)
+    /// This bypasses internal verification and acquires locks only once for the entire batch.
+    pub async fn add_verified_batch_optimized(
+        &self,
+        txs: Vec<Transaction>,
+    ) -> (Vec<String>, Vec<(String, String)>) {
+        if txs.is_empty() {
+            return (Vec::new(), Vec::new());
+        }
+
+        let start = Instant::now();
+        let mut accepted = Vec::new();
+        let mut rejected = Vec::new();
+
+        // 1. Acquire global write locks ONCE
+        let mut transactions = self.transactions.write().await;
+        let mut priority_queue = self.priority_queue.write().await;
+        let mut priority_heap = self.priority_heap.write();
+
+        // We also need to write to sharded heaps, but we can do that without holding the main lock
+        // if we are careful, but for simplicity/safety let's just do it.
+        // Actually, acquiring all shard locks might be deadlock-prone if not ordered.
+        // Let's just acquire them as needed or use a separate loop?
+        // Or better: update the main structures, then update shards after releasing main locks?
+        // No, consistency is important.
+
+        // Let's just process the batch.
+
+        for tx in txs {
+            let tx_id = tx.id.clone();
+
+            // 1. Check duplicates
+            if transactions.contains_key(&tx_id) {
+                rejected.push((tx_id, "Duplicate".to_string()));
+                continue;
+            }
+
+            // 2. Check double spends (conflicts in pending_inputs)
+            // Note: We treat pending_inputs as the source of truth for "spent in mempool"
+            let mut conflicts = false;
+            for input in &tx.inputs {
+                let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
+                if self.pending_inputs.contains_key(&utxo_id) {
+                    conflicts = true;
+                    rejected.push((
+                        tx_id.clone(),
+                        format!("Double spend (UTXO {} already pending)", utxo_id),
+                    ));
+                    break;
+                }
+            }
+            if conflicts {
+                continue;
+            }
+
+            // 3. Prepare for insertion
+            let tx_size = Self::calculate_transaction_size(&tx);
+            let current_size = self.current_size_bytes.load(Ordering::Relaxed);
+            if current_size + tx_size > self.max_size_bytes {
+                rejected.push((tx_id, "Mempool full".to_string()));
+                continue;
+            }
+
+            // 4. Insert
+            // Mark inputs as pending
+            for input in &tx.inputs {
+                let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
+                self.pending_inputs.insert(utxo_id, tx_id.clone());
+            }
+
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+
+            let fee_per_byte = if tx_size > 0 {
+                tx.fee / tx_size as u64
+            } else {
+                0
+            };
+
+            let prioritized_tx = PrioritizedTransaction {
+                tx: tx.clone(),
+                fee_per_byte,
+                timestamp,
+            };
+
+            // Update main structures
+            transactions.insert(tx_id.clone(), prioritized_tx.clone());
+            self.current_size_bytes
+                .fetch_add(tx_size, Ordering::Relaxed);
+            self.pending_tx_count.fetch_add(1, Ordering::Relaxed);
+            self.tx_counter.fetch_add(1, Ordering::Relaxed);
+
+            priority_queue
+                .entry(fee_per_byte)
+                .or_insert_with(Vec::new)
+                .push(tx_id.clone());
+
+            priority_heap.push(prioritized_tx.clone());
+
+            // Update shard heap (we do this inside the loop, acquiring just the specific shard lock)
+            // This is safe because we hold the main locks, so no one else can be inconsistent with us.
+            {
+                let hash = tx_id
+                    .bytes()
+                    .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+                let shard_index = (hash as usize) % self.shard_count.max(1);
+                let mut shard_heap = self.sharded_heaps[shard_index].write();
+                shard_heap.push(prioritized_tx);
+            }
+
+            accepted.push(tx_id);
+        }
+
+        // Update metric
+        crate::set_metric!(
+            mempool_size,
+            self.current_size_bytes.load(Ordering::Relaxed) as u64
+        );
+
+        let elapsed = start.elapsed();
+        if !accepted.is_empty() || elapsed > Duration::from_millis(100) {
+            debug!(
+                "Batch mempool optimized add: accepted={}, rejected={}, elapsed={:?}",
+                accepted.len(),
+                rejected.len(),
+                elapsed
+            );
+        }
+
+        (accepted, rejected)
+    }
+
     /// Add a batch of transactions under a single API, returning accepted ids and rejected reasons
     pub async fn add_transaction_batch(
         &self,
@@ -1929,13 +2128,25 @@ impl Mempool {
             buckets[idx].push(tx);
         }
 
-        for bucket in buckets.into_iter() {
-            for tx in bucket {
-                match self.add_transaction(tx.clone(), utxos, dag).await {
-                    Ok(_) => accepted.push(tx.id.clone()),
-                    Err(e) => rejected.push((tx.id.clone(), e.to_string())),
+        let shard_futures: Vec<_> = buckets
+            .into_iter()
+            .map(|bucket| async move {
+                let mut acc: Vec<String> = Vec::new();
+                let mut rej: Vec<(String, String)> = Vec::new();
+                for tx in bucket {
+                    let tx_id = tx.id.clone();
+                    match self.add_transaction(tx, utxos, dag).await {
+                        Ok(_) => acc.push(tx_id),
+                        Err(e) => rej.push((tx_id, e.to_string())),
+                    }
                 }
-            }
+                (acc, rej)
+            })
+            .collect();
+
+        for (acc, rej) in futures::future::join_all(shard_futures).await {
+            accepted.extend(acc);
+            rejected.extend(rej);
         }
 
         let elapsed = start.elapsed();
@@ -1949,14 +2160,14 @@ impl Mempool {
         (accepted, rejected)
     }
 
-    /// Release reserved transactions for a specific miner (Mempool implementation)
-    pub fn release_reserved_transactions(&mut self, miner_id: &str) {
+    /// Release reserved transactions for a specific snapshot (Mempool implementation)
+    pub fn release_reserved_transactions(&mut self, snapshot_id: &str) {
         let mut reserved = self.reserved_transactions.write();
         let mut timestamps = self.reservation_timestamps.write();
 
         let tx_ids_to_remove: Vec<String> = reserved
             .iter()
-            .filter(|(_, mid)| *mid == miner_id)
+            .filter(|(_, sid)| *sid == snapshot_id)
             .map(|(tx_id, _)| tx_id.clone())
             .collect();
 
@@ -1965,12 +2176,12 @@ impl Mempool {
             timestamps.remove(tx_id);
         }
 
-        // Also release UTXO reservations held by this miner
+        // Also release UTXO reservations held by this snapshot
         let mut utxo_reserved = self.reserved_utxos.write();
         let mut utxo_timestamps = self.utxo_reservation_timestamps.write();
         let utxo_ids_to_remove: Vec<String> = utxo_reserved
             .iter()
-            .filter(|(_, mid)| *mid == miner_id)
+            .filter(|(_, sid)| *sid == snapshot_id)
             .map(|(utxo_id, _)| utxo_id.clone())
             .collect();
 
@@ -1981,20 +2192,20 @@ impl Mempool {
 
         if !tx_ids_to_remove.is_empty() || !utxo_ids_to_remove.is_empty() {
             debug!(
-                "Released {} reserved transactions and {} UTXOs for miner {}",
+                "Released {} reserved transactions and {} UTXOs for snapshot {}",
                 tx_ids_to_remove.len(),
                 utxo_ids_to_remove.len(),
-                miner_id
+                snapshot_id
             );
         }
     }
 
-    /// Check if a transaction is reserved by another miner
-    fn is_transaction_reserved(&self, tx_id: &str, current_miner_id: &Option<String>) -> bool {
+    /// Check if a transaction is reserved by another snapshot
+    fn is_transaction_reserved(&self, tx_id: &str, current_snapshot_id: &Option<String>) -> bool {
         let reserved = self.reserved_transactions.read();
-        if let Some(reserved_miner) = reserved.get(tx_id) {
-            match current_miner_id {
-                Some(miner_id) => reserved_miner != miner_id,
+        if let Some(reserved_snapshot) = reserved.get(tx_id) {
+            match current_snapshot_id {
+                Some(snapshot_id) => reserved_snapshot != snapshot_id,
                 None => true,
             }
         } else {
@@ -2002,21 +2213,28 @@ impl Mempool {
         }
     }
 
-    /// Reserve a transaction for a specific miner
-    fn reserve_transaction(&self, tx_id: &str, miner_id: &str) {
+    /// Reserve a transaction for a specific snapshot
+    fn reserve_transaction(&self, tx_id: &str, snapshot_id: &str) {
         let mut reserved = self.reserved_transactions.write();
         let mut timestamps = self.reservation_timestamps.write();
-        reserved.insert(tx_id.to_string(), miner_id.to_string());
+        reserved.insert(tx_id.to_string(), snapshot_id.to_string());
         timestamps.insert(tx_id.to_string(), Instant::now());
-        debug!("Reserved transaction {} for miner {}", tx_id, miner_id);
+        debug!(
+            "Reserved transaction {} for snapshot {}",
+            tx_id, snapshot_id
+        );
     }
 
-    /// Check if a UTXO is reserved by another miner (non-async variant)
-    fn is_utxo_reserved_by_other(&self, utxo_id: &str, current_miner_id: &Option<String>) -> bool {
+    /// Check if a UTXO is reserved by another snapshot (non-async variant)
+    fn is_utxo_reserved_by_other(
+        &self,
+        utxo_id: &str,
+        current_snapshot_id: &Option<String>,
+    ) -> bool {
         let reserved = self.reserved_utxos.read();
-        if let Some(reserved_miner) = reserved.get(utxo_id) {
-            match current_miner_id {
-                Some(miner_id) => reserved_miner != miner_id,
+        if let Some(reserved_snapshot) = reserved.get(utxo_id) {
+            match current_snapshot_id {
+                Some(snapshot_id) => reserved_snapshot != snapshot_id,
                 None => true,
             }
         } else {
@@ -2024,20 +2242,20 @@ impl Mempool {
         }
     }
 
-    /// Reserve all input UTXOs for a transaction for a specific miner (non-async variant)
-    fn reserve_utxos_for_transaction(&self, tx: &Transaction, miner_id: &str) {
+    /// Reserve all input UTXOs for a transaction for a specific snapshot (non-async variant)
+    fn reserve_utxos_for_transaction(&self, tx: &Transaction, snapshot_id: &str) {
         let mut reserved = self.reserved_utxos.write();
         let mut timestamps = self.utxo_reservation_timestamps.write();
         for input in &tx.inputs {
             let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
-            reserved.insert(utxo_id.clone(), miner_id.to_string());
+            reserved.insert(utxo_id.clone(), snapshot_id.to_string());
             timestamps.insert(utxo_id, Instant::now());
         }
         debug!(
-            "Reserved {} input UTXOs for tx {} by miner {}",
+            "Reserved {} input UTXOs for tx {} by snapshot {}",
             tx.inputs.len(),
             tx.id,
-            miner_id
+            snapshot_id
         );
     }
 
@@ -2078,6 +2296,48 @@ impl Mempool {
                 expired_tx_ids.len(),
                 expired_utxo_ids.len()
             );
+        }
+    }
+
+    /// Release reservation for a single transaction and its input UTXOs for the given snapshot
+    ///
+    /// NOTE: This is used upstream when a miner pre-selects transactions with reservation
+    /// and then filters out invalid ones prior to block assembly. We must free both the
+    /// tx-level and UTXO-level reservations to avoid starvation for other miners.
+    pub fn release_reservation_for_transaction(&mut self, tx: &Transaction, snapshot_id: &str) {
+        // Release transaction-level reservation if held by this snapshot
+        {
+            let mut reserved = self.reserved_transactions.write();
+            let mut timestamps = self.reservation_timestamps.write();
+            if matches!(reserved.get(&tx.id), Some(sid) if sid == snapshot_id) {
+                reserved.remove(&tx.id);
+                timestamps.remove(&tx.id);
+                debug!(
+                    "Released reservation for tx {} held by snapshot {}",
+                    tx.id, snapshot_id
+                );
+            }
+        }
+
+        // Release UTXO-level reservations for all inputs of this tx if held by this snapshot
+        {
+            let mut utxo_reserved = self.reserved_utxos.write();
+            let mut utxo_timestamps = self.utxo_reservation_timestamps.write();
+            let mut released_count = 0usize;
+            for input in &tx.inputs {
+                let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
+                if matches!(utxo_reserved.get(&utxo_id), Some(sid) if sid == snapshot_id) {
+                    utxo_reserved.remove(&utxo_id);
+                    utxo_timestamps.remove(&utxo_id);
+                    released_count += 1;
+                }
+            }
+            if released_count > 0 {
+                debug!(
+                    "Released {} input UTXO reservations for tx {} (snapshot {})",
+                    released_count, tx.id, snapshot_id
+                );
+            }
         }
     }
 }

@@ -2,9 +2,9 @@
 use qanto::omega;
 use qanto::qanto_compat::sp_core::H256;
 
-#[tokio::main]
-async fn main() {
-    env_logger::init();
+#[tokio::test]
+async fn test_main() {
+    env_logger::try_init().ok();
     println!("--- Running ΛΣ-ΩMEGA Standalone Test ---");
 
     // Await the now-async simulation function
@@ -21,4 +21,8 @@ async fn main() {
         "Security reflex result: {}",
         if result { "Approved" } else { "Rejected" }
     );
+
+    println!("\n--- Running Ultra-Throughput Simulation ---");
+    let throughput_results = omega::simulation::run_ultra_throughput_simulation().await;
+    println!("Throughput Results: {:?}", throughput_results);
 }

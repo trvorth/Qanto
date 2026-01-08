@@ -11,7 +11,7 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 
 from .types import (
     QantoClientConfig, WebSocketMessage, WebSocketMessageType,
-    SubscriptionType, SubscriptionMessage
+    SubscriptionType, SubscriptionMessage, BalanceUpdate
 )
 from .exceptions import WebSocketError, SubscriptionError, NetworkError
 from .utils import retry_async
@@ -234,6 +234,44 @@ class QantoWebSocket:
             
         except Exception as e:
             raise SubscriptionError(f"Failed to subscribe to {subscription_type.value}: {e}", subscription_type.value)
+
+    async def subscribe_to_balances(self, address: str, finalized_only: bool = False) -> str:
+        """Subscribe to balance updates for a specific address.
+        
+        When finalized_only is True, uses structured subscription with filters; otherwise uses alias topic form.
+        Returns a synthetic subscription id keyed by address.
+        """
+        if not self.is_connected:
+            await self.connect()
+
+        subscription_id = f"balances:{address}"
+
+        try:
+            if finalized_only:
+                message = {
+                    'type': 'subscribe',
+                    'subscription_type': 'balances',
+                    'filters': {
+                        'address': address,
+                        'finalized_only': 'true'
+                    }
+                }
+            else:
+                message = {
+                    'type': 'subscribe',
+                    'topics': [f"wallet_balance:{address}"]
+                }
+            await self.websocket.send(json.dumps(message))
+            # Track synthetic subscription
+            self.subscriptions[subscription_id] = SubscriptionMessage(
+                action='subscribe',
+                subscription_type=SubscriptionType.BALANCES,
+                filters={'address': address, 'finalized_only': finalized_only}
+            )
+            logger.info(f"Subscribed to balances for {address} (finalized_only={finalized_only})")
+            return subscription_id
+        except Exception as e:
+            raise SubscriptionError(f"Failed to subscribe to balances for {address}: {e}", 'balances')
     
     async def unsubscribe(self, subscription_id: str) -> None:
         """Unsubscribe from updates.
@@ -317,6 +355,32 @@ class QantoWebSocket:
             async for raw_message in self.websocket:
                 try:
                     message_data = json.loads(raw_message)
+                    # Fast-path: handle server-tagged balance messages that don't use SDK's {data: ...} shape
+                    msg_type = message_data.get('type')
+                    if msg_type == WebSocketMessageType.BALANCE_UPDATE.value:
+                        payload: Dict[str, Any] = {
+                            'address': message_data.get('address'),
+                            'balance': message_data.get('balance'),
+                            'balance_bigint': message_data.get('balance_bigint'),
+                            'timestamp': message_data.get('timestamp'),
+                            'finalized': message_data.get('finalized'),
+                            # Optional enriched breakdown fields if provided by server
+                            'spendable_confirmed': message_data.get('spendable_confirmed'),
+                            'immature_coinbase_confirmed': message_data.get('immature_coinbase_confirmed'),
+                            'unconfirmed_delta': message_data.get('unconfirmed_delta'),
+                            'total_confirmed': message_data.get('total_confirmed'),
+                        }
+                        await self._emit_event(WebSocketMessageType.BALANCE_UPDATE, payload)
+                        continue
+                    elif msg_type == WebSocketMessageType.BALANCE_SUBSCRIPTION_CONFIRMED.value:
+                        payload2: Dict[str, Any] = {
+                            'address': message_data.get('address'),
+                            'client_id': message_data.get('client_id'),
+                        }
+                        await self._emit_event(WebSocketMessageType.BALANCE_SUBSCRIPTION_CONFIRMED, payload2)
+                        continue
+
+                    # Fallback to standard SDK message envelope
                     message = WebSocketMessage(**message_data)
                     
                     # Handle different message types

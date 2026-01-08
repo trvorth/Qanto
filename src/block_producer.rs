@@ -1,3 +1,10 @@
+#![allow(deprecated)]
+//! Block Producer Module
+//!
+//! Responsible for assembling new blocks from the mempool and mining them.
+//! This module implements the `BlockProducer` struct which handles the complete
+//! block production lifecycle: selection, assembly, and mining.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -8,9 +15,9 @@ use tokio_util::sync::CancellationToken;
 use crate::mempool::Mempool;
 use crate::miner::Miner;
 
+use crate::node_keystore::Wallet;
 use crate::qantodag::{QantoDAG, QantoDAGError};
 use crate::types::UTXO;
-use crate::wallet::Wallet;
 
 // Re-export the decoupled producer
 pub use crate::decoupled_producer::DecoupledProducer;
@@ -248,7 +255,7 @@ impl SoloProducer {
 
         const PARALLEL_MINERS: usize = 4;
         const NONCE_RANGE_SIZE: u64 = u64::MAX / PARALLEL_MINERS as u64;
-        const MINING_TIMEOUT_MS: u64 = 2000;
+        const MINING_TIMEOUT_MS: u64 = 8000;
 
         let pow_start = std::time::Instant::now();
         let (result_tx, mut result_rx) =
@@ -282,6 +289,7 @@ impl SoloProducer {
                     candidate_clone.nonce = current_nonce;
                     match miner_clone
                         .solve_pow_with_cancellation(&mut candidate_clone, shutdown_clone.clone())
+                        .await
                     {
                         Ok(_) => {
                             if !solution_found_clone.swap(true, std::sync::atomic::Ordering::SeqCst)
@@ -386,7 +394,7 @@ impl SoloProducer {
                     mined_block.clone(),
                     utxos,
                     Some(mempool),
-                    mined_block.reservation_miner_id.as_deref(),
+                    mined_block.reservation_snapshot_id.as_deref(),
                 )
                 .await
             {
@@ -460,10 +468,13 @@ impl SoloProducer {
                         error!("❌ Block {} was rejected but doesn't exist in DAG! This indicates a validation failure.", block_id);
                     }
 
-                    if let Some(miner_id) = mined_block.reservation_miner_id.as_deref() {
+                    if let Some(snapshot_id) = mined_block.reservation_snapshot_id.as_deref() {
                         let mut guard = mempool.write().await;
-                        guard.release_reserved_transactions(miner_id);
-                        info!("Released reserved transactions for miner: {}", miner_id);
+                        guard.release_reserved_transactions(snapshot_id);
+                        info!(
+                            "Released reserved transactions for snapshot: {}",
+                            snapshot_id
+                        );
                     }
                     break;
                 }
@@ -474,12 +485,12 @@ impl SoloProducer {
                             "SOLO MINER: Failed to add block after {} retries: {}",
                             MAX_ADD_RETRIES, e
                         );
-                        if let Some(miner_id) = mined_block.reservation_miner_id.as_deref() {
+                        if let Some(snapshot_id) = mined_block.reservation_snapshot_id.as_deref() {
                             let mut guard = mempool.write().await;
-                            guard.release_reserved_transactions(miner_id);
+                            guard.release_reserved_transactions(snapshot_id);
                             warn!(
-                                "Released reserved transactions after failure for miner: {}",
-                                miner_id
+                                "Released reserved transactions after failure for snapshot: {}",
+                                snapshot_id
                             );
                         }
                         return Err(e);
@@ -517,12 +528,12 @@ mod tests {
     use crate::config::LoggingConfig;
     use crate::mempool::Mempool;
     use crate::miner::{Miner, MinerConfig};
+    use crate::node_keystore::Wallet;
     use crate::qanto_storage::{QantoStorage, StorageConfig};
     use crate::qantodag::{QantoDAG, QantoDagConfig, MAX_TRANSACTIONS_PER_BLOCK};
     use crate::saga::PalletSaga;
     use crate::transaction::Transaction;
     use crate::types::UTXO;
-    use crate::wallet::Wallet;
 
     fn create_test_dag() -> Arc<QantoDAG> {
         let storage_config = StorageConfig {

@@ -6,8 +6,8 @@
 
 use anyhow::Result;
 use clap::{Arg, Command};
-use my_blockchain::qanto_hash;
 use qanto::qanto_compat::sp_core::H256;
+use qanto_core::qanto_native_crypto::qanto_hash;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -894,11 +894,13 @@ impl QantoRelayer {
 
         sleep(Duration::from_millis(submission_delay)).await;
 
-        // Simulate occasional submission failures
-        let mut rng = rand::thread_rng();
-        if rng.gen::<f64>() < 0.02 {
-            // 2% failure rate
-            return Err(anyhow::anyhow!("Target chain submission failed"));
+        // Simulate occasional submission failures (disabled under tests for determinism)
+        if !cfg!(test) {
+            let mut rng = rand::thread_rng();
+            if rng.gen::<f64>() < 0.02 {
+                // 2% failure rate
+                return Err(anyhow::anyhow!("Target chain submission failed"));
+            }
         }
 
         debug!(
@@ -914,15 +916,22 @@ impl QantoRelayer {
     async fn wait_for_confirmation(packet: &PacketEvent, config: &RelayerConfig) -> Result<()> {
         // Simulate waiting for confirmation blocks
         let confirmation_delay = config.confirmation_blocks * 12000; // 12s per block
-        let wait_time = std::cmp::min(confirmation_delay, 30000); // Max 30s wait
+                                                                     // Shorten waits in tests to keep unit tests fast and deterministic
+        let wait_time = if cfg!(test) {
+            10 // 10ms in tests
+        } else {
+            std::cmp::min(confirmation_delay, 30000) // Max 30s wait
+        };
 
         sleep(Duration::from_millis(wait_time)).await;
 
-        // Simulate occasional confirmation failures
-        let mut rng = rand::thread_rng();
-        if rng.gen::<f64>() < 0.01 {
-            // 1% failure rate
-            return Err(anyhow::anyhow!("Transaction confirmation failed"));
+        // Simulate occasional confirmation failures (disabled under tests for determinism)
+        if !cfg!(test) {
+            let mut rng = rand::thread_rng();
+            if rng.gen::<f64>() < 0.01 {
+                // 1% failure rate
+                return Err(anyhow::anyhow!("Transaction confirmation failed"));
+            }
         }
 
         debug!(

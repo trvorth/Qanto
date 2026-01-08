@@ -165,6 +165,8 @@ class WebSocketMessageType(str, Enum):
     MEMPOOL_UPDATE = "mempool_update"
     SECURITY_ALERT = "security_alert"
     SUBSCRIPTION_CONFIRMATION = "subscription_confirmation"
+    BALANCE_UPDATE = "balance_update"
+    BALANCE_SUBSCRIPTION_CONFIRMED = "balance_subscription_confirmed"
     ERROR = "error"
 
 
@@ -182,6 +184,7 @@ class SubscriptionType(str, Enum):
     NETWORK_HEALTH = "network_health"
     ANALYTICS = "analytics"
     SECURITY_ALERTS = "security_alerts"
+    BALANCES = "balances"
 
 
 class SubscriptionMessage(BaseModel):
@@ -189,6 +192,20 @@ class SubscriptionMessage(BaseModel):
     action: str  # "subscribe" or "unsubscribe"
     subscription_type: SubscriptionType
     filters: Optional[Dict[str, Any]] = None
+
+
+class BalanceUpdate(BaseModel):
+    """Balance update payload (from WebSocket server)."""
+    address: str
+    balance: int
+    balance_bigint: str
+    timestamp: int
+    finalized: bool
+    # Optional enriched breakdown fields (present when server supports them)
+    spendable_confirmed: Optional[int] = None
+    immature_coinbase_confirmed: Optional[int] = None
+    unconfirmed_delta: Optional[int] = None
+    total_confirmed: Optional[int] = None
 
 
 # GraphQL types

@@ -29,7 +29,7 @@ use tokio::sync::RwLock;
 use crate::qanto_compat::ecdsa::{
     signature::Signer, signature::Verifier, Signature, SigningKey, VerifyingKey,
 };
-use my_blockchain::qanto_hash;
+use qanto_core::qanto_native_crypto::qanto_hash;
 
 // ---
 // SECTION 0: CORE TYPES & ROBUST ERROR HANDLING

@@ -15,8 +15,14 @@ use util::deterministic_test_env::setup_deterministic_test_env;
 use util::test_address::make_test_miner_address;
 
 fn create_test_dag() -> Arc<QantoDAG> {
+    let unique_suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let extra = rand::random::<u64>();
+    let data_dir = std::env::temp_dir().join(format!("test_qanto_{}_{}", unique_suffix, extra));
     let storage_config = StorageConfig {
-        data_dir: std::path::PathBuf::from("/tmp/test_qanto"),
+        data_dir,
         max_file_size: 1024 * 1024,
         compression_enabled: false,
         encryption_enabled: false,
@@ -90,9 +96,10 @@ async fn test_basic_mining() {
         let _mining_span = span!(Level::INFO, "basic_mining", block_id = %block.id);
         info!("Starting basic mining operation");
 
-        // Test mining - this is synchronous, not async
-        let result =
-            miner.solve_pow_with_shutdown_integration(&mut block, CancellationToken::new());
+        // Test mining - this is async
+        let result = miner
+            .solve_pow_with_shutdown_integration(&mut block, CancellationToken::new())
+            .await;
 
         assert!(result.is_ok() || result.is_err());
         info!("Basic mining test completed");
@@ -141,9 +148,10 @@ async fn test_integration_flow() {
         let _mining_span = span!(Level::INFO, "integration_mining", block_id = %block.id);
         info!("Starting mining operation for integration test");
 
-        // Test mining - this is synchronous, not async
-        let result =
-            miner.solve_pow_with_shutdown_integration(&mut block, CancellationToken::new());
+        // Test mining - this is async
+        let result = miner
+            .solve_pow_with_shutdown_integration(&mut block, CancellationToken::new())
+            .await;
 
         // Should complete or timeout gracefully
         assert!(result.is_ok() || result.is_err());
@@ -190,8 +198,10 @@ async fn test_cancellation_responsiveness() {
         let _mining_span = span!(Level::INFO, "cancellation_mining", block_id = %block.id);
         info!("Starting mining operation with cancellation token");
 
-        // Test mining - this is synchronous, not async
-        let result = miner.solve_pow_with_shutdown_integration(&mut block, cancellation_token);
+        // Test mining - this is async
+        let result = miner
+            .solve_pow_with_shutdown_integration(&mut block, cancellation_token)
+            .await;
 
         assert!(result.is_ok() || result.is_err());
         info!("Cancellation responsiveness test completed");

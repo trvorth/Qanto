@@ -17,20 +17,23 @@ use crate::qantodag::{QantoBlock, QantoDAG};
 use crate::saga::CarbonOffsetCredential;
 use crate::transaction::Transaction;
 use crate::types::{QuantumResistantSignature, UTXO};
+use dashmap::DashSet;
 use futures::stream::StreamExt;
 use governor::{clock::DefaultClock, state::keyed::DashMapStateStore, Quota, RateLimiter};
 use qanto_core::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey};
 // Removed HMAC import - using custom implementation with qanto_hash
 use hex;
 use libp2p::{
-    gossipsub::{self, IdentTopic, MessageAuthenticity, ValidationMode},
+    gossipsub::{
+        self, IdentTopic, MessageAuthenticity, PeerScoreParams, PeerScoreThresholds,
+        TopicScoreParams, ValidationMode,
+    },
     identity,
     kad::{store::MemoryStore, Behaviour as KadBehaviour, Event as KadEvent},
     mdns::tokio::Behaviour as MdnsTokioBehaviour,
     mdns::Event as MdnsEvent,
-    noise,
     swarm::{NetworkBehaviour, SwarmEvent},
-    yamux, Multiaddr, PeerId, Swarm, SwarmBuilder,
+    Multiaddr, PeerId, Swarm, SwarmBuilder,
 };
 // QDS request-response imports
 use crate::qds::{QDSCodec, QDSRequest, QDSResponse, QDS_PROTOCOL};
@@ -38,8 +41,8 @@ use libp2p::request_response::{
     Behaviour as RequestResponseBehaviour, Event as RequestResponseEvent,
     Message as RequestResponseMessage, ProtocolSupport,
 };
-use my_blockchain::qanto_hash;
 use nonzero_ext::nonzero;
+use qanto_core::qanto_native_crypto::qanto_hash;
 
 use bincode;
 use prometheus::{register_int_counter, IntCounter};
@@ -52,18 +55,21 @@ use std::env;
 use std::error::Error as StdError;
 use std::fs;
 // (removed) use std::hash::Hash;
-use std::sync::Arc;
+use std::sync::{Arc, Once, OnceLock};
 use std::time::Duration;
 use thiserror::Error;
 use tokio::{
-    sync::{mpsc, RwLock},
+    sync::{mpsc, Notify, RwLock},
     time::interval,
 };
 use tracing::{error, info, instrument, warn};
 
-const MAX_MESSAGE_SIZE: usize = 2_000_000;
+const MAX_MESSAGE_SIZE: usize = 100_000_000;
 const MIN_PEERS_FOR_MESH: usize = 1;
+const TOPIC_SHARDS: usize = 4;
 const DEFAULT_HMAC_SECRET: &str = "qanto_secret_key_for_p2p";
+static DOTENV_INIT: OnceLock<()> = OnceLock::new();
+static DEFAULT_HMAC_SECRET_WARN_ONCE: Once = Once::new();
 
 lazy_static::lazy_static! {
     static ref MESSAGES_SENT: IntCounter = register_int_counter!("p2p_messages_sent_total", "Total messages sent").unwrap();
@@ -186,10 +192,14 @@ impl NetworkMessage {
     }
 
     fn get_hmac_secret() -> String {
-        dotenvy::dotenv().ok();
+        DOTENV_INIT.get_or_init(|| {
+            dotenvy::dotenv().ok();
+        });
         let secret = env::var("HMAC_SECRET").unwrap_or_else(|_| DEFAULT_HMAC_SECRET.to_string());
         if secret == DEFAULT_HMAC_SECRET {
-            warn!("SECURITY: Using default HMAC secret. This is not secure for production. Please set the HMAC_SECRET environment variable.");
+            DEFAULT_HMAC_SECRET_WARN_ONCE.call_once(|| {
+                warn!("SECURITY: Using default HMAC secret. This is not secure for production. Please set the HMAC_SECRET environment variable.");
+            });
         }
         secret
     }
@@ -356,6 +366,11 @@ fn convert_proto_utxo(u: proto::Utxo) -> crate::types::UTXO {
 
 #[derive(Debug)]
 pub enum P2PCommand {
+    // Inbound block from a specific peer; used to trigger DAG insert and any parent requests
+    InboundBlock {
+        block: QantoBlock,
+        source_peer: PeerId,
+    },
     BroadcastBlock(QantoBlock),
     BroadcastTransaction(Transaction),
     BroadcastTransactionBatch(Vec<Transaction>),
@@ -407,6 +422,8 @@ pub struct P2PServer {
     p2p_command_sender: mpsc::Sender<P2PCommand>,
     dag: Arc<QantoDAG>,
     utxos: Arc<RwLock<HashMap<String, UTXO>>>,
+    blacklist: Arc<DashSet<PeerId>>,
+    rate_limiters: GossipRateLimiters,
 }
 
 #[derive(Clone)]
@@ -415,6 +432,78 @@ struct GossipRateLimiters {
     tx: Arc<KeyedPeerRateLimiter>,
     state: Arc<KeyedPeerRateLimiter>,
     credential: Arc<KeyedPeerRateLimiter>,
+}
+
+#[derive(Clone, Copy)]
+pub struct P2PGossipRateLimits {
+    pub block_per_second: u32,
+    pub tx_per_second: u32,
+    pub state_per_second: u32,
+    pub credential_per_second: u32,
+}
+
+impl Default for P2PGossipRateLimits {
+    fn default() -> Self {
+        Self {
+            block_per_second: 100,
+            tx_per_second: 500,
+            state_per_second: 50,
+            credential_per_second: 200,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct P2PGossipIngressHarness {
+    blacklist: Arc<DashSet<PeerId>>,
+    p2p_command_sender: mpsc::Sender<P2PCommand>,
+    rate_limiters: GossipRateLimiters,
+}
+
+impl P2PGossipIngressHarness {
+    pub fn new(p2p_command_sender: mpsc::Sender<P2PCommand>, limits: P2PGossipRateLimits) -> Self {
+        fn nz_u32(v: u32) -> std::num::NonZeroU32 {
+            std::num::NonZeroU32::new(v).unwrap_or_else(|| std::num::NonZeroU32::new(1).unwrap())
+        }
+
+        let blacklist = Arc::new(DashSet::new());
+        let rate_limiters = GossipRateLimiters {
+            block: Arc::new(RateLimiter::keyed(Quota::per_second(nz_u32(
+                limits.block_per_second,
+            )))),
+            tx: Arc::new(RateLimiter::keyed(Quota::per_second(nz_u32(
+                limits.tx_per_second,
+            )))),
+            state: Arc::new(RateLimiter::keyed(Quota::per_second(nz_u32(
+                limits.state_per_second,
+            )))),
+            credential: Arc::new(RateLimiter::keyed(Quota::per_second(nz_u32(
+                limits.credential_per_second,
+            )))),
+        };
+
+        Self {
+            blacklist,
+            p2p_command_sender,
+            rate_limiters,
+        }
+    }
+
+    pub fn blacklist(&self) -> Arc<DashSet<PeerId>> {
+        self.blacklist.clone()
+    }
+
+    pub async fn process_gossipsub_message(&self, message: gossipsub::Message, source: PeerId) {
+        P2PServer::static_process_gossip_message(
+            message,
+            source,
+            self.blacklist.clone(),
+            self.p2p_command_sender.clone(),
+            self.rate_limiters.clone(),
+            None,
+        )
+        .await;
+    }
 }
 
 impl P2PServer {
@@ -464,9 +553,11 @@ impl P2PServer {
                 P2PError::Mdns(error_msg)
             })?;
         // Initialize QDS request-response
+        let rr_cfg = libp2p::request_response::Config::default()
+            .with_request_timeout(Duration::from_millis(500));
         let qds_behaviour = RequestResponseBehaviour::new(
             std::iter::once((QDS_PROTOCOL.to_string(), ProtocolSupport::Full)),
-            Default::default(),
+            rr_cfg,
         );
 
         let behaviour = NodeBehaviour {
@@ -479,10 +570,12 @@ impl P2PServer {
         let mut swarm = SwarmBuilder::with_existing_identity(config.local_keypair)
             .with_tokio()
             .with_tcp(
-                libp2p::tcp::Config::default().nodelay(true),
-                noise::Config::new,
-                yamux::Config::default,
-            )?
+                libp2p::tcp::Config::default(),
+                libp2p::noise::Config::new,
+                libp2p::yamux::Config::default,
+            )
+            .map_err(|e| P2PError::SwarmBuild(e.to_string()))?
+            .with_quic()
             .with_behaviour(|_key| Ok(behaviour))
             .map_err(|e| {
                 let e_str = format!("{e:?}");
@@ -491,7 +584,7 @@ impl P2PServer {
                 error_msg.push_str(&e_str);
                 P2PError::SwarmBuild(error_msg)
             })?
-            .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
+            .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(3600)))
             .build();
 
         if !config.initial_peers.is_empty() {
@@ -502,6 +595,8 @@ impl P2PServer {
 
         let topics =
             Self::subscribe_to_topics(config.topic_prefix, &mut swarm.behaviour_mut().gossipsub)?;
+
+        Self::add_explicit_peers(&mut swarm.behaviour_mut().gossipsub, &config.initial_peers);
 
         Self::listen_on_addresses(&mut swarm, &config.listen_addresses, &local_peer_id)?;
 
@@ -552,6 +647,14 @@ impl P2PServer {
             Self::dial_initial_peers(&mut swarm, &config.initial_peers).await;
         }
 
+        let blacklist = Arc::new(DashSet::new());
+        let rate_limiters = GossipRateLimiters {
+            block: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(100u32)))),
+            tx: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(500u32)))),
+            state: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(50u32)))),
+            credential: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(200u32)))),
+        };
+
         Ok(Self {
             swarm,
             topics,
@@ -561,6 +664,8 @@ impl P2PServer {
             p2p_command_sender,
             dag: config.dag.clone(),
             utxos: config.utxos.clone(),
+            blacklist,
+            rate_limiters,
         })
     }
 
@@ -583,6 +688,8 @@ impl P2PServer {
             .mesh_n(p2p_config.mesh_n)
             .mesh_n_high(p2p_config.mesh_n_high)
             .mesh_outbound_min(p2p_config.mesh_outbound_min)
+            .gossip_lazy(p2p_config.gossip_lazy)
+            .history_gossip(p2p_config.history_gossip)
             .message_id_fn(message_id_fn)
             .build()
             .map_err(|e_str| {
@@ -593,14 +700,160 @@ impl P2PServer {
                 P2PError::GossipsubConfig(error_msg)
             })?;
 
-        gossipsub::Behaviour::new(MessageAuthenticity::Signed(local_key), gossipsub_config).map_err(
-            |e_str| {
+        let mut behaviour =
+            gossipsub::Behaviour::new(MessageAuthenticity::Signed(local_key), gossipsub_config)
+                .map_err(|e_str| {
+                    let mut error_msg = String::with_capacity(35 + e_str.len());
+                    error_msg.push_str("Error creating Gossipsub behaviour: ");
+                    error_msg.push_str(e_str);
+                    P2PError::GossipsubConfig(error_msg)
+                })?;
+
+        let peer_score_params = Self::build_peer_score_params()?;
+        let peer_score_thresholds = Self::build_peer_score_thresholds();
+
+        behaviour
+            .with_peer_score(peer_score_params, peer_score_thresholds)
+            .map_err(|e_str| {
                 let mut error_msg = String::with_capacity(35 + e_str.len());
-                error_msg.push_str("Error creating Gossipsub behaviour: ");
-                error_msg.push_str(e_str);
+                error_msg.push_str("Error enabling Gossipsub peer scoring: ");
+                error_msg.push_str(&e_str);
                 P2PError::GossipsubConfig(error_msg)
-            },
-        )
+            })?;
+
+        Ok(behaviour)
+    }
+
+    fn build_peer_score_params() -> Result<PeerScoreParams, P2PError> {
+        let mut topics = HashMap::new();
+
+        for shard in 0..TOPIC_SHARDS {
+            let block_topic = IdentTopic::new(format!("/qanto/blocks/1/{}", shard));
+            topics.insert(block_topic.hash(), Self::topic_score_params_blocks()?);
+
+            let tx_topic = IdentTopic::new(format!("/qanto/transactions/1/{}", shard));
+            topics.insert(tx_topic.hash(), Self::topic_score_params_transactions()?);
+        }
+
+        topics.insert(
+            IdentTopic::new("/qanto/utxo/1").hash(),
+            Self::topic_score_params_state()?,
+        );
+        topics.insert(
+            IdentTopic::new("/qanto/carbon_credentials/1").hash(),
+            Self::topic_score_params_credentials()?,
+        );
+        topics.insert(
+            IdentTopic::new("/qanto/state_sync/1").hash(),
+            Self::topic_score_params_state()?,
+        );
+        Ok(PeerScoreParams {
+            decay_interval: Duration::from_secs(1),
+            decay_to_zero: 0.01,
+            retain_score: Duration::from_secs(60 * 60),
+            app_specific_weight: 0.0,
+            ip_colocation_factor_threshold: 10.0,
+            ip_colocation_factor_weight: -50.0,
+            behaviour_penalty_threshold: 6.0,
+            behaviour_penalty_weight: -10.0,
+            behaviour_penalty_decay: 0.2,
+            topics,
+            ..Default::default()
+        })
+    }
+
+    fn build_peer_score_thresholds() -> PeerScoreThresholds {
+        PeerScoreThresholds {
+            gossip_threshold: -10.0,
+            publish_threshold: -50.0,
+            graylist_threshold: -80.0,
+            accept_px_threshold: 0.0,
+            opportunistic_graft_threshold: 5.0,
+        }
+    }
+
+    fn topic_score_params_blocks() -> Result<TopicScoreParams, P2PError> {
+        Ok(TopicScoreParams {
+            topic_weight: 1.0,
+            time_in_mesh_weight: 0.01,
+            time_in_mesh_quantum: Duration::from_secs(1),
+            time_in_mesh_cap: 10.0,
+            first_message_deliveries_weight: 0.5,
+            first_message_deliveries_decay: 0.9,
+            first_message_deliveries_cap: 200.0,
+            mesh_message_deliveries_weight: -1.0,
+            mesh_message_deliveries_decay: 0.9,
+            mesh_message_deliveries_threshold: 20.0,
+            mesh_message_deliveries_cap: 200.0,
+            mesh_message_deliveries_activation: Duration::from_secs(10),
+            mesh_message_deliveries_window: Duration::from_secs(10),
+            invalid_message_deliveries_weight: -10.0,
+            invalid_message_deliveries_decay: 0.9,
+            ..Default::default()
+        })
+    }
+
+    fn topic_score_params_transactions() -> Result<TopicScoreParams, P2PError> {
+        Ok(TopicScoreParams {
+            topic_weight: 0.5,
+            time_in_mesh_weight: 0.005,
+            time_in_mesh_quantum: Duration::from_secs(1),
+            time_in_mesh_cap: 5.0,
+            first_message_deliveries_weight: 0.2,
+            first_message_deliveries_decay: 0.9,
+            first_message_deliveries_cap: 500.0,
+            mesh_message_deliveries_weight: -0.5,
+            mesh_message_deliveries_decay: 0.9,
+            mesh_message_deliveries_threshold: 50.0,
+            mesh_message_deliveries_cap: 500.0,
+            mesh_message_deliveries_activation: Duration::from_secs(10),
+            mesh_message_deliveries_window: Duration::from_secs(10),
+            invalid_message_deliveries_weight: -10.0,
+            invalid_message_deliveries_decay: 0.9,
+            ..Default::default()
+        })
+    }
+
+    fn topic_score_params_state() -> Result<TopicScoreParams, P2PError> {
+        Ok(TopicScoreParams {
+            topic_weight: 0.25,
+            time_in_mesh_weight: 0.002,
+            time_in_mesh_quantum: Duration::from_secs(1),
+            time_in_mesh_cap: 2.0,
+            first_message_deliveries_weight: 0.1,
+            first_message_deliveries_decay: 0.9,
+            first_message_deliveries_cap: 100.0,
+            mesh_message_deliveries_weight: -0.25,
+            mesh_message_deliveries_decay: 0.9,
+            mesh_message_deliveries_threshold: 10.0,
+            mesh_message_deliveries_cap: 100.0,
+            mesh_message_deliveries_activation: Duration::from_secs(10),
+            mesh_message_deliveries_window: Duration::from_secs(10),
+            invalid_message_deliveries_weight: -10.0,
+            invalid_message_deliveries_decay: 0.9,
+            ..Default::default()
+        })
+    }
+
+    fn topic_score_params_credentials() -> Result<TopicScoreParams, P2PError> {
+        Ok(TopicScoreParams {
+            topic_weight: 0.25,
+            time_in_mesh_weight: 0.002,
+            time_in_mesh_quantum: Duration::from_secs(1),
+            time_in_mesh_cap: 2.0,
+            first_message_deliveries_weight: 0.1,
+            first_message_deliveries_decay: 0.9,
+            first_message_deliveries_cap: 50.0,
+            mesh_message_deliveries_weight: -0.25,
+            mesh_message_deliveries_decay: 0.9,
+            mesh_message_deliveries_threshold: 5.0,
+            mesh_message_deliveries_cap: 50.0,
+            mesh_message_deliveries_activation: Duration::from_secs(10),
+            mesh_message_deliveries_window: Duration::from_secs(10),
+            invalid_message_deliveries_weight: -10.0,
+            invalid_message_deliveries_decay: 0.9,
+            ..Default::default()
+        })
     }
 
     fn subscribe_to_topics(
@@ -608,22 +861,45 @@ impl P2PServer {
         gossipsub: &mut gossipsub::Behaviour,
     ) -> Result<Vec<IdentTopic>, P2PError> {
         // Use specific versioned Qanto topics for better protocol organization
-        let topics_str = [
-            "/qanto/blocks/1",             // Versioned block propagation topic
-            "/qanto/utxo/1",               // Versioned UTXO state updates topic
-            "/qanto/transactions/1",       // Versioned transaction propagation topic
-            "/qanto/carbon_credentials/1", // Versioned carbon offset credentials topic
-            "/qanto/state_sync/1",         // Versioned state synchronization topic
-        ];
-
         let mut topics = Vec::new();
-        for topic_s in topics_str.iter() {
-            let topic = IdentTopic::new(*topic_s);
-            gossipsub.subscribe(&topic)?;
-            topics.push(topic);
-            info!("Subscribed to gossipsub topic: {}", topic_s);
+        for shard in 0..TOPIC_SHARDS {
+            let block_topic = IdentTopic::new(format!("/qanto/blocks/1/{}", shard));
+            gossipsub.subscribe(&block_topic)?;
+            topics.push(block_topic);
+            let tx_topic = IdentTopic::new(format!("/qanto/transactions/1/{}", shard));
+            gossipsub.subscribe(&tx_topic)?;
+            topics.push(tx_topic);
         }
+        let utxo_topic = IdentTopic::new("/qanto/utxo/1");
+        gossipsub.subscribe(&utxo_topic)?;
+        topics.push(utxo_topic);
+        let cred_topic = IdentTopic::new("/qanto/carbon_credentials/1");
+        gossipsub.subscribe(&cred_topic)?;
+        topics.push(cred_topic);
+        let state_topic = IdentTopic::new("/qanto/state_sync/1");
+        gossipsub.subscribe(&state_topic)?;
+        topics.push(state_topic);
         Ok(topics)
+    }
+
+    fn add_explicit_peers(gossipsub: &mut gossipsub::Behaviour, initial_peers: &[String]) {
+        for peer_addr_str in initial_peers {
+            if let Ok(multiaddr) = peer_addr_str.parse::<Multiaddr>() {
+                if let Some(peer_id) = Self::extract_peer_id(&multiaddr) {
+                    gossipsub.add_explicit_peer(&peer_id);
+                }
+            }
+        }
+    }
+
+    fn extract_peer_id(multiaddr: &Multiaddr) -> Option<PeerId> {
+        multiaddr.iter().find_map(|p| {
+            if let libp2p::multiaddr::Protocol::P2p(id) = p {
+                Some(id)
+            } else {
+                None
+            }
+        })
     }
 
     fn listen_on_addresses(
@@ -652,23 +928,15 @@ impl P2PServer {
     pub async fn run(&mut self, mut rx: mpsc::Receiver<P2PCommand>) -> Result<(), P2PError> {
         let mut mesh_check_ticker = interval(Duration::from_secs(60));
         let mut peer_cache_ticker = interval(Duration::from_secs(300));
-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
-
-        let rate_limiters = GossipRateLimiters {
-            block: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(10u32)))),
-            tx: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(50u32)))),
-            state: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(5u32)))),
-            credential: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(20u32)))),
-        };
 
         loop {
             tokio::select! {
                 event = self.swarm.select_next_some() => {
                     if let SwarmEvent::Behaviour(NodeBehaviourEvent::Gossipsub(gossipsub::Event::Message { propagation_source, message, .. })) = event {
                         tokio::spawn({
-                            let blacklist = blacklist.clone();
+                            let blacklist = self.blacklist.clone();
                             let p2p_sender = self.p2p_command_sender.clone();
-                            let rate_limiters = rate_limiters.clone();
+                            let rate_limiters = self.rate_limiters.clone();
                             async move {
                                 Self::static_process_gossip_message(
                                     message,
@@ -676,6 +944,7 @@ impl P2PServer {
                                     blacklist,
                                     p2p_sender,
                                     rate_limiters,
+                                    None,
                                 )
                                 .await;
                             }
@@ -686,7 +955,13 @@ impl P2PServer {
                 }
                 Some(command) = rx.recv() => {
                     if let Err(e) = self.process_internal_command(command).await {
-                        error!("Failed to process internal P2P command: {e}");
+                        let err_str = e.to_string();
+                        if err_str.contains("NoPeersSubscribedToTopic") || err_str.contains("InsufficientPeers") {
+                            // Downgrade "NoPeersSubscribedToTopic" to WARN as it is common during startup/partition
+                            warn!("Broadcast skipped (InsufficientPeers): {}", err_str);
+                        } else {
+                            error!("Failed to process internal P2P command: {}", err_str);
+                        }
                     }
                 }
                 _ = mesh_check_ticker.tick() => { self.check_mesh_peers().await; }
@@ -731,21 +1006,13 @@ impl P2PServer {
                 message_id: _,
                 message,
             })) => {
-                // Route gossip message through the static handler with fresh rate limiters
-                let blacklist = Arc::new(RwLock::new(HashSet::new()));
-                let rate_limiters = GossipRateLimiters {
-                    block: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(10u32)))),
-                    tx: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(50u32)))),
-                    state: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(5u32)))),
-                    credential: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(20u32)))),
-                };
-
                 Self::static_process_gossip_message(
                     message,
                     propagation_source,
-                    blacklist,
+                    self.blacklist.clone(),
                     self.p2p_command_sender.clone(),
-                    rate_limiters,
+                    self.rate_limiters.clone(),
+                    None,
                 )
                 .await;
             }
@@ -906,9 +1173,10 @@ impl P2PServer {
     async fn static_process_gossip_message(
         message: gossipsub::Message,
         source: PeerId,
-        blacklist: Arc<RwLock<HashSet<PeerId>>>,
+        blacklist: Arc<DashSet<PeerId>>,
         p2p_command_sender: mpsc::Sender<P2PCommand>,
         rate_limiters: GossipRateLimiters,
+        ban_notify: Option<Arc<Notify>>,
     ) {
         info!(
             "Received gossipsub message from {} on topic {}",
@@ -916,7 +1184,7 @@ impl P2PServer {
             message.topic.as_str()
         );
 
-        if blacklist.read().await.contains(&source) {
+        if blacklist.contains(&source) {
             warn!("Ignoring message from blacklisted peer: {}", source);
             return;
         }
@@ -936,10 +1204,12 @@ impl P2PServer {
         };
 
         if rate_limiter_to_use.check_key(&source).is_err() {
-            let mut blacklist_writer = blacklist.write().await;
-            if blacklist_writer.insert(source) {
-                warn!("Peer {} exceeded rate limit. Blacklisting.", source);
+            warn!("Peer {} exceeded rate limit. Blacklisting.", source);
+            if blacklist.insert(source) {
                 PEERS_BLACKLISTED.inc();
+            }
+            if let Some(notify) = ban_notify {
+                notify.notify_one();
             }
             return;
         }
@@ -969,10 +1239,12 @@ impl P2PServer {
                 source,
                 message.topic.as_str()
             );
-            let mut blacklist_writer = blacklist.write().await;
-            if blacklist_writer.insert(source) {
-                warn!("Peer {} failed HMAC check. Blacklisting.", source);
+            warn!("Peer {} failed HMAC check. Blacklisting.", source);
+            if blacklist.insert(source) {
                 PEERS_BLACKLISTED.inc();
+            }
+            if let Some(notify) = ban_notify {
+                notify.notify_one();
             }
             return;
         }
@@ -986,10 +1258,15 @@ impl P2PServer {
                     source,
                     message.topic.as_str()
                 );
-                let mut blacklist_writer = blacklist.write().await;
-                if blacklist_writer.insert(source) {
-                    warn!("Peer {} failed signature check. Blacklisting.", source);
+                warn!(
+                    "Peer {} failed signature check (missing). Blacklisting.",
+                    source
+                );
+                if blacklist.insert(source) {
                     PEERS_BLACKLISTED.inc();
+                }
+                if let Some(notify) = ban_notify {
+                    notify.notify_one();
                 }
                 return;
             }
@@ -1004,10 +1281,15 @@ impl P2PServer {
                 source,
                 message.topic.as_str()
             );
-            let mut blacklist_writer = blacklist.write().await;
-            if blacklist_writer.insert(source) {
-                warn!("Peer {} failed signature check. Blacklisting.", source);
+            warn!(
+                "Peer {} failed signature check (invalid). Blacklisting.",
+                source
+            );
+            if blacklist.insert(source) {
                 PEERS_BLACKLISTED.inc();
+            }
+            if let Some(notify) = ban_notify {
+                notify.notify_one();
             }
             return;
         }
@@ -1051,7 +1333,11 @@ impl P2PServer {
                     Ok(pb) => match convert_proto_block(pb) {
                         Ok(block) => {
                             info!("Processing block message: {}", block.id);
-                            P2PCommand::BroadcastBlock(block)
+                            // Route inbound gossip block including its source peer for parent requests
+                            P2PCommand::InboundBlock {
+                                block,
+                                source_peer: source,
+                            }
                         }
                         Err(e) => {
                             error!("Failed to convert protobuf Block: {}", e);
@@ -1537,6 +1823,7 @@ fn convert_proto_block(pb: proto::QantoBlock) -> Result<crate::qantodag::QantoBl
         parents: pb.parents,
         transactions,
         difficulty: pb.difficulty,
+        target: None,
         validator: pb.validator,
         miner: pb.miner,
         nonce: pb.nonce,
@@ -1552,7 +1839,7 @@ fn convert_proto_block(pb: proto::QantoBlock) -> Result<crate::qantodag::QantoBl
         smart_contracts,
         carbon_credentials,
         epoch: pb.epoch,
-        reservation_miner_id: None,
+        reservation_snapshot_id: None,
         finality_proof: None,
     })
 }
@@ -1582,9 +1869,9 @@ mod tests {
     use prost::Message;
     use qanto_rpc::server::generated as proto;
     use serial_test::serial;
-    use std::collections::HashSet;
     use std::sync::Arc;
     use tokio::sync::mpsc;
+    use tokio::sync::Notify;
 
     fn gen_peer_id() -> PeerId {
         let kp = identity::Keypair::generate_ed25519();
@@ -1625,7 +1912,9 @@ mod tests {
     #[tokio::test]
     async fn valid_transaction_message_is_forwarded() {
         let orig_secret = std::env::var("HMAC_SECRET").ok();
-        std::env::set_var("HMAC_SECRET", "test_secret");
+        unsafe {
+            std::env::set_var("HMAC_SECRET", "test_secret");
+        }
         let (_pk, sk) = crate::post_quantum_crypto::generate_pq_keypair(None).expect("pq keypair");
         let tx = crate::transaction::Transaction::new_dummy();
 
@@ -1666,7 +1955,7 @@ mod tests {
         let bytes = msg.encode_to_vec();
         let message = make_message("/qanto/transactions/1", bytes);
         let source = gen_peer_id();
-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
+        let blacklist = Arc::new(DashSet::new());
         let rate_limiters = make_default_rate_limiters();
         let (cmd_tx, mut cmd_rx) = mpsc::channel(1);
 
@@ -1676,6 +1965,7 @@ mod tests {
             blacklist.clone(),
             cmd_tx,
             rate_limiters,
+            None,
         )
         .await;
 
@@ -1684,11 +1974,15 @@ mod tests {
             P2PCommand::BroadcastTransaction(t) => assert_eq!(t.id, tx.id),
             _ => panic!("unexpected command variant"),
         }
-        assert!(!blacklist.read().await.contains(&source));
+        assert!(!blacklist.contains(&source));
         if let Some(s) = orig_secret {
-            std::env::set_var("HMAC_SECRET", s);
+            unsafe {
+                std::env::set_var("HMAC_SECRET", s);
+            }
         } else {
-            std::env::remove_var("HMAC_SECRET");
+            unsafe {
+                std::env::remove_var("HMAC_SECRET");
+            }
         }
     }
 
@@ -1696,7 +1990,9 @@ mod tests {
     #[tokio::test]
     async fn invalid_hmac_blacklists_peer() {
         let orig_secret = std::env::var("HMAC_SECRET").ok();
-        std::env::set_var("HMAC_SECRET", "valid_secret");
+        unsafe {
+            std::env::set_var("HMAC_SECRET", "valid_secret");
+        }
         let (_pk, sk) = crate::post_quantum_crypto::generate_pq_keypair(None).expect("pq keypair");
         let tx = crate::transaction::Transaction::new_dummy();
 
@@ -1718,28 +2014,47 @@ mod tests {
 
         let message = make_message("/qanto/transactions/1", bytes);
         let source = gen_peer_id();
-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
+        let blacklist = Arc::new(DashSet::new());
         let rate_limiters = make_default_rate_limiters();
         let (cmd_tx, mut cmd_rx) = mpsc::channel(1);
+        let ban_notify = Arc::new(Notify::new());
 
         // Change secret to break HMAC verification path
-        std::env::set_var("HMAC_SECRET", "invalid_secret");
+        unsafe {
+            std::env::set_var("HMAC_SECRET", "invalid_secret");
+        }
 
-        P2PServer::static_process_gossip_message(
-            message,
-            source,
-            blacklist.clone(),
-            cmd_tx,
-            rate_limiters,
-        )
-        .await;
+        let join = tokio::spawn({
+            let blacklist = blacklist.clone();
+            let ban_notify = ban_notify.clone();
+            async move {
+                P2PServer::static_process_gossip_message(
+                    message,
+                    source,
+                    blacklist,
+                    cmd_tx,
+                    rate_limiters,
+                    Some(ban_notify),
+                )
+                .await;
+            }
+        });
 
-        assert!(blacklist.read().await.contains(&source));
+        tokio::time::timeout(Duration::from_millis(200), ban_notify.notified())
+            .await
+            .expect("timeout waiting for ban commit");
+        join.await.expect("join");
+
+        assert!(blacklist.contains(&source));
         assert!(cmd_rx.try_recv().is_err());
         if let Some(s) = orig_secret {
-            std::env::set_var("HMAC_SECRET", s);
+            unsafe {
+                std::env::set_var("HMAC_SECRET", s);
+            }
         } else {
-            std::env::remove_var("HMAC_SECRET");
+            unsafe {
+                std::env::remove_var("HMAC_SECRET");
+            }
         }
     }
 
@@ -1747,7 +2062,9 @@ mod tests {
     #[tokio::test]
     async fn tampered_signature_blacklists_peer() {
         let orig_secret = std::env::var("HMAC_SECRET").ok();
-        std::env::set_var("HMAC_SECRET", "test_secret");
+        unsafe {
+            std::env::set_var("HMAC_SECRET", "test_secret");
+        }
         let (_pk, sk) = crate::post_quantum_crypto::generate_pq_keypair(None).expect("pq keypair");
         let mut tx = crate::transaction::Transaction::new_dummy();
         let ptx_valid = convert_internal_tx_to_proto(&tx);
@@ -1775,25 +2092,42 @@ mod tests {
         let bytes = msg_tampered.encode_to_vec();
         let message = make_message("/qanto/transactions/1", bytes);
         let source = gen_peer_id();
-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
+        let blacklist = Arc::new(DashSet::new());
         let rate_limiters = make_default_rate_limiters();
         let (cmd_tx, mut cmd_rx) = mpsc::channel(1);
+        let ban_notify = Arc::new(Notify::new());
 
-        P2PServer::static_process_gossip_message(
-            message,
-            source,
-            blacklist.clone(),
-            cmd_tx,
-            rate_limiters,
-        )
-        .await;
+        let join = tokio::spawn({
+            let blacklist = blacklist.clone();
+            let ban_notify = ban_notify.clone();
+            async move {
+                P2PServer::static_process_gossip_message(
+                    message,
+                    source,
+                    blacklist,
+                    cmd_tx,
+                    rate_limiters,
+                    Some(ban_notify),
+                )
+                .await;
+            }
+        });
 
-        assert!(blacklist.read().await.contains(&source));
+        tokio::time::timeout(Duration::from_millis(200), ban_notify.notified())
+            .await
+            .expect("timeout waiting for ban commit");
+        join.await.expect("join");
+
+        assert!(blacklist.contains(&source));
         assert!(cmd_rx.try_recv().is_err());
         if let Some(s) = orig_secret {
-            std::env::set_var("HMAC_SECRET", s);
+            unsafe {
+                std::env::set_var("HMAC_SECRET", s);
+            }
         } else {
-            std::env::remove_var("HMAC_SECRET");
+            unsafe {
+                std::env::remove_var("HMAC_SECRET");
+            }
         }
     }
 
@@ -1801,7 +2135,9 @@ mod tests {
     #[tokio::test]
     async fn rate_limit_exceeded_blacklists_peer() {
         let orig_secret = std::env::var("HMAC_SECRET").ok();
-        std::env::set_var("HMAC_SECRET", "test_secret");
+        unsafe {
+            std::env::set_var("HMAC_SECRET", "test_secret");
+        }
         let (_pk, sk) = crate::post_quantum_crypto::generate_pq_keypair(None).expect("pq keypair");
         let tx = crate::transaction::Transaction::new_dummy();
         let ptx = convert_internal_tx_to_proto(&tx);
@@ -1835,9 +2171,10 @@ mod tests {
         );
 
         let source = gen_peer_id();
-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
+        let blacklist = Arc::new(DashSet::new());
         let rate_limiters = make_rate_limiters_tx_1();
         let (cmd_tx, mut cmd_rx) = mpsc::channel(2);
+        let ban_notify = Arc::new(Notify::new());
 
         let m1 = make_message("/qanto/transactions/1", bytes.clone());
         P2PServer::static_process_gossip_message(
@@ -1846,6 +2183,7 @@ mod tests {
             blacklist.clone(),
             cmd_tx.clone(),
             rate_limiters.clone(),
+            None,
         )
         .await;
         let cmd1 = tokio::time::timeout(Duration::from_millis(200), cmd_rx.recv())
@@ -1857,24 +2195,139 @@ mod tests {
             _ => panic!("unexpected"),
         }
 
-        // Small delay to ensure the rate limiter clock registers the first event
-        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-
         let m2 = make_message("/qanto/transactions/1", bytes.clone());
+        let join = tokio::spawn({
+            let blacklist = blacklist.clone();
+            let ban_notify = ban_notify.clone();
+            async move {
+                P2PServer::static_process_gossip_message(
+                    m2,
+                    source,
+                    blacklist,
+                    cmd_tx.clone(),
+                    rate_limiters.clone(),
+                    Some(ban_notify),
+                )
+                .await;
+            }
+        });
+
+        tokio::time::timeout(Duration::from_millis(200), ban_notify.notified())
+            .await
+            .expect("timeout waiting for ban commit");
+        join.await.expect("join");
+
+        assert!(blacklist.contains(&source));
+        if let Some(s) = orig_secret {
+            unsafe {
+                std::env::set_var("HMAC_SECRET", s);
+            }
+        } else {
+            unsafe {
+                std::env::remove_var("HMAC_SECRET");
+            }
+        }
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn valid_block_message_is_forwarded_as_inbound() {
+        let orig_secret = std::env::var("HMAC_SECRET").ok();
+        unsafe {
+            std::env::set_var("HMAC_SECRET", "test_secret");
+        }
+
+        // Signature for the envelope
+        let (_pk, sk) = crate::post_quantum_crypto::generate_pq_keypair(None).expect("pq keypair");
+
+        // Construct a minimal protobuf block
+        let pb = proto::QantoBlock {
+            chain_id: 1u32,
+            id: "blk_inbound_test".to_string(),
+            parents: vec!["missing_parent".to_string()],
+            transactions: vec![],
+            difficulty: 1.0f64,
+            validator: "".to_string(),
+            miner: "".to_string(),
+            nonce: 0u64,
+            timestamp: 0u64,
+            height: 1u64,
+            reward: 0u64,
+            effort: 0u64,
+            cross_chain_references: vec![],
+            cross_chain_swaps: vec![],
+            merkle_root: "".to_string(),
+            signature: Some(proto::QuantumResistantSignature {
+                signer_public_key: vec![0; 32],
+                signature: vec![0; 64],
+            }),
+            homomorphic_encrypted: vec![],
+            smart_contracts: vec![],
+            carbon_credentials: vec![],
+            epoch: 0u64,
+        };
+
+        // Build protobuf payload and envelope
+        let payload_bytes = pb.encode_to_vec();
+        let hmac_secret = NetworkMessage::get_hmac_secret();
+        let hmac =
+            NetworkMessage::compute_hmac(&payload_bytes, &hmac_secret).expect("compute hmac");
+        let signature =
+            QuantumResistantSignature::sign(&sk, &payload_bytes).expect("sign network payload");
+        let msg = proto::P2pNetworkMessage {
+            payload_type: proto::P2pPayloadType::Block as i32,
+            payload_bytes,
+            hmac: hmac.clone(),
+            signature: Some(proto::QuantumResistantSignature {
+                signer_public_key: signature.signer_public_key.clone(),
+                signature: signature.signature.clone(),
+            }),
+        };
+
+        // Verify HMAC and signature sanity
+        let expected_hmac =
+            NetworkMessage::compute_hmac(&msg.payload_bytes, &hmac_secret).expect("expected hmac");
+        assert_eq!(msg.hmac, expected_hmac);
+        let internal_sig = QuantumResistantSignature {
+            signer_public_key: signature.signer_public_key.clone(),
+            signature: signature.signature.clone(),
+        };
+        assert!(internal_sig.verify(&msg.payload_bytes));
+
+        let bytes = msg.encode_to_vec();
+        let message = make_message("/qanto/blocks/1", bytes);
+        let source = gen_peer_id();
+        let blacklist = Arc::new(DashSet::new());
+        let rate_limiters = make_default_rate_limiters();
+        let (cmd_tx, mut cmd_rx) = mpsc::channel(1);
+
         P2PServer::static_process_gossip_message(
-            m2,
+            message,
             source,
             blacklist.clone(),
-            cmd_tx.clone(),
-            rate_limiters.clone(),
+            cmd_tx,
+            rate_limiters,
+            None,
         )
         .await;
 
-        assert!(blacklist.read().await.contains(&source));
+        let cmd = cmd_rx.recv().await.expect("expected forwarded command");
+        match cmd {
+            P2PCommand::InboundBlock { block, source_peer } => {
+                assert_eq!(block.id, "blk_inbound_test");
+                assert_eq!(source_peer, source);
+            }
+            _ => panic!("unexpected command variant"),
+        }
+        assert!(!blacklist.contains(&source));
         if let Some(s) = orig_secret {
-            std::env::set_var("HMAC_SECRET", s);
+            unsafe {
+                std::env::set_var("HMAC_SECRET", s);
+            }
         } else {
-            std::env::remove_var("HMAC_SECRET");
+            unsafe {
+                std::env::remove_var("HMAC_SECRET");
+            }
         }
     }
 }

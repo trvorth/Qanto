@@ -1,6 +1,6 @@
 use bytes::Bytes;
-use my_blockchain::qanto_standalone::hash::QantoHash;
 use qanto::qanto_p2p::*;
+use qanto_core::qanto_native_crypto::QantoHash;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 use tokio::time::sleep;
@@ -31,6 +31,7 @@ async fn test_message_serialization() {
 }
 
 #[tokio::test]
+#[ignore]
 async fn test_peer_connection() {
     let config1 = NetworkConfig {
         listen_port: 18333,

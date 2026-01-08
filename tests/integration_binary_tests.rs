@@ -10,7 +10,7 @@ fn test_generate_wallet_binary() {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let wallet_path = temp_dir.path().join("test_wallet.json");
 
-    let mut cmd = Command::cargo_bin("generate_wallet").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_generate_wallet"));
     cmd.arg("--output")
         .arg(&wallet_path)
         .env("WALLET_PASSWORD", "test123"); // Use environment variable instead of stdin
@@ -25,7 +25,7 @@ fn test_generate_wallet_binary() {
 
 #[test]
 fn test_derive_genesis_key_binary() {
-    let mut cmd = Command::cargo_bin("derive_genesis_key").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_derive_genesis_key"));
 
     cmd.assert()
         .success()
@@ -40,7 +40,7 @@ fn test_get_address_binary() {
     let wallet_path = temp_dir.path().join("test_wallet.json");
 
     // First create a wallet
-    let mut create_cmd = Command::cargo_bin("generate_wallet").unwrap();
+    let mut create_cmd = Command::new(env!("CARGO_BIN_EXE_generate_wallet"));
     create_cmd
         .arg("--output")
         .arg(&wallet_path)
@@ -49,7 +49,7 @@ fn test_get_address_binary() {
     create_cmd.assert().success();
 
     // Then get the address using environment variable for password
-    let mut cmd = Command::cargo_bin("get_address").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_get_address"));
     cmd.arg("--wallet")
         .arg(&wallet_path)
         .env("WALLET_PASSWORD", "test123");
@@ -67,7 +67,7 @@ fn test_import_wallet_binary() {
     // Test importing with a known private key (test key)
     let test_private_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-    let mut cmd = Command::cargo_bin("import_wallet").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_import_wallet"));
     cmd.arg(test_private_key)
         .arg("--output")
         .arg(&wallet_path)
@@ -87,7 +87,7 @@ fn test_import_wallet_binary() {
 #[test]
 fn test_qanto_binary_help() {
     // Test main qanto binary help
-    let mut cmd = Command::cargo_bin("qanto").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_qanto"));
     cmd.arg("--help");
 
     cmd.assert()
@@ -99,7 +99,7 @@ fn test_qanto_binary_help() {
 #[test]
 fn test_qantowallet_binary_help() {
     // Test qantowallet binary help
-    let mut cmd = Command::cargo_bin("qantowallet").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_qantowallet"));
     cmd.arg("--help");
 
     cmd.assert()
@@ -111,7 +111,7 @@ fn test_qantowallet_binary_help() {
 #[test]
 fn test_start_node_binary_help() {
     // Test start_node binary help
-    let mut cmd = Command::cargo_bin("start_node").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_start_node"));
     cmd.arg("--help");
 
     cmd.assert()
@@ -122,7 +122,7 @@ fn test_start_node_binary_help() {
 #[test]
 fn test_qanto_subcommands() {
     // Test qanto start subcommand help
-    let mut cmd = Command::cargo_bin("qanto").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_qanto"));
     cmd.arg("start").arg("--help");
 
     cmd.assert()
@@ -130,7 +130,7 @@ fn test_qanto_subcommands() {
         .stdout(predicate::str::contains("Starts the Qanto node"));
 
     // Test qanto generate-wallet subcommand help
-    let mut cmd = Command::cargo_bin("qanto").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_qanto"));
     cmd.arg("generate-wallet").arg("--help");
 
     cmd.assert()
@@ -151,7 +151,17 @@ fn test_binaries_help_flag() {
     ];
 
     for (binary, expected_text) in &binaries_with_help {
-        let mut cmd = Command::cargo_bin(binary).unwrap();
+        let bin_path = match *binary {
+            "qanto" => env!("CARGO_BIN_EXE_qanto"),
+            "qantowallet" => env!("CARGO_BIN_EXE_qantowallet"),
+            "generate_wallet" => env!("CARGO_BIN_EXE_generate_wallet"),
+            "import_wallet" => env!("CARGO_BIN_EXE_import_wallet"),
+            "get_address" => env!("CARGO_BIN_EXE_get_address"),
+            "derive_genesis_key" => env!("CARGO_BIN_EXE_derive_genesis_key"),
+            "start_node" => env!("CARGO_BIN_EXE_start_node"),
+            _ => panic!("Unknown binary: {}", binary),
+        };
+        let mut cmd = Command::new(bin_path);
         cmd.arg("--help");
 
         let output = cmd.output().expect("Failed to execute command");
@@ -179,7 +189,7 @@ fn test_binaries_help_flag() {
 #[test]
 fn test_generate_wallet_invalid_args() {
     // Test that generate_wallet fails gracefully with invalid arguments
-    let mut cmd = Command::cargo_bin("generate_wallet").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_generate_wallet"));
     cmd.arg("--invalid-flag");
 
     cmd.assert()
@@ -190,7 +200,7 @@ fn test_generate_wallet_invalid_args() {
 #[test]
 fn test_import_wallet_missing_key() {
     // Test that import_wallet fails when no arguments are provided
-    let mut cmd = Command::cargo_bin("import_wallet").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_import_wallet"));
 
     cmd.assert()
         .failure()
@@ -202,7 +212,7 @@ fn test_import_wallet_missing_key() {
 #[test]
 fn test_generate_wallet_invalid_output_path() {
     // Test generate_wallet with invalid output path
-    let mut cmd = Command::cargo_bin("generate_wallet").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_generate_wallet"));
     cmd.arg("--output")
         .arg("/invalid/path/that/does/not/exist/wallet.json")
         .env("WALLET_PASSWORD", "test123");
@@ -220,7 +230,7 @@ fn test_import_wallet_invalid_private_key() {
     // Test with invalid private key format
     let invalid_private_key = "invalid_key_format";
 
-    let mut cmd = Command::cargo_bin("import_wallet").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_import_wallet"));
     cmd.arg(invalid_private_key)
         .arg("--output")
         .arg(&wallet_path)
@@ -239,7 +249,7 @@ fn test_import_wallet_short_private_key() {
     // Test with too short private key
     let short_private_key = "123abc";
 
-    let mut cmd = Command::cargo_bin("import_wallet").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_import_wallet"));
     cmd.arg(short_private_key)
         .arg("--output")
         .arg(&wallet_path)
@@ -253,7 +263,7 @@ fn test_import_wallet_short_private_key() {
 #[test]
 fn test_get_address_nonexistent_wallet() {
     // Test get_address with non-existent wallet file
-    let mut cmd = Command::cargo_bin("get_address").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_get_address"));
     cmd.arg("--wallet")
         .arg("/path/that/does/not/exist/wallet.json")
         .env("WALLET_PASSWORD", "test123");
@@ -272,7 +282,7 @@ fn test_get_address_invalid_wallet_format() {
     std::fs::write(&invalid_wallet_path, "invalid json content")
         .expect("Failed to write invalid wallet");
 
-    let mut cmd = Command::cargo_bin("get_address").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_get_address"));
     cmd.arg("--wallet")
         .arg(&invalid_wallet_path)
         .env("WALLET_PASSWORD", "test123");
@@ -287,7 +297,7 @@ fn test_derive_genesis_key_with_custom_target() {
     // Test derive_genesis_key with custom target public key
     let custom_target = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-    let mut cmd = Command::cargo_bin("derive_genesis_key").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_derive_genesis_key"));
     cmd.arg("--target").arg(custom_target);
 
     cmd.assert()
@@ -301,7 +311,7 @@ fn test_derive_genesis_key_invalid_target() {
     // Test derive_genesis_key with invalid target public key (non-hex)
     let invalid_target = "invalid_target_key";
 
-    let mut cmd = Command::cargo_bin("derive_genesis_key").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_derive_genesis_key"));
     cmd.arg("--target").arg(invalid_target);
 
     // The binary will still run successfully but will show the invalid target
@@ -313,7 +323,7 @@ fn test_derive_genesis_key_invalid_target() {
 #[test]
 fn test_qanto_invalid_subcommand() {
     // Test qanto binary with invalid subcommand
-    let mut cmd = Command::cargo_bin("qanto").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_qanto"));
     cmd.arg("invalid_subcommand");
 
     cmd.assert()
@@ -324,7 +334,7 @@ fn test_qanto_invalid_subcommand() {
 #[test]
 fn test_qantowallet_invalid_args() {
     // Test qantowallet binary with invalid arguments
-    let mut cmd = Command::cargo_bin("qantowallet").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_qantowallet"));
     cmd.arg("--invalid-flag");
 
     cmd.assert()
@@ -335,7 +345,7 @@ fn test_qantowallet_invalid_args() {
 #[test]
 fn test_start_node_invalid_config() {
     // Test start_node with invalid config path
-    let mut cmd = Command::cargo_bin("start_node").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_start_node"));
     cmd.arg("--config").arg("/invalid/config/path.toml");
 
     cmd.assert().failure().stderr(
@@ -349,7 +359,7 @@ fn test_generate_wallet_empty_password() {
     let wallet_path = temp_dir.path().join("empty_password_wallet.json");
 
     // Test with empty password
-    let mut cmd = Command::cargo_bin("generate_wallet").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_generate_wallet"));
     cmd.arg("--output")
         .arg(&wallet_path)
         .env("WALLET_PASSWORD", ""); // Empty password
@@ -367,7 +377,7 @@ fn test_import_wallet_empty_password() {
     let test_private_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     // Test with empty password
-    let mut cmd = Command::cargo_bin("import_wallet").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_import_wallet"));
     cmd.arg(test_private_key)
         .arg("--output")
         .arg(&wallet_path)
@@ -384,7 +394,7 @@ fn test_get_address_wrong_password() {
     let wallet_path = temp_dir.path().join("wrong_password_wallet.json");
 
     // First create a wallet with one password
-    let mut create_cmd = Command::cargo_bin("generate_wallet").unwrap();
+    let mut create_cmd = Command::new(env!("CARGO_BIN_EXE_generate_wallet"));
     create_cmd
         .arg("--output")
         .arg(&wallet_path)
@@ -393,7 +403,7 @@ fn test_get_address_wrong_password() {
     create_cmd.assert().success();
 
     // Then try to access with wrong password
-    let mut cmd = Command::cargo_bin("get_address").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_get_address"));
     cmd.arg("--wallet")
         .arg(&wallet_path)
         .env("WALLET_PASSWORD", "wrong_password");
@@ -411,7 +421,12 @@ fn test_binary_version_flags() {
     let binaries = vec!["qanto", "qantowallet"];
 
     for binary in binaries {
-        let mut cmd = Command::cargo_bin(binary).unwrap();
+        let bin_path = match binary {
+            "qanto" => env!("CARGO_BIN_EXE_qanto"),
+            "qantowallet" => env!("CARGO_BIN_EXE_qantowallet"),
+            _ => panic!("Unknown binary: {}", binary),
+        };
+        let mut cmd = Command::new(bin_path);
         cmd.arg("--version");
 
         cmd.assert()

@@ -59,6 +59,19 @@ Output example:
 📊 Balance for ae527b...f9d3: 123.456789 QANTO (123456789000 base units)
 ```
 
+### 4. Explicit gRPC Streaming (Finality-aware)
+
+Stream balance updates directly from the node via gRPC:
+
+```bash
+qantowallet balance <ADDRESS_HEX> --grpc --node-url 127.0.0.1:50051 [--finalized-only]
+```
+
+**Details:**
+- Uses gRPC streaming for live updates with optional `--finalized-only` filtering.
+- If gRPC is unavailable, the wallet automatically falls back to WebSocket, then to P2P streaming.
+- `--node-url` sets the gRPC endpoint when not using defaults from `config.toml`.
+
 ## Performance Comparison
 
 | Method | Speed | Network Required | Use Case |
@@ -66,13 +79,13 @@ Output example:
 | `--local` | Fastest | No | Offline, privacy-focused |
 | Default | Fast | Optional | General use, best reliability |
 | `--qds-multiaddr` | Medium | Yes | Specific peer targeting |
-| `--node-url` | Slower | Yes | Traditional gRPC fallback |
+| `--grpc` | Fast | Yes | Explicit gRPC streaming |
 
 ## Notes
 
 - The wallet uses an ephemeral libp2p identity and the QDS request-response protocol name `/qanto/qds/1`.
 - A 10-second timeout is applied to QDS requests by default.
-- If `--qds-multiaddr` is not provided, the wallet falls back to gRPC (`--node_url`) or WebSocket for `--follow`.
+- If `--qds-multiaddr` is not provided, default queries use local-first with network fallbacks; for streaming, use `--follow` (alias: `--ws`) for WebSocket, `--live` for P2P, or `--grpc` for gRPC. When `--grpc` is set, the wallet streams via gRPC and falls back to WebSocket, then P2P if needed.
 - When `--qds-multiaddr` is provided for the `balance` command, the wallet enters lightweight mode and skips any local P2P discovery/initialization to minimize start-up and resource usage.
 - The new local-first approach prioritizes local storage for optimal performance while maintaining network fallbacks for reliability.
 

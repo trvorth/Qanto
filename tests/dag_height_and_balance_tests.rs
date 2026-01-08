@@ -1,13 +1,13 @@
-use my_blockchain::qanto_hash;
 use qanto::mempool::Mempool;
 use qanto::miner::{Miner, MinerConfig};
+use qanto::node_keystore::Wallet;
 use qanto::post_quantum_crypto::pq_sign;
 use qanto::qanto_storage::{QantoStorage, StorageConfig};
 use qanto::qantodag::{QantoBlock, QantoDAG, QantoDagConfig, SigningData};
 use qanto::saga::PalletSaga;
 use qanto::transaction::Transaction;
 use qanto::types::{QuantumResistantSignature, UTXO};
-use qanto::wallet::Wallet;
+use qanto_core::qanto_native_crypto::qanto_hash;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -35,8 +35,10 @@ impl MockPoW {
     fn solve_block(&self, block: &mut QantoBlock) -> Result<(), Box<dyn std::error::Error>> {
         block.difficulty = self.fixed_difficulty;
         // Try a range of nonces until target is met
-        let target_hash_bytes =
-            qanto::miner::Miner::calculate_target_from_difficulty(block.difficulty);
+        let target_hash_bytes = {
+            let t = block.target.clone().expect("header target");
+            hex::decode(t).expect("valid target hex")
+        };
         for nonce in 1..200_000u64 {
             block.nonce = nonce;
             let test_pow_hash = block.hash_for_pow();
@@ -129,6 +131,11 @@ async fn test_height_parent_selection_and_balance() {
         )
         .await
         .unwrap();
+    {
+        let mut buf = [0u8; 32];
+        primitive_types::U256::MAX.to_big_endian(&mut buf);
+        block1.target = Some(hex::encode(buf));
+    }
     assert_eq!(block1.height, 1, "First block height must be 1");
 
     // Mine (mock) and re-sign block1
@@ -158,7 +165,7 @@ async fn test_height_parent_selection_and_balance() {
             block1.clone(),
             &utxos_arc,
             Some(&mempool_arc),
-            Some(&miner_address),
+            block1.reservation_snapshot_id.as_deref(),
         )
         .await
         .unwrap();
@@ -185,6 +192,11 @@ async fn test_height_parent_selection_and_balance() {
         )
         .await
         .unwrap();
+    {
+        let mut buf = [0u8; 32];
+        primitive_types::U256::MAX.to_big_endian(&mut buf);
+        block2.target = Some(hex::encode(buf));
+    }
 
     assert!(
         block2.parents.contains(&block1.id),
@@ -222,7 +234,7 @@ async fn test_height_parent_selection_and_balance() {
             block2.clone(),
             &utxos_arc,
             Some(&mempool_arc),
-            Some(&miner_address),
+            block2.reservation_snapshot_id.as_deref(),
         )
         .await
         .unwrap();

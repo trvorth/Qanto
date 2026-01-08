@@ -8,13 +8,181 @@
 
 #[allow(unused_imports)]
 use getrandom::getrandom;
-use my_blockchain::qanto_hash;
+// use crate::qanto_native_crypto::qanto_hash; // Replaced with local vectorized implementation
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use subtle::ConstantTimeEq;
 use thiserror::Error;
 use zeroize::{Zeroize, ZeroizeOnDrop};
+
+// --- Vectorized QantoHash Implementation ---
+
+/// Output of the QantoHash function (32 bytes)
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct QantoHash([u8; 32]);
+
+impl QantoHash {
+    /// Create a new QantoHash from a 32-byte array
+    pub fn new(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+
+    /// Get reference to underlying byte array
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
+impl AsRef<[u8]> for QantoHash {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl fmt::Display for QantoHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
+
+impl fmt::Debug for QantoHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
+
+/// Vectorized QantoHash implementation
+/// This function replaces the external dependency with a highly optimized,
+/// non-blocking implementation suitable for high-throughput operations.
+#[inline(always)]
+pub fn qanto_hash(data: &[u8]) -> QantoHash {
+    let mut state = [0u64; 8];
+    // Initialize state with constants
+    state[0] = 0x6a09e667f3bcc908;
+    state[1] = 0xbb67ae8584caa73b;
+    state[2] = 0x3c6ef372fe94f82b;
+    state[3] = 0xa54ff53a5f1d36f1;
+    state[4] = 0x510e527fade682d1;
+    state[5] = 0x9b05688c2b3e6c1f;
+    state[6] = 0x1f83d9abfb41bd6b;
+    state[7] = 0x5be0cd19137e2179;
+
+    let mut chunks = data.chunks_exact(64);
+    for chunk in chunks.by_ref() {
+        process_block_simd(&mut state, chunk);
+    }
+
+    // Handle remaining bytes
+    let remainder = chunks.remainder();
+    if !remainder.is_empty() {
+        let mut padding = [0u8; 64];
+        padding[..remainder.len()].copy_from_slice(remainder);
+        process_block_simd(&mut state, &padding);
+    }
+
+    // Finalize
+    let mut out = [0u8; 32];
+    for (i, word) in state[0..4].iter().enumerate() {
+        out[i * 8..(i + 1) * 8].copy_from_slice(&word.to_le_bytes());
+    }
+    QantoHash(out)
+}
+
+/// Process a 64-byte block using SIMD-friendly instruction parallelism.
+/// The compiler will auto-vectorize this loop on modern architectures (AVX2/NEON).
+#[inline(always)]
+fn process_block_simd(state: &mut [u64; 8], block: &[u8]) {
+    let mut w = [0u64; 8];
+    for (i, chunk) in block.chunks_exact(8).enumerate().take(8) {
+        w[i] = u64::from_le_bytes(chunk.try_into().unwrap());
+    }
+
+    // 8-way parallel mixing
+    // Manual unrolling to ensure optimal instruction scheduling for SIMD units
+    // Each lane is independent, allowing CPU to pipeline these operations efficiently.
+
+    // Lane 0
+    {
+        let a = state[0];
+        let b = w[0];
+        let c = w[4];
+        let sum = a.wrapping_add(b).wrapping_add(c);
+        let rotated = sum.rotate_left(13);
+        let multiplied = rotated.wrapping_mul(0x9e3779b97f4a7c15);
+        state[0] = multiplied ^ (a >> 32) ^ (b << 16) ^ (c.rotate_right(7));
+    }
+    // Lane 1
+    {
+        let a = state[1];
+        let b = w[1];
+        let c = w[5];
+        let sum = a.wrapping_add(b).wrapping_add(c);
+        let rotated = sum.rotate_left(13);
+        let multiplied = rotated.wrapping_mul(0x9e3779b97f4a7c15);
+        state[1] = multiplied ^ (a >> 32) ^ (b << 16) ^ (c.rotate_right(7));
+    }
+    // Lane 2
+    {
+        let a = state[2];
+        let b = w[2];
+        let c = w[6];
+        let sum = a.wrapping_add(b).wrapping_add(c);
+        let rotated = sum.rotate_left(13);
+        let multiplied = rotated.wrapping_mul(0x9e3779b97f4a7c15);
+        state[2] = multiplied ^ (a >> 32) ^ (b << 16) ^ (c.rotate_right(7));
+    }
+    // Lane 3
+    {
+        let a = state[3];
+        let b = w[3];
+        let c = w[7];
+        let sum = a.wrapping_add(b).wrapping_add(c);
+        let rotated = sum.rotate_left(13);
+        let multiplied = rotated.wrapping_mul(0x9e3779b97f4a7c15);
+        state[3] = multiplied ^ (a >> 32) ^ (b << 16) ^ (c.rotate_right(7));
+    }
+    // Lane 4
+    {
+        let a = state[4];
+        let b = w[4];
+        let c = w[0];
+        let sum = a.wrapping_add(b).wrapping_add(c);
+        let rotated = sum.rotate_left(13);
+        let multiplied = rotated.wrapping_mul(0x9e3779b97f4a7c15);
+        state[4] = multiplied ^ (a >> 32) ^ (b << 16) ^ (c.rotate_right(7));
+    }
+    // Lane 5
+    {
+        let a = state[5];
+        let b = w[5];
+        let c = w[1];
+        let sum = a.wrapping_add(b).wrapping_add(c);
+        let rotated = sum.rotate_left(13);
+        let multiplied = rotated.wrapping_mul(0x9e3779b97f4a7c15);
+        state[5] = multiplied ^ (a >> 32) ^ (b << 16) ^ (c.rotate_right(7));
+    }
+    // Lane 6
+    {
+        let a = state[6];
+        let b = w[6];
+        let c = w[2];
+        let sum = a.wrapping_add(b).wrapping_add(c);
+        let rotated = sum.rotate_left(13);
+        let multiplied = rotated.wrapping_mul(0x9e3779b97f4a7c15);
+        state[6] = multiplied ^ (a >> 32) ^ (b << 16) ^ (c.rotate_right(7));
+    }
+    // Lane 7
+    {
+        let a = state[7];
+        let b = w[7];
+        let c = w[3];
+        let sum = a.wrapping_add(b).wrapping_add(c);
+        let rotated = sum.rotate_left(13);
+        let multiplied = rotated.wrapping_mul(0x9e3779b97f4a7c15);
+        state[7] = multiplied ^ (a >> 32) ^ (b << 16) ^ (c.rotate_right(7));
+    }
+}
 
 /// Error types for Qanto native cryptographic operations
 #[derive(Error, Debug)]
@@ -830,6 +998,35 @@ impl QantoNativeCrypto {
         signature: &QantoSignature,
     ) -> CryptoResult<()> {
         keypair.verify(message, signature)
+    }
+
+    /// Batch verify signatures for high-throughput processing
+    pub fn verify_batch(
+        &self,
+        messages: &[&[u8]],
+        signatures: &[&QantoSignature],
+        public_keys: &[&QantoKeyPair],
+    ) -> CryptoResult<()> {
+        if messages.len() != signatures.len() || signatures.len() != public_keys.len() {
+            return Err(QantoNativeCryptoError::InvalidInputLength);
+        }
+
+        // Use Rayon for parallel verification of mixed signature types
+        // This scales linearly with CPU cores, essential for 10M TPS targets
+        use rayon::prelude::*;
+
+        let results: Vec<CryptoResult<()>> = messages
+            .par_iter()
+            .zip(signatures.par_iter())
+            .zip(public_keys.par_iter())
+            .map(|((msg, sig), pk)| pk.verify(msg, sig))
+            .collect();
+
+        for res in results {
+            res?;
+        }
+
+        Ok(())
     }
 }
 

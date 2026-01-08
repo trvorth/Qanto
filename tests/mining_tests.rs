@@ -1,7 +1,11 @@
-use my_blockchain::qanto_hash;
+//! Integration tests for mining functionality
+#![allow(deprecated)]
+
 use qanto::mempool::Mempool;
 use qanto::miner::MiningError;
 use qanto::miner::{Miner, MinerConfig};
+use qanto::node_keystore::Wallet;
+#[allow(unused_imports)]
 use qanto::persistence::has_genesis_block;
 use qanto::post_quantum_crypto::pq_sign;
 use qanto::qanto_storage::{QantoStorage, StorageConfig};
@@ -12,9 +16,10 @@ use qanto::shutdown::ShutdownController;
 use qanto::transaction::Transaction;
 use qanto::types::QuantumResistantSignature;
 use qanto::types::UTXO;
-use qanto::wallet::Wallet;
+use qanto_core::qanto_native_crypto::qanto_hash;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tempfile::Builder;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
@@ -30,7 +35,7 @@ fn new_saga() -> Arc<PalletSaga> {
 /// Mock PoW implementation for testing to avoid timeout issues
 pub struct MockPoW {
     pub fixed_nonce: u64,
-    pub fixed_difficulty: f64,
+    pub fixed_target_u64: u64,
 }
 
 impl Default for MockPoW {
@@ -43,26 +48,26 @@ impl MockPoW {
     pub fn new() -> Self {
         Self {
             fixed_nonce: 12345,
-            fixed_difficulty: 0.0001, // Very low difficulty for fast testing
+            fixed_target_u64: u64::MAX, // Easy target for fast testing
         }
     }
 
     pub fn solve_block(&self, block: &mut QantoBlock) -> Result<(), Box<dyn std::error::Error>> {
         block.nonce = self.fixed_nonce;
-        block.difficulty = self.fixed_difficulty;
+        let mut buf = [0u8; 32];
+        primitive_types::U256::MAX.to_big_endian(&mut buf);
+        block.target = Some(hex::encode(buf));
         // Use canonical PoW hash (includes nonce) for validation
         let pow_hash = block.hash_for_pow();
         let pow_hash_bytes = pow_hash.as_bytes();
 
         // Verify it meets our mock target
-        let target_hash_bytes =
-            qanto::miner::Miner::calculate_target_from_difficulty(self.fixed_difficulty);
+        let target_hash_bytes = buf;
 
         if !qanto::miner::Miner::hash_meets_target(pow_hash_bytes, &target_hash_bytes) {
             // Increased nonce trials to 100000 to ensure finding valid nonce
             for nonce in 1..100000 {
                 block.nonce = nonce;
-                block.difficulty = self.fixed_difficulty;
                 // Recompute canonical PoW hash including nonce
                 let test_pow_hash = block.hash_for_pow();
                 let test_pow_hash_bytes = test_pow_hash.as_bytes();
@@ -88,9 +93,11 @@ async fn test_simple_mining_consolidated() {
     info!("Starting consolidated mining test...");
 
     // Create a temporary directory for storage
-    let temp_dir = std::env::temp_dir().join("qanto_test_mining_consolidated");
-    std::fs::create_dir_all(&temp_dir)
+    let temp_dir_obj = Builder::new()
+        .prefix("qanto_test_mining_consolidated")
+        .tempdir()
         .unwrap_or_else(|e| panic!("Failed to create temp directory: {e}"));
+    let temp_dir = temp_dir_obj.path().to_path_buf();
 
     // Initialize storage configuration with correct structure
     let storage_config = StorageConfig {
@@ -209,8 +216,10 @@ async fn test_simple_mining_consolidated() {
             // Use canonical PoW hash bytes (includes nonce)
             let block_pow_hash = block.hash_for_pow();
             let block_pow_hash_bytes = block_pow_hash.as_bytes();
-            let target_hash_bytes =
-                qanto::miner::Miner::calculate_target_from_difficulty(block.difficulty);
+            let target_hash_bytes = {
+                let t = block.target.clone().expect("header target");
+                hex::decode(t).expect("valid target hex")
+            };
 
             if qanto::miner::Miner::hash_meets_target(block_pow_hash_bytes, &target_hash_bytes) {
                 info!("✅ Hash meets target - PoW validation successful!");
@@ -236,12 +245,11 @@ async fn test_multi_block_mining_without_dag_regeneration() {
     qanto::init_test_tracing();
 
     // Use a unique temp directory per test run to avoid cross-test interference
-    let unique_suffix = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let temp_dir = std::env::temp_dir().join(format!("qanto_test_multi_mining_{}", unique_suffix));
-    std::fs::create_dir_all(&temp_dir).unwrap();
+    let temp_dir_obj = Builder::new()
+        .prefix("qanto_test_multi_mining")
+        .tempdir()
+        .unwrap_or_else(|e| panic!("Failed to create temp directory: {e}"));
+    let temp_dir = temp_dir_obj.path().to_path_buf();
 
     let storage_config = StorageConfig {
         data_dir: temp_dir.clone(),
@@ -256,7 +264,21 @@ async fn test_multi_block_mining_without_dag_regeneration() {
         ..StorageConfig::default()
     };
 
-    let storage = QantoStorage::new(storage_config).unwrap();
+    let storage = {
+        let mut attempts = 0;
+        loop {
+            match QantoStorage::new(storage_config.clone()) {
+                Ok(s) => break s,
+                Err(e) => {
+                    attempts += 1;
+                    if attempts >= 10 {
+                        panic!("{}", e);
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+            }
+        }
+    };
 
     let saga = new_saga();
 
@@ -279,28 +301,13 @@ async fn test_multi_block_mining_without_dag_regeneration() {
     // We open a read-only storage view on the same data_dir and wait until the
     // genesis marker is present. This guards against transient I/O races.
     {
-        // Retry opening a read-only storage view until the DB is initialized,
-        // then wait for the genesis marker to appear.
+        // Wait until the DAG reports at least one block (genesis) present
         let start = std::time::Instant::now();
-        let timeout = std::time::Duration::from_millis(1500);
+        let timeout = std::time::Duration::from_secs(10);
         loop {
-            let reader_cfg = StorageConfig {
-                data_dir: temp_dir.clone(),
-                wal_enabled: false,
-                enable_async_io: false,
-                max_open_files: 32,
-                cache_size: 1024 * 1024,
-                ..StorageConfig::default()
-            };
-            match QantoStorage::new(reader_cfg) {
-                Ok(reader_db) => {
-                    if has_genesis_block(&reader_db).unwrap_or(false) {
-                        break;
-                    }
-                }
-                Err(_e) => {
-                    // DB may not be initialized yet; keep retrying until timeout
-                }
+            let count = dag_arc.get_block_count().await;
+            if count > 0 {
+                break;
             }
             if start.elapsed() > timeout {
                 panic!("Timeout waiting for genesis initialization");
@@ -375,7 +382,7 @@ async fn test_multi_block_mining_without_dag_regeneration() {
             block1.clone(),
             &utxos_arc,
             Some(&mempool_arc),
-            Some(&miner_address),
+            block1.reservation_snapshot_id.as_deref(),
         )
         .await
         .unwrap();
@@ -443,13 +450,11 @@ async fn test_mining_with_multiple_transactions() {
     info!("Starting multi-transaction mining test...");
 
     // Create a unique temporary directory for storage to avoid cross-test interference
-    let unique_suffix = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let temp_dir = std::env::temp_dir().join(format!("qanto_test_multi_mining_{}", unique_suffix));
-    std::fs::create_dir_all(&temp_dir)
+    let temp_dir_obj = Builder::new()
+        .prefix("qanto_test_multi_mining")
+        .tempdir()
         .unwrap_or_else(|e| panic!("Failed to create temp directory: {e}"));
+    let temp_dir = temp_dir_obj.path().to_path_buf();
 
     // Initialize storage configuration
     let storage_config = StorageConfig {
@@ -562,8 +567,10 @@ async fn test_mining_with_multiple_transactions() {
                 // Verify the hash meets the target using canonical PoW hash
                 let block_pow_hash = block.hash_for_pow();
                 let block_pow_hash_bytes = block_pow_hash.as_bytes();
-                let target_hash_bytes =
-                    qanto::miner::Miner::calculate_target_from_difficulty(block.difficulty);
+                let target_hash_bytes = {
+                    let t = block.target.clone().expect("header target");
+                    hex::decode(t).expect("valid target hex")
+                };
 
                 assert!(
                     qanto::miner::Miner::hash_meets_target(
@@ -594,9 +601,11 @@ async fn test_mining_performance_benchmark() {
     info!("Starting mining performance benchmark...");
 
     // Create a temporary directory for storage
-    let temp_dir = std::env::temp_dir().join("qanto_test_perf_mining");
-    std::fs::create_dir_all(&temp_dir)
+    let temp_dir_obj = Builder::new()
+        .prefix("qanto_test_perf_mining")
+        .tempdir()
         .unwrap_or_else(|e| panic!("Failed to create temp directory: {e}"));
+    let temp_dir = temp_dir_obj.path().to_path_buf();
 
     // Initialize storage configuration
     let storage_config = StorageConfig {
@@ -748,9 +757,11 @@ async fn test_miner_cancellation_returns_timeout_or_cancelled() {
     let _ = tracing_subscriber::fmt::try_init();
 
     // Create a temporary directory for storage
-    let temp_dir = std::env::temp_dir().join("qanto_test_mining_cancel");
-    std::fs::create_dir_all(&temp_dir)
+    let temp_dir_obj = Builder::new()
+        .prefix("qanto_test_mining_cancel")
+        .tempdir()
         .unwrap_or_else(|e| panic!("Failed to create temp directory: {e}"));
+    let temp_dir = temp_dir_obj.path().to_path_buf();
 
     // Initialize storage configuration
     let storage_config = StorageConfig {
@@ -837,14 +848,14 @@ async fn test_miner_cancellation_returns_timeout_or_cancelled() {
     // Create a cancellation token and start mining in a blocking task
     let token = CancellationToken::new();
     let token_clone = token.clone();
-    let mut block_local = block;
-    let handle = tokio::task::spawn_blocking(move || {
-        miner.solve_pow_with_cancellation(&mut block_local, token_clone)
-    });
+    token.cancel(); // Cancel immediately before spawning
 
-    // Cancel shortly after starting
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    token.cancel();
+    let mut block_local = block;
+    let handle = tokio::spawn(async move {
+        miner
+            .solve_pow_with_cancellation(&mut block_local, token_clone)
+            .await
+    });
 
     // Assert that mining returns TimeoutOrCancelled
     let res = handle
@@ -868,9 +879,11 @@ async fn test_miner_shutdown_returns_timeout_or_cancelled() {
     qanto::init_test_tracing();
 
     // Create a temporary directory for storage
-    let temp_dir = std::env::temp_dir().join("qanto_test_mining_shutdown");
-    std::fs::create_dir_all(&temp_dir)
+    let temp_dir_obj = Builder::new()
+        .prefix("qanto_test_mining_shutdown")
+        .tempdir()
         .unwrap_or_else(|e| panic!("Failed to create temp directory: {e}"));
+    let temp_dir = temp_dir_obj.path().to_path_buf();
 
     // Initialize storage configuration
     let storage_config = StorageConfig {
@@ -977,8 +990,10 @@ async fn test_miner_shutdown_returns_timeout_or_cancelled() {
         .unwrap_or_else(|e| panic!("Failed to request shutdown: {e}"));
 
     let mut block_local = block;
-    let handle = tokio::task::spawn_blocking(move || {
-        miner.solve_pow_with_shutdown_integration(&mut block_local, token)
+    let handle = tokio::spawn(async move {
+        miner
+            .solve_pow_with_shutdown_integration(&mut block_local, token)
+            .await
     });
 
     // Assert that mining returns TimeoutOrCancelled

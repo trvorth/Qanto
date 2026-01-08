@@ -1,4 +1,13 @@
-use crate::{config::Config, node::Node, wallet::Wallet};
+use crate::{
+    config::Config,
+    node::Node,
+    node_keystore::Wallet,
+    persistence::{
+        genesis_id_key, BALANCES_KEY_PREFIX, GENESIS_BLOCK_ID_KEY, TIPS_KEY_PREFIX, UTXO_KEY_PREFIX,
+    },
+    // Storage and persistence helpers for ledger reset
+    qanto_storage::{QantoStorage, StorageConfig, WriteBatch},
+};
 use clap::{Arg, ArgAction, Command};
 use secrecy::SecretString;
 use std::fs::{create_dir_all, OpenOptions};
@@ -85,6 +94,12 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .help("Enable block celebration logging (overrides config)")
                 .action(ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("reset-testnet-ledger")
+                .long("reset-testnet-ledger")
+                .help("Reset testnet ledger state (balances, UTXOs, tips, genesis marker)")
+                .action(ArgAction::SetTrue),
+        )
         .get_matches();
 
     // Load configuration
@@ -115,6 +130,69 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         None, // tls_key not supported in this binary
         adaptive_mining_flag,
     );
+
+    // If requested, reset the testnet ledger before starting the node.
+    if matches.get_flag("reset-testnet-ledger") {
+        // Use the same storage configuration pattern as the Node initializer
+        let storage_config = StorageConfig {
+            data_dir: config.data_dir.clone().into(),
+            cache_size: 1024 * 1024 * 100, // 100MB cache
+            compression_enabled: true,
+            encryption_enabled: true,
+            max_file_size: 1024 * 1024 * 50, // 50MB max file size
+            compaction_threshold: 1,
+            wal_enabled: true,
+            sync_writes: true,
+            max_open_files: 1000,
+            memtable_size: 1024 * 1024 * 16,
+            write_buffer_size: 1024 * 1024 * 4,
+            batch_size: 1000,
+            parallel_writers: 4,
+            enable_write_batching: true,
+            enable_bloom_filters: true,
+            enable_async_io: true,
+            sync_interval: std::time::Duration::from_millis(100),
+            compression_level: 3,
+            use_rocksdb: true,
+        };
+        let db = QantoStorage::new(storage_config)?;
+
+        // Build a write batch to delete ledger-related keys.
+        let mut batch = WriteBatch::new();
+
+        // Collect and delete balance keys
+        let balance_keys = db.keys_with_prefix(BALANCES_KEY_PREFIX.as_bytes())?;
+        for key in balance_keys {
+            batch.delete(key);
+        }
+
+        // Collect and delete UTXO keys
+        let utxo_keys = db.keys_with_prefix(UTXO_KEY_PREFIX.as_bytes())?;
+        for key in utxo_keys {
+            batch.delete(key);
+        }
+
+        // Collect and delete tips keys (across all chains)
+        let tip_keys = db.keys_with_prefix(TIPS_KEY_PREFIX.as_bytes())?;
+        for key in tip_keys {
+            batch.delete(key);
+        }
+
+        // Delete global and chain-specific genesis markers
+        batch.delete(GENESIS_BLOCK_ID_KEY.to_vec());
+        batch.delete(genesis_id_key(0));
+
+        let ops = batch.len();
+        if ops > 0 {
+            db.write_batch(batch)?;
+            // Ensure durability
+            let _ = db.flush();
+            let _ = db.sync();
+            tracing::info!(deleted_ops = ops, "Testnet ledger reset completed");
+        } else {
+            tracing::info!("No ledger keys found to reset; storage already clean");
+        }
+    }
 
     // Initialize tracing (console + optional file) using config.logging.level
     let env_filter =

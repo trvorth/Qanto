@@ -1024,7 +1024,8 @@ impl<F: Field> ConstraintSystemRef<F> {
 mod tests {
     use crate::r1cs::*;
     use ark_ff::One;
-    use ark_test_curves::bls12_381::Fr;
+    use ark_ff::fields::PrimeField;
+    type Fr = ark_bls12_381::Fq;
 
     #[test]
     fn matrix_generation() -> crate::r1cs::Result<()> {

@@ -22,9 +22,9 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Mutex, Semaphore};
 use tokio::time::{interval, timeout};
 
-use my_blockchain::qanto_hash;
-use my_blockchain::qanto_standalone::hash::QantoHash;
 use crate::balance_stream::{BalanceBroadcaster, BalanceSubscribe, BalanceUpdate};
+use crate::qanto_native_crypto::qanto_hash;
+use crate::qanto_native_crypto::QantoHash;
 
 const ZSTD_MAGIC: [u8; 4] = *b"ZSTD";
 /// P2P-specific error types
@@ -47,7 +47,7 @@ pub enum QantoP2PError {
 /// Enhanced constants for 32 BPS & 10M+ TPS optimization
 const MAX_CONNECTIONS: usize = 2000; // Increased from 1000 for higher throughput
 const CONNECTION_TIMEOUT: u64 = 15; // Reduced from 30 for faster connection establishment
-const HEARTBEAT_INTERVAL: u64 = 5; // Reduced from 10 for faster peer discovery
+
 const MAX_MESSAGE_SIZE: usize = 32 * 1024 * 1024; // Increased from 16MB to 32MB for larger blocks
 const PROTOCOL_VERSION: u32 = 1;
 
@@ -59,7 +59,7 @@ const ADAPTIVE_COMPRESSION_THRESHOLD: usize = 1024; // Use adaptive compression
 #[allow(dead_code)]
 const PRIORITY_QUEUE_SIZE: usize = 1000; // Priority queue for critical messages
 #[allow(dead_code)]
-const GOSSIP_FANOUT: usize = 8; // Optimized gossip fanout for 32 BPS
+const GOSSIP_FANOUT: usize = 16; // Optimized gossip fanout for 32 BPS
 
 /// Qanto P2P Network Node
 ///
@@ -87,7 +87,9 @@ pub struct QantoP2P {
     #[allow(dead_code)]
     gossip_protocol: Arc<SetReconciliationGossip>,
     /// Subscribers per address for real-time balance updates
-    balance_subscribers: Arc<DashMap<String, Vec<QantoHash>>>,
+    /// Each entry stores (peer_id, finalized_only) where finalized_only indicates
+    /// the peer only wants updates from finalized blocks for that address.
+    balance_subscribers: Arc<DashMap<String, Vec<(QantoHash, bool)>>>,
 }
 
 /// Represents an active connection to a peer
@@ -103,8 +105,10 @@ pub struct PeerConnection {
     pub last_seen: Instant,
     /// Protocol version supported by the peer
     pub version: u32,
-    /// Message sender channel for this peer
+    /// Message sender channel for this peer (Normal Priority)
     pub tx: mpsc::UnboundedSender<NetworkMessage>,
+    /// Message sender channel for this peer (High Priority - Balance Updates, Heartbeats)
+    pub priority_tx: mpsc::UnboundedSender<NetworkMessage>,
     /// Connection-specific statistics
     pub stats: PeerStats,
 }
@@ -190,7 +194,7 @@ impl Default for NetworkConfig {
         Self {
             max_connections: MAX_CONNECTIONS,
             connection_timeout: Duration::from_secs(CONNECTION_TIMEOUT),
-            heartbeat_interval: Duration::from_secs(HEARTBEAT_INTERVAL),
+            heartbeat_interval: Duration::from_millis(50),
             enable_encryption: true,
             enable_compression: false,
             compression_level: 3,
@@ -208,6 +212,8 @@ pub enum MessageType {
     Handshake,
     /// Periodic heartbeat to maintain connection
     Heartbeat,
+    /// Heartbeat acknowledgement for latency measurement
+    HeartbeatAck,
     /// Blockchain block data
     Block,
     /// Transaction data
@@ -305,13 +311,114 @@ impl QantoP2P {
                 let sub: BalanceSubscribe = deserialize(&message.payload)
                     .map_err(|e| anyhow!("Deserialize BalanceSubscribe failed: {e}"))?;
                 let addr = sub.address.clone();
+                let finalized_only = sub.finalized_only.unwrap_or(false);
                 if let Some(mut entry) = subscribers.get_mut(&addr) {
                     let list = entry.value_mut();
-                    if !list.iter().any(|p| p == &peer_id) {
-                        list.push(peer_id);
+                    if let Some(existing) = list.iter_mut().find(|(p, _)| p == &peer_id) {
+                        existing.1 = finalized_only; // update preference
+                    } else {
+                        list.push((peer_id, finalized_only));
                     }
                 } else {
-                    subscribers.insert(addr, vec![peer_id]);
+                    subscribers.insert(addr, vec![(peer_id, finalized_only)]);
+                }
+                Ok(())
+            }),
+        );
+
+        // Register built-in handler for Heartbeat
+        let peers_hb = node.peers.clone();
+        let node_id = node.node_id;
+        node.register_handler(
+            MessageType::Heartbeat,
+            Arc::new(move |message, peer_id| {
+                if let Some(peer) = peers_hb.get(&peer_id) {
+                    let timestamp = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+
+                    let ack = NetworkMessage {
+                        msg_type: MessageType::HeartbeatAck,
+                        payload: message.payload, // Echo the high-res timestamp
+                        timestamp,
+                        sender: node_id,
+                        signature: qanto_hash(&[]),
+                    };
+                    // Best effort send
+                    let _ = peer.tx.send(ack);
+                }
+                Ok(())
+            }),
+        );
+
+        // Register built-in handler for HeartbeatAck (Latency Measurement)
+        let peers_ack = node.peers.clone();
+        node.register_handler(
+            MessageType::HeartbeatAck,
+            Arc::new(move |message, peer_id| {
+                if let Some(mut peer) = peers_ack.get_mut(&peer_id) {
+                    if message.payload.len() >= 16 {
+                        let mut bytes = [0u8; 16];
+                        bytes.copy_from_slice(&message.payload[0..16]);
+                        let sent_ts = u128::from_le_bytes(bytes);
+                        let now = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis();
+
+                        if now >= sent_ts {
+                            let rtt = (now - sent_ts) as u64;
+                            peer.stats.latency_ms = rtt;
+                            // Optionally update reputation based on latency
+                            // if rtt < 50 { peer.stats.reputation += 1; }
+                        }
+                    }
+                }
+                Ok(())
+            }),
+        );
+
+        // Register built-in handler for PeerDiscovery
+        let peer_addresses = node.peer_addresses.clone();
+        let peers_discovery = node.peers.clone();
+        let node_id_disc = node.node_id;
+        node.register_handler(
+            MessageType::PeerDiscovery,
+            Arc::new(move |message, peer_id| {
+                let msg: PeerDiscoveryMessage = deserialize(&message.payload)
+                    .map_err(|e| anyhow!("Deserialize PeerDiscovery failed: {e}"))?;
+
+                if msg.request_peers {
+                    // Respond with our known peers (limit to 50)
+                    let mut known = Vec::new();
+                    for entry in peer_addresses.iter().take(50) {
+                        known.push((*entry.key(), *entry.value()));
+                    }
+
+                    let response = PeerDiscoveryMessage {
+                        peers: known,
+                        request_peers: false,
+                    };
+
+                    if let Some(peer) = peers_discovery.get(&peer_id) {
+                        let payload = Bytes::from(serialize(&response)?);
+                        let resp_msg = NetworkMessage {
+                            msg_type: MessageType::PeerDiscovery,
+                            payload,
+                            timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
+                            sender: node_id_disc,
+                            signature: qanto_hash(&[]),
+                        };
+                        let _ = peer.tx.send(resp_msg);
+                    }
+                } else {
+                    // Process received peers
+                    for (pid, addr) in msg.peers {
+                        if pid != node_id_disc {
+                            peer_addresses.insert(pid, addr);
+                        }
+                    }
                 }
                 Ok(())
             }),
@@ -402,6 +509,9 @@ impl QantoP2P {
         // Start heartbeat task
         self.start_heartbeat_task().await;
 
+        // Start peer maintenance task for latency optimization
+        self.start_peer_maintenance_task().await;
+
         // Connect to bootstrap nodes
         self.connect_to_bootstrap_nodes().await?;
 
@@ -427,6 +537,7 @@ impl QantoP2P {
 
         // Create message channel
         let (tx, rx) = mpsc::unbounded_channel();
+        let (priority_tx, priority_rx) = mpsc::unbounded_channel();
 
         // Create peer connection
         let peer_connection = PeerConnection {
@@ -436,6 +547,7 @@ impl QantoP2P {
             last_seen: Instant::now(),
             version: PROTOCOL_VERSION,
             tx,
+            priority_tx,
             stats: PeerStats::default(),
         };
 
@@ -460,6 +572,7 @@ impl QantoP2P {
             stats,
             config,
             rx,
+            priority_rx,
         )
         .await
     }
@@ -651,7 +764,34 @@ impl QantoP2P {
             return Err(anyhow!("Maximum connections reached"));
         }
 
-        let stream = timeout(self.config.connection_timeout, TcpStream::connect(addr)).await??;
+        // Skip dialing if we already have a connection to this address
+        if self.peer_addresses.iter().any(|e| *e.value() == addr) {
+            return Ok(());
+        }
+
+        // Exponential backoff dial attempts for transient errors
+        let mut attempts = 0;
+        let stream = loop {
+            match timeout(self.config.connection_timeout, TcpStream::connect(addr)).await {
+                Ok(Ok(s)) => break s,
+                Ok(Err(e)) => {
+                    attempts += 1;
+                    if attempts >= 5 {
+                        return Err(anyhow!("dial failed: {e}"));
+                    }
+                    let backoff_ms = 200 * (1 << (attempts - 1)).min(6);
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms as u64)).await;
+                }
+                Err(e) => {
+                    attempts += 1;
+                    if attempts >= 5 {
+                        return Err(anyhow!("dial timeout: {e}"));
+                    }
+                    let backoff_ms = 200 * (1 << (attempts - 1)).min(6);
+                    tokio::time::sleep(std::time::Duration::from_millis(backoff_ms as u64)).await;
+                }
+            }
+        };
 
         // Perform handshake
         let (peer_id, reader, writer) =
@@ -664,6 +804,7 @@ impl QantoP2P {
 
         // Create message channel
         let (tx, rx) = mpsc::unbounded_channel();
+        let (priority_tx, priority_rx) = mpsc::unbounded_channel();
 
         // Create peer connection
         let peer_connection = PeerConnection {
@@ -673,6 +814,7 @@ impl QantoP2P {
             last_seen: Instant::now(),
             version: PROTOCOL_VERSION,
             tx,
+            priority_tx,
             stats: PeerStats::default(),
         };
 
@@ -705,6 +847,7 @@ impl QantoP2P {
                 stats,
                 config,
                 rx,
+                priority_rx,
             )
             .await
             {
@@ -731,9 +874,36 @@ impl QantoP2P {
         stats: Arc<RwLock<NetworkStats>>,
         config: NetworkConfig,
         mut rx: mpsc::UnboundedReceiver<NetworkMessage>,
+        mut priority_rx: mpsc::UnboundedReceiver<NetworkMessage>,
     ) -> Result<()> {
         loop {
             tokio::select! {
+                biased;
+
+                // Handle priority messages first
+                prio_message = priority_rx.recv() => {
+                    match prio_message {
+                        Some(msg) => {
+                            if let Err(e) = Self::send_message_to_stream(&mut writer, &msg, &config).await {
+                                eprintln!("Error sending priority message to peer {}: {e}", hex::encode(&peer_id.as_bytes()[..8]));
+                                break;
+                            }
+
+                            // Update peer stats
+                            if let Some(mut peer) = peers.get_mut(&peer_id) {
+                                peer.stats.messages_sent += 1;
+                                peer.last_seen = Instant::now();
+                            }
+
+                            // Update global stats
+                            if let Ok(mut stats) = stats.write() {
+                                stats.total_messages_sent += 1;
+                            }
+                        }
+                        None => break,
+                    }
+                }
+
                 // Handle outgoing messages
                 message = rx.recv() => {
                     match message {
@@ -813,22 +983,91 @@ impl QantoP2P {
             loop {
                 interval.tick().await;
 
+                let now_millis = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis();
+
+                let payload = Bytes::from(now_millis.to_le_bytes().to_vec());
+
                 let heartbeat_message = NetworkMessage {
                     msg_type: MessageType::Heartbeat,
-                    payload: Bytes::new(),
-                    timestamp: SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs(),
+                    payload,
+                    timestamp: (now_millis / 1000) as u64,
                     sender: node_id,
                     signature: qanto_hash(&[]), // Empty signature for heartbeat
                 };
 
                 // Send heartbeat to all peers
                 for peer in peers.iter() {
-                    if let Err(e) = peer.tx.send(heartbeat_message.clone()) {
+                    if let Err(e) = peer.priority_tx.send(heartbeat_message.clone()) {
                         eprintln!("Failed to send heartbeat to peer: {e}");
                     }
+                }
+            }
+        });
+    }
+
+    /// Start the peer maintenance task to optimize for low latency
+    async fn start_peer_maintenance_task(&self) {
+        let peers = self.peers.clone();
+        let peer_addresses = self.peer_addresses.clone();
+        let config = self.config.clone();
+
+        // Clone self to use connect_to_peer and broadcast
+        let this = self.clone();
+
+        tokio::spawn(async move {
+            let mut interval = interval(Duration::from_secs(30)); // Check every 30 seconds
+
+            loop {
+                interval.tick().await;
+
+                // 1. Evict high-latency peers if we are near capacity
+                // Threshold: 500ms latency is considered "high" for 32 BPS network
+                let high_latency_threshold = 500;
+
+                let mut peers_to_evict = Vec::new();
+                for peer in peers.iter() {
+                    if peer.stats.latency_ms > high_latency_threshold {
+                        // Only evict if we have been connected for a while (e.g. > 1 min) to allow stabilization
+                        if peer.connected_at.elapsed() > Duration::from_secs(60) {
+                            peers_to_evict.push(*peer.key());
+                        }
+                    }
+                }
+
+                for peer_id in peers_to_evict {
+                    // eprintln!("Evicting high-latency peer: {}", hex::encode(&peer_id.as_bytes()[..8]));
+                    peers.remove(&peer_id);
+                }
+
+                // 2. Try to connect to new peers if we have capacity
+                if peers.len() < config.max_connections {
+                    // Find addresses that are NOT connected
+                    let mut candidates = Vec::new();
+                    for entry in peer_addresses.iter() {
+                        if !peers.contains_key(entry.key()) {
+                            candidates.push(*entry.value());
+                        }
+                    }
+
+                    // Try a few candidates
+                    for addr in candidates.into_iter().take(5) {
+                        if let Err(_e) = this.connect_to_peer(addr).await {
+                            // Log debug if needed
+                        }
+                    }
+                }
+
+                // 3. Request new peers from neighbors (Peer Discovery)
+                let discovery_msg = PeerDiscoveryMessage {
+                    peers: Vec::new(),
+                    request_peers: true,
+                };
+
+                if let Ok(payload) = serialize(&discovery_msg) {
+                    let _ = this.broadcast(MessageType::PeerDiscovery, Bytes::from(payload));
                 }
             }
         });
@@ -856,13 +1095,16 @@ impl QantoP2P {
             sender: self.node_id,
             signature: Self::sign_message(&msg_type, self.node_id)?,
         };
-
-        for peer in self.peers.iter() {
-            if let Err(e) = peer.tx.send(message.clone()) {
-                eprintln!("Failed to send message to peer: {e}");
-            }
-        }
-
+        let prio = match msg_type {
+            MessageType::Block => MessagePriority::High,
+            MessageType::Transaction => MessagePriority::Normal,
+            _ => MessagePriority::Low,
+        };
+        let peers = self.peers.clone();
+        let gossip = self.gossip_protocol.clone();
+        tokio::spawn(async move {
+            let _ = gossip.gossip_message(message, prio, &peers).await;
+        });
         Ok(())
     }
 
@@ -887,7 +1129,14 @@ impl QantoP2P {
         };
 
         if let Some(peer) = self.peers.get(&peer_id) {
-            peer.tx.send(message)?;
+            match msg_type {
+                MessageType::BalanceUpdate | MessageType::Heartbeat | MessageType::HeartbeatAck => {
+                    peer.priority_tx.send(message)?;
+                }
+                _ => {
+                    peer.tx.send(message)?;
+                }
+            }
         } else {
             let peer_id_hex = hex::encode(&peer_id.as_bytes()[..8]);
             return Err(anyhow!("Peer not found: {peer_id_hex}"));
@@ -900,9 +1149,15 @@ impl QantoP2P {
     pub fn broadcast_balance_update(&self, update: BalanceUpdate) -> Result<()> {
         let payload = Bytes::from(serialize(&update)?);
         if let Some(subs) = self.balance_subscribers.get(&update.address) {
-            for peer_id in subs.iter() {
+            for (peer_id, finalized_only) in subs.iter() {
+                // Respect subscriber preference: skip non-finalized updates if requested
+                if *finalized_only && !update.finalized {
+                    continue;
+                }
                 // Fire-and-forget per peer; track errors but proceed
-                if let Err(e) = self.send_to_peer(*peer_id, MessageType::BalanceUpdate, payload.clone()) {
+                if let Err(e) =
+                    self.send_to_peer(*peer_id, MessageType::BalanceUpdate, payload.clone())
+                {
                     eprintln!(
                         "Failed to send BalanceUpdate to peer {}: {}",
                         hex::encode(&peer_id.as_bytes()[..8]),
@@ -1181,21 +1436,39 @@ impl SetReconciliationGossip {
         }
 
         let fanout = std::cmp::min(self.fanout, peer_count);
-        let mut rng = thread_rng();
 
-        // Use reservoir sampling for fair peer selection
-        let peer_ids: Vec<_> = peers.iter().map(|entry| *entry.key()).collect();
+        // Bootnodes that should be prioritized to prevent partition
+        let bootnodes = [
+            "bb734ccc0d779a46968d625f4235a6a3ac4973dc1bdd3694cc5c00a6b1a86452",
+            "dd4adc516c06d068430e0c02ffd692c587db76fa8c17342137ddeda8578609ae",
+        ];
 
-        // Take initial reservoir
-        selected.extend(peer_ids.iter().take(fanout).copied());
+        // Collect all peers with their latency
+        // We prioritize bootnodes and low-latency peers for hyperscale performance
+        let mut candidates: Vec<(QantoHash, u64, bool)> = peers
+            .iter()
+            .map(|entry| {
+                let pid = *entry.key();
+                let pid_hex = hex::encode(pid.as_bytes());
+                let is_bootnode = bootnodes.contains(&pid_hex.as_str());
+                (pid, entry.value().stats.latency_ms, is_bootnode)
+            })
+            .collect();
 
-        // Reservoir sampling over the remainder using enumerate for counter
-        for (offset, &peer_id) in peer_ids.iter().enumerate().skip(fanout) {
-            let j = rng.gen_range(0..=fanout + offset);
-            if j < fanout {
-                selected[j] = peer_id;
+        // Sort by priority (bootnode > low latency)
+        candidates.sort_by(|a, b| {
+            // Priority 1: Bootnodes
+            if a.2 != b.2 {
+                return b.2.cmp(&a.2); // true > false
             }
-        }
+            // Priority 2: Latency (lower is better)
+            let lat_a = if a.1 == 0 { u64::MAX } else { a.1 };
+            let lat_b = if b.1 == 0 { u64::MAX } else { b.1 };
+            lat_a.cmp(&lat_b)
+        });
+
+        // Select top peers based on fanout
+        selected.extend(candidates.iter().take(fanout).map(|(id, _, _)| *id));
 
         selected
     }

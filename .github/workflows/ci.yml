@@ -58,3 +58,36 @@ jobs:
 
       - name: Security audit (cargo-audit)
         run: cargo audit
+
+  js-sdk-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            sdk/javascript/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('sdk/javascript/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install dependencies
+        working-directory: sdk/javascript
+        run: npm ci
+
+      - name: Run unit tests (Jest)
+        working-directory: sdk/javascript
+        run: npx jest --coverage --ci --silent
+
+      - name: TypeScript build
+        working-directory: sdk/javascript
+        run: npm run build

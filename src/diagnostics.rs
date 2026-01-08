@@ -441,3 +441,72 @@ pub mod cli {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, SystemTime};
+
+    /// Verify mining stats are zeroed with no attempts
+    #[tokio::test]
+    async fn mining_stats_empty() {
+        let engine = DiagnosticsEngine::new(false);
+        let stats = engine.get_mining_stats().await.expect("stats");
+
+        assert_eq!(stats.total_attempts, 0);
+        assert_eq!(stats.successful_attempts, 0);
+        assert_eq!(stats.success_rate, 0.0);
+        assert_eq!(stats.avg_time_ms, 0);
+        assert_eq!(stats.avg_hash_rate, 0.0);
+        assert_eq!(stats.current_difficulty, 0);
+    }
+
+    /// Verify averages and success rate across mixed success/failure attempts
+    #[tokio::test]
+    async fn mining_stats_mixed_attempts() {
+        let engine = DiagnosticsEngine::new(false);
+
+        // Helper to push an attempt with a target elapsed time and hash rate
+        async fn push_attempt(
+            engine: &DiagnosticsEngine,
+            attempt_id: u64,
+            difficulty: u64,
+            elapsed_ms: u64,
+            hash_rate: f64,
+            success: bool,
+        ) {
+            let start_time = SystemTime::now() - Duration::from_millis(elapsed_ms);
+            let params = MiningAttemptParams {
+                attempt_id,
+                difficulty,
+                target_block_time: 1000,
+                start_time,
+                nonce: attempt_id * 11,
+                hash_rate,
+                success,
+                error_message: if success {
+                    None
+                } else {
+                    Some("fail".to_string())
+                },
+            };
+            engine.record_mining_attempt(params).await.expect("record");
+        }
+
+        // Three attempts: 2 successes, 1 failure
+        push_attempt(&engine, 1, 1000, 100, 50.0, true).await;
+        push_attempt(&engine, 2, 2000, 200, 100.0, false).await;
+        push_attempt(&engine, 3, 3000, 300, 150.0, true).await; // most recent
+
+        let stats = engine.get_mining_stats().await.expect("stats");
+
+        assert_eq!(stats.total_attempts, 3);
+        assert_eq!(stats.successful_attempts, 2);
+        // Success rate tolerance due to floating point
+        let expected_rate = (2.0 / 3.0) * 100.0;
+        assert!((stats.success_rate - expected_rate).abs() < 1e-6);
+        assert_eq!(stats.avg_time_ms, 200); // (100+200+300)/3
+        assert!((stats.avg_hash_rate - 100.0).abs() < 1e-6); // (50+100+150)/3
+        assert_eq!(stats.current_difficulty, 3000); // most recent attempt
+    }
+}

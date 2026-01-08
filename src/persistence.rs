@@ -103,6 +103,9 @@ pub enum PersistenceJob {
     Put(Vec<u8>, Vec<u8>),
     /// Delete a single key from storage.
     Delete(Vec<u8>),
+    /// Write a provided batch atomically. Used to group related operations
+    /// (e.g., tips updates + block write) to preserve DAG invariants.
+    Batch(WriteBatch),
     /// Request graceful shutdown. The worker will flush pending jobs and exit,
     /// then acknowledge via the provided channel.
     Shutdown(oneshot::Sender<()>),
@@ -166,6 +169,16 @@ impl PersistenceWriter {
                                             batch_bytes += job_bytes;
                                             ops += 1;
                                         }
+                                        PersistenceJob::Batch(b) => {
+                                            // Flush current aggregated batch before writing provided batch
+                                            if ops > 0 {
+                                                let _ = db_clone.write_batch(batch);
+                                                batch = WriteBatch::new();
+                                                batch_bytes = 0;
+                                                ops = 0;
+                                            }
+                                            let _ = db_clone.write_batch(b);
+                                        }
                                         PersistenceJob::Shutdown(_) => {
                                             // Ignore nested shutdowns; we'll exit after flushing
                                         }
@@ -211,6 +224,21 @@ impl PersistenceWriter {
                             }
                             continue;
                         }
+                        PersistenceJob::Batch(b) => {
+                            let ops_count = b.len();
+                            match db_clone.write_batch(b.clone()) {
+                                Ok(()) => debug!(
+                                    "Persistence batch job write succeeded: {} ops",
+                                    ops_count
+                                ),
+                                Err(e) => error!("Persistence batch job write failed: {}", e),
+                            }
+                            increment_metric!(persistence_batches);
+                            set_metric!(persistence_last_batch_ops, ops_count as u64);
+                            // Bytes unknown without summing; set to 0 for batch job path
+                            set_metric!(persistence_last_batch_bytes, 0);
+                            continue;
+                        }
                         &PersistenceJob::Shutdown(_) => {
                             // Should have been handled above; keep exhaustive match
                             unreachable!("Shutdown already handled prior to large-value pre-check");
@@ -234,6 +262,19 @@ impl PersistenceWriter {
                             batch.delete(key.clone());
                             batch_bytes += key.len();
                             ops += 1;
+                        }
+                        PersistenceJob::Batch(b) => {
+                            // Already handled in the pre-check above via continue;
+                            // Include for exhaustiveness.
+                            if let Err(e) = db_clone.write_batch(b.clone()) {
+                                error!("Persistence batch job write failed: {}", e);
+                            } else {
+                                debug!("Persistence batch job write succeeded (first job path)");
+                            }
+                            increment_metric!(persistence_batches);
+                            set_metric!(persistence_last_batch_ops, b.len() as u64);
+                            set_metric!(persistence_last_batch_bytes, 0);
+                            continue;
                         }
                         &PersistenceJob::Shutdown(_) => {
                             // Should have been handled above; keep exhaustive match
@@ -259,35 +300,42 @@ impl PersistenceWriter {
                                 let job_bytes = match &job {
                                     PersistenceJob::Put(k, v) => k.len() + v.len(),
                                     PersistenceJob::Delete(k) => k.len(),
+                                    PersistenceJob::Batch(_) => 0, // size unknown; treat as overflow
                                     _ => 0,
                                 };
 
                                 // Respect batch limits
-                                if ops + 1 > BATCH_MAX_JOBS || batch_bytes + job_bytes > BATCH_MAX_BYTES {
+                                if matches!(job, PersistenceJob::Batch(_))
+                                    || ops + 1 > BATCH_MAX_JOBS
+                                    || batch_bytes + job_bytes > BATCH_MAX_BYTES
+                                {
                                     // Defer this job and process after current batch
                                     overflow_job = Some(job);
                                     break;
                                 }
 
                                 // Add job to batch
-                                match &job {
-                                    PersistenceJob::Put(key, value) => {
-                                        batch.put(key.clone(), value.clone());
-                                        batch_bytes += job_bytes;
-                                        ops += 1;
+                                    match &job {
+                                        PersistenceJob::Put(key, value) => {
+                                            batch.put(key.clone(), value.clone());
+                                            batch_bytes += job_bytes;
+                                            ops += 1;
+                                        }
+                                        PersistenceJob::Delete(key) => {
+                                            batch.delete(key.clone());
+                                            batch_bytes += job_bytes;
+                                            ops += 1;
+                                        }
+                                        PersistenceJob::Batch(_) => {
+                                            // handled as overflow above
+                                        }
+                                        _ => {}
                                     }
-                                    PersistenceJob::Delete(key) => {
-                                        batch.delete(key.clone());
-                                        batch_bytes += job_bytes;
-                                        ops += 1;
-                                    }
-                                    _ => {}
                                 }
-                            }
-                            Err(TryRecvError::Empty) => {
-                                // No more jobs immediately available; execute batch
-                                break;
-                            }
+                                Err(TryRecvError::Empty) => {
+                                    // No more jobs immediately available; execute batch
+                                    break;
+                                }
                             Err(TryRecvError::Disconnected) => {
                                 warn!("Persistence writer receiver disconnected; flushing batch and exiting");
                                 break;
@@ -311,6 +359,13 @@ impl PersistenceWriter {
                                     error!("Persistence delete failed: {}", e);
                                 } else {
                                     debug!("Persistence delete succeeded (single)");
+                                }
+                            }
+                            PersistenceJob::Batch(b) => {
+                                // Shouldn't occur due to early continue; handle defensively
+                                match db_clone.write_batch(b.clone()) {
+                                    Ok(()) => debug!("Persistence batch write succeeded (single path)"),
+                                    Err(e) => error!("Persistence batch write failed (single path): {}", e),
                                 }
                             }
                             PersistenceJob::Shutdown(_) => {
@@ -351,6 +406,16 @@ impl PersistenceWriter {
                                     debug!("Persistence overflow delete succeeded");
                                 }
                             }
+                            PersistenceJob::Batch(b) => {
+                                match db_clone.write_batch(b.clone()) {
+                                    Ok(()) => debug!("Persistence overflow batch write succeeded"),
+                                    Err(e) => error!("Persistence overflow batch write failed: {}", e),
+                                }
+                                // Update metrics for overflow batch as well
+                                increment_metric!(persistence_batches);
+                                set_metric!(persistence_last_batch_ops, b.len() as u64);
+                                set_metric!(persistence_last_batch_bytes, 0);
+                            }
                             PersistenceJob::Shutdown(ack_tx) => {
                                 let _ = ack_tx.send(());
                                 info!("Persistence writer thread shutting down while processing overflow job");
@@ -378,6 +443,13 @@ impl PersistenceWriter {
         self.sender
             .send(PersistenceJob::Delete(key))
             .map_err(|e| format!("Failed to enqueue delete: {e}"))
+    }
+
+    /// Enqueue an atomic batch write.
+    pub fn enqueue_batch(&self, batch: WriteBatch) -> Result<(), String> {
+        self.sender
+            .send(PersistenceJob::Batch(batch))
+            .map_err(|e| format!("Failed to enqueue batch: {e}"))
     }
 
     /// Request graceful shutdown and wait for acknowledgement with a timeout.

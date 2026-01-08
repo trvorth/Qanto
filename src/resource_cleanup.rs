@@ -432,14 +432,14 @@ impl ResourceCleanup {
             }
         }
 
-        // Phase 5: Final cleanup (50ms timeout)
+        // Phase 5: Final cleanup (1000ms timeout)
         let phase_start = std::time::Instant::now();
         info!("Phase 5/5: Performing final cleanup");
-        match timeout(Duration::from_millis(50), self.final_cleanup()).await {
+        match timeout(Duration::from_millis(1000), self.final_cleanup()).await {
             Ok(Ok(_)) => {
                 let phase_duration = phase_start.elapsed();
                 info!("Phase 5 completed successfully in {:?}", phase_duration);
-                if phase_duration > Duration::from_millis(200) {
+                if phase_duration > Duration::from_millis(600) {
                     warn!(
                         "Phase 5 (final cleanup) took longer than expected: {:?}",
                         phase_duration

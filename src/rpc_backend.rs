@@ -1,10 +1,13 @@
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use lru::LruCache;
 use tokio::sync::{broadcast, mpsc, RwLock};
 
 use crate::mempool::Mempool;
+use crate::node_keystore::Wallet;
 use crate::p2p::P2PCommand;
 use crate::persistence::{balance_key, decode_balance};
 use crate::qantodag::QantoDAG;
@@ -19,7 +22,8 @@ pub struct NodeRpcBackend {
     pub mempool: Arc<RwLock<Mempool>>,
     pub p2p_sender: mpsc::Sender<P2PCommand>,
     pub rpc_balance_sender: broadcast::Sender<proto::BalanceUpdate>,
-    pub balance_cache: Arc<RwLock<HashMap<String, u64>>>,
+    pub balance_cache: Arc<RwLock<LruCache<String, u64>>>,
+    pub wallet: Arc<Wallet>,
 }
 
 impl NodeRpcBackend {
@@ -29,9 +33,18 @@ impl NodeRpcBackend {
         mempool: Arc<RwLock<Mempool>>,
         p2p_sender: mpsc::Sender<P2PCommand>,
         ws_balance_sender: broadcast::Sender<BalanceEvent>,
+        wallet: Arc<Wallet>,
     ) -> Self {
         let (rpc_balance_sender, _) = broadcast::channel(1000);
-        let balance_cache = Arc::new(RwLock::new(HashMap::new()));
+        // Initialize LRU cache for balances with capacity from feature flags, defaulting to 10k
+        let default_cache_size: usize = 10_000;
+        let cache_capacity = dag
+            .feature_flags
+            .request_cache_size
+            .unwrap_or(default_cache_size);
+        let capacity_nz = NonZeroUsize::new(cache_capacity)
+            .unwrap_or(NonZeroUsize::new(default_cache_size).expect("nonzero default"));
+        let balance_cache = Arc::new(RwLock::new(LruCache::new(capacity_nz)));
         {
             let mut ws_rx = ws_balance_sender.subscribe();
             let rpc_tx = rpc_balance_sender.clone();
@@ -43,13 +56,19 @@ impl NodeRpcBackend {
                             // Update live cache
                             {
                                 let mut cache_guard = cache.write().await;
-                                cache_guard.insert(ev.address.clone(), ev.balance);
+                                cache_guard.put(ev.address.clone(), ev.balance.total_confirmed);
                             }
                             // Bridge to RPC subscribers
                             let update = proto::BalanceUpdate {
                                 address: ev.address,
-                                base_units: ev.balance,
+                                base_units: ev.balance.total_confirmed,
                                 timestamp: ev.timestamp,
+                                finalized: ev.finalized,
+                                balance_bigint: ev.balance.total_confirmed.to_string(),
+                                spendable_confirmed: ev.balance.spendable_confirmed,
+                                immature_coinbase_confirmed: ev.balance.immature_coinbase_confirmed,
+                                unconfirmed_delta: ev.balance.unconfirmed_delta,
+                                total_confirmed: ev.balance.total_confirmed,
                             };
                             let _ = rpc_tx.send(update);
                         }
@@ -67,7 +86,117 @@ impl NodeRpcBackend {
             p2p_sender,
             rpc_balance_sender,
             balance_cache,
+            wallet,
         }
+    }
+
+    async fn request_airdrop(
+        &self,
+        request: proto::RequestAirdropRequest,
+    ) -> Result<proto::RequestAirdropResponse, String> {
+        let sender = self.wallet.address();
+        let receiver = request.address;
+
+        if receiver.len() != 64 {
+            return Err("Invalid receiver address".to_string());
+        }
+
+        let amount = 100 * crate::transaction::SMALLEST_UNITS_PER_QAN;
+        let fee = 1000;
+
+        // 1. Select UTXOs
+        let utxos = self.utxos.read().await;
+        let mut input_utxos = Vec::new();
+        let mut input_sum = 0;
+
+        for (_key, utxo) in utxos.iter() {
+            if utxo.address == sender {
+                input_utxos.push(utxo.clone());
+                input_sum += utxo.amount;
+                if input_sum >= amount + fee {
+                    break;
+                }
+            }
+        }
+        drop(utxos);
+
+        if input_sum < amount + fee {
+            return Err("Genesis wallet exhausted".to_string());
+        }
+
+        // 2. Prepare Inputs/Outputs
+        let inputs: Vec<crate::transaction::Input> = input_utxos
+            .iter()
+            .map(|u| crate::transaction::Input {
+                tx_id: u.tx_id.clone(),
+                output_index: u.output_index,
+            })
+            .collect();
+
+        let mut outputs = vec![crate::transaction::Output {
+            address: receiver.clone(),
+            amount,
+            homomorphic_encrypted: crate::types::HomomorphicEncrypted {
+                ciphertext: vec![],
+                public_key: vec![],
+            },
+        }];
+
+        let change = input_sum - amount - fee;
+        if change > 0 {
+            outputs.push(crate::transaction::Output {
+                address: sender.clone(),
+                amount: change,
+                homomorphic_encrypted: crate::types::HomomorphicEncrypted {
+                    ciphertext: vec![],
+                    public_key: vec![],
+                },
+            });
+        }
+
+        // 3. Create Transaction
+        let (sk, _) = self.wallet.get_keypair().map_err(|e| e.to_string())?;
+
+        let config = crate::transaction::TransactionConfig {
+            sender: sender.clone(),
+            receiver: receiver.clone(),
+            amount,
+            fee,
+            gas_limit: 21000,
+            gas_price: 1,
+            priority_fee: 0,
+            inputs,
+            outputs,
+            metadata: None,
+            tx_timestamps: Arc::new(RwLock::new(HashMap::new())),
+        };
+
+        let tx = crate::transaction::Transaction::new(config, &sk)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // 4. Submit & Broadcast
+        tx.verify_with_shared_utxos(&self.dag, &self.utxos)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let utxos_guard = self.utxos.read().await;
+        self.mempool
+            .write()
+            .await
+            .add_transaction(tx.clone(), &utxos_guard, &self.dag)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        self.p2p_sender
+            .send(P2PCommand::BroadcastTransaction(tx.clone()))
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(proto::RequestAirdropResponse {
+            tx_id: tx.id.clone(),
+            message: "Airdrop sent".to_string(),
+        })
     }
 }
 
@@ -333,8 +462,8 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
 
         // Confirmed balance: prefer live cache, fallback to UTXO scan, then storage
         let confirmed = {
-            // Try live cache first
-            if let Some(v) = { self.balance_cache.read().await.get(&address).cloned() } {
+            // Try live cache first (use peek to avoid mutable borrow)
+            if let Some(v) = { self.balance_cache.read().await.peek(&address).copied() } {
                 v
             } else {
                 // UTXO scan
@@ -348,7 +477,7 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
                 // If UTXO scan yielded a value, update cache and use it. Otherwise, fallback to storage.
                 if total > 0 {
                     let mut cache = self.balance_cache.write().await;
-                    cache.insert(address.clone(), total);
+                    cache.put(address.clone(), total);
                     total
                 } else {
                     let key = balance_key(&address);
@@ -356,7 +485,7 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
                         Ok(Some(bytes)) => match decode_balance(&bytes) {
                             Ok(v) => {
                                 let mut cache = self.balance_cache.write().await;
-                                cache.insert(address.clone(), v);
+                                cache.put(address.clone(), v);
                                 v
                             }
                             Err(_) => 0,
@@ -391,6 +520,13 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
                     if u.address == address {
                         outgoing = outgoing.saturating_add(u.amount);
                     }
+                } else if let Some(parent_tx) = mempool_map.get(&i.tx_id) {
+                    // Check if it spends an output from another mempool transaction (chained tx)
+                    if let Some(output) = parent_tx.outputs.get(i.output_index as usize) {
+                        if output.address == address {
+                            outgoing = outgoing.saturating_add(output.amount);
+                        }
+                    }
                 }
             }
         }
@@ -404,6 +540,96 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
             Ok((confirmed, _)) => Ok(confirmed),
             Err(e) => Err(e),
         }
+    }
+
+    async fn query_wallet_balance(&self, address: String) -> Result<(u64, u64, u64, u64), String> {
+        // Validate address format
+        if address.len() != 64 || !address.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err("Invalid address format".to_string());
+        }
+
+        // Reuse existing logic to compute confirmed total and unconfirmed delta
+        let (confirmed_total, unconfirmed_delta) = self.get_wallet_balance(address.clone()).await?;
+
+        // Compute maturity-aware breakdown: spendable confirmed and immature coinbase
+        let utxos = self.utxos.read().await;
+        let mut spendable_confirmed: u64 = 0;
+        let mut immature_coinbase_confirmed: u64 = 0;
+
+        // Cache tx_id -> (block_id, is_coinbase) to avoid repeated scans
+        let mut tx_block_cache: HashMap<String, (String, bool)> = HashMap::new();
+
+        for (_key, u) in utxos.iter() {
+            if u.address != address {
+                continue;
+            }
+
+            // Lookup whether originating tx was coinbase and the containing block id
+            let (block_id, is_coinbase_tx) = if let Some((bid, icb)) = tx_block_cache.get(&u.tx_id)
+            {
+                (bid.clone(), *icb)
+            } else {
+                // Scan DAG blocks to locate the transaction; favor correctness for wallet queries
+                let mut found: Option<(String, bool)> = None;
+                for block_entry in self.dag.blocks.iter() {
+                    let block = block_entry.value();
+                    // NOTE: transactions length is bounded by MAX_TRANSACTIONS_PER_BLOCK
+                    for tx in &block.transactions {
+                        if tx.id == u.tx_id {
+                            let icb = tx.is_coinbase();
+                            found = Some((block.id.clone(), icb));
+                            break;
+                        }
+                    }
+                    if found.is_some() {
+                        break;
+                    }
+                }
+
+                let resolved = found.unwrap_or_else(|| (String::new(), false));
+                tx_block_cache.insert(u.tx_id.clone(), resolved.clone());
+                resolved
+            };
+
+            if is_coinbase_tx {
+                // Coinbase maturity: only spendable if the containing block is finalized
+                let matured =
+                    (!block_id.is_empty()) && self.dag.finalized_blocks.contains_key(&block_id);
+                if matured {
+                    spendable_confirmed = spendable_confirmed.saturating_add(u.amount);
+                } else {
+                    immature_coinbase_confirmed =
+                        immature_coinbase_confirmed.saturating_add(u.amount);
+                }
+            } else {
+                // Non-coinbase UTXOs are spendable once confirmed
+                spendable_confirmed = spendable_confirmed.saturating_add(u.amount);
+            }
+        }
+
+        // Sanity: spendable + immature should not exceed confirmed total; saturate if any discrepancy
+        let total_confirmed = confirmed_total;
+        if spendable_confirmed.saturating_add(immature_coinbase_confirmed) > total_confirmed {
+            // In rare cases of concurrent updates, prefer the authoritative total_confirmed
+            let overflow = spendable_confirmed
+                .saturating_add(immature_coinbase_confirmed)
+                .saturating_sub(total_confirmed);
+            if immature_coinbase_confirmed >= overflow {
+                immature_coinbase_confirmed = immature_coinbase_confirmed.saturating_sub(overflow);
+            } else {
+                // If immature is smaller than overflow, reduce spendable accordingly
+                let rem = overflow.saturating_sub(immature_coinbase_confirmed);
+                immature_coinbase_confirmed = 0;
+                spendable_confirmed = spendable_confirmed.saturating_sub(rem);
+            }
+        }
+
+        Ok((
+            spendable_confirmed,
+            immature_coinbase_confirmed,
+            unconfirmed_delta,
+            total_confirmed,
+        ))
     }
 
     async fn get_block(&self, block_id: String) -> Result<proto::QantoBlock, String> {
@@ -459,6 +685,13 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
             finality_ms,
             network_throughput_mbps,
         })
+    }
+
+    async fn request_airdrop(
+        &self,
+        request: proto::RequestAirdropRequest,
+    ) -> Result<proto::RequestAirdropResponse, String> {
+        self.request_airdrop(request).await
     }
 
     fn balance_updates_receiver(&self) -> tokio::sync::broadcast::Receiver<proto::BalanceUpdate> {

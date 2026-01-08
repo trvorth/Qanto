@@ -1,3 +1,6 @@
+//! Edge case timing tests for the miner
+#![allow(deprecated)]
+
 use qanto::config::LoggingConfig;
 use qanto::miner::{Miner, MinerConfig, MiningError};
 use qanto::qanto_storage::{QantoStorage, StorageConfig};
@@ -26,6 +29,7 @@ fn create_test_block_with_difficulty(
         parents: vec![],
         transactions,
         difficulty,
+        target: None,
         validator: "test_validator".to_string(),
         miner: "test_miner".to_string(),
         nonce: 0,
@@ -48,7 +52,7 @@ fn create_test_block_with_difficulty(
         carbon_credentials: vec![],
         epoch: 0,
         finality_proof: None,
-        reservation_miner_id: None,
+        reservation_snapshot_id: None,
     }
 }
 
@@ -133,7 +137,7 @@ async fn test_pre_cancelled_token() {
     token.cancel();
 
     let start = SystemTime::now();
-    let result = miner.solve_pow_with_cancellation(&mut block, token);
+    let result = miner.solve_pow_with_cancellation(&mut block, token).await;
     let elapsed = start.elapsed().unwrap();
 
     // Should return immediately (< 10ms) with cancellation error
@@ -173,9 +177,11 @@ async fn test_cancellation_during_setup() {
     let mining_task = {
         let mut block_clone = block.clone();
         let token_clone = cancellation_token.clone();
-        tokio::spawn(
-            async move { miner.solve_pow_with_cancellation(&mut block_clone, token_clone) },
-        )
+        tokio::spawn(async move {
+            miner
+                .solve_pow_with_cancellation(&mut block_clone, token_clone)
+                .await
+        })
     };
 
     // Cancel immediately
@@ -231,10 +237,11 @@ async fn test_cancellation_during_mining() {
     let cancel_token = cancellation_token.clone();
 
     // Start mining in a separate task
-    let mining_task =
-        tokio::spawn(
-            async move { miner.solve_pow_with_cancellation(&mut block, cancellation_token) },
-        );
+    let mining_task = tokio::spawn(async move {
+        miner
+            .solve_pow_with_cancellation(&mut block, cancellation_token)
+            .await
+    });
 
     // Cancel immediately
     cancel_token.cancel();
@@ -275,7 +282,7 @@ async fn test_rapid_cancellations() {
         token.cancel(); // Pre-cancel each one
 
         let start = SystemTime::now();
-        let result = miner.solve_pow_with_cancellation(&mut block, token);
+        let result = miner.solve_pow_with_cancellation(&mut block, token).await;
         let elapsed = start.elapsed().unwrap();
 
         // Each should return immediately
@@ -293,12 +300,15 @@ async fn test_no_cancellation_allows_success() {
 
     // Set very low difficulty for quick success
     block.difficulty = 0.5;
+    let mut buf = [0u8; 32];
+    primitive_types::U256::MAX.to_big_endian(&mut buf);
+    block.target = Some(hex::encode(buf));
 
     let token = CancellationToken::new();
     // Don't cancel the token
 
     let start = SystemTime::now();
-    let result = miner.solve_pow_with_cancellation(&mut block, token);
+    let result = miner.solve_pow_with_cancellation(&mut block, token).await;
     let elapsed = start.elapsed().unwrap();
 
     // Should succeed within reasonable time with low difficulty; allow some jitter under CI

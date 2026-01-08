@@ -1,9 +1,9 @@
 use qanto::mempool::Mempool;
 use qanto::miner::{Miner, MinerConfig};
+use qanto::node_keystore::Wallet;
 use qanto::qanto_storage::{QantoStorage, StorageConfig};
 use qanto::qantodag::{QantoDAG, QantoDagConfig};
 use qanto::saga::PalletSaga;
-use qanto::wallet::Wallet;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -114,7 +114,7 @@ async fn test_dag_mining_performance() {
     // Test 2: Verify mining with DAG works correctly
     info!("Testing DAG-based mining functionality...");
 
-    let block = dag_arc
+    let mut block = dag_arc
         .create_candidate_block(
             &private_key,
             &public_key,
@@ -128,6 +128,10 @@ async fn test_dag_mining_performance() {
         )
         .await
         .unwrap();
+
+    // Manually set very easy difficulty/target for the test to prevent hanging
+    block.difficulty = 0.000001;
+    block.target = Some(hex::encode([0xFF; 32]));
 
     // Test mining with very low difficulty for quick completion
     let start_mining_time = Instant::now();

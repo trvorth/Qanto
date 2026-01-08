@@ -364,17 +364,33 @@ impl TransactionArena {
 
 impl Drop for TransactionArena {
     fn drop(&mut self) {
-        // Deallocate all chunks
-        for chunk in &self.chunks {
-            unsafe {
-                dealloc(chunk.memory.as_ptr(), chunk.layout);
-            }
-        }
+        // Deallocate all chunks without blocking the Tokio reactor
+        // Move pointers/layouts into a separate vector to free in a blocking task
+        let chunks_to_free: Vec<(NonNull<u8>, Layout)> =
+            self.chunks.iter().map(|c| (c.memory, c.layout)).collect();
+        let count = chunks_to_free.len();
+        self.chunks.clear();
 
-        info!(
-            "MEMORY OPTIMIZATION: Deallocated transaction arena ({} chunks)",
-            self.chunks.len()
-        );
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::block_in_place(|| {
+                for (mem, layout) in chunks_to_free {
+                    unsafe { dealloc(mem.as_ptr(), layout) };
+                }
+                info!(
+                    "MEMORY OPTIMIZATION: Deallocated transaction arena ({} chunks)",
+                    count
+                );
+            });
+        } else {
+            // Fallback for non-Tokio contexts
+            for (mem, layout) in chunks_to_free {
+                unsafe { dealloc(mem.as_ptr(), layout) };
+            }
+            info!(
+                "MEMORY OPTIMIZATION: Deallocated transaction arena ({} chunks)",
+                count
+            );
+        }
     }
 }
 

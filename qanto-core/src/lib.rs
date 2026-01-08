@@ -25,20 +25,28 @@
 #![allow(unsafe_code)]
 
 // Re-export core modules for external use
+pub mod adaptive_mining;
 pub mod balance_stream;
+pub mod block_stm;
+pub mod consensus;
+pub mod crypto;
 pub mod dag_aware_mempool;
 pub mod docs;
 pub mod mining_celebration;
+pub mod optimized_qdag;
 #[cfg(test)]
 pub mod perf_bench;
+pub mod pow;
 pub mod qanto_compat;
 pub mod qanto_native_crypto;
 pub mod qanto_net;
+pub mod qanto_net_impls;
 pub mod qanto_p2p;
 pub mod qanto_serde;
 pub mod qanto_storage;
 pub mod storage_adapter;
 pub mod storage_traits;
+pub mod wallet;
 
 // Re-export specific types to avoid ambiguous glob re-exports
 pub use balance_stream::{BalanceBroadcaster, BalanceSubscribe, BalanceUpdate};
@@ -52,3 +60,8 @@ pub use qanto_native_crypto::{
 };
 pub use qanto_net::{NetworkMessage, PeerId, QantoBlock, QantoNetError, QantoNetServer};
 pub use qanto_p2p::{NetworkConfig, QantoP2P};
+pub use wallet::{WalletBalanceStream, WalletBalanceUpdate};
+// Optional convenience re-exports for difficulty algorithms
+pub use adaptive_mining::{Anchor, AsertDifficulty, AsertDifficultyConfig, DifficultyAlgorithm};
+#[allow(deprecated)]
+pub use adaptive_mining::{EwmaDifficulty, EwmaDifficultyConfig};

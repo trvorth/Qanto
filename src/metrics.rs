@@ -741,6 +741,14 @@ impl QantoMetrics {
         ));
         output.push_str(&format!("qanto_finality_ms {}\n", self.get_finality_ms()));
         output.push_str(&format!(
+            "qanto_finality_time_ms {}\n",
+            self.finality_time_ms.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_block_propagation_time_ms {}\n",
+            self.block_propagation_time.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
             "qanto_validator_count {}\n",
             self.validator_count.load(Ordering::Relaxed)
         ));

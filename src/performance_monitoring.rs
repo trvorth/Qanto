@@ -529,7 +529,7 @@ impl PerformanceMonitor {
                 );
 
                 if result == libc::KERN_SUCCESS {
-                    return (info.resident_size / 1024 / 1024) as u64;
+                    return info.resident_size / 1024 / 1024;
                 }
             }
         }

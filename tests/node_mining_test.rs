@@ -3,7 +3,7 @@ mod tests {
     use qanto::config::Config;
     use qanto::node::Node;
     // use qanto::qanto_storage::{QantoStorage, StorageConfig};
-    use qanto::wallet::Wallet;
+    use qanto::node_keystore::Wallet;
     use secrecy::Secret;
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -52,6 +52,9 @@ mod tests {
             // Use an ephemeral RPC port to avoid conflicts during tests
             rpc: qanto::config::RpcConfig {
                 address: "127.0.0.1:0".to_string(),
+                websocket_max_message_bytes: Some(
+                    qanto::websocket_server::DEFAULT_MAX_WS_MESSAGE_BYTES,
+                ),
             },
             ..Default::default()
         }
@@ -91,9 +94,10 @@ mod tests {
             let wallet_address = new_wallet.address();
             info!("Created test wallet with address: {}", wallet_address);
             info!("Genesis validator in config: {}", config.genesis_validator);
+            let matches_genesis = wallet_address == config.genesis_validator;
             info!(
-                "Wallet address matches genesis validator: {}",
-                wallet_address == config.genesis_validator
+                matches_genesis = matches_genesis,
+                "Wallet address matches genesis validator"
             );
 
             new_wallet
@@ -112,20 +116,29 @@ mod tests {
         // Node::new opens and initializes storage; avoid double-opening the DB here
 
         // Create and start the node (it will create its own DAG instance)
+        // Build stable strings to avoid borrowing temporary Cow<str> values
+        let config_path = temp_dir
+            .path()
+            .join("config.toml")
+            .to_string_lossy()
+            .to_string();
+        let p2p_identity_path = temp_dir
+            .path()
+            .join("p2p_identity")
+            .to_string_lossy()
+            .to_string();
+        let peer_cache_path = temp_dir
+            .path()
+            .join("peer_cache.json")
+            .to_string_lossy()
+            .to_string();
+
         let node = Node::new(
             config.clone(),
-            temp_dir
-                .path()
-                .join("config.toml")
-                .to_string_lossy()
-                .to_string(),
+            config_path,
             wallet,
-            &temp_dir.path().join("p2p_identity").to_string_lossy(),
-            temp_dir
-                .path()
-                .join("peer_cache.json")
-                .to_string_lossy()
-                .to_string(),
+            p2p_identity_path.as_str(),
+            peer_cache_path,
         )
         .await
         .unwrap();
@@ -188,7 +201,7 @@ mod tests {
         }
 
         let elapsed_secs = start_time.elapsed().as_secs();
-        info!("⏹️ Mining test completed after {elapsed_secs} seconds");
+        info!("⏹️ Mining test completed after {} seconds", elapsed_secs);
 
         // Stop the node
         node_handle.abort();
@@ -197,15 +210,16 @@ mod tests {
         let final_block_count = dag.get_block_count().await;
 
         info!("📊 Final mining results:");
-        info!("  Total blocks in DAG: {final_block_count}");
+        info!("  Total blocks in DAG: {}", final_block_count);
         let blocks_mined = final_block_count.saturating_sub(1);
-        info!("  Blocks mined during test: {blocks_mined}"); // Subtract genesis block
+        info!("  Blocks mined during test: {}", blocks_mined); // Subtract genesis block
 
         // Assert that at least 1 block was mined (excluding genesis)
         assert!(
             final_block_count >= 2, // Genesis block + at least 1 mined block
-            "Expected at least 1 block to be mined, but DAG length is only {final_block_count}. \
-             This indicates mining was not successful with the Genesis Engine configuration."
+            "Expected at least 1 block to be mined, but DAG length is only {}. \
+             This indicates mining was not successful with the Genesis Engine configuration.",
+            final_block_count
         );
 
         // Verify addresses in mined blocks

@@ -59,25 +59,28 @@ pub fn prompt_for_password(confirm: bool, message: Option<&str>) -> Result<Secre
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::env;
 
     #[test]
+    #[serial]
     fn test_env_password_trimming() {
         // Test that environment variable passwords are properly trimmed
-        env::set_var("WALLET_PASSWORD", "  test_password  \n");
+        unsafe { env::set_var("WALLET_PASSWORD", "  test_password  \n") };
         let result = prompt_for_password(false, None);
         assert!(result.is_ok());
         let password = result.unwrap();
         assert_eq!(password.expose_secret(), "test_password");
-        env::remove_var("WALLET_PASSWORD");
+        unsafe { env::remove_var("WALLET_PASSWORD") };
     }
 
     #[test]
+    #[serial]
     fn test_empty_env_password() {
         // Test that empty environment variable passwords are rejected
-        env::set_var("WALLET_PASSWORD", "   \n  ");
+        unsafe { env::set_var("WALLET_PASSWORD", "   \n  ") };
         let result = prompt_for_password(false, None);
         assert!(result.is_err());
-        env::remove_var("WALLET_PASSWORD");
+        unsafe { env::remove_var("WALLET_PASSWORD") };
     }
 }

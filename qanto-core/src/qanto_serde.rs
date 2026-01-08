@@ -75,7 +75,8 @@ impl BufferPool {
 }
 
 lazy_static::lazy_static! {
-    static ref GLOBAL_BUFFER_POOL: BufferPool = BufferPool::new(100, 8192);
+    // Optimized for 32 BPS and 10M+ TPS (1000 buffers of 64KB)
+    static ref GLOBAL_BUFFER_POOL: BufferPool = BufferPool::new(1000, 65536);
 }
 
 /// Streaming serializer for large data structures
@@ -305,13 +306,23 @@ impl BinarySerializer {
     }
 
     pub fn finish(mut self) -> Vec<u8> {
-        // Prepend version and magic number
-        let mut result = Vec::with_capacity(self.buffer.len() + 8);
-        result.extend_from_slice(b"QSER"); // Magic number
-        result.push(self.version);
-        result.extend_from_slice(&(self.buffer.len() as u32).to_le_bytes()[..3]); // 24-bit length
-        result.append(&mut self.buffer);
-        result
+        if self.buffer.len() >= 1024 {
+            let compressed =
+                zstd::encode_all(&self.buffer[..], 3).unwrap_or_else(|_| self.buffer.clone());
+            let mut result = Vec::with_capacity(compressed.len() + 8);
+            result.extend_from_slice(b"ZSTD");
+            result.push(self.version);
+            result.extend_from_slice(&(compressed.len() as u32).to_le_bytes()[..3]);
+            result.extend_from_slice(&compressed);
+            result
+        } else {
+            let mut result = Vec::with_capacity(self.buffer.len() + 8);
+            result.extend_from_slice(b"QSER");
+            result.push(self.version);
+            result.extend_from_slice(&(self.buffer.len() as u32).to_le_bytes()[..3]);
+            result.append(&mut self.buffer);
+            result
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -440,9 +451,9 @@ impl QantoSerializer for BinarySerializer {
 
 /// Binary deserializer implementation
 pub struct BinaryDeserializer<'a> {
-    data: &'a [u8],
+    data: std::borrow::Cow<'a, [u8]>,
     position: usize,
-    _version: u8, // Prefixed with underscore to indicate intentional non-use
+    _version: u8,
 }
 
 impl<'a> BinaryDeserializer<'a> {
@@ -451,14 +462,34 @@ impl<'a> BinaryDeserializer<'a> {
             return Err(QantoSerdeError::InvalidFormat("Data too short".to_string()));
         }
 
-        // Check magic number
-        if &data[0..4] != b"QSER" {
+        // Check for ZSTD compression
+        let (cow_data, version) = if &data[0..4] == b"ZSTD" {
+            let version = data[4];
+            let length = u32::from_le_bytes([data[5], data[6], data[7], 0]) as usize;
+            let payload = &data[8..8 + length];
+
+            // Decompress
+            let decoded = zstd::decode_all(payload)
+                .map_err(|_| QantoSerdeError::InvalidFormat("ZSTD decode failure".to_string()))?;
+
+            // Reconstruct QSER format
+            let mut v = Vec::with_capacity(decoded.len() + 8);
+            v.extend_from_slice(b"QSER");
+            v.push(version);
+            v.extend_from_slice(&(decoded.len() as u32).to_le_bytes()[..3]);
+            v.extend_from_slice(&decoded);
+
+            (std::borrow::Cow::Owned(v), version)
+        } else {
+            (std::borrow::Cow::Borrowed(data), data[4])
+        };
+
+        if &cow_data[0..4] != b"QSER" {
             return Err(QantoSerdeError::InvalidFormat(
                 "Invalid magic number".to_string(),
             ));
         }
 
-        let version = data[4];
         if version != 1 {
             return Err(QantoSerdeError::VersionMismatch {
                 expected: 1,
@@ -467,16 +498,16 @@ impl<'a> BinaryDeserializer<'a> {
         }
 
         // Read length (24-bit)
-        let length = u32::from_le_bytes([data[5], data[6], data[7], 0]) as usize;
-        if data.len() != length + 8 {
+        let length = u32::from_le_bytes([cow_data[5], cow_data[6], cow_data[7], 0]) as usize;
+        if cow_data.len() != length + 8 {
             return Err(QantoSerdeError::InvalidFormat(
                 "Length mismatch".to_string(),
             ));
         }
 
         Ok(Self {
-            data: &data[8..],
-            position: 0,
+            data: cow_data,
+            position: 8, // Skip header
             _version: version,
         })
     }

@@ -20,18 +20,19 @@
 //! - Analytics Dashboard: Includes a real-time analytics dashboard for monitoring
 //!   node performance and network activity.
 
-use crate::adaptive_mining::AdaptiveMiningLoop;
 use crate::analytics_dashboard::{AnalyticsDashboard, DashboardConfig};
 use crate::block_producer::DecoupledProducer;
 use crate::config::{Config, ConfigError};
 use crate::elite_mempool::EliteMempool;
 use crate::graphql_server::{create_graphql_router, create_graphql_schema, GraphQLContext};
+use crate::json_rpc::handle_json_rpc;
 use crate::mempool::Mempool;
 use crate::miner::{Miner, MinerConfig, MiningError};
+use crate::node_keystore::Wallet;
 use crate::omega::reflect_on_action;
 use crate::p2p::{P2PCommand, P2PConfig, P2PError, P2PServer};
 use crate::performance_optimizations::{OptimizedBlockBuilder, OptimizedMempool};
-use crate::persistence::has_genesis_block;
+use crate::persistence::{decode_balance, has_genesis_block, BALANCES_KEY_PREFIX};
 use crate::qanto_compat::sp_core::H256;
 use crate::qanto_net::QantoNetServer;
 use crate::qanto_storage::{QantoStorage, QantoStorageError, StorageConfig};
@@ -41,12 +42,10 @@ use crate::rpc_backend::NodeRpcBackend;
 use crate::saga::PalletSaga;
 use crate::transaction::Transaction;
 use crate::types::UTXO;
-use crate::wallet::Wallet;
 use crate::websocket_server::{create_websocket_router, WebSocketServerState};
-use qanto_core::balance_stream::BalanceBroadcaster;
 use axum::{
     body::Body,
-    extract::{Path as AxumPath, State, State as MiddlewareState},
+    extract::{DefaultBodyLimit, Path as AxumPath, State, State as MiddlewareState},
     http::{Request as HttpRequest, StatusCode},
     middleware::{self, Next},
     response::IntoResponse,
@@ -58,6 +57,8 @@ use governor::state::{InMemoryState, NotKeyed};
 use governor::{Quota, RateLimiter};
 use libp2p::{identity, PeerId};
 use nonzero_ext::nonzero;
+use qanto_core::adaptive_mining::AdaptiveMiningLoop;
+use qanto_core::balance_stream::BalanceBroadcaster;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
@@ -105,7 +106,7 @@ pub enum NodeError {
     #[error("Configuration error: {0}")]
     Config(#[from] ConfigError),
     #[error("Wallet error: {0}")]
-    Wallet(#[from] crate::wallet::WalletError),
+    Wallet(#[from] crate::node_keystore::WalletError),
     #[error("Mining error: {0}")]
     Mining(#[from] MiningError),
     #[error("Timeout error: {0}")]
@@ -116,6 +117,8 @@ pub enum NodeError {
     ServerExecution(String),
     #[error("Task join error: {0}")]
     Join(#[from] JoinError),
+    #[error("Node task ended unexpectedly: {0}")]
+    TaskEnded(String),
     #[error("P2P specific error: {0}")]
     P2PSpecific(#[from] P2PError),
     #[error("P2P Identity error: {0}")]
@@ -132,6 +135,13 @@ pub enum NodeError {
     NodeInitialization(String),
     #[error("Elite mempool error: {0}")]
     EliteMempool(#[from] crate::elite_mempool::EliteMempoolError),
+}
+
+#[derive(Debug)]
+struct NodeTaskExit {
+    name: &'static str,
+    critical: bool,
+    result: Result<(), anyhow::Error>,
 }
 
 impl From<NodeError> for String {
@@ -246,7 +256,7 @@ impl Node {
         info!("Updating config with full local P2P address");
         // Update config with the full P2P address if it's not already set.
         let full_local_p2p_address = format!("{}/p2p/{}", config.p2p_address, local_peer_id);
-        if config.local_full_p2p_address.as_deref() != Some(&full_local_p2p_address) {
+        if config.local_full_p2p_address.as_deref() != Some(full_local_p2p_address.as_str()) {
             info!(
                 "Updating config file '{config_path}' with local full P2P address: {full_local_p2p_address}"
             );
@@ -259,9 +269,7 @@ impl Node {
         // Validate that the wallet address matches the genesis validator specified in the config.
         let initial_validator = wallet.address().trim().to_lowercase();
         if initial_validator != config.genesis_validator.trim().to_lowercase() {
-            return Err(NodeError::Config(ConfigError::Validation(
-                "Wallet address does not match genesis validator".to_string(),
-            )));
+            warn!("Wallet address does not match genesis validator. This is expected for non-genesis nodes.");
         }
         info!("Wallet address validated successfully");
 
@@ -303,7 +311,7 @@ impl Node {
         info!("Opening Qanto native storage");
         let storage_config = StorageConfig {
             data_dir: config.data_dir.clone().into(),
-            cache_size: 1024 * 1024 * 100, // 100MB cache
+            cache_size: config.db_cache_bytes.unwrap_or(64 * 1024 * 1024),
             compression_enabled: true,
             encryption_enabled: true,
             max_file_size: 1024 * 1024 * 50, // 50MB max file size
@@ -318,6 +326,7 @@ impl Node {
             enable_write_batching: true,
             enable_bloom_filters: true,
             enable_async_io: true,
+            use_rocksdb: true,
             sync_interval: Duration::from_millis(100),
             compression_level: 3,
         };
@@ -348,14 +357,18 @@ impl Node {
         info!("QantoDAG initialized.");
 
         // Initialize shared state components.
-        let mempool = Arc::new(RwLock::new(Mempool::new(3600, 10_000_000, 10_000)));
+        let mempool_max_age = config.mempool_max_age_secs.unwrap_or(3600);
+        let mempool_max_size_bytes = config.mempool_max_size_bytes.unwrap_or(10_000_000);
+        let mempool_max_txs = config.mempool_max_size.unwrap_or(10_000);
+        let mempool = Arc::new(RwLock::new(Mempool::new(mempool_max_age, mempool_max_size_bytes, mempool_max_txs)));
         let utxos = Arc::new(RwLock::new(HashMap::with_capacity(MAX_UTXOS)));
         let proposals = Arc::new(RwLock::new(Vec::with_capacity(MAX_PROPOSALS)));
 
         // Create genesis UTXO with the entire 21 billion QAN supply allocated to contract address
         // Clear any existing UTXOs first to ensure clean state
         {
-            if !genesis_exists {
+            let map_is_empty = utxos.read().await.is_empty();
+            if !genesis_exists || map_is_empty {
                 let mut utxos_lock = utxos.write().await;
                 utxos_lock.clear(); // Reset UTXO state completely
 
@@ -380,8 +393,8 @@ impl Node {
                     },
                 );
                 info!(
-                    "Genesis UTXO created with 21 billion QAN allocated to contract address: {}",
-                    config.contract_address
+                    "Genesis UTXO created/restored with 21 billion QAN allocated to contract address: {} (genesis_exists: {}, map_empty: {})",
+                    config.contract_address, genesis_exists, map_is_empty
                 );
                 info!("UTXO state reset - only contract address has balance now");
             } else {
@@ -389,8 +402,6 @@ impl Node {
             }
         }
 
-        // BUILD FIX (E0560): Remove `difficulty_hex` and `num_chains` from MinerConfig.
-        // These are no longer needed as the difficulty is determined dynamically from the block template.
         let miner_config = MinerConfig {
             address: wallet.address(),
             dag: dag_arc.clone(),
@@ -448,8 +459,29 @@ impl Node {
     /// and the core command processing loop. It gracefully handles shutdown on Ctrl+C.
     pub async fn start(&self) -> Result<(), NodeError> {
         // Create a channel for passing commands between the P2P layer and the core logic.
-        let (tx_p2p_commands, mut rx_p2p_commands) = mpsc::channel::<P2PCommand>(100);
-        let mut join_set: JoinSet<Result<(), anyhow::Error>> = JoinSet::new();
+        // INCREASED BUFFER SIZE FOR 10M TPS: 100 -> 200,000
+        let (tx_p2p_commands, mut rx_p2p_commands) = mpsc::channel::<P2PCommand>(200_000);
+        // Create a channel for sending commands to the internal P2P server.
+        let (tx_p2p_server, p2p_rx) = mpsc::channel::<P2PCommand>(200_000);
+        let mut join_set: JoinSet<NodeTaskExit> = JoinSet::new();
+
+        fn spawn_node_task<Fut>(
+            join_set: &mut JoinSet<NodeTaskExit>,
+            name: &'static str,
+            critical: bool,
+            fut: Fut,
+        ) where
+            Fut: std::future::Future<Output = Result<(), anyhow::Error>> + Send + 'static,
+        {
+            join_set.spawn(async move {
+                let result = fut.await;
+                NodeTaskExit {
+                    name,
+                    critical,
+                    result,
+                }
+            });
+        }
 
         // Get the cancellation token from resource cleanup system
         let shutdown_token = self.resource_cleanup.get_cancellation_token();
@@ -477,7 +509,7 @@ impl Node {
         {
             info!("[ISNM] Spawning periodic cloud presence check task.");
             let isnm_service_clone = self.isnm_service.clone();
-            let _task_handle = join_set.spawn(async move {
+            spawn_node_task(&mut join_set, "isnm_periodic_check", false, async move {
                 // Initial delay to allow the node to stabilize.
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 let mut interval =
@@ -490,10 +522,6 @@ impl Node {
                     if let Err(e) = isnm_service_clone.run_periodic_check().await {
                         warn!("[ISNM] Periodic check failed: {}", e);
                     }
-
-                    // FIX: Removed the redundant, direct call to perform_quantum_state_verification.
-                    // The `run_periodic_check` function already handles this internally. Calling it
-                    // twice was causing unnecessary CPU load and stalling the miner.
                 }
                 #[allow(unreachable_code)]
                 Ok(())
@@ -516,15 +544,19 @@ impl Node {
             let mempool_clone = self.mempool.clone();
             let utxos_clone = self.utxos.clone();
             let p2p_tx_clone = tx_p2p_commands.clone();
+            let p2p_server_tx_clone = tx_p2p_server.clone();
             let saga_clone = self.saga_pallet.clone();
             let mempool_batch_size = self.config.mempool_batch_size.unwrap_or(40000);
 
             async move {
                 while let Some(command) = rx_p2p_commands.recv().await {
                     match command {
-                        P2PCommand::BroadcastBlock(block) => {
+                        P2PCommand::InboundBlock { block, source_peer } => {
                             info!("\n{}", block);
-                            debug!("P2P received BroadcastBlock command for block {}", block.id);
+                            debug!(
+                                "P2P received InboundBlock {} from peer {}",
+                                block.id, source_peer
+                            );
 
                             let add_result = dag_clone
                                 .add_block(block.clone(), &utxos_clone, None, None)
@@ -533,21 +565,67 @@ impl Node {
                             match add_result {
                                 Ok(true) => {
                                     info!(
-                                        "✅ Block {} successfully added to DAG via P2P",
+                                        "✅ Block {} successfully added to DAG via InboundBlock",
                                         block.id
                                     );
                                     debug!("Running periodic maintenance after adding new block.");
                                     dag_clone.run_periodic_maintenance(mempool_batch_size).await;
                                 }
                                 Ok(false) => {
-                                    warn!("⚠️ Block {} was not added to DAG (already exists or rejected)", block.id);
-                                }
-                                Err(e) => {
-                                    error!(
-                                        "❌ Block {} failed validation or processing: {}",
-                                        block.id, e
+                                    warn!(
+                                        "⚠️ Block {} was not added to DAG (already exists or rejected)",
+                                        block.id
                                     );
                                 }
+                                Err(e) => {
+                                    // If parent missing, request it from source peer
+                                    match e {
+                                        QantoDAGError::InvalidParent(_msg) => {
+                                            // Check which parents are missing and request them
+                                            for parent_id in &block.parents {
+                                                // Use lazy hydration to determine if parent exists in caches/storage.
+                                                if dag_clone.get_block(parent_id).await.is_none() {
+                                                    let req = P2PCommand::RequestBlock {
+                                                        block_id: parent_id.clone(),
+                                                        peer_id: source_peer,
+                                                    };
+                                                    if let Err(send_err) =
+                                                        p2p_tx_clone.send(req).await
+                                                    {
+                                                        error!(
+                                                            "Failed to enqueue RequestBlock for missing parent {}: {}",
+                                                            parent_id, send_err
+                                                        );
+                                                    } else {
+                                                        info!(
+                                                            "Requested missing parent {} from {}",
+                                                            parent_id, source_peer
+                                                        );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        _ => {
+                                            error!(
+                                                "❌ Inbound block {} failed validation or processing: {}",
+                                                block.id, e
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        P2PCommand::BroadcastBlock(block) => {
+                            // Forward broadcast to the P2P server; do not re-add to DAG here.
+                            debug!(
+                                "Forwarding BroadcastBlock {} to internal P2P server",
+                                block.id
+                            );
+                            if let Err(e) = p2p_server_tx_clone
+                                .send(P2PCommand::BroadcastBlock(block))
+                                .await
+                            {
+                                error!("Failed to forward BroadcastBlock to P2P server: {}", e);
                             }
                         }
                         P2PCommand::BroadcastTransaction(tx) => {
@@ -633,7 +711,7 @@ impl Node {
                                     peer_id,
                                     block: Box::new(block.clone()),
                                 };
-                                if let Err(e) = p2p_tx_clone.send(cmd).await {
+                                if let Err(e) = p2p_server_tx_clone.send(cmd).await {
                                     error!("Failed to send SendBlockToOnePeer command: {}", e);
                                 }
                             } else {
@@ -670,7 +748,7 @@ impl Node {
 
                             // Send BroadcastState command with current state (tuple syntax)
                             let broadcast_cmd = P2PCommand::BroadcastState(blocks, utxos);
-                            if let Err(e) = p2p_tx_clone.send(broadcast_cmd).await {
+                            if let Err(e) = p2p_server_tx_clone.send(broadcast_cmd).await {
                                 error!("Failed to send BroadcastState command: {}", e);
                             } else {
                                 info!(
@@ -686,7 +764,12 @@ impl Node {
                 Ok(())
             }
         };
-        let _command_task_handle = join_set.spawn(command_processor_task);
+        spawn_node_task(
+            &mut join_set,
+            "command_processor",
+            true,
+            command_processor_task,
+        );
 
         // Register the command processor task with resource cleanup
         self.resource_cleanup
@@ -702,12 +785,68 @@ impl Node {
         let saga_for_websocket = self.saga_pallet.clone();
         let analytics_for_websocket = self.analytics.clone();
 
+        let max_ws_msg_bytes = self
+            .config
+            .rpc
+            .websocket_max_message_bytes
+            .unwrap_or(crate::websocket_server::DEFAULT_MAX_WS_MESSAGE_BYTES);
+        // In-memory balance index for fast REST lookups, fed by broadcaster
+        let balances_index: Arc<RwLock<HashMap<String, u64>>> =
+            Arc::new(RwLock::new(HashMap::new()));
         let websocket_state = Arc::new(WebSocketServerState::new(
             dag_for_websocket.clone(),
             saga_for_websocket,
             analytics_for_websocket,
+            balances_index.clone(),
+            max_ws_msg_bytes,
         ));
         // Balance events flow via BalanceBroadcaster bridge; no direct DAG → WS attachment.
+
+        // Load initial balances from storage for fast-path REST queries
+        // This scans keys with prefix `balance:` and decodes cached balances.
+        // Malformed entries are skipped with a warning.
+        {
+            let db = self.dag.db.clone();
+            let prefix = BALANCES_KEY_PREFIX.as_bytes().to_vec();
+            match db.keys_with_prefix(&prefix) {
+                Ok(keys) => {
+                    let mut idx = balances_index.write().await;
+                    for key in keys {
+                        // Derive address from key by stripping prefix
+                        if key.len() <= BALANCES_KEY_PREFIX.len() {
+                            continue;
+                        }
+                        let address_bytes = &key[BALANCES_KEY_PREFIX.len()..];
+                        let address = match String::from_utf8(address_bytes.to_vec()) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                warn!("Skipping non-UTF8 balance key: {}", e);
+                                continue;
+                            }
+                        };
+                        match db.get(&key) {
+                            Ok(Some(val)) => match decode_balance(&val) {
+                                Ok(bu) => {
+                                    idx.insert(address, bu);
+                                }
+                                Err(err_str) => {
+                                    warn!("Malformed balance value for key: {}", err_str);
+                                }
+                            },
+                            Ok(None) => {
+                                // Tombstoned/missing; skip
+                            }
+                            Err(e) => {
+                                warn!("Failed to read balance value: {}", e);
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to list balance keys: {}", e);
+                }
+            }
+        }
 
         // Initialize high-throughput BalanceBroadcaster and attach to DAG
         // Capacity defaults to 65,536 (min 1,024 enforced in BalanceBroadcaster::new)
@@ -721,6 +860,7 @@ impl Node {
         {
             let ws_state = websocket_state.clone();
             let bb = balance_broadcaster.clone();
+            let index_for_bridge = balances_index.clone();
             let balance_bridge_task = async move {
                 let mut rx = bb.subscribe();
                 loop {
@@ -728,9 +868,24 @@ impl Node {
                         Ok(update) => {
                             // Clamp u128 base units to u64 for WebSocket/RPC consumers.
                             let base_units = (update.balance.min(u128::from(u64::MAX))) as u64;
+                            // Update fast index for REST balance handler
+                            {
+                                let mut idx = index_for_bridge.write().await;
+                                idx.insert(update.address.clone(), base_units);
+                            }
                             // Forward using existing helper (computes seconds timestamp).
+                            let wb = crate::types::WalletBalance {
+                                spendable_confirmed: base_units,
+                                immature_coinbase_confirmed: 0,
+                                unconfirmed_delta: 0,
+                                total_confirmed: base_units,
+                            };
                             ws_state
-                                .broadcast_balance_update(update.address.clone(), base_units)
+                                .broadcast_balance_update_with_finalized(
+                                    update.address.clone(),
+                                    wb,
+                                    update.finalized,
+                                )
                                 .await;
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
@@ -746,7 +901,7 @@ impl Node {
                 #[allow(unreachable_code)]
                 Ok(())
             };
-            let _balance_bridge_task_handle = join_set.spawn(balance_bridge_task);
+            spawn_node_task(&mut join_set, "balance_bridge", false, balance_bridge_task);
             // Register bridge task for cleanup symmetry
             self.resource_cleanup
                 .register_task(|_token| async move { Ok(()) })
@@ -780,7 +935,10 @@ impl Node {
 
                     // Drain any balance events emitted by DAG to keep the channel active
                     while let Ok(balance_event) = balances_rx.try_recv() {
-                        last_balances.insert(balance_event.address.clone(), balance_event.balance);
+                        last_balances.insert(
+                            balance_event.address.clone(),
+                            balance_event.balance.total_confirmed,
+                        );
                     }
 
                     // Check for new blocks
@@ -837,9 +995,13 @@ impl Node {
                                 let prev = last_balances.get(&address).copied().unwrap_or(u64::MAX);
                                 if prev != current_balance {
                                     last_balances.insert(address.clone(), current_balance);
-                                    ws_state
-                                        .broadcast_balance_update(address.clone(), current_balance)
-                                        .await;
+                                    let wb = crate::types::WalletBalance {
+                                        spendable_confirmed: current_balance,
+                                        immature_coinbase_confirmed: 0,
+                                        unconfirmed_delta: 0,
+                                        total_confirmed: current_balance,
+                                    };
+                                    ws_state.broadcast_balance_update(address.clone(), wb).await;
                                 }
                             }
                         }
@@ -857,7 +1019,12 @@ impl Node {
                 Ok(())
             }
         };
-        let _websocket_broadcast_task_handle = join_set.spawn(websocket_broadcast_task);
+        spawn_node_task(
+            &mut join_set,
+            "websocket_broadcast",
+            false,
+            websocket_broadcast_task,
+        );
 
         // Register the WebSocket broadcasting task with resource cleanup
         self.resource_cleanup
@@ -868,10 +1035,10 @@ impl Node {
             })
             .await?;
 
-        // --- P2P Server / Solo Miner Task ---
-        // If peers are configured, start the P2P server. Otherwise, run in solo mining mode.
-        if !self.config.peers.is_empty() {
-            info!("Peers detected in config, initializing P2P server task...");
+        // --- P2P Server Task ---
+        // Always start the P2P server to listen for incoming connections
+        {
+            info!("Initializing P2P server task...");
             let p2p_dag_clone = self.dag.clone();
             let p2p_mempool_clone = self.mempool.clone();
             let p2p_utxos_clone = self.utxos.clone();
@@ -941,13 +1108,12 @@ impl Node {
                 }
 
                 // Run the P2P server's event loop.
-                let (_p2p_tx, p2p_rx) = mpsc::channel::<P2PCommand>(100);
                 p2p_server
                     .run(p2p_rx)
                     .await
                     .map_err(|e| anyhow::anyhow!("P2P server error: {e}"))
             };
-            let _p2p_task_handle = join_set.spawn(p2p_task_fut);
+            spawn_node_task(&mut join_set, "p2p_server", true, p2p_task_fut);
 
             // Register the P2P task with resource cleanup
             self.resource_cleanup
@@ -957,42 +1123,38 @@ impl Node {
                     Ok(())
                 })
                 .await?;
-        } else if self.config.mining_enabled {
+        }
+
+        // --- Mining Task ---
+        if self.config.mining_enabled && self.dag.feature_flags.mining_enabled {
             if self.config.adaptive_mining_enabled {
                 info!("No peers found. Running in single-node mode. Spawning adaptive miner...");
 
                 // Create adaptive mining configuration
-                let adaptive_config = crate::adaptive_mining::TestnetMiningConfig::default();
+                let adaptive_config = qanto_core::adaptive_mining::TestnetMiningConfig::default();
 
                 // Create mining metrics for adaptive mining
                 let mining_metrics = Arc::new(crate::mining_metrics::MiningMetrics::new());
 
-                // Create adaptive mining loop
-                let mut adaptive_loop = AdaptiveMiningLoop::new(
-                    adaptive_config,
-                    None, // diagnostics
-                    mining_metrics,
+                // Create node-side mining adapter and generic adaptive loop
+                let adapter = crate::node_mining_adapter::NodeMiningAdapter::new(
+                    self.dag.clone(),
+                    self.wallet.clone(),
+                    self.miner.clone(),
+                    self.mempool.clone(),
+                    self.utxos.clone(),
+                    mining_metrics.clone(),
+                    None,
+                    Some(tx_p2p_server.clone()),
                 );
+                let mut adaptive_loop = AdaptiveMiningLoop::new(adaptive_config, adapter);
 
-                // Clone necessary components for the adaptive mining task
-                let adaptive_dag_clone = self.dag.clone();
-                let adaptive_wallet_clone = self.wallet.clone();
-                let adaptive_miner_clone = self.miner.clone();
-                let adaptive_mempool_clone = self.mempool.clone();
-                let adaptive_utxos_clone = self.utxos.clone();
                 let adaptive_shutdown_token = shutdown_token.clone();
 
-                let _adaptive_miner_task_handle = join_set.spawn(async move {
+                spawn_node_task(&mut join_set, "adaptive_miner", true, async move {
                     debug!("[DEBUG] Spawning adaptive mining task");
                     if let Err(e) = adaptive_loop
-                        .run_adaptive_mining_loop(
-                            adaptive_dag_clone,
-                            adaptive_wallet_clone,
-                            adaptive_miner_clone,
-                            adaptive_mempool_clone,
-                            adaptive_utxos_clone,
-                            adaptive_shutdown_token,
-                        )
+                        .run_adaptive_mining_loop(adaptive_shutdown_token)
                         .await
                     {
                         error!("Adaptive mining loop failed: {e}");
@@ -1029,20 +1191,22 @@ impl Node {
                 let miner = self.miner.clone();
                 let shutdown_token = shutdown_token.clone();
                 let logging_config = self.config.logging.clone();
+                let p2p_command_sender = tx_p2p_commands.clone();
 
-                let _solo_miner_task_handle = join_set.spawn(async move {
+                spawn_node_task(&mut join_set, "solo_miner", true, async move {
                     debug!("[DEBUG] Spawning mining task");
 
                     // Calculate mining interval inside the async closure using captured value
                     #[cfg(feature = "performance-test")]
-                    let mining_interval_secs = if target_block_time < 1000 {
-                        // For performance testing with sub-second intervals, use at least 1 second
-                        // but log the actual target for reference
-                        info!("Performance test mode: target_block_time {} ms, using 1 second mining interval", 
-                              target_block_time);
-                        1
-                    } else {
-                        (target_block_time as f64 / 1000.0) as u64
+                    let mining_interval_secs = {
+                        let target_secs = target_block_time as f64 / 1000.0;
+                        if target_secs < 1.0 {
+                            info!("Performance test mode: target_block_time {} ms, allowing sub-second mining interval", 
+                                  target_block_time);
+                            0
+                        } else {
+                            target_secs as u64
+                        }
                     };
 
                     #[cfg(not(feature = "performance-test"))]
@@ -1078,18 +1242,17 @@ impl Node {
                         mempool,
                         utxos,
                         miner,
+                        p2p_command_sender,
                         block_creation_interval_ms,
-                        4,    // mining_workers
-                        100,  // candidate_buffer_size
-                        50,   // mined_buffer_size
+                        4,
+                        100,
+                        50,
                         logging_config,
                         shutdown_token,
                     );
                     let result = decoupled_producer.run().await;
-                    // Convert to a simple error type that doesn't capture self
                     result.map_err(|e| {
                         let error_msg = format!("DAG error: {e}");
-                        // Create a simple anyhow error instead of NodeError
                         anyhow::anyhow!(error_msg)
                     })
                 });
@@ -1102,8 +1265,9 @@ impl Node {
             dag: self.dag.clone(),
             mempool: self.mempool.clone(),
             utxos: self.utxos.clone(),
+            balances_index: balances_index.clone(),
             api_address: self.config.api_address.clone(),
-            p2p_command_sender: tx_p2p_commands.clone(),
+            p2p_command_sender: tx_p2p_server.clone(),
             saga: self.saga_pallet.clone(),
             websocket_state: websocket_state.clone(),
             native_network: None,
@@ -1136,35 +1300,24 @@ impl Node {
             transaction_sender,
         };
 
-        // --- Main Event Loop with Concurrent Task Management ---
-        // Uses tokio::select! to concurrently run critical tasks and handle failures gracefully
-        tokio::select! {
-            biased;
-            _ = signal::ctrl_c() => {
-                info!("Received Ctrl+C, initiating graceful shutdown...");
-                self.resource_cleanup.request_shutdown();
-
-                // Wait for graceful shutdown with timeout
-                if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
-                    warn!("Graceful shutdown failed: {}, forcing shutdown", e);
-                }
-
-                warn!("Node shutdown initiated by Ctrl+C.");
-            },
-            // API Server Task - handles binding failures gracefully
-            api_result = async {
-                // Set up a rate limiter for the API to prevent abuse.
+        {
+            let app_state = app_state.clone();
+            spawn_node_task(&mut join_set, "api_server", true, async move {
                 let rate_limiter: Arc<DirectApiRateLimiter> =
                     Arc::new(RateLimiter::direct(Quota::per_second(nonzero!(50u32))));
 
-                // Define the API routes using Axum router.
+                let submit_routes = Router::new()
+                    .route("/transaction", post(submit_transaction))
+                    .route("/submit-transactions", post(submit_transactions))
+                    .layer(DefaultBodyLimit::max(64 * 1024 * 1024));
+
                 let api_routes = Router::new()
                     .route("/info", get(info_handler))
                     .route("/balance/{address}", get(get_balance))
+                    .route("/api/v1/accounts/{address}/balance", get(get_balance))
                     .route("/utxos/{address}", get(get_utxos))
-                    .route("/transaction", post(submit_transaction))
-                    .route("/submit-transactions", post(submit_transactions))
                     .route("/block/{id}", get(get_block))
+                    .route("/transaction/{id}", get(get_transaction))
                     .route("/dag", get(get_dag))
                     .route("/blocks", get(get_block_ids))
                     .route("/health", get(health_check))
@@ -1173,143 +1326,187 @@ impl Node {
                     .route("/analytics/dashboard", get(analytics_dashboard_handler))
                     .route("/metrics", get(metrics_json_handler))
                     .route("/metrics/prometheus", get(metrics_prometheus_handler))
-                    // /saga/ask route removed for production hardening
                     .route("/p2p_getConnectedPeers", get(get_connected_peers_handler))
+                    .merge(submit_routes)
                     .layer(middleware::from_fn_with_state(
                         rate_limiter,
                         rate_limit_layer,
                     ))
                     .with_state(app_state.clone());
 
-                // Use the pre-created GraphQL context
                 let graphql_schema = create_graphql_schema();
-
-                // Create WebSocket routes
-                let websocket_routes = create_websocket_router((*app_state.websocket_state).clone());
-
-                // Create GraphQL routes
+                let websocket_routes =
+                    create_websocket_router((*app_state.websocket_state).clone());
                 let graphql_routes = create_graphql_router(graphql_schema);
-
-                // Combine API, WebSocket, and GraphQL routes
                 let app = api_routes.merge(websocket_routes).merge(graphql_routes);
 
-                let addr: SocketAddr = app_state.api_address.parse().map_err(|e| {
-                    NodeError::Config(ConfigError::Validation(format!("Invalid API address: {e}")))
-                })?;
+                let addr: SocketAddr = app_state
+                    .api_address
+                    .parse()
+                    .map_err(|e| anyhow::anyhow!("Invalid API address: {e}"))?;
 
-                // Attempt to bind to the API address - this can fail gracefully now
-                let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
-                    NodeError::ServerExecution(format!("Failed to bind to API address {addr}: {e}"))
-                })?;
+                let listener = tokio::net::TcpListener::bind(addr)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to bind to API address {addr}: {e}"))?;
 
                 match listener.local_addr() {
                     Ok(addr) => info!("API server listening on {}", addr),
                     Err(e) => warn!("Could not get listener address: {}", e),
                 }
 
-                // Start the Axum server.
-                if let Err(e) = axum::serve(listener, app.into_make_service()).await {
-                    error!("API server failed: {e}");
-                    return Err(NodeError::ServerExecution(format!(
-                        "API server failed: {e}"
-                    )));
-                }
+                axum::serve(listener, app.into_make_service())
+                    .await
+                    .map_err(|e| anyhow::anyhow!("API server failed: {e}"))?;
+
                 Ok(())
-            } => {
-                match api_result {
-                    Ok(_) => {
-                        warn!("API server completed unexpectedly");
-                    }
-                    Err(e) => {
-                        error!("API server failed: {}", e);
-                        self.resource_cleanup.request_shutdown();
+            });
 
-                        // Wait for graceful shutdown with timeout
-                        if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
-                            warn!("Graceful shutdown failed: {}, forcing shutdown", e);
-                        }
+            self.resource_cleanup
+                .register_task(|_token| async move { Ok(()) })
+                .await?;
+        }
 
-                        warn!("Node shutdown initiated by API server failure.");
-                        return Err(e);
-                    }
-                }
-            },
-            // RPC Server Task - runs gRPC server for transaction and balance
-            rpc_result = async {
-                let rpc_addr: SocketAddr = self.config.rpc.address.parse().map_err(|e| {
-                    NodeError::Config(ConfigError::Validation(format!("Invalid RPC address: {e}")))
-                })?;
+        {
+            let rpc_addr_raw = self.config.rpc.address.clone();
+            let dag = self.dag.clone();
+            let utxos = self.utxos.clone();
+            let mempool = self.mempool.clone();
+            let tx_p2p_commands = tx_p2p_commands.clone();
+            let balance_sender = websocket_state.balance_sender.clone();
+            let wallet = self.wallet.clone();
+            let websocket_state = websocket_state.clone();
 
-                info!("Starting RPC server on {}", rpc_addr);
+            spawn_node_task(&mut join_set, "json_rpc_server", true, async move {
+                let rpc_addr: SocketAddr = rpc_addr_raw
+                    .parse()
+                    .map_err(|e| anyhow::anyhow!("Invalid RPC address: {e}"))?;
+
+                info!("Starting JSON-RPC server on {}", rpc_addr);
 
                 let backend = Arc::new(NodeRpcBackend::new(
-                    self.dag.clone(),
-                    self.utxos.clone(),
-                    self.mempool.clone(),
-                    tx_p2p_commands.clone(),
-                    websocket_state.balance_sender.clone(),
+                    dag,
+                    utxos,
+                    mempool,
+                    tx_p2p_commands,
+                    balance_sender,
+                    wallet,
                 ));
 
-                match qanto_rpc::start(rpc_addr, backend).await {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(NodeError::ServerExecution(format!("RPC server failed: {e}"))),
-                }
-            } => {
-                match rpc_result {
-                    Ok(_) => {
-                        warn!("RPC server completed unexpectedly");
-                    }
-                    Err(e) => {
-                        error!("RPC server failed: {}", e);
-                        self.resource_cleanup.request_shutdown();
+                websocket_state.set_rpc_backend(backend.clone()).await;
 
-                        if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
-                            warn!("Graceful shutdown failed: {}, forcing shutdown", e);
+                let app = Router::new()
+                    .route("/", post(handle_json_rpc))
+                    .with_state(backend);
+
+                let listener = tokio::net::TcpListener::bind(rpc_addr).await.map_err(|e| {
+                    anyhow::anyhow!("Failed to bind to RPC address {rpc_addr}: {e}")
+                })?;
+
+                axum::serve(listener, app.into_make_service())
+                    .await
+                    .map_err(|e| anyhow::anyhow!("JSON-RPC server failed: {e}"))?;
+
+                Ok(())
+            });
+
+            self.resource_cleanup
+                .register_task(|_token| async move { Ok(()) })
+                .await?;
+        }
+
+        loop {
+            tokio::select! {
+                biased;
+                _ = signal::ctrl_c() => {
+                    info!("Received Ctrl+C, initiating graceful shutdown...");
+                    self.resource_cleanup.request_shutdown();
+
+                    if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
+                        warn!("Graceful shutdown failed: {}, forcing shutdown", e);
+                    }
+
+                    warn!("Node shutdown initiated by Ctrl+C.");
+                    break;
+                },
+                _ = shutdown_token.cancelled() => {
+                    info!("Shutdown requested, initiating graceful shutdown...");
+                    if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
+                        warn!("Graceful shutdown failed: {}, forcing shutdown", e);
+                    }
+                    break;
+                },
+                res = join_set.join_next() => {
+                    let Some(res) = res else {
+                        warn!("All node tasks completed; shutting down.");
+                        break;
+                    };
+
+                    match res {
+                        Ok(exit) => {
+                            if self.resource_cleanup.is_shutdown_requested() {
+                                break;
+                            }
+                            match exit.result {
+                                Ok(()) => {
+                                    if exit.critical {
+                                        error!(
+                                            "Critical node task '{}' completed unexpectedly",
+                                            exit.name
+                                        );
+                                        self.resource_cleanup.request_shutdown();
+
+                                        if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
+                                            warn!("Graceful shutdown failed: {}, forcing shutdown", e);
+                                        }
+
+                                        warn!("Node shutdown initiated by critical task completion.");
+                                        return Err(NodeError::TaskEnded(exit.name.to_string()));
+                                    }
+
+                                    warn!(
+                                        "Non-critical node task '{}' completed; continuing",
+                                        exit.name
+                                    );
+                                }
+                                Err(e) => {
+                                    if exit.critical {
+                                        error!("Critical node task '{}' failed: {}", exit.name, e);
+                                        self.resource_cleanup.request_shutdown();
+
+                                        if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
+                                            warn!("Graceful shutdown failed: {}, forcing shutdown", e);
+                                        }
+
+                                        warn!("Node shutdown initiated by critical task failure.");
+                                        return Err(e.into());
+                                    }
+
+                                    warn!("Non-critical node task '{}' failed: {}", exit.name, e);
+                                }
+                            }
                         }
+                        Err(e) => {
+                            if e.is_cancelled() {
+                                if self.resource_cleanup.is_shutdown_requested() {
+                                    break;
+                                }
+                                warn!("A node task was cancelled unexpectedly: {}", e);
+                                continue;
+                            }
 
-                        warn!("Node shutdown initiated by RPC server failure.");
-                        return Err(e);
-                    }
-                }
-            },
-            // Monitor spawned tasks for failures
-            Some(res) = join_set.join_next() => {
-                match res {
-                    Ok(Err(e)) => {
-                        error!("A critical node task failed: {}", e);
-                        self.resource_cleanup.request_shutdown();
+                            error!("A critical node task panicked: {}", e);
+                            self.resource_cleanup.request_shutdown();
 
-                        // Wait for graceful shutdown with timeout
-                        if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
-                            warn!("Graceful shutdown failed: {}, forcing shutdown", e);
-                        }
+                            if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
+                                warn!("Graceful shutdown failed: {}, forcing shutdown", e);
+                            }
 
-                        warn!("Node shutdown initiated by critical task failure.");
-                        return Err(e.into());
-                    }
-                    Err(e) => {
-                        error!("A critical node task panicked: {}", e);
-                        self.resource_cleanup.request_shutdown();
-
-                        // Wait for graceful shutdown with timeout
-                        if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
-                            warn!("Graceful shutdown failed: {}, forcing shutdown", e);
-                        }
-
-                        warn!("Node shutdown initiated by critical task panic.");
-                        return Err(NodeError::Join(e));
-                    }
-                    _ => {
-                        warn!("Node shutdown initiated by unknown task completion.");
-                        self.resource_cleanup.request_shutdown();
-
-                        // Wait for graceful shutdown with timeout
-                        if let Err(e) = self.resource_cleanup.graceful_shutdown().await {
-                            warn!("Graceful shutdown failed: {}, forcing shutdown", e);
+                            warn!("Node shutdown initiated by critical task panic.");
+                            return Err(NodeError::Join(e));
                         }
                     }
-                }
-            },
+                },
+            }
         }
 
         // Gracefully shut down all spawned tasks.
@@ -1420,12 +1617,70 @@ impl Node {
     }
 }
 
+pub struct QantoNodeBuilder {
+    config: Config,
+    config_path: String,
+    wallet: Option<Arc<Wallet>>,
+    p2p_identity_path: String,
+    peer_cache_path: String,
+}
+
+impl QantoNodeBuilder {
+    pub fn new(config: Config) -> Self {
+        Self {
+            config,
+            config_path: String::new(),
+            wallet: None,
+            p2p_identity_path: String::new(),
+            peer_cache_path: String::new(),
+        }
+    }
+    pub fn config_path(mut self, path: String) -> Self {
+        self.config_path = path;
+        self
+    }
+    pub fn wallet(mut self, wallet: Arc<Wallet>) -> Self {
+        self.wallet = Some(wallet);
+        self
+    }
+    pub fn p2p_identity_path(mut self, path: String) -> Self {
+        self.p2p_identity_path = path;
+        self
+    }
+    pub fn peer_cache_path(mut self, path: String) -> Self {
+        self.peer_cache_path = path;
+        self
+    }
+    pub async fn build(self) -> Result<Node, NodeError> {
+        let wallet = self.wallet.ok_or_else(|| {
+            NodeError::Config(ConfigError::Validation("Wallet not provided".to_string()))
+        })?;
+        Node::new(
+            self.config,
+            self.config_path,
+            wallet,
+            &self.p2p_identity_path,
+            self.peer_cache_path,
+        )
+        .await
+    }
+}
+
 /// Axum middleware to enforce API rate limiting.
 async fn rate_limit_layer(
     MiddlewareState(limiter): MiddlewareState<Arc<DirectApiRateLimiter>>,
     req: HttpRequest<Body>,
     next: Next,
 ) -> Result<axum::response::Response, StatusCode> {
+    let path = req.uri().path();
+    if path == "/transaction"
+        || path == "/submit-transactions"
+        || path.starts_with("/utxos/")
+        || path == "/dag"
+        || path == "/info"
+    {
+        return Ok(next.run(req).await);
+    }
     if limiter.check().is_err() {
         warn!("API rate limit exceeded for: {:?}", req.uri());
         Err(StatusCode::TOO_MANY_REQUESTS)
@@ -1440,6 +1695,7 @@ struct AppState {
     dag: Arc<QantoDAG>,
     mempool: Arc<RwLock<Mempool>>,
     utxos: Arc<RwLock<HashMap<String, UTXO>>>,
+    balances_index: Arc<RwLock<HashMap<String, u64>>>,
     api_address: String,
     p2p_command_sender: mpsc::Sender<P2PCommand>,
     #[allow(dead_code)]
@@ -1504,6 +1760,29 @@ async fn mempool_handler(
     drop(mempool_read_guard);
     debug!("Mempool read lock released (API)");
     Ok(Json(txs))
+}
+
+async fn get_transaction(
+    State(state): State<AppState>,
+    AxumPath(id_str): AxumPath<String>,
+) -> Result<Json<Transaction>, StatusCode> {
+    if id_str.len() > 128 || id_str.is_empty() {
+        warn!("Invalid transaction ID length: {id_str}");
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    if let Some(tx) = state.dag.get_transaction(&id_str).await {
+        return Ok(Json(tx));
+    }
+
+    let mempool_read_guard = state.mempool.read().await;
+    let mempool_tx = mempool_read_guard.get_transaction_by_id(&id_str).await;
+    drop(mempool_read_guard);
+
+    match mempool_tx {
+        Some(tx) => Ok(Json(tx)),
+        None => Err(StatusCode::NOT_FOUND),
+    }
 }
 
 /// A readiness probe endpoint.
@@ -1610,6 +1889,24 @@ async fn get_balance(
             message: "Invalid address format".to_string(),
             details: None,
         });
+    }
+    // Prefer fast path via live balance index; fallback to UTXO scan
+    if let Some(bu) = {
+        let idx = state.balances_index.read().await;
+        idx.get(&address).cloned()
+    } {
+        let int_part = bu / crate::transaction::SMALLEST_UNITS_PER_QAN;
+        let frac_part = bu % crate::transaction::SMALLEST_UNITS_PER_QAN;
+        let balance_str = format!(
+            "{}.{:0width$}",
+            int_part,
+            frac_part,
+            width = crate::transaction::DECIMALS_PER_QAN
+        );
+        return Ok(Json(BalanceResponse {
+            balance: balance_str,
+            base_units: bu,
+        }));
     }
     let utxos_read_guard = state.utxos.read().await;
     let resp = make_balance_response(&utxos_read_guard, &address);
@@ -1783,9 +2080,9 @@ async fn submit_transactions(
     // Batch-ingest accepted transactions into local mempool
     if !accepted_txs.is_empty() {
         let (mp_accepted, mp_rejected) = {
-            let mempool_guard = state.mempool.write().await;
+            let mempool_guard = state.mempool.read().await;
             mempool_guard
-                .add_transaction_batch(accepted_txs.clone(), &utxos_read_guard, &state.dag)
+                .add_verified_batch_optimized(accepted_txs.clone())
                 .await
         };
 

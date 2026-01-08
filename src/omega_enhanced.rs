@@ -13,7 +13,7 @@ use crate::omega::{identity::ThreatLevel, reflect_on_action};
 use crate::qantodag::QantoDAG;
 
 use anyhow::{Context, Result};
-use my_blockchain::qanto_hash;
+use qanto_core::qanto_native_crypto::qanto_hash;
 
 use crate::qanto_compat::sp_core::H256;
 use rand::Rng;
@@ -64,12 +64,69 @@ pub struct CrossChainEffect {
 }
 
 /// Security level for cross-chain operations
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 pub enum SecurityLevel {
     Low,
     Medium,
     High,
     Critical,
+}
+
+/// Manager for secure cross-chain coordination
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrossChainManager {
+    pending_effects: HashMap<H256, CrossChainEffect>,
+    confirmed_effects: HashMap<H256, u64>, // Hash -> Timestamp
+    failed_effects: HashMap<H256, String>, // Hash -> Error reason
+}
+
+impl CrossChainManager {
+    pub fn new() -> Self {
+        Self {
+            pending_effects: HashMap::new(),
+            confirmed_effects: HashMap::new(),
+            failed_effects: HashMap::new(),
+        }
+    }
+
+    pub fn submit_effect(&mut self, effect: CrossChainEffect) -> H256 {
+        let hash = self.calculate_hash(&effect);
+        self.pending_effects.insert(hash, effect);
+        hash
+    }
+
+    pub fn confirm_effect(&mut self, hash: H256) {
+        if self.pending_effects.remove(&hash).is_some() {
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            self.confirmed_effects.insert(hash, now);
+        }
+    }
+
+    pub fn fail_effect(&mut self, hash: H256, reason: String) {
+        if self.pending_effects.remove(&hash).is_some() {
+            self.failed_effects.insert(hash, reason);
+        }
+    }
+
+    fn calculate_hash(&self, effect: &CrossChainEffect) -> H256 {
+        let mut combined_data = Vec::new();
+        combined_data.extend_from_slice(effect.target_chain.as_bytes());
+        combined_data.extend_from_slice(effect.effect_type.as_bytes());
+        combined_data.extend_from_slice(&effect.payload);
+        combined_data.extend_from_slice(&[effect.security_level as u8]);
+
+        let hash = qanto_hash(&combined_data);
+        H256::from(*hash.as_bytes())
+    }
+}
+
+impl Default for CrossChainManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Enhanced governance proposal
@@ -178,6 +235,7 @@ pub enum ProposalStatus {
     Rejected,
     Executed,
     Expired,
+    Failed,
     OmegaRejected, // New status for OMEGA protocol rejection
 }
 
@@ -207,6 +265,8 @@ pub struct EnhancedOmegaOrchestrator {
     metrics: EnhancedSimulationMetrics,
     quantum_entropy_pool: Vec<u8>,
     stability_history: Vec<f64>,
+    #[allow(dead_code)]
+    cross_chain_manager: CrossChainManager,
 }
 
 impl EnhancedOmegaOrchestrator {
@@ -220,6 +280,7 @@ impl EnhancedOmegaOrchestrator {
             metrics: EnhancedSimulationMetrics::new(),
             quantum_entropy_pool: Self::generate_quantum_entropy(),
             stability_history: Vec::with_capacity(1000),
+            cross_chain_manager: CrossChainManager::new(),
         }
     }
 
@@ -535,9 +596,7 @@ impl EnhancedOmegaOrchestrator {
                     effect.target_chain, effect.effect_type, effect.security_level, effect.confirmation_required
                 );
 
-                // Simulate cross-chain communication delay based on security level
-                // Optimized: Replace artificial delay with immediate processing
-                // Security validation is now done through cryptographic verification
+                // Security validation through cryptographic verification
                 let security_weight = match effect.security_level {
                     SecurityLevel::Low => 1.0,
                     SecurityLevel::Medium => 1.2,
@@ -545,7 +604,7 @@ impl EnhancedOmegaOrchestrator {
                     SecurityLevel::Critical => 2.0,
                 };
 
-                // Apply security weight to gas calculation instead of delay
+                // Apply security weight to gas calculation
                 let _security_gas = (100.0 * security_weight) as u64;
 
                 // For critical security level, perform additional OMEGA reflection
@@ -562,11 +621,20 @@ impl EnhancedOmegaOrchestrator {
                     }
                 }
 
-                // In a real implementation, this would:
-                // 1. Submit the effect to the target chain with appropriate security measures
-                // 2. Wait for confirmation if required
-                // 3. Handle timeouts and retries with exponential backoff
-                // 4. Validate responses cryptographically
+                // Submit to CrossChainManager
+                let effect_hash = self.cross_chain_manager.submit_effect(effect.clone());
+
+                // Simulate confirmation if not required or for low security
+                // In production, this would wait for async confirmation from the relayer
+                if !effect.confirmation_required || effect.security_level == SecurityLevel::Low {
+                    self.cross_chain_manager.confirm_effect(effect_hash);
+                    info!("Auto-confirmed cross-chain effect {}", effect_hash);
+                } else {
+                    info!(
+                        "Cross-chain effect {} submitted and pending confirmation",
+                        effect_hash
+                    );
+                }
             }
         }
         Ok(())
@@ -828,21 +896,41 @@ impl EnhancedOmegaOrchestrator {
             .average_gas_usage
             .fetch_add(execution_gas, Ordering::Relaxed);
 
-        // In a real implementation, this would:
-        // 1. Validate the execution code against security policies
-        // 2. Execute it in a sandboxed environment with appropriate permissions
-        // 3. Apply the changes to the system state with rollback capability
-        // 4. Emit events for the changes with cryptographic proofs
-        // 5. Update system metrics and logs
+        // Real implementation of sandboxed execution
+        let executor = SandboxedExecutor::new(security_impact.clone());
+        match executor.execute(&execution_code) {
+            Ok(execution_result) => {
+                info!(
+                    "Sandboxed execution successful: {} ops, {} events",
+                    execution_result.operations_count,
+                    execution_result.events.len()
+                );
 
-        // Update proposal status
-        if let Some(proposal) = self.governance_proposals.get_mut(&proposal_id) {
-            proposal.status = ProposalStatus::Executed;
+                // In a real system, we would apply these state changes here
+                // for (key, value) in execution_result.state_changes {
+                //     self.state_db.put(key, value);
+                // }
+
+                // Update proposal status
+                if let Some(proposal) = self.governance_proposals.get_mut(&proposal_id) {
+                    proposal.status = ProposalStatus::Executed;
+                }
+                info!(
+                    "Successfully executed enhanced governance proposal {}",
+                    proposal_id
+                );
+            }
+            Err(e) => {
+                error!(
+                    "Sandboxed execution failed for proposal {}: {}",
+                    proposal_id, e
+                );
+                if let Some(proposal) = self.governance_proposals.get_mut(&proposal_id) {
+                    proposal.status = ProposalStatus::Failed; // Or some error status
+                }
+                return Err(anyhow::anyhow!("Execution failed: {}", e));
+            }
         }
-        info!(
-            "Successfully executed enhanced governance proposal {}",
-            proposal_id
-        );
 
         Ok(())
     }
@@ -912,6 +1000,7 @@ impl EnhancedOmegaOrchestrator {
             parents: vec![],      // Would need proper parent resolution
             transactions: vec![], // Would contain actual transactions
             difficulty: 1.0,
+            target: None,
             validator: "enhanced_omega".to_string(),
             miner: "enhanced_omega".to_string(),
             nonce: 0,
@@ -927,7 +1016,7 @@ impl EnhancedOmegaOrchestrator {
             smart_contracts: vec![],
             carbon_credentials: vec![],
             epoch: 0,
-            reservation_miner_id: None,
+            reservation_snapshot_id: None,
             finality_proof: None,
         };
 
@@ -945,6 +1034,11 @@ impl EnhancedOmegaOrchestrator {
     /// Get execution context by dimension ID
     pub fn get_execution_context(&self, dimension_id: u64) -> Option<&EnhancedOmegaContext> {
         self.execution_contexts.get(&dimension_id)
+    }
+
+    /// Get cross-chain manager
+    pub fn get_cross_chain_manager(&self) -> &CrossChainManager {
+        &self.cross_chain_manager
     }
 
     /// List all active execution contexts
@@ -1137,6 +1231,7 @@ pub mod enhanced_simulation {
             enable_write_batching: true,
             enable_bloom_filters: true,
             enable_async_io: true,
+            use_rocksdb: true,
             sync_interval: Duration::from_millis(100),
             compression_level: 3,
         };
@@ -1503,5 +1598,163 @@ pub mod enhanced_simulation {
         set_threat_level(ThreatLevel::Nominal);
 
         Ok(())
+    }
+}
+
+/// Sandboxed Executor for safe governance code execution
+pub struct SandboxedExecutor {
+    #[allow(dead_code)]
+    security_impact: SecurityImpact,
+    max_ops: usize,
+}
+
+#[derive(Debug)]
+pub struct ExecutionResult {
+    pub operations_count: usize,
+    pub state_changes: HashMap<String, Vec<u8>>,
+    pub events: Vec<(String, Vec<u8>)>,
+}
+
+impl SandboxedExecutor {
+    pub fn new(security_impact: SecurityImpact) -> Self {
+        // Higher security impact allows fewer operations to minimize risk surface
+        let max_ops = match security_impact {
+            SecurityImpact::None => 1000,
+            SecurityImpact::Low => 500,
+            SecurityImpact::Medium => 200,
+            SecurityImpact::High => 100,
+            SecurityImpact::Critical => 50,
+        };
+
+        Self {
+            security_impact,
+            max_ops,
+        }
+    }
+
+    pub fn execute(&self, code: &[u8]) -> Result<ExecutionResult> {
+        let mut pc = 0;
+        let mut ops_count = 0;
+        let mut state_changes = HashMap::new();
+        let mut events = Vec::new();
+
+        while pc < code.len() {
+            if ops_count >= self.max_ops {
+                return Err(anyhow::anyhow!("Operation limit exceeded"));
+            }
+
+            let opcode = code[pc];
+            pc += 1;
+
+            match opcode {
+                // WRITE_STATE: [Op (1), KeyLen (1), Key (KeyLen), ValLen (2), Val (ValLen)]
+                0x01 => {
+                    if pc + 1 > code.len() {
+                        return Err(anyhow::anyhow!("Unexpected EOF"));
+                    }
+                    let key_len = code[pc] as usize;
+                    pc += 1;
+
+                    if pc + key_len > code.len() {
+                        return Err(anyhow::anyhow!("Unexpected EOF"));
+                    }
+                    let key = String::from_utf8(code[pc..pc + key_len].to_vec())
+                        .context("Invalid UTF-8 in key")?;
+                    pc += key_len;
+
+                    if pc + 2 > code.len() {
+                        return Err(anyhow::anyhow!("Unexpected EOF"));
+                    }
+                    let val_len = u16::from_le_bytes([code[pc], code[pc + 1]]) as usize;
+                    pc += 2;
+
+                    if pc + val_len > code.len() {
+                        return Err(anyhow::anyhow!("Unexpected EOF"));
+                    }
+                    let val = code[pc..pc + val_len].to_vec();
+                    pc += val_len;
+
+                    state_changes.insert(key, val);
+                }
+                // DELETE_STATE: [Op (1), KeyLen (1), Key (KeyLen)]
+                0x02 => {
+                    if pc + 1 > code.len() {
+                        return Err(anyhow::anyhow!("Unexpected EOF"));
+                    }
+                    let key_len = code[pc] as usize;
+                    pc += 1;
+
+                    if pc + key_len > code.len() {
+                        return Err(anyhow::anyhow!("Unexpected EOF"));
+                    }
+                    let key = String::from_utf8(code[pc..pc + key_len].to_vec())
+                        .context("Invalid UTF-8 in key")?;
+                    pc += key_len;
+
+                    // In a real implementation we might use a tombstone or removal op
+                    state_changes.insert(key, vec![]);
+                }
+                // EMIT_EVENT: [Op (1), TopicLen (1), Topic (TopicLen), DataLen (2), Data (DataLen)]
+                0x03 => {
+                    if pc + 1 > code.len() {
+                        return Err(anyhow::anyhow!("Unexpected EOF"));
+                    }
+                    let topic_len = code[pc] as usize;
+                    pc += 1;
+
+                    if pc + topic_len > code.len() {
+                        return Err(anyhow::anyhow!("Unexpected EOF"));
+                    }
+                    let topic = String::from_utf8(code[pc..pc + topic_len].to_vec())
+                        .context("Invalid UTF-8 in topic")?;
+                    pc += topic_len;
+
+                    if pc + 2 > code.len() {
+                        return Err(anyhow::anyhow!("Unexpected EOF"));
+                    }
+                    let data_len = u16::from_le_bytes([code[pc], code[pc + 1]]) as usize;
+                    pc += 2;
+
+                    if pc + data_len > code.len() {
+                        return Err(anyhow::anyhow!("Unexpected EOF"));
+                    }
+                    let data = code[pc..pc + data_len].to_vec();
+                    pc += data_len;
+
+                    events.push((topic, data));
+                }
+                // LOG: [Op (1), MsgLen (1), Msg (MsgLen)]
+                0x04 => {
+                    if pc + 1 > code.len() {
+                        return Err(anyhow::anyhow!("Unexpected EOF"));
+                    }
+                    let msg_len = code[pc] as usize;
+                    pc += 1;
+
+                    if pc + msg_len > code.len() {
+                        return Err(anyhow::anyhow!("Unexpected EOF"));
+                    }
+                    let msg = String::from_utf8(code[pc..pc + msg_len].to_vec())
+                        .context("Invalid UTF-8 in log message")?;
+                    pc += msg_len;
+
+                    info!("SANDBOX LOG: {}", msg);
+                    events.push(("LOG".to_string(), msg.into_bytes()));
+                }
+                // NO_OP: [Op (1)]
+                0x90 => {
+                    // Do nothing
+                }
+                _ => return Err(anyhow::anyhow!("Unknown opcode: 0x{:02x}", opcode)),
+            }
+
+            ops_count += 1;
+        }
+
+        Ok(ExecutionResult {
+            operations_count: ops_count,
+            state_changes,
+            events,
+        })
     }
 }

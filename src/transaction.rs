@@ -20,9 +20,10 @@ use crate::gas_fee_model::{FeeBreakdown, GasFeeError, GasFeeModel, StorageDurati
 use crate::omega;
 use crate::qantodag::QantoDAG;
 use crate::types::{HomomorphicEncrypted, QuantumResistantSignature, UTXO};
-use my_blockchain::qanto_hash;
+use qanto_core::qanto_native_crypto::qanto_hash;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -84,7 +85,7 @@ pub enum TransactionError {
     #[error("Timestamp error")]
     TimestampError,
     #[error("Wallet error: {0}")]
-    Wallet(#[from] crate::wallet::WalletError),
+    Wallet(#[from] crate::node_keystore::WalletError),
     #[error("Invalid metadata: {0}")]
     InvalidMetadata(String),
     #[error("Post-quantum crypto error: {0}")]
@@ -225,6 +226,15 @@ impl Transaction {
 
         let sender_str = hex::encode(dummy_sender);
         let receiver_str = hex::encode(dummy_receiver);
+        let outputs = vec![Output {
+            address: "dummy_miner_address".to_string(),
+            amount: 50_000_000_000,
+            homomorphic_encrypted: HomomorphicEncrypted {
+                ciphertext: vec![],
+                public_key: vec![],
+            },
+        }];
+        let metadata = HashMap::new();
 
         let signing_payload = TransactionSigningPayload {
             sender: &sender_str,
@@ -232,8 +242,8 @@ impl Transaction {
             amount: 100,
             fee: 0,
             inputs: &[],
-            outputs: &[],
-            metadata: &HashMap::new(),
+            outputs: &outputs,
+            metadata: &metadata,
             timestamp,
         };
 
@@ -253,26 +263,16 @@ impl Transaction {
             gas_price: 1,
             priority_fee: 0,
             inputs: vec![],
-            outputs: vec![Output {
-                address: "dummy_miner_address".to_string(),
-                amount: 50_000_000_000, // Example mining reward (50 QAN)
-                homomorphic_encrypted: HomomorphicEncrypted {
-                    ciphertext: vec![],
-                    public_key: vec![],
-                },
-            }],
+            outputs,
             timestamp,
-            metadata: HashMap::new(),
+            metadata,
             signature: signature_obj,
             fee_breakdown: None,
         })
     }
 
     /// Verifies the quantum-resistant signature of the transaction.
-    pub fn verify_signature(
-        &self,
-        _public_key: &crate::qanto_native_crypto::QantoPQPublicKey,
-    ) -> Result<(), TransactionError> {
+    pub fn verify_signature(&self) -> Result<(), TransactionError> {
         let signing_payload = TransactionSigningPayload {
             sender: &self.sender,
             receiver: &self.receiver,
@@ -581,7 +581,12 @@ impl Transaction {
             metadata: &self.metadata,
             timestamp: self.timestamp,
         };
-        let _data_to_verify = Self::serialize_for_signing(&signing_payload)?;
+        let data_to_verify = Self::serialize_for_signing(&signing_payload)?;
+        if !self.is_coinbase()
+            && !QuantumResistantSignature::verify(&self.signature, &data_to_verify)
+        {
+            return Err(TransactionError::QuantumSignatureVerification);
+        }
 
         if self.is_coinbase() {
             if self.fee != 0 {
@@ -648,7 +653,12 @@ impl Transaction {
             metadata: &self.metadata,
             timestamp: self.timestamp,
         };
-        let _data_to_verify = Self::serialize_for_signing(&signing_payload)?;
+        let data_to_verify = Self::serialize_for_signing(&signing_payload)?;
+        if !self.is_coinbase()
+            && !QuantumResistantSignature::verify(&self.signature, &data_to_verify)
+        {
+            return Err(TransactionError::QuantumSignatureVerification);
+        }
 
         if self.is_coinbase() {
             if self.fee != 0 {

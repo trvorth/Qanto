@@ -492,7 +492,7 @@ impl From<QantoBlock> for Block {
             height: block.height as i32,
             hash: block.id,
             previous_hash: block.parents.first().cloned().unwrap_or_default(),
-            timestamp: block.timestamp as i32,
+            timestamp: (block.timestamp / 1000) as i32,
             transaction_count: block.transactions.len() as i32,
             transactions: block.transactions.into_iter().map(|tx| tx.into()).collect(),
         }

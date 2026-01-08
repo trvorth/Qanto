@@ -26,20 +26,25 @@
 //! ```rust
 //! use qanto_core::{BalanceBroadcaster, BalanceUpdate};
 //! use tokio::task;
+//! use tokio::runtime::Runtime;
 //!
-//! let bb = BalanceBroadcaster::new(65_536);
-//! let mut rx = bb.subscribe();
+//! // Create a Tokio runtime for async tasks in this example.
+//! let rt = Runtime::new().unwrap();
+//! rt.block_on(async {
+//!     let bb = BalanceBroadcaster::new(65_536);
+//!     let mut rx = bb.subscribe();
 //!
-//! // Spawn a wallet UI updater
-//! task::spawn(async move {
-//!     while let Ok(update) = rx.recv().await {
-//!         // Update UI immediately with update.address and update.balance
-//!     }
+//!     // Spawn a wallet UI updater
+//!     task::spawn(async move {
+//!         while let Ok(update) = rx.recv().await {
+//!             // Update UI immediately with update.address and update.balance
+//!         }
+//!     });
+//!
+//!     // Somewhere in block processing
+//!     bb.apply_delta("addr1", 1_000); // credit
+//!     bb.apply_delta("addr1", -250); // debit
 //! });
-//!
-//! // Somewhere in block processing
-//! bb.apply_delta("addr1", 1_000); // credit
-//! bb.apply_delta("addr1", -250); // debit
 //! ```
 //!
 //! Merged `Display` for `QantoBlock`
@@ -51,7 +56,7 @@
 //! - `QantoBlock` retains `id` and `data`. Additional fields (`chain_id`, `height`,
 //!   `timestamp`, `parents`, `transactions_len`) have `serde(default)` to preserve
 //!   wire compatibility with older payloads.
-//! - `QantoBlock` is re-exported from `qanto_core::qanto_net` via `qanto_core::QantoBlock`.
+//! - `QantoBlock` is re-exported from `crate::qanto_net` via `crate::QantoBlock`.
 //!
 //! Quality Assurance
 //! - Unit tests verify `Display` truncation behavior and parent rendering.
@@ -59,7 +64,7 @@
 //! - Micro-bench tests print throughput metrics for operator review without heavy deps.
 //!
 //! Migration Guide
-//! 1. Imports: use `qanto_core::QantoBlock` where a displayable block is needed.
+//! 1. Imports: use `crate::QantoBlock` where a displayable block is needed.
 //! 2. Logging: prefer `format!("{}", block)` rather than custom formatters.
 //! 3. Wallet: instantiate `BalanceBroadcaster` and connect your wallet UI to `subscribe()`.
 //! 4. Storage/Net: existing `qanto_storage`, `qanto_p2p`, and `qanto_serde` integrations remain

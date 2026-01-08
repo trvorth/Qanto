@@ -24,7 +24,7 @@ mod config_tests {
 
 #[cfg(test)]
 mod wallet_tests {
-    use qanto::wallet::*;
+    use qanto::node_keystore::Wallet;
 
     #[test]
     fn test_wallet_creation() {

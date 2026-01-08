@@ -4,7 +4,7 @@ use bellman::{Circuit, ConstraintSystem, LinearCombination, SynthesisError};
 use bls12_381::Scalar;
 
 #[cfg(feature = "zk")]
-use my_blockchain::qanto_hash;
+use qanto_core::qanto_native_crypto::qanto_hash;
 #[cfg(feature = "zk")]
 use std::io;
 

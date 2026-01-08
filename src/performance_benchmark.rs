@@ -215,6 +215,7 @@ impl PerformanceBenchmark {
             enable_write_batching: true,
             enable_bloom_filters: true,
             enable_async_io: true,
+            use_rocksdb: true,
             sync_interval: Duration::from_millis(100),
             compression_level: 3,
         };

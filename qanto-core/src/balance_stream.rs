@@ -21,6 +21,8 @@ pub struct BalanceUpdate {
     pub balance: u128,
     /// Event timestamp in milliseconds since UNIX_EPOCH.
     pub timestamp_ms: u128,
+    /// Whether this update reflects a balance from a finalized block.
+    pub finalized: bool,
 }
 
 /// Balance subscription request for streaming updates over P2P.
@@ -32,6 +34,9 @@ pub struct BalanceSubscribe {
     pub subscription_id: String,
     /// Optional debounce interval in milliseconds for coalescing updates.
     pub debounce_ms: Option<u64>,
+    /// If true, stream only finalized balance updates for this address.
+    /// If None or false, stream all updates (finalized and non-finalized).
+    pub finalized_only: Option<bool>,
 }
 
 /// High-throughput balance broadcaster.
@@ -46,7 +51,11 @@ pub struct BalanceBroadcaster {
 impl BalanceBroadcaster {
     /// Create a new broadcaster with the specified channel capacity.
     pub fn new(capacity: usize) -> Self {
-        let (tx, _rx) = broadcast::channel::<BalanceUpdate>(capacity.max(1024));
+        // High throughput configuration:
+        // Ensure minimum buffer size is sufficient for 10M TPS bursts.
+        // Default to 1,000,000 if capacity is lower, to prevent lag during high velocity.
+        let effective_capacity = capacity.max(1_000_000);
+        let (tx, _rx) = broadcast::channel::<BalanceUpdate>(effective_capacity);
         Self {
             balances: Arc::new(DashMap::new()),
             tx,
@@ -70,6 +79,7 @@ impl BalanceBroadcaster {
                 address: address.to_string(),
                 balance: new_balance,
                 timestamp_ms: current_time_ms(),
+                finalized: false,
             };
             // Ignore send errors when no subscribers.
             let _ = self.tx.send(update);
@@ -101,6 +111,20 @@ impl BalanceBroadcaster {
     /// Get the current balance for the address.
     pub fn get_balance(&self, address: &str) -> Option<u128> {
         self.balances.get(address).map(|v| *v)
+    }
+
+    /// Emit the current balance for an address with a finalized flag.
+    /// Does not modify the stored balance; no-op if address has no known balance.
+    pub fn emit_current(&self, address: &str, finalized: bool) {
+        if let Some(curr) = self.balances.get(address) {
+            let update = BalanceUpdate {
+                address: address.to_string(),
+                balance: *curr,
+                timestamp_ms: current_time_ms(),
+                finalized,
+            };
+            let _ = self.tx.send(update);
+        }
     }
 }
 

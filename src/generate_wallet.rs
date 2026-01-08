@@ -1,6 +1,6 @@
 // src/generate_wallet.rs
 
-use crate::{password_utils::prompt_for_password, wallet::Wallet};
+use crate::{node_keystore::Wallet, password_utils::prompt_for_password};
 use clap::{Arg, Command};
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {

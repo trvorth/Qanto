@@ -166,7 +166,7 @@ cargo run --bin qantowallet -- balance ae527b01ffcb3baae0106fbb954acd184e02cb379
 
 ### Live Balance Updates
 
-Real-time balance monitoring is the default behavior. You can still use `--follow` to be explicit:
+Real-time balance monitoring is the default behavior. You can still use `--follow` (alias: `--ws`) to be explicit:
 
 **Command:**
 ```bash
@@ -199,8 +199,34 @@ cargo run --bin qantowallet -- balance <ADDRESS> --node-url "127.0.0.1:50051"
 > ### Performance Tips
 > * Use `--local` for the fastest queries when you have a synced local node
 > * Use standard balance queries for the most reliable results across network conditions
-> * Use `--follow` for monitoring active wallets during transaction processing
+> * Use `--follow` (alias: `--ws`) for monitoring active wallets during transaction processing
 > * The wallet automatically chooses the best available data source for optimal performance
+
+### Balance Command Help
+
+```
+qantowallet balance <ADDRESS> [OPTIONS]
+
+Options:
+  --follow, --ws          Follow live balance updates via WebSocket (falls back to gRPC)
+  --live                  Follow live balance updates via P2P (falls back to WebSocket → gRPC)
+  --grpc                  Use gRPC streaming for balance updates (explicit)
+  --finalized-only        Only show finalized balance updates (hide unfinalized)
+  --local                 Query balance from local storage only (fastest, no network)
+
+Global options (partial):
+  --node-url <HOST:PORT>  RPC server address for gRPC client
+  --qds-multiaddr <ADDR>  Libp2p multiaddr of a Qanto node supporting QDS
+```
+
+Examples:
+
+```
+cargo run --bin qantowallet -- balance <ADDR> --ws --finalized-only
+cargo run --bin qantowallet -- balance <ADDR> --grpc --finalized-only
+cargo run --bin qantowallet -- balance <ADDR> --live
+cargo run --bin qantowallet -- balance <ADDR> --local
+```
 
 ---
 

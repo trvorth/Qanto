@@ -196,7 +196,10 @@ mod tests {
         assert_eq!(QantoMetrics::format_hash_rate(1000.0), "1.00 kH/s");
     }
 
+    use serial_test::serial;
+
     #[test]
+    #[serial]
     fn test_hash_attempts_counter() {
         // Reset counter for test
         HASH_ATTEMPTS.store(0, Ordering::Relaxed);
@@ -256,6 +259,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_hash_rate_metrics_collection() {
         // Reset counter for test
         HASH_ATTEMPTS.store(0, Ordering::Relaxed);
@@ -293,6 +297,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_concurrent_hash_attempts() {
         // Reset counter for test
         HASH_ATTEMPTS.store(0, Ordering::Relaxed);

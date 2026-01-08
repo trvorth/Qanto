@@ -31,10 +31,15 @@ node*/cert.pem
 /data
 /data-flood
 /data-flood2
+/data_node0
+/data_node1
 /logs
 /monitoring
 /.trae
 /dhat-heap.json
+/tests_output
+/redis-stable
+/redis-server
 
 # --- IDE & Editor Files ---
 .idea/
@@ -59,7 +64,6 @@ Thumbs.db
 
 # --- Logs & Databases ---
 *.log
-/qanto-docs
 /qanto_data
 /qantodag_db/
 /qantodag_db_evolved/
@@ -77,6 +81,8 @@ Thumbs.db
 /test_channel_db
 /test_performance_db
 /test_swap_db
+/test_data_validation1
+/test_data_validation2
 /test_data1
 /test_data2
 /test_mining_db
@@ -84,15 +90,15 @@ Thumbs.db
 /test_rpc_db
 
 # --- Sensitive Information ---
+secrets/
 *.key
+*.pem
+*.csv
 *.keys
 *.keystore
 *.wal
 .wallet
-.json
 p2p_identity.key
-
-# Removed old deployment folder references
 wallet.key
 private_key.txt
 keypair.txt
@@ -101,6 +107,36 @@ node*/*.txt
 /wallet.key
 /private_key.txt
 /keypair.txt
+ap_full.txt
+ap_key.hex
+ap_wallet.base64
+bootnode_key.b64
+bootnode_key.hex
+bootnode_priv.hex
+bootnode_wallet.base64
+bootnode.b64
+bootnode.wallet
+cli_output.txt
+cluster_flood.sh
+decode_key.py
+deploy_hyperscale.sh
+figure1_capture.txt
+figure1_capture2.txt
+flood_report.md
+flood_status_interim.md
+genesis_priv.hex
+genesis.b64
+genesis.hex
+mission_control.py
+raw_bootnode.hex
+raw_genesis.hex
+stolen_full.txt
+stolen_key.hex
+stolen_key.b64
+stolen_key.txt
+test_s3_write
+trigger_remote_flood.sh
+verify_velocity.sh
 .env
 .env*
 !.env.example
@@ -118,7 +154,11 @@ node*/*.txt
 /.cargo/config.toml
 /hydra_manifest.toml
 /test_config.toml
-
+/config_node0.toml
+/config_node1.toml
+/config1.toml
+/config2.toml
+/config.toml.testnet-1
 # --- Generated Project Files ---
 /header.tex
 /Qanto-whitepaper.tex
@@ -147,9 +187,7 @@ node*/*.txt
 /cleanup.sh
 /start_bootnode.sh
 /stress_test.sh
-/deployment/Kubernetes/secrets.yaml
-/deployment/website
-/deployment
+/deploy
 /DEPENDENCY_MIGRATION.md
 /DUPLICATION_AUDIT_REPORT.md
 /instance
@@ -212,6 +250,7 @@ terraform/**/modules/
 # Removed AWS-specific entries for NameCheap hosting
 *.pem
 *.ppk
+/rootkey-awsphuthieu1.csv
 
 # Docker build context
 .dockerignore.bak
@@ -420,6 +459,7 @@ helm/*/logs/
 helm/*/secrets-prod.yaml
 *.key
 wallet_password.txt
-
+/secrets
 node_modules
 integration_test_db/
+/test_activation.sh
