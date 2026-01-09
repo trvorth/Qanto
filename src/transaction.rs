@@ -190,7 +190,7 @@ impl Transaction {
             inputs: vec![],
             outputs: vec![Output {
                 address: "dummy_miner_address".to_string(),
-                amount: 50_000_000_000, // Example mining reward (50 QAN)
+                amount: 2_500_000, // Example mining reward (2.5 QAN)
                 homomorphic_encrypted: HomomorphicEncrypted {
                     ciphertext: vec![],
                     public_key: vec![],
@@ -228,7 +228,7 @@ impl Transaction {
         let receiver_str = hex::encode(dummy_receiver);
         let outputs = vec![Output {
             address: "dummy_miner_address".to_string(),
-            amount: 50_000_000_000,
+            amount: 2_500_000,
             homomorphic_encrypted: HomomorphicEncrypted {
                 ciphertext: vec![],
                 public_key: vec![],

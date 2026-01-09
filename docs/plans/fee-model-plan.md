@@ -233,7 +233,7 @@ Example:
 ### Validator Economics
 ```
 Expected Daily Revenue (per validator):
-- Base rewards: 50 QANTO/day
+- Base rewards: 2.5 QANTO/block (~6.75M/day at 32 BPS)
 - Fee rewards: Variable (10-100 QANTO/day based on network usage)
 - Total APY: 15-25% (estimated)
 ```

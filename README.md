@@ -567,3 +567,13 @@ Visit [qanto.org](https://qanto.org)  | Follow [X] (https://x.com/QantoLayer0) |
 - Updated JavaScript and Python SDK components
 
 All tests have been verified to pass across the codebase.
+
+## **Tokenomics (v0.1.0)** 💎
+
+- **Block Reward**: 2.5 $QAN (Fixed Base)
+- **Block Time**: ~33ms (32 Blocks/Second)
+- **Daily Emission**: ~6,750,000 $QAN
+- **Max Supply**: 21 Billion
+- **Halving**: Every ~3 months
+
+The v0.1.0 release introduces the "Hyperscale Stabilization" update, reducing the base reward to 2.5 QAN to accommodate the high-velocity 32 BPS throughput, preventing hyper-inflation while maintaining strong miner incentives.

@@ -192,7 +192,7 @@ impl MiningAdapter for NodeMiningAdapter {
                     effort,
                     total_blocks_mined: 1,
                     chain_id: 0,
-                    block_reward: 50_000_000_000,
+                    block_reward: 2_500_000,
                     compact: false,
                 };
 
