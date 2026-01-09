@@ -939,8 +939,6 @@ impl QantoNetServer {
 
     // Private helper methods
 
-
-
     async fn start_heartbeat_task(&self) {
         std::thread::spawn(|| {
             // Heartbeat logic

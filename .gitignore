@@ -143,6 +143,8 @@ verify_velocity.sh
 
 
 # --- Production Configuration Files ---
+/config_us.toml
+/config_ap.toml
 /config.bootnode.toml
 /config.performance.toml
 /config.toml.mainnet

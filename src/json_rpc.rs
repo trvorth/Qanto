@@ -1,6 +1,6 @@
+use crate::p2p::P2PCommand;
 use crate::rpc_backend::NodeRpcBackend;
 use axum::{extract::State, response::IntoResponse, Json};
-use crate::p2p::P2PCommand;
 use qanto_rpc::RpcBackend;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

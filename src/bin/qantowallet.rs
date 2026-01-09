@@ -32,7 +32,11 @@ enum Commands {
         output: String,
     },
     Export {
-        #[arg(long, default_value = "wallet.key", help = "Wallet file to export from")]
+        #[arg(
+            long,
+            default_value = "wallet.key",
+            help = "Wallet file to export from"
+        )]
         wallet: String,
     },
     Watch {
@@ -94,11 +98,11 @@ fn import_wallet(private_key: &str, output_path: &str) -> anyhow::Result<()> {
 fn export_wallet(wallet_path: &str) -> anyhow::Result<()> {
     // prompt_for_password returns SecretString
     let password = prompt_for_password(false, Some("Enter password to decrypt wallet:"))?;
-    
+
     let wallet = Wallet::from_file(std::path::Path::new(wallet_path), &password)?;
     let (sk, _) = wallet.get_keypair()?;
     let hex_sk = hex::encode(sk.as_bytes());
-    
+
     println!("Private Key (Hex): {}", hex_sk);
     println!("WARNING: Keep this key secret! Anyone with this key can spend your funds.");
     Ok(())
@@ -107,13 +111,13 @@ fn export_wallet(wallet_path: &str) -> anyhow::Result<()> {
 async fn watch_balance(url: &str, address: &str) {
     let client = reqwest::Client::new();
     println!("Watching balance for {}...", address);
-    
+
     loop {
         // Clear terminal screen (ANSI escape code)
         print!("\x1B[2J\x1B[1;1H");
         println!("Qanto Watch Mode - Address: {}", address);
         println!("------------------------------------------------");
-        
+
         let body = json!({
             "jsonrpc": "2.0",
             "method": "get_balance",
@@ -124,7 +128,7 @@ async fn watch_balance(url: &str, address: &str) {
         match client.post(url).json(&body).send().await {
             Ok(resp) => match resp.text().await {
                 Ok(text) => {
-                    // Try to parse the response to extract just the result if possible, 
+                    // Try to parse the response to extract just the result if possible,
                     // otherwise print raw response which is what get_balance did.
                     // Assuming standard JSON-RPC response format.
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
@@ -133,22 +137,21 @@ async fn watch_balance(url: &str, address: &str) {
                         } else if let Some(error) = json.get("error") {
                             println!("Error: {}", error);
                         } else {
-                             println!("Raw Response: {}", text);
+                            println!("Raw Response: {}", text);
                         }
                     } else {
                         println!("Raw Response: {}", text);
                     }
-                },
+                }
                 Err(e) => println!("Failed to read response: {}", e),
             },
             Err(e) => println!("Connection Refused: {}", e),
         }
-        
+
         // 50ms sleep for ~20 updates/sec (supporting 32 BPS visibility)
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
     }
 }
-
 
 async fn get_balance(url: &str, address: &str) {
     let client = reqwest::Client::new();

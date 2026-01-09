@@ -360,7 +360,11 @@ impl Node {
         let mempool_max_age = config.mempool_max_age_secs.unwrap_or(3600);
         let mempool_max_size_bytes = config.mempool_max_size_bytes.unwrap_or(10_000_000);
         let mempool_max_txs = config.mempool_max_size.unwrap_or(10_000);
-        let mempool = Arc::new(RwLock::new(Mempool::new(mempool_max_age, mempool_max_size_bytes, mempool_max_txs)));
+        let mempool = Arc::new(RwLock::new(Mempool::new(
+            mempool_max_age,
+            mempool_max_size_bytes,
+            mempool_max_txs,
+        )));
         let utxos = Arc::new(RwLock::new(HashMap::with_capacity(MAX_UTXOS)));
         let proposals = Arc::new(RwLock::new(Vec::with_capacity(MAX_PROPOSALS)));
 

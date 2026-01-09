@@ -13,8 +13,8 @@ use crate::transaction::{Transaction, TransactionError};
 use crate::types::UTXO;
 use crossbeam::queue::SegQueue;
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
-use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
+use dashmap::DashMap;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -296,7 +296,7 @@ impl EliteMempool {
         transactions: &[Arc<Transaction>],
     ) -> Result<(), EliteMempoolError> {
         let count = transactions.len();
-        
+
         // Pre-check capacity
         let current = self.transaction_count.load(Ordering::Relaxed);
         if current + count > self.max_transactions {
@@ -312,9 +312,9 @@ impl EliteMempool {
             }
 
             let tx_id = tx.id.clone();
-            
+
             // Simplified size calc for speed
-            let tx_size = 250; 
+            let tx_size = 250;
             let fee_per_byte = if tx_size > 0 {
                 tx.fee / tx_size as u64
             } else {
@@ -340,17 +340,20 @@ impl EliteMempool {
                     v.insert(elite_tx);
                     // Only push to queue if inserted successfully
                     let _ = self.sharded_queues.push_tx_id(&tx_id);
-                    self.current_size_bytes.fetch_add(tx_size as u64, Ordering::Relaxed);
-                    self.metrics.transactions_processed.fetch_add(1, Ordering::Relaxed);
-                    self.metrics.transactions_validated.fetch_add(1, Ordering::Relaxed);
+                    self.current_size_bytes
+                        .fetch_add(tx_size as u64, Ordering::Relaxed);
+                    self.metrics
+                        .transactions_processed
+                        .fetch_add(1, Ordering::Relaxed);
+                    self.metrics
+                        .transactions_validated
+                        .fetch_add(1, Ordering::Relaxed);
                 }
             }
         });
-        
+
         Ok(())
     }
-
-
 
     /// Start validation workers for parallel transaction validation
     async fn start_validation_workers(&self) -> Result<(), EliteMempoolError> {
@@ -380,7 +383,9 @@ impl EliteMempool {
                                     elite_tx_ref.validation_status = if cached_result {
                                         ValidationStatus::Valid
                                     } else {
-                                        ValidationStatus::Invalid("Cached validation failed".to_string())
+                                        ValidationStatus::Invalid(
+                                            "Cached validation failed".to_string(),
+                                        )
                                     };
                                 }
                                 metrics

@@ -20,11 +20,11 @@ fn main() -> anyhow::Result<()> {
 
     let secret_password = SecretString::new(password);
     let wallet = Wallet::from_file(&args.wallet, &secret_password)?;
-    
+
     let (sk, _) = wallet.get_keypair()?;
     let hex_sk = hex::encode(sk.as_bytes());
-    
+
     println!("{}", hex_sk);
-    
+
     Ok(())
 }

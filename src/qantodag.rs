@@ -2625,7 +2625,10 @@ impl QantoDAG {
                 for input in &tx.inputs {
                     let utxo_key = format!("{}_{}", input.tx_id, input.output_index);
                     if !utxos_guard.contains_key(&utxo_key) {
-                        debug!("DAG: Transaction {} filtered out due to missing UTXO {}", tx.id, utxo_key);
+                        debug!(
+                            "DAG: Transaction {} filtered out due to missing UTXO {}",
+                            tx.id, utxo_key
+                        );
                         missing_utxo = true;
                         break;
                     }

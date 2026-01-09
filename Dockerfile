@@ -19,12 +19,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/* && update-ca-certificates
 
 COPY --from=builder /build/target/release/qanto /usr/local/bin/qanto
-COPY config.toml /app/config.toml
+COPY config_hyperscale.toml /app/config.toml
 RUN chmod +x /usr/local/bin/qanto && mkdir -p /root/.qanto /app
 
 ENV RUST_LOG=info
 VOLUME ["/root/.qanto"]
-EXPOSE 30333 8080 9944
+EXPOSE 8332 8333 8080 8081
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD curl -fsS http://localhost:8080/health || exit 1
 

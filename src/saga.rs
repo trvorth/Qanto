@@ -57,7 +57,7 @@ const ACTIVATION_THRESHOLD: f64 = 0.5; // Neural activation threshold
 
 // Base block reward constant (smallest units); used to seed epoch rules.
 // NOTE: SAGA dynamic reward logic multiplies this by various factors.
-pub const BASE_BLOCK_REWARD: f64 = 25_000_000_000.0;
+pub const BASE_BLOCK_REWARD: f64 = 2_500_000.0;
 
 #[derive(Error, Debug, Clone)]
 pub enum SagaError {
