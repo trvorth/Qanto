@@ -368,47 +368,44 @@ impl EliteMempool {
             .name("elite-mempool-validation".to_string())
             .spawn(move || {
                 while is_running.load(Ordering::Relaxed) {
-                    match validation_rx.recv_timeout(Duration::from_millis(100)) {
-                        Ok(tx_id) => {
-                            let start_time = Instant::now();
-                            let mut fee = 0u64;
-                            if let Some(entry) = transactions.get(&tx_id) {
-                                fee = entry.tx.fee;
-                            }
-
-                            let cache_key = (tx_id.clone(), fee);
-                            let cached = validation_cache.get(&cache_key).map(|v| *v);
-                            if let Some(cached_result) = cached {
-                                if let Some(mut elite_tx_ref) = transactions.get_mut(&tx_id) {
-                                    elite_tx_ref.validation_status = if cached_result {
-                                        ValidationStatus::Valid
-                                    } else {
-                                        ValidationStatus::Invalid(
-                                            "Cached validation failed".to_string(),
-                                        )
-                                    };
-                                }
-                                metrics
-                                    .validation_cache_hits
-                                    .fetch_add(1, Ordering::Relaxed);
-                            } else {
-                                if let Some(mut elite_tx_ref) = transactions.get_mut(&tx_id) {
-                                    elite_tx_ref.validation_status = ValidationStatus::Valid;
-                                }
-                                validation_cache.insert(cache_key, true);
-                            }
-
-                            let _ = processing_tx.send(tx_id);
-
-                            let validation_time = start_time.elapsed().as_nanos() as u64;
-                            metrics
-                                .transactions_validated
-                                .fetch_add(1, Ordering::Relaxed);
-                            metrics
-                                .average_processing_time_ns
-                                .store(validation_time, Ordering::Relaxed);
+                    if let Ok(tx_id) = validation_rx.recv_timeout(Duration::from_millis(100)) {
+                        let start_time = Instant::now();
+                        let mut fee = 0u64;
+                        if let Some(entry) = transactions.get(&tx_id) {
+                            fee = entry.tx.fee;
                         }
-                        Err(_) => {}
+
+                        let cache_key = (tx_id.clone(), fee);
+                        let cached = validation_cache.get(&cache_key).map(|v| *v);
+                        if let Some(cached_result) = cached {
+                            if let Some(mut elite_tx_ref) = transactions.get_mut(&tx_id) {
+                                elite_tx_ref.validation_status = if cached_result {
+                                    ValidationStatus::Valid
+                                } else {
+                                    ValidationStatus::Invalid(
+                                        "Cached validation failed".to_string(),
+                                    )
+                                };
+                            }
+                            metrics
+                                .validation_cache_hits
+                                .fetch_add(1, Ordering::Relaxed);
+                        } else {
+                            if let Some(mut elite_tx_ref) = transactions.get_mut(&tx_id) {
+                                elite_tx_ref.validation_status = ValidationStatus::Valid;
+                            }
+                            validation_cache.insert(cache_key, true);
+                        }
+
+                        let _ = processing_tx.send(tx_id);
+
+                        let validation_time = start_time.elapsed().as_nanos() as u64;
+                        metrics
+                            .transactions_validated
+                            .fetch_add(1, Ordering::Relaxed);
+                        metrics
+                            .average_processing_time_ns
+                            .store(validation_time, Ordering::Relaxed);
                     }
                 }
             })

@@ -3763,7 +3763,7 @@ impl PalletSaga {
         let rules = self.economy.epoch_rules.read().await;
         let base_reward = rules
             .get("base_reward")
-            .map_or(150_000_000_000.0, |r| r.value);
+            .map_or(BASE_BLOCK_REWARD, |r| r.value);
         let threat_modifier = rules
             .get("omega_threat_reward_modifier")
             .map_or(-0.25, |r| r.value);

@@ -242,7 +242,7 @@ impl MiningStats {
         );
 
         // Add reward value indicator
-        if reward_qanto >= 50.0 {
+        if reward_qanto >= 2.5 {
             println!(
                 "  {} {}",
                 "Status:".bright_blue().bold(),

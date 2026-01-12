@@ -5,7 +5,7 @@ mod tests {
     use qanto::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey};
     use qanto::qanto_storage::{QantoStorage, StorageConfig};
     use qanto::qantodag::{QantoDAG, QantoDagConfig};
-    use qanto::saga::PalletSaga;
+    use qanto::saga::{PalletSaga, BASE_BLOCK_REWARD};
     use rand::rngs::OsRng;
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -248,14 +248,14 @@ mod tests {
             .read()
             .await
             .get("base_reward")
-            .map_or(150_000_000_000.0, |r| r.value);
+            .map_or(BASE_BLOCK_REWARD, |r| r.value);
         let saga2_base_reward = saga2
             .economy
             .epoch_rules
             .read()
             .await
             .get("base_reward")
-            .map_or(150_000_000_000.0, |r| r.value);
+            .map_or(BASE_BLOCK_REWARD, |r| r.value);
 
         info!("SAGA1 base reward: {}", saga1_base_reward);
         info!("SAGA2 base reward: {}", saga2_base_reward);

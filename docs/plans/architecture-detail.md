@@ -129,7 +129,7 @@ The QantoDAG implements a sophisticated Directed Acyclic Graph structure:
 // High-throughput configuration
 pub const MAX_TRANSACTIONS_PER_BLOCK: usize = 320_000;
 pub const MAX_BLOCK_SIZE: usize = 80_000_000; // 80 MB
-pub const INITIAL_BLOCK_REWARD: u64 = 50_000_000_000;
+pub const INITIAL_BLOCK_REWARD: u64 = 2_500_000;
 const FINALIZATION_DEPTH: u64 = 8;
 const TEMPORAL_CONSENSUS_WINDOW: u64 = 600;
 const MAX_BLOCKS_PER_MINUTE: u64 = 32 * 60;

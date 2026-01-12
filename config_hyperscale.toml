@@ -1,4 +1,4 @@
-p2p_address = "/ip4/0.0.0.0/tcp/50000"
+p2p_address = "/ip4/0.0.0.0/tcp/8333"
 api_address = "0.0.0.0:8080"
 peers = ["/ip4/54.81.139.232/tcp/30333/p2p/bb734ccc0d779a46968d625f4235a6a3ac4973dc1bdd3694cc5c00a6b1a86452"]
 network_id = "qanto-hyperscale"
