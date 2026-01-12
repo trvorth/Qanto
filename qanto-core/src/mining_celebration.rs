@@ -231,7 +231,7 @@ impl MiningStats {
 
         // Enhanced block reward section
         println!("\n{}", "💰 Block Reward:".bold().bright_white().underline());
-        let reward_qanto = self.block_reward as f64 / 1_000_000_000.0;
+        let reward_qanto = self.block_reward as f64 / 1_000_000.0;
         println!(
             "  {} {} QANTO",
             "Reward:".bright_blue().bold(),

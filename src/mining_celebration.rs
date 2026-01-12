@@ -214,7 +214,7 @@ impl MiningStats {
 
         // Enhanced block reward section
         println!("\n{}", "💰 Block Reward:".bold().bright_white().underline());
-        let reward_qanto = self.block_reward as f64 / 1_000_000_000.0;
+        let reward_qanto = self.block_reward as f64 / 1_000_000.0;
         println!(
             "  {} {} QANTO",
             "Reward:".bright_blue().bold(),
@@ -447,7 +447,7 @@ pub fn on_block_mined(params: MiningCelebrationParams, config: &LoggingConfig) {
     }
 
     // Create mining stats for metadata
-    let _stats = MiningStats::new(
+    let stats = MiningStats::new(
         params.block_height,
         params.block_hash.clone(),
         params.nonce,
@@ -459,6 +459,13 @@ pub fn on_block_mined(params: MiningCelebrationParams, config: &LoggingConfig) {
         params.chain_id,
         params.block_reward,
     );
+
+    // Display celebration to stdout if enabled
+    if params.compact {
+        stats.display_compact();
+    } else {
+        stats.display_celebration();
+    }
 
     // Log celebration message based on configured level
     let message = format!(
