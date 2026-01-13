@@ -19,16 +19,18 @@ echo ">> Mission Status: GO"
 echo ">> Target: $REMOTE_USER@$REMOTE_HOST"
 echo ">> Key: $SSH_KEY"
 
-# 2. Build Release Binary
-echo ">> Building release binary (qanto)..."
+# 2. Build Release Binaries
+echo ">> Building release binaries (qanto, bench_core)..."
 cargo build --release --bin qanto
+cargo build --release --bin bench_core
 
 # 3. Package
 echo ">> Packaging release artifact..."
-# Copy binary to root temporarily to package with config
+# Copy binaries to root temporarily to package with config
 cp target/release/qanto .
-tar -czf release_package.tar.gz qanto config_hyperscale.toml
-rm qanto # Cleanup temporary binary copy
+cp target/release/bench_core .
+tar -czf release_package.tar.gz qanto bench_core config_hyperscale.toml
+rm qanto bench_core # Cleanup temporary binary copies
 
 # 4. Stop Remote Node
 echo ">> Stopping remote node..."
@@ -46,7 +48,7 @@ scp -i "$SSH_KEY" -o StrictHostKeyChecking=no release_package.tar.gz "$REMOTE_US
 echo ">> extracting and launching..."
 ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no "$REMOTE_USER@$REMOTE_HOST" << EOF
     tar -xzf release_package.tar.gz
-    chmod +x qanto
+    chmod +x qanto bench_core
     # Launch with nohup and disown
     nohup ./qanto --config config_hyperscale.toml > qanto.log 2>&1 &
     disown

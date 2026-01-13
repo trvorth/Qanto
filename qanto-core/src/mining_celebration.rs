@@ -464,7 +464,7 @@ pub fn on_block_mined(params: MiningCelebrationParams, config: &LoggingConfig) {
     }
 
     // Create mining stats for metadata
-    let _stats = MiningStats::new(
+    let stats = MiningStats::new(
         params.block_height,
         params.block_hash.clone(),
         params.nonce,
@@ -476,6 +476,13 @@ pub fn on_block_mined(params: MiningCelebrationParams, config: &LoggingConfig) {
         params.chain_id,
         params.block_reward,
     );
+
+    // Display full celebration if enabled (for log visibility of rewards/BPS)
+    if params.compact {
+        stats.display_compact();
+    } else {
+        stats.display_celebration();
+    }
 
     // Log celebration message based on configured level
     let message = format!(
