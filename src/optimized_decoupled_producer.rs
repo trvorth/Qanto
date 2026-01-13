@@ -958,7 +958,7 @@ impl OptimizedDecoupledProducer {
                 block_to_add.finality_proof = Some(finality_hex);
 
                 match dag
-                    .add_block(
+                    .add_block_prevalidated(
                         block_to_add.clone(),
                         utxos,
                         Some(mempool),
