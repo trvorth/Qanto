@@ -17,6 +17,10 @@ use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError};
 use crate::transaction::Transaction;
 use crate::types::UTXO;
 use qanto_core::dag_aware_mempool::DAGAwareMempool;
+use qanto_core::mining_celebration::{
+    on_block_mined, LoggingConfig as CoreLoggingConfig, MiningCelebrationParams,
+};
+use crate::config::LoggingConfig;
 
 use async_trait::async_trait;
 use crossbeam::deque::{Injector, Worker};
@@ -141,6 +145,14 @@ pub struct OptimizedDecoupledProducer {
     validation_semaphore: Arc<Semaphore>,
     mining_semaphore: Arc<Semaphore>,
     processing_semaphore: Arc<Semaphore>,
+}
+
+fn to_core_logging(cfg: &LoggingConfig) -> CoreLoggingConfig {
+    CoreLoggingConfig {
+        enable_block_celebrations: cfg.enable_block_celebrations,
+        celebration_log_level: cfg.celebration_log_level.clone(),
+        celebration_throttle_per_min: cfg.celebration_throttle_per_min,
+    }
 }
 
 impl OptimizedDecoupledProducer {
@@ -840,24 +852,22 @@ impl OptimizedDecoupledProducer {
                             Some(mined_block) => {
                                 // Add block celebration display if enabled
                                 if dag.logging_config.enable_block_celebrations {
-                                    let celebration_level = &dag.logging_config.celebration_log_level;
-                                    let block_hash = &mined_block.block.hash();
-                                    let block_height = mined_block.block.height;
-                                    let tx_count = mined_block.block.transactions.len();
-                                    let difficulty = mined_block.block.difficulty;
-
-                                    let celebration_msg = format!(
-                                        "🎉 BLOCK MINED! Hash: {}... Height: {} Txs: {} Difficulty: {:.6}",
-                                        &block_hash[..8], block_height, tx_count, difficulty
+                                    on_block_mined(
+                                        MiningCelebrationParams {
+                                            block_height: mined_block.block.height,
+                                            block_hash: mined_block.block.hash(),
+                                            nonce: mined_block.block.nonce,
+                                            difficulty: mined_block.block.difficulty,
+                                            transactions_count: mined_block.block.transactions.len(),
+                                            mining_time: mined_block.mining_duration,
+                                            effort: mined_block.block.effort,
+                                            total_blocks_mined: metrics.blocks_mined.load(Ordering::Relaxed),
+                                            chain_id: mined_block.block.chain_id,
+                                            block_reward: mined_block.block.reward,
+                                            compact: false,
+                                        },
+                                        &to_core_logging(&dag.logging_config),
                                     );
-
-                                    match celebration_level.as_str() {
-                                        "error" => error!("{}", celebration_msg),
-                                        "warn" => warn!("{}", celebration_msg),
-                                        "info" => info!("{}", celebration_msg),
-                                        "debug" => debug!("{}", celebration_msg),
-                                        _ => info!("{}", celebration_msg), // Default to info
-                                    }
                                 }
 
                                 processing_batch.push(mined_block);

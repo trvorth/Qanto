@@ -222,7 +222,8 @@ impl EliteMempool {
         // Create transaction arena for efficient memory management
         // Start smaller to reduce boot-time memory; grow on demand.
         // Use clamp to satisfy clippy::manual-clamp.
-        let arena_size_mb = (max_size_bytes / (1024 * 1024)).clamp(64, 256);
+        // Expanded upper limit for 10M TPS Hyperscale
+        let arena_size_mb = (max_size_bytes / (1024 * 1024)).clamp(64, 4096);
         let tx_arena = Arc::new(TransactionArena::new(arena_size_mb).map_err(|e| {
             EliteMempoolError::WorkerPoolError(format!("Arena creation failed: {e}"))
         })?);

@@ -16,6 +16,9 @@ use crate::node_keystore::Wallet;
 use crate::p2p::P2PCommand;
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError};
 use crate::types::UTXO;
+use qanto_core::mining_celebration::{
+    on_block_mined, LoggingConfig as CoreLoggingConfig, MiningCelebrationParams,
+};
 
 /// High-throughput block producer that decouples block creation from mining
 /// Targets 32+ blocks per second by pipelining operations
@@ -117,6 +120,14 @@ impl RecentAccepted {
 
     fn contains_id(&self, id: &str) -> bool {
         self.entries.contains_key(id)
+    }
+}
+
+fn to_core_logging(cfg: &LoggingConfig) -> CoreLoggingConfig {
+    CoreLoggingConfig {
+        enable_block_celebrations: cfg.enable_block_celebrations,
+        celebration_log_level: cfg.celebration_log_level.clone(),
+        celebration_throttle_per_min: cfg.celebration_throttle_per_min,
     }
 }
 
@@ -931,8 +942,22 @@ impl DecoupledProducer {
 
                                 // Block celebration display - gated by config flag
                                 if logging_config.enable_block_celebrations {
-                                    let block_str = format!("{}", mined_block.block);
-                                    info!("\n{}", block_str);
+                                    on_block_mined(
+                                        MiningCelebrationParams {
+                                            block_height: mined_block.block.height,
+                                            block_hash: mined_block.block.hash(),
+                                            nonce: mined_block.block.nonce,
+                                            difficulty: mined_block.block.difficulty,
+                                            transactions_count: mined_block.block.transactions.len(),
+                                            mining_time: mined_block.mining_duration,
+                                            effort: mined_block.block.effort,
+                                            total_blocks_mined: 0, // Not easily tracked here without shared state
+                                            chain_id: mined_block.block.chain_id,
+                                            block_reward: mined_block.block.reward,
+                                            compact: false,
+                                        },
+                                        &to_core_logging(&logging_config),
+                                    );
                                 }
 
                                 // Prepare block: attach optional finality_proof derived from canonical PoW hash
