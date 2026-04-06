@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | Governance Portal</title>
+    <link rel="stylesheet" href="../../assets/css/main.css">
+    <link rel="stylesheet" href="../../assets/css/animations.css">
+    <style>
+        .gov-container {
+            max-width: 1200px;
+            margin: 100px auto;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            border-radius: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .proposal-card {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 20px;
+            transition: transform 0.3s ease;
+        }
+
+        .proposal-card:hover {
+            transform: translateY(-5px);
+            border-color: #00ffcc;
+        }
+
+        .status-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .status-active { background: rgba(0, 255, 204, 0.2); color: #00ffcc; }
+        .status-pending { background: rgba(255, 184, 0, 0.2); color: #ffb800; }
+
+        .vote-bar-container {
+            height: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+
+        .vote-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ffcc, #0099ff);
+            width: 45%; /* Simulated */
+        }
+
+        .gov-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .stat-box {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #00ffcc;
+        }
+
+        .btn-vote {
+            background: #00ffcc;
+            color: #000;
+            border: none;
+            padding: 10px 25px;
+            border-radius: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-vote:hover {
+            background: #fff;
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.4);
+        }
+    </style>
+</head>
+<body class="dark-mode">
+    <nav class="glass-nav">
+        <div class="nav-content">
+            <div class="logo">QANTO<span>DAO</span></div>
+            <div class="nav-links">
+                <a href="/">Home</a>
+                <a href="/quests/">Quests</a>
+                <a href="/gov/" class="active">Governance</a>
+                <a href="/farm/">Saga Farm</a>
+            </div>
+            <div class="wallet-section">
+                <button id="connect-wallet" class="btn-wallet">Connect DAO</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="gov-container">
+        <h1>Governance Portal</h1>
+        <p class="subtitle">The community steers the QANTO network. Vote on proposals from the Treasury and Protocol parameters.</p>
+
+        <div class="gov-stats">
+            <div class="stat-box">
+                <div class="stat-label">Total Proposals</div>
+                <div class="stat-value">12</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Active Votes</div>
+                <div class="stat-value">2</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">DAO Treasury</div>
+                <div class="stat-value">5.2M QNTO</div>
+            </div>
+        </div>
+
+        <div class="proposal-list">
+            <div class="proposal-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="status-badge status-active">Voting Active</span>
+                    <span class="proposal-id">#QIP-34</span>
+                </div>
+                <h3>Sovereignty Wave: Genesis Emissions</h3>
+                <p>Establishing the community-led DAO and initializing the Saga Yield Farm for early Pioneers.</p>
+                <div class="vote-bar-container">
+                    <div class="vote-bar-fill" style="width: 78%;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>78% Approvals (Quorum Met)</span>
+                    <button class="btn-vote">Vote FOR</button>
+                </div>
+            </div>
+
+            <div class="proposal-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span class="status-badge status-pending">Pending</span>
+                    <span class="proposal-id">#QIP-35</span>
+                </div>
+                <h3>Treasury Allocation: Global Nodes Expansion</h3>
+                <p>Allocation of 1M QNTO to subsidize decentralized node operators across 20 worldwide locations.</p>
+                <div class="vote-bar-container">
+                    <div class="vote-bar-fill" style="width: 12%;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>12.5% Voting Progress</span>
+                    <button class="btn-vote" disabled style="opacity: 0.5;">Awaiting Delay</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

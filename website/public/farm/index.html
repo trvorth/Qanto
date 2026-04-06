@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | Saga Farm</title>
+    <link rel="stylesheet" href="../../assets/css/main.css">
+    <link rel="stylesheet" href="../../assets/css/animations.css">
+    <style>
+        .farm-container {
+            max-width: 1000px;
+            margin: 100px auto;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(30px);
+            border-radius: 40px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .farm-card {
+            background: linear-gradient(135deg, rgba(0, 255, 204, 0.05), rgba(0, 153, 255, 0.05));
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 30px;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            text-align: center;
+        }
+
+        .apr-badge {
+            background: #00ffcc;
+            color: #000;
+            padding: 8px 20px;
+            border-radius: 25px;
+            font-weight: 800;
+            font-size: 1.1rem;
+            display: inline-block;
+            margin: 0 auto;
+        }
+
+        .staking-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin: 30px 0;
+        }
+
+        .stake-box {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 25px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .harvest-btn {
+            background: linear-gradient(90deg, #00ffcc, #0099ff);
+            color: #fff;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            transition: transform 0.3s ease;
+        }
+
+        .harvest-btn:hover {
+            transform: scale(1.02);
+            box-shadow: 0 0 30px rgba(0, 255, 204, 0.4);
+        }
+
+        .input-group {
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .lp-input {
+            width: 100%;
+            padding: 15px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 1.2rem;
+            text-align: right;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body class="dark-mode">
+    <nav class="glass-nav">
+        <div class="nav-content">
+            <div class="logo">QANTO<span>EARN</span></div>
+            <div class="nav-links">
+                <a href="/">Home</a>
+                <a href="/gov/">Governance</a>
+                <a href="/farm/" class="active">Saga Farm</a>
+                <a href="/leaderboard/">Leaderboard</a>
+            </div>
+            <button class="btn-wallet" id="connect-farming">Connect Staking Wallet</button>
+        </div>
+    </nav>
+
+    <div class="farm-container">
+        <h1>Saga Yield Farm</h1>
+        <p class="subtitle">Stake your QNTO-USDT LP tokens to harvest massive rewards from the Genesis Protocol pool.</p>
+
+        <div class="farm-card">
+            <div class="apr-badge">428.5% APR</div>
+            <h2>QNTO / USDT Pool</h2>
+            <p>Earn QNTO per block for providing QANTO liquidity.</p>
+            
+            <div class="staking-info">
+                <div class="stake-box">
+                    <div class="stat-label">Your LP Staked</div>
+                    <div class="stat-value" id="staked-amount">0.00 LP</div>
+                </div>
+                <div class="stake-box">
+                    <div class="stat-label">Pending Rewards</div>
+                    <div class="stat-value" id="pending-qanto" style="color: #00ffcc;">0.00 QNTO</div>
+                </div>
+            </div>
+
+            <div class="input-group">
+                <input type="number" class="lp-input" placeholder="0.0">
+                <span style="position: absolute; left: 15px; top: 15px; font-weight: 700; color: #aaa;">LP TOKEN</span>
+            </div>
+
+            <div style="display: flex; gap: 15px;">
+                <button class="btn-primary" style="flex: 1;">Stake LP</button>
+                <button class="btn-secondary" style="flex: 1;">Unstake</button>
+            </div>
+            
+            <button class="harvest-btn" id="harvest-action">Harvest Rewards</button>
+        </div>
+
+        <div style="margin-top: 40px; text-align: center; color: rgba(255,255,255,0.4);">
+            <p>Emissions are distributed every block (~12s). Harvested rewards are immediately available for Governance participation.</p>
+        </div>
+    </div>
+</body>
+</html>
