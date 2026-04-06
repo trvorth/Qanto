@@ -1,425 +1,88 @@
-# ===============================================================
-# Qanto :: Git Ignore File
-# ===============================================================
-
-# --- Binaries & Compiled Artifacts ---
-*.exe
-*.dll
-*.rlib
-*.so
-*.dylib
-*.test
-*.out
+# QANTO Master .gitignore - Monorepo Institutional Hardened
+# [RUST / CARGO]
+target/
+**/*.rs.bk
+debug/
+release/
+*.pdb
 *.o
-*.a
-*.ll
-*.bc
-*.dhat-heap
-*.json
+*.obj
+Cargo.lock
 
-# --- Qanto-specific files ---
-/target/
-/bin/
-/pkg/
-/cert.pem
-/key.pem
-/sync_wallet.sh
-node*/cert.pem
-/filter_sensitive_commits.py
-/integrate_isnm.sh
-/.wrangler
-/data
-/data-flood
-/data-flood2
-/logs
-/monitoring
-/.trae
-/dhat-heap.json
+# [NODE / NPM]
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+website/dist/
+website/node_modules/
+contracts/node_modules/
+contracts/artifacts/
+contracts/cache/
+contracts/typechain-types/
 
-# --- IDE & Editor Files ---
-.idea/
-.vscode/
-*.sublime-project
-*.sublime-workspace
-*.DS_Store
-Thumbs.db
+# [CLOUDFLARE / WRANGLER]
+.wrangler/
+.dev.vars
+_tmp/
+.cloudflare/
 
-# --- macOS & System Files ---
-.DS_Store
-
-# --- Temporary & Backup Files ---
-*~
-#*#
-.*.swp
-.*.swo
-*.bak
-*.tmp
-*temp*
-*~
-
-# --- Logs & Databases ---
-*.log
-/qanto-docs
-/qanto_data
-/qantodag_db/
-/qantodag_db_evolved/
-/node*/**/qantodag_db/
-/qantodag_db_test
-/peer_cache.json
-/qanto_db
-/myblockchain/qanto_db
-/myblockchain/test_mining_db
-/myblockchain/test_multi_mining_db
-/myblockchain/test_rpc_db
-/test_bps_db
-/test_tps_db
-/test_bridge_db
-/test_channel_db
-/test_performance_db
-/test_swap_db
-/test_data1
-/test_data2
-/test_mining_db
-/test_multi_mining_db
-/test_rpc_db
-
-# --- Sensitive Information ---
-*.key
-*.keys
-*.keystore
-*.wal
-.wallet
-.json
-p2p_identity.key
-
-# Removed old deployment folder references
-wallet.key
-private_key.txt
-keypair.txt
-node*/*.key
-node*/*.txt
-/wallet.key
-/private_key.txt
-/keypair.txt
+# [ENVIRONMENT / SECRETS]
 .env
-.env*
-!.env.example
-
-
-# --- Production Configuration Files ---
-/config.bootnode.toml
-/config.performance.toml
-/config.toml.mainnet
-/mining_rig_config.toml
-/wrangler.toml
-/config.toml
-/config.toml.mainnet
-/test_config.toml
-/.cargo/config.toml
-/hydra_manifest.toml
-/test_config.toml
-
-# --- Generated Project Files ---
-/header.tex
-/Qanto-whitepaper.tex
-/mermaid-filter.err
-/scripts
-/diagnostics
-/docs/whitepaper/assets
-/docs/whitepaper/qanto-logo.png
-/docs/whitepaper/qanto-background.png
-/docs/whitepaper/qanto-whitepaper.md
-/docs/whitepaper/eisvogel.latex
-/docs/whitepaper/fix-math-in-code.lua
-/docs/Deployment_Strategy.md
-/docs/guide/deployment-guide.md
-/docs/cleanup-analysis.md
-/docs/dependency-analysis.md
-/docs/guide/CLEANUP_GUIDE.md
-/docs/PERFORMANCE_ANALYSIS.md
-/docs/PERFORMANCE_REPORT.md
-/docs/PERFORMANCE_RESULTS.txt
-/docs/interchain
-/docker-compose.production.yml
-/docker-compose.*.yml
-/deploy.sh
-/deploy-*.sh
-/cleanup.sh
-/start_bootnode.sh
-/stress_test.sh
-/deployment/Kubernetes/secrets.yaml
-/deployment/website
-/deployment
-/DEPENDENCY_MIGRATION.md
-/DUPLICATION_AUDIT_REPORT.md
-/instance
-/user-data.sh
-/explorer
-/website
-/explorer/node_modules
-/website/node_modules
-/website/build
-/website/dist
-/traceforce_watchlist.csv
-.github/workflows/rust.yml
-/Agents.md
-cleanup-*.log
-/test_config.rs
-/lighthouse-audit.json
-/package.json
-/package-lock.json
-/cargo-flamegraph.trace
-/GoogleDrive
-/cloudflare
-
-# --- Language & Framework Specific ---
-# Python
-/venv/
-.venv/
-env/
-.env/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-/instance/
-
-# Node.js / Web
-/web
-/web/node_modules
-
-# Additional cleanup entries for production deployment
-# Deployment artifacts
-*.tar.gz
-*.tar
-*.zip
-*.tgz
-
-# k8s
-/k8s/secrets.yaml
-
-# Terraform state and modules
-terraform/
-terraform/.terraform/
-terraform/**/*.tfstate*
-terraform/**/*.tfvars
-terraform/**/*.tfplan
-terraform/.terraform.lock.hcl
-terraform/**/.terraform/
-terraform/**/modules/
-
-# Cloud provider files (generic)
-# Removed AWS-specific entries for NameCheap hosting
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+*.key
 *.pem
-*.ppk
+wallet.key
+p2p_identity.key
+qanto_pq.key
 
-# Docker build context
-.dockerignore.bak
-docker-compose.override.yml
+# [DATABASE / DATA]
+*.db
+*.db-journal
+*.sqlite
+data/
+storage/
 
-# IDE and development
-.vscode/settings.json
-.idea/workspace.xml
-.idea/tasks.xml
-
-# OS specific
+# [MACOS / SYSTEM]
 .DS_Store
 .AppleDouble
 .LSOverride
-Thumbs.db
-ehthumbs.db
+Icon
+._*
 
-# Backup and temporary files
-*.backup
-*.bak
+# [EDITOR / TOOLS]
+.vscode/
+.idea/
 *.swp
 *.swo
-*~
-
-# Log files
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Runtime and process files
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage and test reports
-coverage/
-.nyc_output/
-.coverage
-
-# Build outputs
-dist/
-build/
-out/
-
-# Package manager lock files (keep package-lock.json for consistency)
-yarn.lock
-pnpm-lock.yaml
-/profile.json.
-/package.json
-/package-lock.json
-
-
-/web/dist/
-/web/.env*
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# --- Deployment ---
-# Ignore local deployment archives
-
-
-# --- Cargo & Rust Specific ---
-/benchmark_data
-/benchmark_results
-# --- Documentation ---
-/docs/whitepaper/assets/diagrams/*.svg
-/docs/whitepaper/Qanto-whitepaper.docx
-/docs/whitepaper/~$nto-whitepaper.docx
-/docs/audits
-/qanto-docs
-# --- Local Scripts ---
-/scripts/run_local_net.sh
-/myblockchain/testnet_debug.sh
-# ===============================================================
-# Additional general ignores (additions only; no removals above)
-# ===============================================================
-
-# OS / System
-.AppleDouble
-.LSOverride
-.Spotlight-V100
-.Trashes
-.DS_Store?
-ehthumbs.db
-Desktop.ini
-
-# Build artifacts & reports
-/debug/
-/out/
-/build/
-/dist/
-/coverage/
-/reports/
-*.gcda
-*.gcno
-*.profraw
-*.profdata
-
-# Crash dumps & cores
-core
-core.*
-*.dmp
-*.stackdump
-
-# Archives
-*.zip
-*.tar
-*.tar.gz
-*.tgz
-*.7z
-
-# Certificates & secret files (private material)
-*.crt
-*.csr
-*.der
-*.p12
-*.pfx
-*.pkcs12
-*.pem
-*.enc
-*.age
-*.asc
-id_rsa
-id_rsa.*
-id_ed25519
-id_ed25519.*
-*.secret
-*.secrets
-secrets/*
-
-# Local databases & dumps
-*.sqlite
-*.sqlite3
-*.db
-*.db3
-*.mdb
-*.sql
-*.dump
-
-# Python caches & tooling
-.mypy_cache/
-.pytest_cache/
-.tox/
-.coverage
-.coverage.*
-htmlcov/
-.pyright/
-
-# Node/JS tooling caches (project and web/ subdir)
-.npm/
-.pnpm-store/
-.yarn/
-.yarn/cache/
-.yarn/unplugged/
-.turbo/
-.next/
-.nuxt/
-.parcel-cache/
-.vite/
-.svelte-kit/
-web/.parcel-cache/
-web/.next/
-web/.nuxt/
-web/.turbo/
-web/.vite/
-/worker.js
-# Rust tooling & perf outputs
-.cargo/
-flamegraph.svg
-perf.data*
-callgrind.out.*
-cachegrind.out.*
-
-# Editor/IDE miscellany
-*.code-workspace
 .history/
-.fleet/
+.eslintcache
+.stylelintcache
+.cache/
+.tmp/
+tmp/
+diagnostics/
+tests_output/
 
-# Direnv / env tooling
-.envrc
-.direnv/
+# [PYTHON]
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
 
-# Docker/K8s local data
-docker/*.env
-docker/*.local.env
-Dockerfile.local
-Dockerfile.*
-*.dockerfile
-docker-compose.local.yml
+# [DOCKER]
+*.docker-compose.local.yml
 
-# Security & SBOM scan outputs
-gitleaks-report.*
-trivy-report.*
-sbom-*.json
-sbom-*.xml
-
-
-# Deployment sensitive files
-# Docker and Kubernetes secrets
-helm/*/secrets/
-helm/*/keys/
-helm/*/config/
-helm/*/logs/
-helm/*/secrets-prod.yaml
-*.key
-wallet_password.txt
-
-node_modules
-integration_test_db/
+# [DEPLOYMENT / TRANSIENT]
+qanto-testnet/
+qanto_hf_release/
+build_timestamp.txt
+Infrastructure/node-operator/keys/.gitignore
+Infrastructure/node-operator/keys/README.md
