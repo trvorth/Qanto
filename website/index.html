@@ -41,6 +41,113 @@
     <link rel="stylesheet" href="assets/css/components.css">
     <link rel="stylesheet" href="assets/css/animations.css">
     
+    <style>
+        /* Phase 33: QantoSwap UI Styles */
+        .swap-module {
+            margin-top: 4rem;
+            display: flex;
+            justify-content: center;
+        }
+        .swap-card {
+            width: 100%;
+            max-width: 450px;
+            padding: 1.5rem;
+            border-radius: 28px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(10, 10, 20, 0.6);
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
+        }
+        .swap-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        .badge-live {
+            background: rgba(0, 255, 170, 0.1);
+            color: #00ffaa;
+            font-size: 0.6rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 255, 170, 0.3);
+            margin-left: 8px;
+        }
+        .input-group {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 1rem;
+            border-radius: 20px;
+            margin-bottom: 0.5rem;
+        }
+        .input-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 0.5rem;
+        }
+        .input-field {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .input-field input {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            width: 60%;
+            outline: none;
+        }
+        .token-select {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 6px 12px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+        .swap-divider {
+            display: flex;
+            justify-content: center;
+            margin: -15px 0;
+            z-index: 2;
+            position: relative;
+        }
+        .btn-circle {
+            background: #1a1a2e;
+            border: 4px solid #0f0f1a;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+        .btn-circle:hover { transform: rotate(180deg); }
+        .swap-info {
+            padding: 1rem;
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.4rem;
+        }
+        .value-good { color: #00ffaa; }
+        .btn-full {
+            width: 100%;
+            padding: 1rem;
+            border-radius: 18px;
+            font-weight: bold;
+            margin-top: 1rem;
+        }
+    </style>
+    
     <!-- Structured Data -->
     <script type="application/ld+json">
     {
@@ -64,6 +171,28 @@
     <!-- BUILD_TIMESTAMP -->
 </head>
 <body>
+    <!-- Network Status Bar (Institutional Grade) -->
+    <div class="network-status-bar" id="network-status-bar">
+        <div class="container status-container">
+            <div class="status-item">
+                <span class="status-label">Network:</span>
+                <span class="status-value pulse-green">Mainnet Genesis</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Block Height:</span>
+                <span class="status-value" id="block-height">---</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Gas Price:</span>
+                <span class="status-value" id="gas-price">---</span>
+            </div>
+            <div class="status-item connection-status">
+                <div class="status-indicator" id="connection-indicator"></div>
+                <span class="status-text" id="connection-text">Connecting...</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Loading Screen -->
     <div id="loading-screen" class="loading-screen">
         <div class="loading-content">
@@ -556,6 +685,63 @@
                         </a>
                     </div>
                 </div>
+
+                <!-- NEW: QantoSwap Interface (Phase 33) -->
+                <div class="swap-module fade-in" id="swap-interface">
+                    <div class="swap-card glass">
+                        <div class="swap-header">
+                            <h3>QantoSwap <span class="badge-live">LIVE</span></h3>
+                            <button class="btn-icon" id="swap-settings">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                            </button>
+                        </div>
+
+                        <div class="input-group">
+                            <div class="input-header">
+                                <span>Sell</span>
+                                <span class="balance" id="token-a-balance">Balance: 0.00</span>
+                            </div>
+                            <div class="input-field">
+                                <input type="number" id="input-amount" placeholder="0.0">
+                                <div class="token-select">
+                                    <span class="token-symbol">QNTO</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="swap-divider">
+                            <button class="btn-circle" id="flip-swap">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 10l5 5 5-5M7 14l5 5 5-5" transform="rotate(180 12 12)"/></svg>
+                            </button>
+                        </div>
+
+                        <div class="input-group">
+                            <div class="input-header">
+                                <span>Buy</span>
+                                <span class="balance" id="token-b-balance">Balance: 0.00</span>
+                            </div>
+                            <div class="input-field">
+                                <input type="number" id="output-amount" placeholder="0.0" readonly>
+                                <div class="token-select">
+                                    <span class="token-symbol">USDT</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="swap-info">
+                            <div class="info-row">
+                                <span>Price Impact</span>
+                                <span id="price-impact" class="value-good">0.05%</span>
+                            </div>
+                            <div class="info-row">
+                                <span>Minimum Received</span>
+                                <span id="min-received">0.00 USDT</span>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary btn-full" id="swap-button">Connect Wallet</button>
+                    </div>
+                </div>
             </div>
         </section>
         
@@ -718,10 +904,14 @@ async fn main() -&gt; Result&lt;()&gt; {
         </svg>
     </button>
     
+    <!-- External Dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.11.1/ethers.umd.min.js"></script>
+    
     <!-- Scripts -->
     <script src="assets/js/main.js"></script>
     <script src="assets/js/animations.js"></script>
     <script src="assets/js/visualizations.js"></script>
+    <script src="assets/js/swap.js"></script>
     
     <!-- Service Worker Registration -->
     <script>
