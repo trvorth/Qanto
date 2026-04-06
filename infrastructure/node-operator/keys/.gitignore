@@ -1,0 +1,6 @@
+# Node operator keys — never commit real keys
+validator.key
+p2p_identity.key
+*.pem
+*.key
+!README.md
