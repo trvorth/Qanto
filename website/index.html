@@ -589,7 +589,7 @@
                                 <pre><code class="language-rust">use qanto_sdk::*;
 
 #[qanto::main]
-async fn main() -> Result<()> {
+async fn main() -&gt; Result&lt;()&gt; {
     let client = QantoClient::new()
         .with_quantum_security()
         .connect().await?;
