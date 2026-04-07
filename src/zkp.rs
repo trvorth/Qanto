@@ -57,6 +57,8 @@ pub enum ZKProofType {
     IdentityProof,
     /// Voting proof for governance
     VotingProof,
+    /// Verifiable AI inference proof (zkML)
+    InferenceProof,
 }
 
 /// Zero-Knowledge Proof structure
@@ -263,6 +265,23 @@ struct VotingProofCircuit {
     nullifier: Option<ConstraintF>,
     /// Election public key
     election_pubkey: ConstraintF,
+}
+
+/// Inference proof circuit for proving correct execution of a machine learning model (Linear Regression)
+/// Circuit for proving: Output = (Input * Weight) + Bias
+///
+/// Private inputs: input, weight
+/// Public inputs: bias, output
+#[derive(Clone)]
+struct InferenceProofCircuit {
+    /// The private input data to the model
+    input: Option<ConstraintF>,
+    /// The private weight learned by the model
+    weight: Option<ConstraintF>,
+    /// The public bias term
+    bias: ConstraintF,
+    /// The public expected output
+    output: Option<ConstraintF>,
 }
 
 impl ConstraintSynthesizer<ConstraintF> for MembershipProofCircuit {
@@ -479,6 +498,35 @@ impl ConstraintSynthesizer<ConstraintF> for VotingProofCircuit {
     }
 }
 
+impl ConstraintSynthesizer<ConstraintF> for InferenceProofCircuit {
+    fn generate_constraints(
+        self,
+        cs: ConstraintSystemRef<ConstraintF>,
+    ) -> Result<(), SynthesisError> {
+        // Allocate private input variables
+        let input_var = FpVar::new_witness(cs.clone(), || {
+            self.input.ok_or(SynthesisError::AssignmentMissing)
+        })?;
+        let weight_var = FpVar::new_witness(cs.clone(), || {
+            self.weight.ok_or(SynthesisError::AssignmentMissing)
+        })?;
+
+        // Allocate public bias and expected output
+        let bias_var = FpVar::new_input(cs.clone(), || Ok(self.bias))?;
+        let output_var = FpVar::new_input(cs.clone(), || {
+            self.output.ok_or(SynthesisError::AssignmentMissing)
+        })?;
+
+        // Linear Regression: output = (input * weight) + bias
+        let computed_output = &(&input_var * &weight_var) + &bias_var;
+
+        // Constraint: computed output must equal expected output
+        computed_output.enforce_equal(&output_var)?;
+
+        Ok(())
+    }
+}
+
 /// Zero-Knowledge Proof System
 #[derive(Debug)]
 pub struct ZKProofSystem {
@@ -511,6 +559,7 @@ impl ZKProofSystem {
         self.setup_computation_proof().await?;
         self.setup_identity_proof().await?;
         self.setup_voting_proof().await?;
+        self.setup_inference_proof().await?;
 
         info!("ZK proof system initialized successfully");
         Ok(())
@@ -714,6 +763,38 @@ impl ZKProofSystem {
         Ok(())
     }
 
+    /// Setup inference proof keys
+    async fn setup_inference_proof(&self) -> Result<()> {
+        let mut rng = ark_std::rand::thread_rng();
+
+        let circuit = InferenceProofCircuit {
+            input: Some(ConstraintF::from(1)),
+            weight: Some(ConstraintF::from(1)),
+            bias: ConstraintF::from(1),
+            output: Some(ConstraintF::from(2)),
+        };
+
+        // Generate keys
+        let (pk, vk) = Groth16::<E>::circuit_specific_setup(circuit, &mut rng)
+            .map_err(|e| anyhow!("Failed to setup inference proof: {e}"))?;
+
+        // Serialize and store keys
+        let mut pk_bytes = Vec::new();
+        pk.serialize_compressed(&mut pk_bytes)?;
+
+        let mut vk_bytes = Vec::new();
+        vk.serialize_compressed(&mut vk_bytes)?;
+
+        let mut proving_keys = self.proving_keys.write().await;
+        let mut verifying_keys = self.verifying_keys.write().await;
+
+        proving_keys.insert(ZKProofType::InferenceProof, pk_bytes);
+        verifying_keys.insert(ZKProofType::InferenceProof, vk_bytes);
+
+        debug!("Inference proof keys generated and stored");
+        Ok(())
+    }
+
     /// Generate a range proof
     pub async fn generate_range_proof(&self, value: u64, min: u64, max: u64) -> Result<ZKProof> {
         let proving_keys = self.proving_keys.read().await;
@@ -846,6 +927,64 @@ impl ZKProofSystem {
         cache.insert(proof_id, zk_proof.clone());
 
         info!("Balance proof generated successfully");
+        Ok(zk_proof)
+    }
+
+    /// Generate an inference proof (zkML)
+    pub async fn generate_inference_proof(
+        &self,
+        input: u64,
+        weight: u64,
+        bias: u64,
+        output: u64,
+    ) -> Result<ZKProof> {
+        let proving_keys = self.proving_keys.read().await;
+        let pk_bytes = proving_keys
+            .get(&ZKProofType::InferenceProof)
+            .ok_or_else(|| anyhow!("Inference proof proving key not found"))?;
+
+        let pk = ProvingKey::<E>::deserialize_compressed(&pk_bytes[..])?;
+
+        let circuit = InferenceProofCircuit {
+            input: Some(ConstraintF::from(input)),
+            weight: Some(ConstraintF::from(weight)),
+            bias: ConstraintF::from(bias),
+            output: Some(ConstraintF::from(output)),
+        };
+
+        let mut rng = ark_std::rand::thread_rng();
+        let proof = Groth16::<E>::prove(&pk, circuit, &mut rng)
+            .map_err(|e| anyhow!("Failed to generate inference proof: {e}"))?;
+
+        // Serialize proof
+        let mut proof_bytes = Vec::new();
+        proof.serialize_compressed(&mut proof_bytes)?;
+
+        // Create public inputs
+        let public_inputs = vec![
+            ConstraintF::from(bias).into_bigint().to_bytes_le(),
+            ConstraintF::from(output).into_bigint().to_bytes_le(),
+        ];
+
+        // Get verifying key hash
+        let verifying_keys = self.verifying_keys.read().await;
+        let vk_bytes = verifying_keys
+            .get(&ZKProofType::InferenceProof)
+            .ok_or_else(|| anyhow!("Inference proof verifying key not found"))?;
+
+        let vk_hash = qanto_hash(vk_bytes).as_bytes().to_vec();
+
+        let zk_proof = ZKProof {
+            proof: proof_bytes,
+            public_inputs,
+            proof_type: ZKProofType::InferenceProof,
+            vk_hash,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+
+        info!("Inference proof generated successfully");
         Ok(zk_proof)
     }
 
@@ -1386,5 +1525,64 @@ impl ZKProofSystem {
 impl Default for ZKProofSystem {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_zk_system_initialization() {
+        let zkp = ZKProofSystem::new();
+        let result = zkp.initialize().await;
+        assert!(result.is_ok(), "ZK system initialization failed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn test_range_proof_verification() {
+        let zkp = ZKProofSystem::new();
+        zkp.initialize().await.unwrap();
+
+        // Value 50 is within [0, 100]
+        let proof = zkp.generate_range_proof(50, 0, 100).await.unwrap();
+        let is_valid = zkp.verify_proof(&proof).await.unwrap();
+        assert!(is_valid, "Valid range proof failed verification");
+
+        // Value 150 is NOT within [0, 100]
+        // Note: The circuit setup for RangeProof used 0-100, so we can only generate proofs for that specific setup.
+        // If we want a different range, we'd need a different setup or a universal range circuit.
+        // For this test, we verify that a valid proof passes.
+    }
+
+    #[tokio::test]
+    async fn test_membership_proof_verification() {
+        let zkp = ZKProofSystem::new();
+        zkp.initialize().await.unwrap();
+
+        let element = 42u64;
+        let set = vec![10, 20, 30, 42, 50];
+
+        let proof = zkp.generate_membership_proof(element, set.clone()).await.unwrap();
+        let is_valid = zkp.verify_proof(&proof).await.unwrap();
+        assert!(is_valid, "Valid membership proof failed verification");
+    }
+
+    #[tokio::test]
+    async fn test_proof_serialization_integrity() {
+        let zkp = ZKProofSystem::new();
+        zkp.initialize().await.unwrap();
+
+        let proof = zkp.generate_range_proof(25, 0, 100).await.unwrap();
+        
+        // Serialize to JSON and back
+        let serialized = serde_json::to_string(&proof).unwrap();
+        let deserialized: ZKProof = serde_json::from_str(&serialized).unwrap();
+        
+        assert_eq!(proof.proof_type, deserialized.proof_type);
+        assert_eq!(proof.vk_hash, deserialized.vk_hash);
+        
+        let is_valid = zkp.verify_proof(&deserialized).await.unwrap();
+        assert!(is_valid, "Deserialized proof failed verification");
     }
 }
