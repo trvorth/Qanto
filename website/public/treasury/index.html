@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sovereign Wealth | QANTO Layer-0</title>
+    <link rel="stylesheet" href="../../assets/css/main.css">
+    <link rel="stylesheet" href="../../assets/css/animations.css">
+    <style>
+        :root {
+            --sovereign-gold: #ffcc00;
+            --sovereign-blue: #0099ff;
+            --glass-panel: rgba(255, 255, 255, 0.02);
+        }
+
+        body {
+            background: #000;
+            color: #fff;
+            padding: 50px;
+        }
+
+        .wealth-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 30px;
+            margin-top: 50px;
+        }
+
+        .main-stat-panel {
+            background: var(--glass-panel);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 204, 0, 0.1);
+            border-radius: 30px;
+            padding: 50px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .main-stat-panel::after {
+            content: "";
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(255, 204, 0, 0.05), transparent);
+            pointer-events: none;
+        }
+
+        .tvc-counter {
+            font-size: 5rem;
+            font-weight: 900;
+            letter-spacing: -4px;
+            background: linear-gradient(135deg, #fff, #ffcc00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        .rwa-sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .rwa-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 25px;
+            transition: all 0.3s ease;
+        }
+
+        .rwa-card:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: var(--sovereign-gold);
+        }
+
+        .asset-price {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 10px 0;
+        }
+
+        .kyb-badge {
+            background: rgba(0, 255, 204, 0.1);
+            color: #00ffcc;
+            padding: 8px 15px;
+            border-radius: 50px;
+            font-size: 0.75rem;
+            border: 1px solid rgba(0, 255, 204, 0.2);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .burn-engine {
+            margin-top: 40px;
+            padding: 30px;
+            background: linear-gradient(90deg, rgba(255, 0, 0, 0.05), transparent);
+            border-radius: 20px;
+            border-left: 4px solid #ff3300;
+        }
+
+        .action-button {
+            padding: 15px 30px;
+            border-radius: 12px;
+            border: 1px solid var(--sovereign-gold);
+            background: transparent;
+            color: var(--sovereign-gold);
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .action-button:hover {
+            background: var(--sovereign-gold);
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="wealth-container">
+        <header style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h1 style="font-size: 2.5rem; margin: 0;">Sovereign Wealth</h1>
+                <p style="opacity: 0.5;">Protocol Reserves & RWA Synthetic Layer</p>
+            </div>
+            <div class="kyb-badge">
+                [ZK-KYB Verified: Institutional]
+            </div>
+        </header>
+
+        <div class="dashboard-grid">
+            <div class="main-stat-panel">
+                <span style="text-transform: uppercase; letter-spacing: 2px; font-size: 0.8rem; opacity: 0.6;">Total Value Captured (TVC)</span>
+                <div class="tvc-counter">$1,248,392.00</div>
+                <div style="display: flex; gap: 40px; margin-top: 30px;">
+                    <div>
+                        <p style="opacity: 0.5; margin: 0;">Reserves (QNTO)</p>
+                        <h3 style="margin: 5px 0;">42,890,123.50</h3>
+                    </div>
+                    <div>
+                        <p style="opacity: 0.5; margin: 0;">Algorithmic Yield</p>
+                        <h3 style="margin: 5px 0; color: #00ffcc;">+12.4% ARR</h3>
+                    </div>
+                </div>
+
+                <div class="burn-engine">
+                    <h4 style="margin: 0 0 10px 0; color: #ff3300;">BURN-FOR-YIELD ENGINE</h4>
+                    <p style="font-size: 0.85rem; opacity: 0.7; max-width: 500px;">
+                        The SAGA-Agent has captured $12,402 in arbitrage profit this session. 
+                        <b>7,402 QNTO</b> scheduled for deflationary burn.
+                    </p>
+                    <button class="action-button" style="border-color: #ff3300; color: #ff3300;">Authorize Yield Burn</button>
+                </div>
+            </div>
+
+            <div class="rwa-sidebar">
+                <div class="rwa-card">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>RWA_GOLD</span>
+                        <span style="color: #00ffcc;">[ZK-FEED]</span>
+                    </div>
+                    <div class="asset-price">$2,192.40 / oz</div>
+                    <div style="font-size: 0.7rem; opacity: 0.4;">SAGA-AI Confidence: 99.1%</div>
+                </div>
+
+                <div class="rwa-card">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>RWA_TBILL_1Y</span>
+                        <span style="color: #00ffcc;">[ZK-FEED]</span>
+                    </div>
+                    <div class="asset-price">5.24% YIELD</div>
+                    <div style="font-size: 0.7rem; opacity: 0.4;">SAGA-AI Confidence: 98.7%</div>
+                </div>
+
+                <div class="rwa-card" style="opacity: 0.5; border-style: dashed;">
+                    <div style="text-align: center; padding: 20px;">
+                        <span style="font-size: 0.8rem;">+ ADD RWA ASSET</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 60px; text-align: center; font-size: 0.9rem; opacity: 0.4;">
+            <a href="../bridge/index.html" style="color: inherit; text-decoration: none;">← Teleport to Agent-Mesh</a>
+        </div>
+    </div>
+</body>
+</html>
