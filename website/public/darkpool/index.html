@@ -128,10 +128,66 @@
             50% { opacity: 1; }
             100% { opacity: 0.5; }
         }
+
+        /* Gating Styles */
+        .gated-content {
+            position: relative;
+        }
+
+        .blur-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(20px);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.5s ease;
+        }
+
+        .gated-locked .main-terminal {
+            filter: grayscale(1) opacity(0.5);
+        }
+
+        .access-card {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 40px;
+            border-radius: 16px;
+            border: 1px solid var(--terminal-green);
+            text-align: center;
+            box-shadow: 0 0 50px rgba(0, 255, 204, 0.2);
+            max-width: 400px;
+        }
+
+        .hidden {
+            display: none !important;
+            opacity: 0;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
-    <div class="terminal-container">
+    <!-- Access Gating Overlay -->
+    <div id="gatingOverlay" class="blur-overlay">
+        <div class="access-card">
+            <h2 style="color: var(--terminal-green); margin-top: 0;">ACCESS RESTRICTED</h2>
+            <p style="font-size: 0.9rem; margin-bottom: 30px; line-height: 1.5;">
+                The Stealth Terminal requires <strong>ORACLE STATUS</strong>. <br>
+                Please connect a wallet containing a <strong>PioneerNFT</strong> or an active <strong>Sentinel Node</strong> identity.
+            </p>
+            <button onclick="verifyAccess()" class="btn-stealth" style="background: transparent; color: var(--terminal-green); border: 1px solid var(--terminal-green);">Verify Credentials</button>
+            <div id="verifyStatus" style="margin-top: 15px; font-size: 0.7rem; opacity: 0.6;"></div>
+        </div>
+    </div>
+
+    <div class="terminal-container gated-locked" id="terminalGrid">
         <div class="main-terminal">
             <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 30px;">
                 <div>
@@ -216,5 +272,44 @@
             </div>
         </div>
     </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+    <script>
+        const PIONEER_NFT_ADDRESS = "0x0165878A594ca255338adfa4d48449f69242Eb8F";
+        
+        async function verifyAccess() {
+            const statusEl = document.getElementById('verifyStatus');
+            statusEl.innerText = "AUTHENTICATING...";
+
+            try {
+                if (window.ethereum) {
+                    const provider = new ethers.BrowserProvider(window.ethereum);
+                    const accounts = await provider.send("eth_requestAccounts", []);
+                    const userAddress = accounts[0];
+
+                    // Mock Check for Phase 39 Demonstration
+                    // In production: const contract = new ethers.Contract(PIONEER_NFT_ADDRESS, ["function balanceOf(address) view returns (uint256)"], provider);
+                    // const balance = await contract.balanceOf(userAddress);
+                    
+                    // Simulate verification success for local testing/auth
+                    setTimeout(() => {
+                        unlockTerminal();
+                    }, 1500);
+                } else {
+                    statusEl.innerText = "WEB3_PROVIDER_NOT_FOUND";
+                    statusEl.style.color = "#ff4444";
+                }
+            } catch (err) {
+                console.error(err);
+                statusEl.innerText = "ERROR: " + err.message;
+            }
+        }
+
+        function unlockTerminal() {
+            document.getElementById('gatingOverlay').classList.add('hidden');
+            document.getElementById('terminalGrid').classList.remove('gated-locked');
+            console.log("QANTO_CORE: ACCESS_GRANTED");
+        }
+    </script>
 </body>
 </html>

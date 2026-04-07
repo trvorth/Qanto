@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  qanto-sentinel:
+    image: qanto/sentinel:v1.0.0
+    container_name: qanto-sentinel-node
+    restart: always
+    ports:
+      - "30303:30303" # P2P
+      - "30303:30303/udp"
+      - "8545:8545"   # RPC (Optional for local dashboard)
+    volumes:
+      - ./data:/root/.qanto
+    environment:
+      - QANTO_NETWORK=mainnet
+      - QANTO_NODE_NAME=${NODE_NAME:-Sentinel_Pioneer}
+      - QANTO_LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "qanto-cli", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
