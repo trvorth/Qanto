@@ -63,6 +63,8 @@ pub enum ZKProofType {
     MembershipIdentityProof,
     /// Institutional ZK-KYB for corporate authority trees
     BusinessIdentityProof,
+    /// Confidential Dark Pool Matching Proof (ZME)
+    ConfidentialMatchProof,
 }
 
 /// Zero-Knowledge Proof structure
@@ -306,6 +308,22 @@ struct AuthorityTreeCircuit {
     authority_root: ConstraintF,
     /// The required number of signers
     threshold: ConstraintF,
+}
+
+/// ZK-Matching Engine (ZME) circuit for confidential trade matching.
+/// Proves that a Buy Order price is greater than or equal to a Sell Order price
+/// without revealing the actual prices to the blockchain.
+///
+/// Private inputs: buy_price, sell_price
+/// Public inputs: min_amount (volume)
+#[derive(Clone)]
+struct ConfidentialMatchCircuit {
+    /// Private buy price
+    pub buy_price: Option<ConstraintF>,
+    /// Private sell price
+    pub sell_price: Option<ConstraintF>,
+    /// Matched amount (volume)
+    pub amount: ConstraintF,
 }
 
 impl ConstraintSynthesizer<ConstraintF> for MembershipProofCircuit {
@@ -620,6 +638,29 @@ impl ConstraintSynthesizer<ConstraintF> for AuthorityTreeCircuit {
     }
 }
 
+impl ConstraintSynthesizer<ConstraintF> for ConfidentialMatchCircuit {
+    fn generate_constraints(
+        self,
+        cs: ConstraintSystemRef<ConstraintF>,
+    ) -> Result<(), SynthesisError> {
+        // Allocate public amount
+        let _amount_var = FpVar::new_input(cs.clone(), || Ok(self.amount))?;
+
+        // Allocate private prices
+        let buy_var = FpVar::new_witness(cs.clone(), || {
+            self.buy_price.ok_or(SynthesisError::AssignmentMissing)
+        })?;
+        let sell_var = FpVar::new_witness(cs.clone(), || {
+            self.sell_price.ok_or(SynthesisError::AssignmentMissing)
+        })?;
+
+        // ZME Constraint: Buy Price >= Sell Price
+        buy_var.enforce_cmp(&sell_var, Ordering::Greater, true)?;
+
+        Ok(())
+    }
+}
+
 /// Zero-Knowledge Proof System
 #[derive(Debug)]
 pub struct ZKProofSystem {
@@ -655,6 +696,7 @@ impl ZKProofSystem {
         self.setup_inference_proof().await?;
         self.setup_membership_identity_proof().await?;
         self.setup_business_identity_proof().await?;
+        self.setup_confidential_match_proof().await?;
 
         info!("ZK proof system initialized successfully");
         Ok(())
@@ -949,6 +991,37 @@ impl ZKProofSystem {
         verifying_keys.insert(ZKProofType::BusinessIdentityProof, vk_bytes);
 
         debug!("Business identity proof keys generated and stored");
+        Ok(())
+    }
+
+    /// Setup confidential match proof keys (ZME)
+    async fn setup_confidential_match_proof(&self) -> Result<()> {
+        let mut rng = ark_std::rand::thread_rng();
+
+        let circuit = ConfidentialMatchCircuit {
+            buy_price: Some(ConstraintF::from(100)),
+            sell_price: Some(ConstraintF::from(90)),
+            amount: ConstraintF::from(1000),
+        };
+
+        // Generate keys
+        let (pk, vk) = Groth16::<E>::circuit_specific_setup(circuit, &mut rng)
+            .map_err(|e| anyhow!("Failed to setup confidential match proof: {e}"))?;
+
+        // Serialize and store keys
+        let mut pk_bytes = Vec::new();
+        pk.serialize_compressed(&mut pk_bytes)?;
+
+        let mut vk_bytes = Vec::new();
+        vk.serialize_compressed(&mut vk_bytes)?;
+
+        let mut proving_keys = self.proving_keys.write().await;
+        let mut verifying_keys = self.verifying_keys.write().await;
+
+        proving_keys.insert(ZKProofType::ConfidentialMatchProof, pk_bytes);
+        verifying_keys.insert(ZKProofType::ConfidentialMatchProof, vk_bytes);
+
+        debug!("Confidential match proof keys generated and stored");
         Ok(())
     }
 
@@ -1254,6 +1327,59 @@ impl ZKProofSystem {
         };
 
         info!("Business identity proof generated successfully");
+        Ok(zk_proof)
+    }
+
+    /// Generate a confidential match proof (ZME) for a Dark Pool trade
+    pub async fn generate_confidential_match_proof(
+        &self,
+        buy_price: u64,
+        sell_price: u64,
+        amount: u64,
+    ) -> Result<ZKProof> {
+        let proving_keys = self.proving_keys.read().await;
+        let pk_bytes = proving_keys
+            .get(&ZKProofType::ConfidentialMatchProof)
+            .ok_or_else(|| anyhow!("Confidential match proving key not found"))?;
+
+        let pk = ProvingKey::<E>::deserialize_compressed(&pk_bytes[..])?;
+
+        let circuit = ConfidentialMatchCircuit {
+            buy_price: Some(ConstraintF::from(buy_price)),
+            sell_price: Some(ConstraintF::from(sell_price)),
+            amount: ConstraintF::from(amount),
+        };
+
+        let mut rng = ark_std::rand::thread_rng();
+        let proof = Groth16::<E>::prove(&pk, circuit, &mut rng)
+            .map_err(|e| anyhow!("Failed to generate confidential match proof: {e}"))?;
+
+        // Serialize proof
+        let mut proof_bytes = Vec::new();
+        proof.serialize_compressed(&mut proof_bytes)?;
+
+        // Create public inputs
+        let public_inputs = vec![ConstraintF::from(amount).into_bigint().to_bytes_le()];
+
+        // Get verifying key hash
+        let verifying_keys = self.verifying_keys.read().await;
+        let vk_bytes = verifying_keys
+            .get(&ZKProofType::ConfidentialMatchProof)
+            .ok_or_else(|| anyhow!("Confidential match verifying key not found"))?;
+
+        let vk_hash = qanto_hash(vk_bytes).as_bytes().to_vec();
+
+        let zk_proof = ZKProof {
+            proof: proof_bytes,
+            public_inputs,
+            proof_type: ZKProofType::ConfidentialMatchProof,
+            vk_hash,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_secs(),
+        };
+
+        info!("Confidential match proof generated successfully");
         Ok(zk_proof)
     }
 

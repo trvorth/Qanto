@@ -21,15 +21,18 @@ pub struct SagaAgent {
     pub guardrail_address: String,
     /// Minimum profit threshold for arbitrage (e.g., 0.02 = 2%)
     pub profit_threshold: f64,
+    /// The address of the QantoDarkPool
+    pub darkpool_address: String,
 }
 
 impl SagaAgent {
-    pub fn new(swap: &str, bridge: &str, guardrail: &str) -> Self {
+    pub fn new(swap: &str, bridge: &str, guardrail: &str, darkpool: &str) -> Self {
         Self {
             swap_address: swap.to_string(),
             bridge_address: bridge.to_string(),
             guardrail_address: guardrail.to_string(),
             profit_threshold: 0.02,
+            darkpool_address: darkpool.to_string(),
         }
     }
 
@@ -50,6 +53,9 @@ impl SagaAgent {
             } else {
                 info!("SAGA-Agent: Price Delta ({:.2}%) below threshold. Monitoring...", delta * 100.0);
             }
+
+            // 3. Monitor Dark Pool for JIT Liquidity (Stealth Wave)
+            self.monitor_dark_pool().await?;
 
             sleep(Duration::from_secs(30)).await;
         }
@@ -96,6 +102,45 @@ impl SagaAgent {
         info!("SAGA-Agent: Executing Teleport via QantoHyperBridge ({})", self.bridge_address);
         Ok(())
     }
+
+    /// Monitors the QantoDarkPool for unmatched hidden orders.
+    /// If parameters match, the agent provides JIT liquidity from the treasury.
+    async fn monitor_dark_pool(&self) -> Result<()> {
+        info!("SAGA-Agent: Scanning Dark Pool ({}) for unmatched commitments...", self.darkpool_address);
+
+        // In a real implementation: Call getActiveOrders() on the Dark Pool contract.
+        // For Phase 38 simulation: We detect a 'Shadow Order' commitment.
+        let shadow_order_detected = true;
+
+        if shadow_order_detected {
+            info!("SAGA-Agent: Shadow Order detected! Analyzing price matching...");
+            
+            let fair_price = 1.15; // AI-estimated fair price for QNTO/USDT
+            
+            // Assume the hidden order is a 'Buy' at 1.20
+            // Logic: If order_price >= fair_price, we fill it from Treasury.
+            let order_price = 1.20;
+
+            if order_price >= fair_price {
+                info!("SAGA-Agent: JIT Match Found! Price: {} >= Fair: {}", order_price, fair_price);
+                
+                // 1. Generate ZME Proof (Simulated intent)
+                info!("SAGA-Agent: Generating ConfidentialMatchProof (ZME) for Trade Settlement...");
+                
+                // 2. Fulfill Match on-chain
+                self.fulfill_hidden_match().await?;
+                
+                info!("SAGA-Agent: SUCCESS! Dark Pool match settled via JIT Treasury Pool.");
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn fulfill_hidden_match(&self) -> Result<()> {
+        info!("SAGA-Agent: Calling fulfillMatch() on QantoDarkPool ({})", self.darkpool_address);
+        Ok(())
+    }
 }
 
 #[tokio::main]
@@ -104,7 +149,8 @@ async fn main() -> Result<()> {
     let agent = SagaAgent::new(
         "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512", // QantoSwapFactory
         "0x5FbDB2315678afecb367f032d93F642f64180aa3", // QantoHyperBridge (Template)
-        "0x0165878A594ca255338adfa4d48449f69242Eb8F"  // QantoGuardrail
+        "0x0165878A594ca255338adfa4d48449f69242Eb8F", // QantoGuardrail
+        "0x5FbDB2315678afecb367f032d93F642f64180aa3"  // QantoDarkPool (Simulated)
     );
 
     agent.run_monitor_loop().await?;
