@@ -609,8 +609,8 @@ const QANTO_NETWORK_PARAMS = {
         symbol: 'QNTO',
         decimals: 18
     },
-    rpcUrls: [RPC_URL + '/rpc'],
-    blockExplorerUrls: ['https://qanto.org/explorer']
+    rpcUrls: ["https://trvorth-qanto-testnet.hf.space/rpc"],
+    blockExplorerUrls: ["https://qanto.org/explorer"]
 };
 
 async function addQantoNetwork() {
@@ -624,9 +624,11 @@ async function addQantoNetwork() {
     if (btnText) btnText.innerText = "AUTHENTICATING...";
 
     try {
+        const params = [QANTO_NETWORK_PARAMS];
+        console.log("MetaMask Injection Triggered:", params);
         await window.ethereum.request({
             method: 'wallet_addEthereumChain',
-            params: [QANTO_NETWORK_PARAMS],
+            params: params,
         });
         
         // Task 4: MetaMask Verification Loop
@@ -1486,13 +1488,14 @@ function resolveSovereignState(state, detectedRpc = null) {
     } else if (state === 'ACTIVE') {
         if (hudStatus) {
             hudStatus.innerText = "TESTNET LIVE | SYNCED";
-            hudStatus.style.color = '#00ffaa';
-            hudStatus.style.textShadow = '0 0 10px #00ffaa';
+            hudStatus.style.color = '#00ff9d';
+            hudStatus.style.textShadow = '0 0 10px #00ff9d';
+            hudStatus.style.animation = 'none'; // Stop any scanning animation
             hudStatus.classList.add('sentinel-local-heartbeat');
         }
         if (protocolStatus) {
             protocolStatus.innerText = "QANTO V1.0.0 | TESTNET LIVE";
-            protocolStatus.style.color = "#00ffaa";
+            protocolStatus.style.color = "#00ff9d";
         }
     }
 }
@@ -1664,19 +1667,22 @@ window.initNodeScanner = async function() {
                 clearTimeout(timeoutId);
 
                 if (res.ok) {
-                    activeFound = true;
-                    // Task 3: The 'Live' Flip
-                    resolveSovereignState('ACTIVE', rpc);
-                    
-                    if (debugRpc) {
-                        debugRpc.innerHTML = `TESTNET LIVE <span class="pulse-green" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00ffaa; margin-left:5px;"></span> <span style="font-size:9px;">(${rpc})</span>`;
-                        debugRpc.style.color = '#00ffaa';
+                    const data = await res.json();
+                    if (data && data.result && parseInt(data.result, 16) > 0) {
+                        activeFound = true;
+                        // Task 3: The 'Live' Flip
+                        resolveSovereignState('ACTIVE', rpc);
+                        
+                        if (debugRpc) {
+                            debugRpc.innerHTML = `TESTNET LIVE <span class="pulse-green" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00ff9d; margin-left:5px;"></span> <span style="font-size:9px;">(${rpc})</span>`;
+                            debugRpc.style.color = '#00ff9d';
+                        }
+                        
+                        if (typeof QANTO_NETWORK_PARAMS !== 'undefined') {
+                            QANTO_NETWORK_PARAMS.rpcUrls = [rpc];
+                        }
+                        return true;
                     }
-                    
-                    if (typeof QANTO_NETWORK_PARAMS !== 'undefined') {
-                        QANTO_NETWORK_PARAMS.rpcUrls = [rpc];
-                    }
-                    return true;
                 }
             } catch(e) {
                 console.warn("Scanner: Node offline - ", rpc, e.message);
