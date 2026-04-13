@@ -1670,9 +1670,12 @@ window.initNodeScanner = async function() {
                     const data = await res.json();
                     if (data && data.result && parseInt(data.result, 16) > 0) {
                         activeFound = true;
-                        // Task 3: The 'Live' Flip
-                        resolveSovereignState('ACTIVE', rpc);
                         
+                        resolveSovereignState('ACTIVE', rpc);
+                        if (typeof window.updatePortalHUD === 'function') window.updatePortalHUD();
+                        if (typeof window.updateHUD === 'function') window.updateHUD('TESTNET LIVE');
+                        
+                        const debugRpc = document.getElementById('debug-rpc');
                         if (debugRpc) {
                             debugRpc.innerHTML = `TESTNET LIVE <span class="pulse-green" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00ff9d; margin-left:5px;"></span> <span style="font-size:9px;">(${rpc})</span>`;
                             debugRpc.style.color = '#00ff9d';
