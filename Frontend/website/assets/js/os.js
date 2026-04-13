@@ -604,7 +604,7 @@ const QANTO_CHAIN_ID = '0x1234'; // SAGA in hex
 const QANTO_NETWORK_PARAMS = {
     chainId: '0x1234',
     chainName: 'QANTO Testnet',
-    nativeCurrency: { name: 'QANTO', symbol: 'QNTO', decimals: 18 },
+    nativeCurrency: { name: 'Qanto', symbol: 'QNTO', decimals: 18 },
     rpcUrls: ['https://trvorth-qanto-testnet.hf.space/rpc'],
     blockExplorerUrls: ['https://qanto.org/explorer/']
 };
@@ -1459,8 +1459,8 @@ function resolveSovereignState(state, detectedRpc = null) {
     const protocolStatus = document.getElementById('protocol-status');
 
     if (detectedRpc) {
-        window.rpcUrl = detectedRpc;
-        console.log(`🌐 PROTOCOL_SYNC: Connection established via ${detectedRpc}`);
+        window.rpcUrl = RPC_URL;
+        console.log(`[v1.1-HARDENED] 🌐 SAGA CONTROLLER: Connected to ${RPC_URL}`);
     }
 
     if (state === 'SIMULATED') {
