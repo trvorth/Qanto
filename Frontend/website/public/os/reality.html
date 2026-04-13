@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | SAGA-GLASS AR</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --manifest-cyan: #00e5ff; --deep-void: #00050a; }
+        body { background: var(--deep-void); color: var(--manifest-cyan); font-family: 'Space Mono', monospace; margin: 0; overflow: hidden; }
+        
+        .camera-feed {
+            width: 100vw; height: 100vh;
+            background: linear-gradient(45deg, #000c1a 0%, #00050a 100%);
+            position: relative;
+            background-image: radial-gradient(circle at 50% 50%, rgba(0, 229, 255, 0.05) 0%, transparent 80%);
+        }
+
+        /* Scanning Grid */
+        .grid {
+            position: absolute; width: 200%; height: 200%;
+            top: -50%; left: -50%;
+            background-image: 
+                linear-gradient(rgba(0, 229, 255, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 229, 255, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+            transform: perspective(1000px) rotateX(60deg);
+            z-index: 1;
+            animation: grid_flow 20s infinite linear;
+        }
+
+        @keyframes grid_flow { from { transform: perspective(1000px) rotateX(60deg) translateY(0); } to { transform: perspective(1000px) rotateX(60deg) translateY(50px); } }
+
+        /* AR Overlays */
+        .ar-box {
+            position: absolute;
+            border: 1px solid var(--manifest-cyan);
+            background: rgba(0, 229, 255, 0.02);
+            padding: 8px;
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            backdrop-filter: blur(4px);
+            z-index: 10;
+            pointer-events: none;
+            transition: all 0.5s;
+        }
+
+        .ar-box::before { content: ''; position: absolute; top: -2px; left: -2px; width: 10px; height: 10px; border-left: 2px solid #fff; border-top: 2px solid #fff; }
+        .ar-box::after { content: ''; position: absolute; bottom: -2px; right: -2px; width: 10px; height: 10px; border-right: 2px solid #fff; border-bottom: 2px solid #fff; }
+
+        .veracity { color: #fff; font-weight: 700; margin-top: 4px; display: block; }
+
+        /* x402 Flow Lines */
+        .flow-line {
+            position: absolute;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--manifest-cyan), transparent);
+            opacity: 0.2;
+            width: 100%;
+            z-index: 5;
+            animation: flow 4s infinite linear;
+        }
+
+        @keyframes flow { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+        /* HUD */
+        .hud-top { position: absolute; top: 30px; left: 30px; z-index: 100; font-size: 10px; letter-spacing: 4px; opacity: 0.8; }
+        .hud-bottom { position: absolute; bottom: 30px; right: 30px; z-index: 100; text-align: right; }
+        .hud-title { font-size: 24px; font-weight: 700; letter-spacing: 12px; margin-bottom: 5px; }
+
+        .reticle {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 40px; height: 40px; border: 1px solid rgba(0, 229, 255, 0.5);
+            border-radius: 50%; z-index: 100;
+        }
+        .reticle::after { content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 4px; height: 4px; background: #fff; border-radius: 50%; }
+
+    </style>
+</head>
+<body>
+    <div class="camera-feed" id="feed-container">
+        <video id="webcam" autoplay playsinline style="width: 100vw; height: 100vh; object-fit: cover; position: absolute; z-index: 0; filter: contrast(1.2) brightness(0.8) hue-rotate(180deg) saturate(0.5);"></video>
+        <div class="grid"></div>
+        <div class="reticle"></div>
+
+        <div class="hud-top">
+            <i class="fas fa-eye"></i> AR-VERACITY LENS | <span style="color: #fff;">SCANNING PHYSICAL SHARD...</span>
+        </div>
+
+        <div class="hud-bottom">
+            <div class="hud-title">REALITY: MAPPED</div>
+            <div style="font-size: 10px; letter-spacing: 2px; opacity: 0.6;">PHASE 142: SAGA-GLASS AR OVERLAY ACTIVE</div>
+        </div>
+
+        <!-- AR HUD Elements -->
+        <div id="ar-objects">
+            <div class="ar-box" id="sovereign-zone-box" style="top: 50%; left: 50%; display: none; transform: translate(-50%, -50%); border-color: #ffd700;">
+                [LOCATION: SAGA-ONE | METRO-CENTRAL]
+                <span class="veracity" style="color: #ffd700;">ZERO-LAWS: ENFORCED</span>
+                <div style="margin-top: 4px; opacity: 0.6; font-size: 8px;">SOVEREIGN URBAN DISTRICT 01</div>
+            </div>
+            
+            <div class="ar-box" style="top: 25%; left: 20%;">
+                [ID: SOVEREIGN_ENTITY_DETECTION]
+                <span class="veracity">STATUS: REGISTERED</span>
+                <div style="margin-top: 4px; opacity: 0.6;">TRUST_SCORE: 100%</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } 
+                });
+                video.srcObject = stream;
+            } catch (err) {
+                console.warn("Camera access denied or unavailable. Falling back to SAGA-Simulation.");
+                document.getElementById('feed-container').style.background = "linear-gradient(45deg, #001a44, #000)";
+            }
+        }
+
+        initCamera();
+
+        // Phase 146: Geo-Fencing Logic
+        function checkGeoLocation() {
+            navigator.geolocation.getCurrentPosition((pos) => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                
+                // SAGA-ONE Coordinates (Center)
+                const s_lat = 40.7128;
+                const s_lng = -74.0060;
+                
+                const dist = Math.sqrt(Math.pow(lat - s_lat, 2) + Math.pow(lng - s_lng, 2));
+                
+                if (dist < 0.05) { // Within ~5km
+                    document.getElementById('sovereign-zone-box').style.display = 'block';
+                    console.info("📍 GEO_FENCE: Entering SAGA-ONE Sovereign District.");
+                }
+            }, () => {
+                // Fallback: Default to SAGA-ONE for simulation
+                document.getElementById('sovereign-zone-box').style.display = 'block';
+            });
+        }
+        
+        checkGeoLocation();
+
+        // Mouse/Gyro Drift
+        document.addEventListener('mousemove', (e) => {
+            const x = (e.clientX / window.innerWidth - 0.5) * 40;
+            const y = (e.clientY / window.innerHeight - 0.5) * 40;
+            document.querySelectorAll('.ar-box').forEach(box => {
+                box.style.transform = `translate(${x}px, ${y}px)`;
+            });
+        });
+    </script>
+</body>
+</html>

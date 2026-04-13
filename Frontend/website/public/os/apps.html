@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AGENTIC APP STORE | Expert Shards</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(5, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .app-header { border-bottom: 2px solid #00e5ff; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .shard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+        .shard-card { 
+            background: rgba(255, 255, 255, 0.03); 
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+            border-radius: 20px; 
+            padding: 24px; 
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .shard-card:hover { 
+            transform: translateY(-5px); 
+            border-color: #00e5ff;
+            background: rgba(0, 229, 255, 0.05);
+        }
+        .shard-type { font-size: 10px; letter-spacing: 2px; color: #00e5ff; text-transform: uppercase; margin-bottom: 12px; font-weight: 700; }
+        .shard-name { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+        .shard-cost { font-family: 'JetBrains Mono', monospace; font-size: 14px; color: #00ffaa; margin-bottom: 20px; margin-top: auto; }
+        .btn-hire {
+            width: 100%;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            border-radius: 12px;
+            color: white;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 1px;
+        }
+        .btn-hire:hover {
+            background: #00e5ff;
+            color: black;
+            box-shadow: 0 0 20px rgba(0, 229, 255, 0.5);
+        }
+        .shard-icon { font-size: 40px; margin-bottom: 20px; opacity: 0.8; }
+        .liquid-metal-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(270deg, transparent, rgba(0, 229, 255, 0.05), transparent);
+            background-size: 200% 100%;
+            animation: liquid-flow 8s ease infinite;
+            pointer-events: none;
+        }
+        @keyframes liquid-flow {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-header">
+        <div>
+            <h1 style="margin:0; letter-spacing: 4px; font-weight: 900;">AGENTIC APP STORE</h1>
+            <div style="font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px;">Deploy Expert Shards to the Mesh</div>
+        </div>
+        <div style="text-align: right;">
+            <div id="wallet-balance" style="font-size: 14px; color: #00ffaa; font-family: 'JetBrains Mono', monospace;">100.00 eQNTO</div>
+            <div style="font-size: 9px; color: #888;">READY FOR ALLOCATION</div>
+        </div>
+    </div>
+
+    <div class="shard-grid">
+        <!-- Sentinel Shard -->
+        <div class="shard-card">
+            <div class="liquid-metal-overlay"></div>
+            <div class="shard-icon" style="color: #00ffaa;"><i class="fas fa-shield-halved"></i></div>
+            <div class="shard-type">Security</div>
+            <div class="shard-name">Sentinel Shard v1.0</div>
+            <div style="font-size: 12px; color: #aaa; margin-bottom: 15px; line-height: 1.5;">Autonomous security agent for shard-level threat detection and mitigation.</div>
+            <div class="shard-cost">10 eQNTO / Task</div>
+            <button class="btn-hire" onclick="hireShard('Sentinel', 10, this)">Hire Expert</button>
+        </div>
+
+        <!-- Treasury Shard -->
+        <div class="shard-card">
+            <div class="liquid-metal-overlay"></div>
+            <div class="shard-icon" style="color: #ffd700;"><i class="fas fa-vault"></i></div>
+            <div class="shard-type">Finance</div>
+            <div class="shard-name">Treasury Agent (x402)</div>
+            <div style="font-size: 12px; color: #aaa; margin-bottom: 15px; line-height: 1.5;">Liquid resource rebalancer for intent-driven asset allocation.</div>
+            <div class="shard-cost">25 eQNTO / Day</div>
+            <button class="btn-hire" onclick="hireShard('Treasury', 25, this)">Hire Expert</button>
+        </div>
+
+        <!-- Logic Shard -->
+        <div class="shard-card">
+            <div class="liquid-metal-overlay"></div>
+            <div class="shard-icon" style="color: #ff00ff;"><i class="fas fa-brain"></i></div>
+            <div class="shard-type">Inference</div>
+            <div class="shard-name">Logic Oracle (Z-1)</div>
+            <div style="font-size: 12px; color: #aaa; margin-bottom: 15px; line-height: 1.5;">ZK-verified AI inference shard for truth-engine validation.</div>
+            <div class="shard-cost">5 eQNTO / Inference</div>
+            <button class="btn-hire" onclick="hireShard('Logic', 5, this)">Hire Expert</button>
+        </div>
+
+        <!-- Sovereign Node Invite -->
+        <div class="shard-card" style="border-color: #ffd700; background: rgba(255, 215, 0, 0.05);">
+            <div class="liquid-metal-overlay" style="background: linear-gradient(270deg, transparent, rgba(255, 215, 0, 0.05), transparent);"></div>
+            <div class="shard-icon" style="color: #ffd700;"><i class="fas fa-envelope-open-text"></i></div>
+            <div class="shard-type">Scaling</div>
+            <div class="shard-name">Pioneer-2 Invitation</div>
+            <div style="font-size: 12px; color: #aaa; margin-bottom: 15px; line-height: 1.5;">Generate a ZK-attested invitation for a new Sentinel node.</div>
+            <div class="shard-cost">FREE | ARCHITECT ONLY</div>
+            <button class="btn-hire" style="border-color: #ffd700; color: #ffd700;" onclick="generateInviteWrapper(this)">Generate Invite</button>
+        </div>
+
+        <!-- Wisdom Shard (Phase 130) -->
+        <div class="shard-card" style="border-color: #7000ff; background: rgba(112, 0, 255, 0.05);">
+            <div class="liquid-metal-overlay" style="background: linear-gradient(270deg, transparent, rgba(112, 0, 255, 0.05), transparent);"></div>
+            <div class="shard-icon" style="color: #7000ff;"><i class="fas fa-eye"></i></div>
+            <div class="shard-type">Omniscience</div>
+            <div class="shard-name">Wisdom Shard (Ω-9)</div>
+            <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; margin-bottom: 15px;">
+                <div style="display: flex; justify-content: space-between; font-size: 10px; color: #7000ff; margin-bottom: 5px;">
+                    <span>NETWORK IMMUNITY</span>
+                    <span>99.9%</span>
+                </div>
+                <div style="height: 4px; background: rgba(112, 0, 255, 0.2); border-radius: 2px; overflow: hidden;">
+                    <div style="width: 99.9%; height: 100%; background: #7000ff; box-shadow: 0 0 10px #7000ff;"></div>
+                </div>
+                <div style="font-size: 9px; color: #888; margin-top: 8px;">AUTONOMOUS QUEUE: 4 PROPOSALS</div>
+            </div>
+            <div class="shard-cost">AUTO-HARDENING ACTIVE</div>
+            <button class="btn-hire" style="border-color: #7000ff; color: #7000ff;" onclick="alert('WISDOM_SHARD: Accessing Neural Governance... Immunity at 99.9%')">Enter Dashboard</button>
+        </div>
+    </div>
+
+    <script>
+        function generateInviteWrapper(btn) {
+            if (window.parent && typeof window.parent.generateNodeInvite === 'function') {
+                window.parent.generateNodeInvite();
+                btn.innerText = "INVITE GENERATED";
+                btn.disabled = true;
+                btn.style.background = "#ffd700";
+                btn.style.color = "black";
+            }
+        }
+        async function hireShard(name, cost, btn) {
+            if (window.parent && typeof window.parent.triggerPulseEffect === 'function') {
+                window.parent.triggerPulseEffect();
+            }
+            
+            const originalText = btn.innerText;
+            btn.innerText = "AUTHENTICATING...";
+            btn.disabled = true;
+
+            // Simulate Metamask interaction or actual JS logic
+            setTimeout(() => {
+                btn.innerText = "DEPLOYING SHARD...";
+                setTimeout(() => {
+                    btn.innerText = "ACTIVE";
+                    btn.style.background = "#00ffaa";
+                    btn.style.color = "black";
+                    btn.style.borderColor = "#00ffaa";
+                }, 1500);
+            }, 1000);
+        }
+    </script>
+</body>
+</html>

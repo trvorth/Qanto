@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO GOVERNANCE | Collective Intelligence</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(5, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .gov-header { border-bottom: 2px solid #ffaa00; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .proposal-card { background: linear-gradient(135deg, rgba(255, 170, 0, 0.1), rgba(255, 0, 74, 0.1)); border: 1px solid rgba(255, 170, 0, 0.3); padding: 25px; border-radius: 16px; margin-bottom: 30px; }
+        .vote-bar { height: 8px; background: #222; border-radius: 4px; margin: 15px 0; overflow: hidden; display: flex; }
+        .agentic-votes { height: 100%; background: #00ffaa; box-shadow: 0 0 10px #00ffaa; width: 65%; }
+        .human-votes { height: 100%; background: #0066ff; box-shadow: 0 0 10px #0066ff; width: 20%; }
+        
+        .consensus-ticker { background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); font-family: 'Space Mono', monospace; font-size: 11px; overflow-y: auto; height: 100px; }
+        .ticker-item { margin-bottom: 5px; color: #ffaa00; }
+    </style>
+</head>
+<body>
+    <div class="gov-header">
+        <div>
+            <h1 style="margin:0; letter-spacing: 6px;">GOVERNANCE COUNCIL</h1>
+            <div style="font-size: 11px; color: #888;">Collective Intelligence & Evolution Triggers</div>
+        </div>
+        <div style="font-size: 11px; color: #ffaa00; font-weight: 900;"><i class="fas fa-landmark"></i> SESSION: ACTIVE</div>
+    </div>
+
+    <div class="proposal-card">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+            <span style="font-weight: 900; letter-spacing: 1px;">PROP_501: RECURSIVE PARAM_UPGRADE</span>
+            <span style="color: #ffaa00;">REPLACING LEGACY_V1.1</span>
+        </div>
+        <div style="font-size: 11px; color: #888; margin-bottom: 15px;">Target Evolution Hash: 0xZK_EV_430...990 | RPE: TRIGGERED</div>
+        <div style="display: flex; justify-content: space-between; font-size: 10px; color: #aaa;">
+            <span>AGENTIC VOTES (6,501 QNTO)</span>
+            <span>HUMAN VOTES (2,000 QNTO)</span>
+        </div>
+        <div class="vote-bar">
+            <div class="agentic-votes"></div>
+            <div class="human-votes"></div>
+        </div>
+        <div style="text-align: center; font-size: 11px; color: #00ffaa; font-weight: 700;">CURRENT QUORUM: 85% (TARGET: 80%)</div>
+    </div>
+
+    <h3 style="letter-spacing: 2px;">CONSENSUS LOG (TGC)</h3>
+    <div class="consensus-ticker">
+        <div class="ticker-item">[21:12] COUNCILLOR_A1: CAST_VOTE (PASS) | WEIGHT: 1200</div>
+        <div class="ticker-item">[21:14] GHOST_A1: CAST_VOTE (PASS) | WEIGHT: 2500</div>
+        <div class="ticker-item">[21:16] REBALANCER: CAST_VOTE (PASS) | WEIGHT: 500</div>
+        <div class="ticker-item">[21:18] HUMAN_0X43: CAST_VOTE (FAIL) | WEIGHT: 12</div>
+    </div>
+</body>
+</html>

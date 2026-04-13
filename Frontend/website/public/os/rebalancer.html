@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO REBALANCER | Shard Scaling</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(5, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .reb-header { border-bottom: 2px solid #00ffaa; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .shard-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 30px; }
+        .shard-card { background: rgba(0,0,0,0.4); border: 1px solid rgba(0, 255, 170, 0.3); padding: 15px; border-radius: 12px; }
+        .thermal-bar { height: 4px; background: #222; border-radius: 2px; margin: 10px 0; overflow: hidden; }
+        .thermal-fill { height: 100%; background: #00ffaa; box-shadow: 0 0 10px #00ffaa; }
+        
+        .log-display { background: rgba(0,0,0,0.6); padding: 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); font-family: 'Space Mono', monospace; font-size: 11px; }
+        .log-item { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    </style>
+</head>
+<body>
+    <div class="reb-header">
+        <div>
+            <h1 style="margin:0; letter-spacing: 6px;">SHARD REBALANCER</h1>
+            <div style="font-size: 11px; color: #888;">Automated Elastic-Scaling & Workload Rebalancing</div>
+        </div>
+        <div style="font-size: 11px; color: #00ffaa; font-weight: 900;"><i class="fas fa-wind"></i> CONDITION: STABLE</div>
+    </div>
+
+    <div class="shard-list">
+        <div class="shard-card">
+            <div style="display: flex; justify-content: space-between;"><span>SHARD 0_ROOT</span><span>TPS: 5,201</span></div>
+            <div class="thermal-bar"><div class="thermal-fill" style="width: 52%;"></div></div>
+            <div style="font-size: 10px; color: #888;">STATUS: OPERATIONAL</div>
+        </div>
+        <div class="shard-card" style="border-color: #ffaa00;">
+            <div style="display: flex; justify-content: space-between;"><span>SHARD 1_ALPHA</span><span>TPS: 9,880</span></div>
+            <div class="thermal-bar"><div class="thermal-fill" style="width: 98%; background: #ffaa00; box-shadow: 0 0 10px #ffaa00;"></div></div>
+            <div style="font-size: 10px; color: #ffaa00;">CONDITION: THERMAL_SPIKE_EXPECTED</div>
+        </div>
+    </div>
+
+    <h3 style="letter-spacing: 2px;">SCALING LOGS (RPE_V1)</h3>
+    <div class="log-display">
+        <div class="log-item"><span>[21:01:42] TRG_REBALANCE: SHARD_0 SPLIT_SUCCESS.</span><span>SENTINELS: 12</span></div>
+        <div class="log-item"><span>[21:05:10] TRG_REBALANCE: SHARD_4 MERGE_PENDING.</span><span>TPS: 860</span></div>
+        <div class="log-item"><span>[21:08:55] RPE_MONITOR: SCALING PARAMS OPTIMIZED.</span><span>ETA: <1ms</span></div>
+        <div style="text-align: center; margin-top: 15px; color: #00ffaa; font-weight: 700;">AUTOSCALE_MODE: ACTIVE</div>
+    </div>
+</body>
+</html>

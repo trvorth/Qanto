@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | THE CITIZEN HALL</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: #000; color: #fff; padding: 60px; font-family: 'Inter', sans-serif; height: 100vh; margin: 0; box-sizing: border-box; overflow: hidden; }
+        
+        .parliament-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 40px;
+            height: 100%;
+        }
+
+        .header { grid-column: 1 / -1; margin-bottom: 20px; }
+        .title { font-size: 32px; font-weight: 900; letter-spacing: 12px; color: #ffd700; text-shadow: 0 0 30px rgba(255, 215, 0, 0.3); }
+        .subtitle { font-size: 10px; letter-spacing: 4px; color: #888; margin-top: 10px; }
+
+        .proposal-list { overflow-y: auto; padding-right: 20px; }
+        .proposal-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 215, 0, 0.1);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 20px;
+            transition: 0.3s;
+        }
+        .proposal-card:hover { border-color: #ffd700; background: rgba(255, 215, 0, 0.05); }
+        
+        .tag { font-size: 9px; padding: 4px 8px; border-radius: 4px; background: rgba(0, 229, 255, 0.1); color: #00e5ff; display: inline-block; margin-bottom: 15px; letter-spacing: 1px; }
+        .prop-title { font-size: 18px; font-weight: 700; margin-bottom: 15px; }
+        .prop-desc { font-size: 13px; color: #aaa; line-height: 1.6; }
+
+        .stats-panel {
+            background: rgba(0, 26, 68, 0.2);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 24px;
+            padding: 30px;
+            height: fit-content;
+        }
+
+        .stat-row { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 11px; letter-spacing: 1px; }
+        .stat-val { color: #ffd700; font-weight: 900; }
+
+        .btn-vote {
+            width: 100%;
+            padding: 20px;
+            background: linear-gradient(90deg, #ffd700, #b8860b);
+            border: none;
+            border-radius: 12px;
+            color: #000;
+            font-weight: 950;
+            letter-spacing: 4px;
+            cursor: pointer;
+            transition: 0.5s;
+            margin-top: 30px;
+        }
+        .btn-vote:hover { transform: scale(1.02); filter: brightness(1.1); box-shadow: 0 0 30px rgba(255, 215, 0, 0.2); }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 215, 0, 0.2); border-radius: 2px; }
+    </style>
+</head>
+<body>
+    <div class="parliament-container">
+        <div class="header">
+            <div class="title">AGENTIC PARLIAMENT</div>
+            <div class="subtitle">FOUNDER-SHIP: 100,000 / 100,000 | QUORUM: ACTIVE</div>
+        </div>
+
+        <div class="proposal-list">
+            <!-- Phase 191: Active Governance Proposal -->
+            <div class="proposal-card" id="proposal-001" style="border: 2px solid #ffd700; background: rgba(255, 215, 0, 0.05);">
+                <div class="tag" style="background: #ffd700; color: #000; font-weight: 900;">ACTIVE_PROPOSAL</div>
+                <div class="prop-title">#001: DECREASE BLOCK TIME TO 2.5S</div>
+                <div class="prop-desc">Proposed reduction of block finality window from 4.0s to 2.5s for hyper-fluid agentic settlement and zero-latency ZK-inference.</div>
+                <div style="margin-top: 20px; display: flex; gap: 15px;">
+                    <button class="btn-vote" style="margin-top: 0; padding: 12px; background: #00ffaa; color: #000; font-size: 10px; width: 120px;" onclick="voteOnProposal('YES')">VOTE YES</button>
+                    <button class="btn-vote" style="margin-top: 0; padding: 12px; background: rgba(255,255,255,0.1); color: #fff; font-size: 10px; width: 120px;" onclick="voteOnProposal('NO')">VOTE NO</button>
+                </div>
+            </div>
+
+            <div class="proposal-card">
+                <div class="tag">ZK-PLANETARY</div>
+                <div class="prop-title">PLANETARY TERRAFORMING: SAHARA CORE</div>
+                <div class="prop-desc">Initialization of atmosphere-calibrated Sentinel Spire mesh across the Sahara to stabilize thermal intent cycles.</div>
+            </div>
+        </div>
+
+        <div class="stats-panel">
+            <h3 style="font-size: 14px; letter-spacing: 4px; margin-bottom: 30px; color: #ffd700;">YOUR AUTHORITY</h3>
+            <div class="stat-row">
+                <span>IDENTITY</span>
+                <span class="stat-val">FOUNDER #1042</span>
+            </div>
+            <div class="stat-row">
+                <span>VOTING POWER</span>
+                <span class="stat-val">1,000 eQNTO</span>
+            </div>
+            <div class="stat-row">
+                <span>ZK-PROPOSALS</span>
+                <span class="stat-val">128</span>
+            </div>
+
+            <button class="btn-vote" onclick="signProposal()">SIGN GENERAL INTENT</button>
+        </div>
+    </div>
+
+    <div id="neural-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:1000; align-items:center; justify-content:center; flex-direction:column;">
+        <canvas id="neural-canvas" width="600" height="600"></canvas>
+        <div id="neural-status" style="margin-top:30px; font-family:'JetBrains Mono', sans-serif; letter-spacing:6px; color:#ffd700; font-size:12px; font-weight:900;">SCANNING SYNAPTIC INTENT...</div>
+    </div>
+
+    <script>
+        async function voteOnProposal(vote) {
+            if (!window.ethereum) {
+                alert("METAMASK_REQUIRED: Please install MetaMask to participate in governance.");
+                return;
+            }
+
+            try {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                const account = accounts[0];
+
+                console.log(`🗳️ QANTO_GOVERNANCE: Casting ${vote} vote for Proposal #001...`);
+                
+                // Show Neural Overlay
+                const overlay = document.getElementById('neural-overlay');
+                overlay.style.display = 'flex';
+                initNeuralScanner();
+
+                const txHash = await window.ethereum.request({
+                    method: 'eth_sendTransaction',
+                    params: [{
+                        to: '0x00000000000000000000000000000000V0T3QNT0',
+                        from: account,
+                        value: '0x0',
+                        data: '0x766f7465' // "vote"
+                    }],
+                });
+
+                document.getElementById('neural-status').innerText = "VOTE_RECORDED: 0x766f7465 COMMITTED TO MESH.";
+                document.getElementById('neural-status').style.color = "#00ffaa";
+
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                    alert(`✅ SUCCESS: Your ${vote} vote has been cryptographically sealed in Block ${txHash.substring(0, 10)}...`);
+                }, 3000);
+
+            } catch (err) {
+                console.error("VOTING_ERROR:", err);
+                document.getElementById('neural-overlay').style.display = 'none';
+            }
+        }
+
+        function signProposal() {
+            console.log("🏛️ QANTO_PARLIAMENT: Initiating ZK-Signing sequence...");
+            const overlay = document.getElementById('neural-overlay');
+            overlay.style.display = 'flex';
+            
+            initNeuralScanner();
+            
+            // Visual feedback loop
+            setTimeout(() => {
+                const status = document.getElementById('neural-status');
+                status.innerText = "NEURO-SIGNATURE GENERATED. COMMITTING TO MESH...";
+                status.style.color = "#00e5ff";
+                
+                setTimeout(() => {
+                    overlay.style.display = 'none';
+                    alert("✅ PROPOSAL COMMITTED: Your synaptic intent has been reflected in Block Zero.");
+                }, 3000);
+            }, 5000);
+        }
+
+        function initNeuralScanner() {
+            const canvas = document.getElementById('neural-canvas');
+            const ctx = canvas.getContext('2d');
+            let particles = [];
+            
+            for(let i=0; i<200; i++) {
+                particles.push({
+                    x: 300,
+                    y: 300,
+                    angle: Math.random() * Math.PI * 2,
+                    speed: 1 + Math.random() * 3,
+                    radius: Math.random() * 2,
+                    color: i % 2 === 0 ? '#ffd700' : '#00e5ff'
+                });
+            }
+
+            function animate() {
+                ctx.fillStyle = 'rgba(0,0,0,0.1)';
+                ctx.fillRect(0, 0, 600, 600);
+                
+                particles.forEach(p => {
+                    p.x += Math.cos(p.angle) * p.speed;
+                    p.y += Math.sin(p.angle) * p.speed;
+                    p.radius *= 0.99;
+                    
+                    if(p.radius < 0.1) {
+                        p.x = 300;
+                        p.y = 300;
+                        p.radius = Math.random() * 2;
+                    }
+                    
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = p.color;
+                    ctx.fill();
+                });
+                
+                if(document.getElementById('neural-overlay').style.display === 'flex') {
+                    requestAnimationFrame(animate);
+                }
+            }
+            animate();
+        }
+    </script>
+</body>
+</html>

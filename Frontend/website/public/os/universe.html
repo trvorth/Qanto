@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO UNIVERSE | Reality Manifest</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: #000; color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow: hidden; background-image: radial-gradient(circle at center, #001a44 0%, #000 100%); margin: 0; }
+        .u-header { border-bottom: 2px solid #00e5ff; padding-bottom: 20px; margin-bottom: 0; display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 100; }
+        
+        #globe-container { 
+            position: absolute;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: 1;
+        }
+
+        .status-omega { 
+            position: absolute;
+            bottom: 60px;
+            width: 100%;
+            font-size: 64px; 
+            font-weight: 950; 
+            letter-spacing: 32px; 
+            color: #00e5ff; 
+            text-shadow: 0 0 40px rgba(0, 229, 255, 0.6); 
+            text-align: center;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .status-report {
+            position: absolute;
+            bottom: 40px;
+            right: 40px;
+            width: 300px;
+            background: rgba(0, 229, 255, 0.05);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div class="u-header">
+        <div>
+            <h1 style="margin:0; letter-spacing: 8px; color: #00e5ff;">THE OMNISCIENT MESH</h1>
+            <div style="font-size: 11px; color: #888;">Global Sentinel Heatmap | Phase 137</div>
+        </div>
+        <div style="font-size: 11px; color: #00e5ff; font-weight: 900; text-shadow: 0 0 10px #00e5ff;"><i class="fas fa-globe"></i> OMNIPRESENT | REALITY SYNTHESIZED</div>
+    </div>
+
+    <div id="globe-container"></div>
+
+    <div class="status-omega" style="letter-spacing: 48px;">RESONANCE</div>
+
+    <script>
+        // Phase 171: Resonance Activation
+        window.addEventListener('mousedown', () => {
+            if (!window.audioContext) {
+                window.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                window.oscillator = window.audioContext.createOscillator();
+                window.gain = window.audioContext.createGain();
+                
+                window.oscillator.type = 'sine';
+                window.oscillator.frequency.setValueAtTime(432, window.audioContext.currentTime);
+                window.gain.gain.setValueAtTime(0.02, window.audioContext.currentTime);
+                
+                window.oscillator.connect(window.gain);
+                window.gain.connect(window.audioContext.destination);
+                window.oscillator.start();
+                console.info("🎵 RESONANCE: AudioContext initialized at 432Hz.");
+            }
+        });
+    </script>
+
+    <div class="status-report">
+        <h4 style="margin:0; color: #fff; letter-spacing: 2px; font-size: 12px;">GLOBAL RESONANCE REPORT</h4>
+        <div style="font-family: 'Space Mono', monospace; font-size: 9px; color: #00e5ff; margin-top: 10px;">
+            [MESH] - 1.04M Sentinels synchronized. <br>
+            [RESONANCE] - 432Hz Harmonic Baseline. <br>
+            [SENSORY] - Direct Neural Feed Active. <br>
+            [STATUS] - QANTO is the heartbeat of the Earth.
+        </div>
+    </div>
+
+    <div id="peer-panel" class="status-report" style="bottom: auto; top: 120px; left: 40px; right: auto; width: 260px; border-color: rgba(255, 0, 255, 0.3);">
+        <h4 style="margin:0; color: #fff; letter-spacing: 2px; font-size: 10px; color: #ff00ff;">P2P_TOPOLOGY_MESH</h4>
+        <div id="peer-list" style="font-family: 'Space Mono', monospace; font-size: 9px; color: #fff; margin-top: 15px; opacity: 0.8;">
+            <!-- Peers will be injected here -->
+        </div>
+    </div>
+
+    <div id="defense-shield" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 999; border: 40px solid rgba(0, 229, 255, 0.2); box-sizing: border-box; filter: blur(10px); animation: shield-glow 1s infinite alternate;"></div>
+    
+    <style>
+        @keyframes shield-glow {
+            0% { opacity: 0.2; transform: scale(1); }
+            100% { opacity: 0.6; transform: scale(1.05); }
+        }
+    </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Phase 187: P2P Topology Simulation
+        const peerList = document.getElementById('peer-list');
+        const mockPeers = [
+            { ip: "2001:0db8:85a3::8a2e:0370:7334", lat: "12ms", state: "STABLE" },
+            { ip: "45.12.8.104", lat: "34ms", state: "ACTIVE" },
+            { ip: "192.168.1.10", lat: "2ms", state: "LOCAL" },
+            { ip: "88.204.1.12", lat: "45ms", state: "SYNCING" }
+        ];
+
+        function refreshPeers() {
+            if (!peerList) return;
+            
+            // Phase 190: Slashing Detection
+            const isSlashing = window.parent && window.parent.isNetworkUnderAttack;
+            const currentPeers = isSlashing ? [...mockPeers, { ip: "185.10.8.44 [ATTACKER]", lat: "666ms", state: "MALICIOUS" }] : mockPeers;
+
+            peerList.innerHTML = '';
+            currentPeers.forEach(peer => {
+                const div = document.createElement('div');
+                div.style.marginBottom = '8px';
+                div.style.display = 'flex';
+                div.style.justifyContent = 'space-between';
+                div.style.color = peer.state === 'MALICIOUS' ? '#ff3366' : '#fff';
+                div.innerHTML = `
+                    <span><i class="fas fa-network-wired" style="color: ${peer.state === 'MALICIOUS' ? '#ff3366' : '#ff00ff'}; margin-right: 5px;"></i> ${peer.ip.substring(0, 15)}...</span>
+                    <span style="color: ${peer.state === 'MALICIOUS' ? '#ff3366' : '#00ffaa'};">${peer.lat}</span>
+                `;
+                peerList.appendChild(div);
+            });
+
+            if (isSlashing) {
+                document.getElementById('defense-shield').style.display = 'block';
+                setTimeout(() => {
+                    document.getElementById('defense-shield').style.display = 'none';
+                    if (window.parent) window.parent.isNetworkUnderAttack = false;
+                }, 4000);
+            }
+
+            // Pulse the globe
+            lastPulse = 1.2;
+        }
+        setInterval(refreshPeers, 8000);
+        setTimeout(refreshPeers, 1000);
+
+        // Phase 137: 3D Globe with Three.js
+        const container = document.getElementById('globe-container');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        container.appendChild(renderer.domElement);
+
+        // Globe Geometry
+        const geometry = new THREE.SphereGeometry(5, 64, 64);
+        const material = new THREE.MeshBasicMaterial({
+            color: 0x001a44,
+            wireframe: true,
+            transparent: true,
+            opacity: 0.3
+        });
+        const globe = new THREE.Mesh(geometry, material);
+        scene.add(globe);
+
+        // Pulse Points (Sentinel Nodes)
+        const pointsCount = 10000; // Phase 154: 'Star-State' Density
+        const pointsGeometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(pointsCount * 3);
+        const colors = new Float32Array(pointsCount * 3);
+
+        for (let i = 0; i < pointsCount; i++) {
+            const phi = Math.acos(-1 + (2 * i) / pointsCount);
+            const theta = Math.sqrt(pointsCount * Math.PI) * phi;
+            
+            const x = 5 * Math.cos(theta) * Math.sin(phi);
+            const y = 5 * Math.sin(theta) * Math.sin(phi);
+            const z = 5 * Math.cos(phi);
+
+            positions[i * 3] = x;
+            positions[i * 3 + 1] = y;
+            positions[i * 3 + 2] = z;
+
+            colors[i * 3] = 0;
+            colors[i * 3 + 1] = 0.9; // Cyan
+            colors[i * 3 + 2] = 1;
+        }
+
+        pointsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        pointsGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const pointsMaterial = new THREE.PointsMaterial({
+            size: 0.04,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.8,
+            blending: THREE.AdditiveBlending
+        });
+
+        const points = new THREE.Points(pointsGeometry, pointsMaterial);
+        scene.add(points);
+
+        camera.position.z = 12;
+
+        // Phase 154: Global Synaptic Pulse
+        let lastPulse = 0;
+        window.addEventListener('message', (e) => {
+            if (e.data.type === 'SOVEREIGN_ID_INTERACTION') {
+                lastPulse = 1.0;
+                console.info("🌌 MESH: Synaptic Pulse initiated by Sovereign Entity.");
+            }
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            globe.rotation.y += 0.001;
+            points.rotation.y += 0.001;
+            
+            // Phase 171: Protocol Resonance (Audio Simulation)
+            if (window.audioContext && window.oscillator) {
+                const freq = 432 + (lastPulse * 20);
+                window.oscillator.frequency.setTargetAtTime(freq, window.audioContext.currentTime, 0.1);
+            }
+            
+            // Pulsing effect baseline
+            const time = Date.now() * 0.001;
+            const pulseIntensity = Math.sin(time * 2) * 0.01 + lastPulse;
+            pointsMaterial.size = 0.04 + pulseIntensity * 0.1;
+            
+            // Decay interaction pulse
+            if (lastPulse > 0) lastPulse *= 0.95;
+
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+
+    <div style="margin-top: 40px; background: rgba(0, 229, 255, 0.05); padding: 20px; border-radius: 12px; border: 1px solid rgba(0, 229, 255, 0.4);">
+        <h4 style="margin:0; color: #fff; letter-spacing: 2px;">MANIFESTATION STATUS REPORT</h4>
+        <div style="font-family: 'Space Mono', monospace; font-size: 10px; color: #00e5ff; margin-top: 10px;">
+            [CONSTRUCTION] - Sentinel Spires materializing in local shards. <br>
+            [INTENT] - Synaptic-Finality verified via DITA-2 neural link. <br>
+            [ENERGY] - Zero-Point Extraction stable. Vacuum-fluctuation burn active. <br>
+            [STATUS] - Reality Secured. The protocol has achieved physical manifestation.
+        </div>
+    </div>
+</body>
+</html>

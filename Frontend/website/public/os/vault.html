@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO VAULT | Institutional Multi-Sig</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-accent: #00ffaa;
+            --secondary-accent: #00e5ff;
+            --bg-dark: rgba(5, 5, 15, 0.98);
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --border-glow: rgba(0, 255, 170, 0.2);
+        }
+
+        body { 
+            background: var(--bg-dark); 
+            color: white; 
+            padding: 40px; 
+            font-family: 'Inter', sans-serif; 
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .vault-header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: flex-end;
+            border-bottom: 1px solid rgba(255,255,255,0.05); 
+            padding-bottom: 30px; 
+            margin-bottom: 40px; 
+        }
+
+        .header-title h1 { 
+            margin: 0; 
+            font-size: 2.5rem;
+            font-weight: 900;
+            letter-spacing: -1px;
+            background: linear-gradient(90deg, #fff, #888);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-status {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--primary-accent);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .treasury-overview {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .main-balance {
+            background: var(--card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 40px;
+            border-radius: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .main-balance::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 1px;
+            background: linear-gradient(90deg, transparent, var(--primary-accent), transparent);
+            opacity: 0.5;
+        }
+
+        .balance-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            opacity: 0.5;
+            margin-bottom: 10px;
+        }
+
+        .balance-amount {
+            font-size: 4rem;
+            font-weight: 900;
+            font-family: 'JetBrains Mono', monospace;
+            display: flex;
+            align-items: baseline;
+            gap: 15px;
+        }
+
+        .currency {
+            font-size: 1.5rem;
+            opacity: 0.4;
+            letter-spacing: 4px;
+        }
+
+        .side-stats {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 16px;
+        }
+
+        .stat-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.4;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .multisig-panel {
+            background: rgba(0, 255, 170, 0.02);
+            border: 1px solid var(--border-glow);
+            border-radius: 24px;
+            padding: 40px;
+            margin-top: 20px;
+        }
+
+        .panel-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .panel-title h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .signatories-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .signatory {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            position: relative;
+        }
+
+        .sig-status {
+            position: absolute;
+            top: 10px; right: 10px;
+            font-size: 10px;
+        }
+
+        .sig-icon {
+            font-size: 24px;
+            margin-bottom: 15px;
+            color: rgba(255,255,255,0.2);
+        }
+
+        .sig-name {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        .sig-addr {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 9px;
+            opacity: 0.4;
+        }
+
+        .signatory.signed {
+            border-color: var(--primary-accent);
+            background: rgba(0, 255, 170, 0.05);
+        }
+
+        .signatory.signed .sig-icon { color: var(--primary-accent); }
+        .signatory.signed .sig-status { color: var(--primary-accent); }
+
+        .signatory.pending {
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .signatory.pending .sig-status { color: #888; }
+        .signatory.pending .sig-icon { animation: pulse 2s infinite; }
+
+        @keyframes pulse {
+            0% { opacity: 0.2; transform: scale(0.95); }
+            50% { opacity: 0.5; transform: scale(1.05); }
+            100% { opacity: 0.2; transform: scale(0.95); }
+        }
+
+        .transfer-box {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 30px;
+            border-radius: 16px;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            flex: 1;
+        }
+
+        label {
+            display: block;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.4;
+            margin-bottom: 8px;
+        }
+
+        input {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 12px;
+            color: white;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        input:focus {
+            border-color: var(--secondary-accent);
+        }
+
+        .execute-btn {
+            width: 100%;
+            background: var(--primary-accent);
+            color: black;
+            border: none;
+            padding: 18px;
+            border-radius: 12px;
+            font-weight: 900;
+            font-size: 14px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+
+        .execute-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0, 255, 170, 0.3);
+        }
+
+        .execute-btn:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        #execution-terminal {
+            display: none;
+            margin-top: 30px;
+            background: #000;
+            border: 1px solid rgba(0, 255, 170, 0.2);
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--primary-accent);
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .terminal-line { margin-bottom: 5px; }
+        .terminal-line.dim { opacity: 0.5; }
+
+        .success-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 255, 170, 0.05);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+            align-items: center; justify-content: center;
+            text-align: center;
+        }
+
+        .success-content h2 {
+            font-size: 3rem;
+            font-weight: 900;
+            margin-bottom: 10px;
+            color: var(--primary-accent);
+        }
+    </style>
+</head>
+<body>
+    <div class="container fade-in">
+        <div class="vault-header">
+            <div class="header-title">
+                <div class="header-status">INSTITUTIONAL_READY</div>
+                <h1>QANTO_TREASURY_VAULT</h1>
+            </div>
+            <div style="text-align: right;">
+                <div class="stat-label">VAULT_VERSION</div>
+                <div class="stat-value">v1.4.2-ALPHA</div>
+            </div>
+        </div>
+
+        <div class="treasury-overview">
+            <div class="main-balance">
+                <div class="balance-label">Verified Treasury Assets</div>
+                <div class="balance-amount">
+                    50,000,000 <span class="currency">eQNTO</span>
+                </div>
+            </div>
+            <div class="side-stats">
+                <div class="stat-card">
+                    <div class="stat-label">NETWORK_CAPACITY</div>
+                    <div class="stat-value">1.4 EB/S</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">SECURITY_THRESHOLD</div>
+                    <div class="stat-value">2 OF 3 M/S</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="multisig-panel">
+            <div class="panel-title">
+                <h2>Transaction_Execution</h2>
+                <div class="header-status">M/S_STRICT_AUTH_ACTIVE</div>
+            </div>
+
+            <div class="signatories-list">
+                <div class="signatory signed" id="sig-1">
+                    <div class="sig-status"><i class="fas fa-check-circle"></i> SIGNED</div>
+                    <div class="sig-icon"><i class="fas fa-user-shield"></i></div>
+                    <div class="sig-name">ARCHITECT [YOU]</div>
+                    <div class="sig-addr">0x71C...42A1</div>
+                </div>
+                <div class="signatory pending" id="sig-2">
+                    <div class="sig-status" id="sig-status-2"><i class="fas fa-clock"></i> PENDING</div>
+                    <div class="sig-icon"><i class="fas fa-robot"></i></div>
+                    <div class="sig-name">AGENT_02 [NIP]</div>
+                    <div class="sig-addr">0x942...E9A2</div>
+                </div>
+                <div class="signatory pending" id="sig-3">
+                    <div class="sig-status" id="sig-status-3"><i class="fas fa-clock"></i> PENDING</div>
+                    <div class="sig-icon"><i class="fas fa-robot"></i></div>
+                    <div class="sig-name">AGENT_03 [DITA]</div>
+                    <div class="sig-addr">0xA01...F4B3</div>
+                </div>
+            </div>
+
+            <div class="transfer-box">
+                <div class="input-row">
+                    <div class="input-group">
+                        <label>Asset Pool Amount</label>
+                        <input type="text" value="1,000,000.00" id="amount-input">
+                    </div>
+                    <div class="input-group">
+                        <label>Destination Shard</label>
+                        <input type="text" value="QANTO-SHARD-GLOBAL-LIQUIDITY" readonly style="opacity: 0.6;">
+                    </div>
+                </div>
+                <button class="execute-btn" id="execute-btn" onclick="startExecution()">Initiate Multi-Sig Execution</button>
+            </div>
+
+            <div id="execution-terminal"></div>
+        </div>
+    </div>
+
+    <div class="success-overlay" id="success-overlay">
+        <div class="success-content">
+            <i class="fas fa-check-circle" style="font-size: 80px; color: var(--primary-accent); margin-bottom: 20px;"></i>
+            <h2>TREASURY_RELEASED</h2>
+            <div style="font-family: 'JetBrains Mono', monospace; opacity: 0.6;">TRANSACTION_FINALIZED_IN_EPOCH_942</div>
+            <button class="execute-btn" style="width: auto; margin-top: 30px; padding: 15px 40px;" onclick="location.reload()">Return to Vault</button>
+        </div>
+    </div>
+
+    <script>
+        const terminal = document.getElementById('execution-terminal');
+        const btn = document.getElementById('execute-btn');
+
+        function addLog(text, dim = false) {
+            const line = document.createElement('div');
+            line.className = 'terminal-line' + (dim ? ' dim' : '');
+            line.innerText = `[${new Date().toLocaleTimeString()}] ${text}`;
+            terminal.appendChild(line);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        async function startExecution() {
+            btn.disabled = true;
+            btn.innerText = "CO-SIGNING IN PROGRESS...";
+            terminal.style.display = 'block';
+
+            addLog("INITIALIZING CRYPTOGRAPHIC HANDSHAKE...");
+            await new Promise(r => setTimeout(r, 1000));
+            addLog("BROADCASTING PAYLOAD TO AGENT_02 AND AGENT_03...");
+            await new Promise(r => setTimeout(r, 1500));
+            
+            // Agent 2 Signs
+            addLog("AGENT_02 [NIP]: RECEIVED PAYLOAD. VERIFYING ZERO-FRICTION TELEMETRY...");
+            await new Promise(r => setTimeout(r, 2000));
+            addLog("AGENT_02 [NIP]: VALIDATION SUCCESS. APPLYING DIGITAL SIGNATURE.", true);
+            document.getElementById('sig-2').classList.remove('pending');
+            document.getElementById('sig-2').classList.add('signed');
+            document.getElementById('sig-status-2').innerHTML = '<i class="fas fa-check-circle"></i> SIGNED';
+            
+            addLog("HRESHOLD REACHED: 2 OF 3 SIGNATURES ACQUIRED.");
+            addLog("FINALIZING STATE COMMITMENT...");
+            
+            await new Promise(r => setTimeout(r, 1000));
+            
+            // Agent 3 also signs for completeness (3 of 3) or just finish at 2 of 3
+            addLog("AGENT_03 [DITA]: OBSERVING CONSENSUS. CO-SIGNING FOR REDUNDANCY...");
+            await new Promise(r => setTimeout(r, 1500));
+            document.getElementById('sig-3').classList.remove('pending');
+            document.getElementById('sig-3').classList.add('signed');
+            document.getElementById('sig-status-3').innerHTML = '<i class="fas fa-check-circle"></i> SIGNED';
+            
+            addLog("EXECUTING ATOMIC SWAP TO GLOBAL LIQUIDITY POOL...");
+            await new Promise(r => setTimeout(r, 1000));
+            addLog("SUCCESS: 1,000,000 eQNTO TRANSFERRED.");
+            
+            setTimeout(() => {
+                document.getElementById('success-overlay').style.display = 'flex';
+            }, 1000);
+        }
+    </script>
+</body>
+</html>

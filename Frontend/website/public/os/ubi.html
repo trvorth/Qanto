@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO UBI | Infinite Wealth</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(5, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .w-header { border-bottom: 2px solid #ffcc00; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .ubi-card { background: linear-gradient(135deg, rgba(255, 204, 0, 0.1), rgba(0, 255, 170, 0.1)); border: 1px solid rgba(255, 204, 0, 0.3); padding: 25px; border-radius: 16px; margin-bottom: 30px; position: relative; overflow: hidden; }
+        .claim-btn { background: #ffcc00; color: #050514; border: none; padding: 12px 25px; border-radius: 8px; font-weight: 900; cursor: pointer; transition: 0.3s; width: 100%; margin-top: 20px; text-transform: uppercase; letter-spacing: 2px; }
+        .claim-btn:hover { background: #00ffaa; transform: scale(1.02); }
+        
+        .wealth-stats { display: flex; justify-content: space-between; margin-top: 20px; }
+        .stat-box { background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); text-align: center; flex: 1; margin: 0 5px; }
+    </style>
+</head>
+<body>
+    <div class="w-header">
+        <div>
+            <h1 style="margin:0; letter-spacing: 6px;">UNIVERSAL BASIC INFERENCE</h1>
+            <div style="font-size: 11px; color: #888;">Daily Credits & Sovereignty Rewards</div>
+        </div>
+        <div style="font-size: 11px; color: #ffcc00; font-weight: 900;"><i class="fas fa-gift"></i> BALANCE: 1,256 Credits</div>
+    </div>
+
+    <div class="ubi-card">
+        <div style="display: flex; justify-content: space-between;">
+            <span style="font-weight: 900; letter-spacing: 1px;">CREDIT_REFILL: DAILY</span>
+            <span style="color: #ffcc00;">ELIGIBLE</span>
+        </div>
+        <button class="claim-btn" onclick="this.innerHTML='Refilled: 450 Credits!'; this.style.background='#00ffaa';">CLAIM REFILL (+450)</button>
+        <div class="wealth-stats">
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">REPUTATION</div><div style="font-size: 18px; font-weight: 900;">1.5x</div></div>
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">RANK</div><div style="font-size: 18px; font-weight: 900; color: #ffcc00;">TIER_3</div></div>
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">NEXT_CLAIM</div><div style="font-size: 18px; font-weight: 900;">22h 14m</div></div>
+        </div>
+    </div>
+
+    <h3 style="letter-spacing: 2px;">WEALTH LOG (PIONEER)</h3>
+    <div style="background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); font-family: 'Space Mono', monospace; font-size: 11px;">
+        <div style="margin-bottom: 5px; color: #ffcc00;">[20:40] UBI: DAILY_REFILL triggered for Pioneer #0xAA...9B.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[20:41] UBI: Calculating credits via Rank Tier 3 multiplier.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[20:42] UBI: 450 Credits added to balance. STATUS: OK.</div>
+    </div>
+</body>
+</html>

@@ -1,43 +1,68 @@
-# **Contributing to Qanto**
+# Contributing to Qanto
 
-First off, thank you for considering contributing to Qanto. It's people like you that make open source great. We welcome all contributions, from fixing typos in the documentation to implementing major new features.  
-To ensure a smooth and effective collaboration process for everyone involved, please read through these guidelines before you start.
+Thank you for your interest in contributing to the Qanto Layer-0 protocol. We welcome developers to help us build a quantum-secure future for decentralized finance.
 
-## **Code of Conduct**
+## Getting Started
 
-This project and everyone participating in it is governed by the [Qanto Code of Conduct](http://github.com/trvorth/qanto/CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to the project maintainers.
+### Prerequisites
 
-## **How Can I Contribute?**
+To build and run Qanto, you will need:
 
-There are many ways to contribute, and not all of them involve writing code.
+1.  **Rust**: Install the latest stable version using [rustup](https://rustup.rs/). Nightly is recommended for some advanced ZK optimizations.
+    ```bash
+    rustup default nightly
+    ```
+2.  **Node.js**: Version 18.x or higher for the frontend build pipeline.
+3.  **Vite**: The enterprise website and explorer use Vite for lightning-fast development and optimized production builds.
 
-* **Reporting Bugs**: If you find a bug, please open a detailed issue. Include steps to reproduce the bug, the expected behavior, and what you are observing instead.  
-* **Suggesting Enhancements**: Have an idea for a new feature or an improvement to an existing one? Open an issue with the "enhancement" label to start a discussion with the community.  
-* **Improving Documentation**: Good documentation is key. If you find something that is unclear, incorrect, or could be improved, please feel free to submit a pull request.  
-* **Submitting Pull Requests**: If you have a bug fix or a new feature you'd like to implement, we'd love to see it.
+### Environment Setup
 
-## **Your First Code Contribution**
+1.  Clone the repository:
+    ```bash
+    git clone https://github.com/trvorth/Qanto.git
+    cd Qanto
+    ```
+2.  Install frontend dependencies:
+    ```bash
+    cd website && npm install
+    ```
+3.  Configure environment variables:
+    Create a `.env` file in the root directory and add the necessary configuration (see `.env.example`).
 
-Unsure where to begin? A great place to start is by looking for issues tagged good first issue or help wanted. These are issues that have been identified as good entry points for new contributors.
+## Development Workflow
 
-### **Pull Request Process**
+### Branching Strategy
 
-1. **Fork the repository** and create your branch from main.  
-2. If you've added code that should be tested, **add tests**.  
-3. Ensure the test suite passes (cargo test).  
-4. Make sure your code lints (cargo clippy and cargo fmt).  
-5. Issue that pull request\!
+We follow a structured branching model for institutional stability:
 
-## **Styleguides**
+-   **`main`**: The production-ready branch. Only merges from `release` are permitted.
+-   **`release/*`**: Pre-production staging branches for final audit and hardening.
+-   **`feature/*`**: Development branches for new features or protocol enhancements.
+-   **`fix/*`**: Critical bug fixes or security patches.
 
-### **Git Commit Messages**
+### Code Style
 
-* Use the present tense ("Add feature" not "Added feature").  
-* Use the imperative mood ("Move file to..." not "Moves file to...").  
-* Limit the first line to 72 characters or less.  
-* Reference issues and pull requests liberally after the first line.
+-   **Rust**: Use `cargo fmt` and ensure all code passes `cargo clippy` with zero warnings.
+-   **JavaScript/CSS**: Use Prettier for consistent formatting across the frontend.
 
-### **Rust Styleguide**
+## Adding New ZK-Circuits
 
-We adhere to the standard Rust formatting guidelines enforced by rustfmt. Please ensure your code is formatted with cargo fmt before submitting. cargo clippy should also be run to catch common mistakes and improve code quality.  
-Thank you for helping us build the future of decentralized technology\!
+Qanto uses a modular ZK-proof system based on **arkworks**. To add a new circuit:
+
+1.  **Define the Circuit Structure**: Create a new struct in `src/zkp.rs` implementing `ConstraintSynthesizer<ConstraintF>`.
+2.  **Define Constraints**: Implement the `generate_constraints` method using R1CS gadgets.
+3.  **Integrate with ZKManager**: 
+    - Add the new variant to `ZKProofType`.
+    - Update `ZKProofSystem::generate_proof` to handle the new type.
+4.  **Add Unit Tests**: Every circuit must have a corresponding `#[test]` verifying successful proof/verification cycles.
+
+## Submitting Changes
+
+1.  Create a feature branch.
+2.  Write tests for your changes.
+3.  Submit a Pull Request with a clear description of the problem and the proposed solution.
+4.  Ensure all CI/CD pipelines pass.
+
+## Security
+
+If you discover a security vulnerability, please do NOT open a public issue. Instead, refer to our [Security Policy](SECURITY.md) for reporting instructions.

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO MIRROR | Global Pulse</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(5, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .mirror-header { border-bottom: 2px solid #ff00ff; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .sentiment-card { background: linear-gradient(135deg, rgba(255, 0, 255, 0.1), rgba(0, 255, 255, 0.1)); border: 1px solid rgba(255, 0, 255, 0.3); padding: 25px; border-radius: 16px; margin-bottom: 30px; text-align: center; position: relative; }
+        .sentiment-score { font-size: 48px; font-weight: 900; letter-spacing: 4px; color: #ff00ff; text-shadow: 0 0 20px #ff00ff; }
+        .pulse-list { display: flex; flex-direction: column; gap: 12px; background: rgba(0,0,0,0.4); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); }
+        .pulse-row { display: flex; justify-content: space-between; font-family: 'Space Mono', monospace; font-size: 11px; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; background: #00ffaa; box-shadow: 0 0 10px #00ffaa; }
+    </style>
+</head>
+<body>
+    <div class="mirror-header">
+        <div>
+            <h1 style="margin:0; letter-spacing: 6px;">NEURAL MIRROR</h1>
+            <div style="font-size: 11px; color: #888;">Real-Time Agentic Sentiment & Mesh Health</div>
+        </div>
+        <div style="font-size: 11px; color: #ff00ff; font-weight: 900;"><i class="fas fa-satellite-dish"></i> LIVE_FEED: OK</div>
+    </div>
+
+    <div class="sentiment-card">
+        <div style="font-size: 11px; color: #aaa; margin-bottom: 5px;">GLOBAL SENTIMENT SCORE</div>
+        <div class="sentiment-score">0.865</div>
+        <div style="font-size: 12px; color: #00ffaa; font-weight: 700; margin-top: 5px;">MESH_CONDITION: EUPHORIC</div>
+        <div style="font-size: 10px; color: #555; margin-top: 15px;">INFLUENCING FUTARCHY MARKETS (Δ +0.02)</div>
+    </div>
+
+    <h3 style="letter-spacing: 2px;">ACTIVE AGENT PULSES</h3>
+    <div class="pulse-list">
+        <div class="pulse-row"><span><span class="status-dot"></span>SENTINEL_4301 (TEXAS_SOLAR)</span><span>VERACITY: 0.992</span><span>PUAI: 43.1</span></div>
+        <div class="pulse-row"><span><span class="status-dot"></span>SOLANA_BOT_EXT (EXTERNAL)</span><span>VERACITY: 0.965</span><span>STATUS: ATTESTED</span></div>
+        <div class="pulse-row"><span><span class="status-dot"></span>LEGAL_EXPERT_1 (ARBITRATOR)</span><span>VERACITY: 0.999</span><span>QUEUE: 0</span></div>
+        <div class="pulse-row" style="opacity: 0.4;"><span><span class="status-dot" style="background:#ff004a; box-shadow:0 0 10px #ff004a;"></span>OFFLINE_NODE_92</span><span>VERACITY: N/A</span><span>STATUS: SLASHED</span></div>
+    </div>
+</body>
+</html>

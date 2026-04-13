@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | SAGA-PAY CHECKOUT</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: #000; color: #fff; padding: 40px; font-family: 'Inter', sans-serif; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        
+        .checkout-box {
+            width: 450px;
+            background: rgba(0, 26, 68, 0.4);
+            backdrop-filter: blur(30px);
+            border: 1px solid rgba(0, 229, 255, 0.2);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 40px 100px rgba(0,0,0,0.8);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .title { font-size: 18px; font-weight: 900; letter-spacing: 4px; color: #00e5ff; }
+        
+        .item-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+        }
+
+        .item-img {
+            width: 80px; height: 80px;
+            background: linear-gradient(135deg, #001a44, #000);
+            border-radius: 12px;
+            margin-right: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            color: #00e5ff;
+            box-shadow: 0 0 20px rgba(0, 229, 255, 0.1);
+        }
+
+        .item-info h4 { margin: 0; font-size: 14px; letter-spacing: 1px; }
+        .item-info p { margin: 5px 0 0; font-size: 11px; color: #888; }
+        
+        .price-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 30px 0;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .total-label { font-size: 12px; color: #888; letter-spacing: 2px; }
+        .total-price { font-size: 24px; font-weight: 900; color: #fff; }
+
+        .btn-confirm {
+            width: 100%;
+            padding: 20px;
+            background: linear-gradient(90deg, #001a44, #00e5ff, #001a44);
+            background-size: 200% auto;
+            border: none;
+            border-radius: 12px;
+            color: #fff;
+            font-weight: 900;
+            letter-spacing: 4px;
+            cursor: pointer;
+            transition: 0.5s;
+            animation: move-gradient 3s infinite linear;
+        }
+
+        @keyframes move-gradient { 0% { background-position: 0% 50%; } 100% { background-position: 200% 50%; } }
+
+        .btn-confirm:hover { transform: scale(1.02); filter: brightness(1.2); }
+
+        /* Liquid Metal Animation */
+        .liquid-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: #00e5ff;
+            transform: translateY(100%);
+            transition: transform 1.5s cubic-bezier(0.86, 0, 0.07, 1);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-size: 24px;
+            font-weight: 950;
+            letter-spacing: 10px;
+        }
+
+        .checkout-box.complete .liquid-layer {
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="checkout-box" id="checkout-box">
+        <div class="header">
+            <div class="title">SAGA-PAY</div>
+            <i class="fas fa-microchip" style="color: rgba(0, 229, 255, 0.4);"></i>
+        </div>
+
+        <div class="item-card">
+            <div class="item-img"><i class="fas fa-tower-observation"></i></div>
+            <div class="item-info">
+                <h4>SENTINEL SPIRE | CORE</h4>
+                <p>Physical Node v1 [PQC-Enabled]</p>
+            </div>
+        </div>
+
+        <div class="price-row">
+            <div class="total-label">TOTAL AMOUNT</div>
+            <div class="total-price">1,042 eQNTO</div>
+        </div>
+
+        <button class="btn-confirm" onclick="confirmPurchase()">CONFIRM MESH SETTLEMENT</button>
+
+        <div class="liquid-layer" id="success-layer">
+            TRANSACTION COMMITTED
+        </div>
+    </div>
+
+    <script>
+        function confirmPurchase() {
+            const box = document.getElementById('checkout-box');
+            console.log("QANTO: Settling transaction via liquid-metal mesh...");
+            
+            // Trigger simulated transaction delay
+            setTimeout(() => {
+                box.classList.add('complete');
+                setTimeout(() => {
+                    alert("🌌 PURCHASE COMPLETE: The Sentinel part has been allocated via x402 settlement.");
+                    showTrackingHUD();
+                }, 1600);
+            }, 500);
+        }
+
+        function showTrackingHUD() {
+            const box = document.getElementById('checkout-box');
+            box.innerHTML = `
+                <div class="header">
+                    <div class="title">FULFILLMENT</div>
+                    <i class="fas fa-truck-fast" style="color: #00ffaa;"></i>
+                </div>
+                <div style="background: rgba(0, 255, 170, 0.1); border: 1px solid #00ffaa; border-radius: 12px; padding: 20px; font-family: 'Space Mono', monospace;">
+                    <div style="font-size: 10px; color: #00ffaa;">SHIPMENT: SHP-QANTO-ALPHA-1</div>
+                    <div style="font-size: 18px; color: #fff; margin-top: 10px;">STATUS: IN_TRANSIT</div>
+                    <div id="gps-coords" style="font-size: 12px; color: #aaa; margin-top: 10px;">GPS: 40.7128° N, 74.0060° W</div>
+                    <div style="font-size: 10px; color: #888; margin-top: 20px;">HUB: METRO_ORBIT_GATEWAY</div>
+                </div>
+                <div style="margin-top: 20px; text-align: center; color: #00ffaa; font-size: 10px; letter-spacing: 2px;">ESTIMATED ARRIVAL: 4h 12m</div>
+            `;
+
+            // Simulate GPS movement
+            let lat = 40.7128;
+            setInterval(() => {
+                lat += 0.0001;
+                document.getElementById('gps-coords').innerText = `GPS: ${lat.toFixed(4)}° N, 74.0060° W`;
+            }, 2000);
+        }
+    </script>
+</body>
+</html>

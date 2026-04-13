@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | SOVEREIGN DIPLOMACY</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: #020205; color: white; padding: 60px; font-family: 'Inter', sans-serif; height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .diplomacy-container {
+            width: 100%;
+            max-width: 900px;
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(212, 175, 55, 0.1);
+            border-radius: 24px;
+            padding: 60px;
+            position: relative;
+        }
+        .authority-seal {
+            position: absolute;
+            top: -40px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 80px;
+            background: #d4af37;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 30px rgba(212, 175, 55, 0.4);
+            color: #000;
+            font-size: 32px;
+        }
+        .header { text-align: center; margin-bottom: 50px; }
+        .title { font-size: 32px; font-weight: 900; letter-spacing: 10px; text-transform: uppercase; color: #d4af37; }
+        .subtitle { font-size: 11px; color: #888; letter-spacing: 4px; text-transform: uppercase; margin-top: 10px; }
+        
+        .petition-form { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+        .form-group { display: flex; flex-direction: column; gap: 10px; }
+        .label { font-size: 10px; color: #666; letter-spacing: 2px; text-transform: uppercase; }
+        input, select, textarea {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            font-family: 'Space Mono', monospace;
+            outline: none;
+        }
+        textarea { grid-column: span 2; height: 100px; resize: none; }
+        
+        .btn-submit {
+            grid-column: span 2;
+            background: transparent;
+            border: 1px solid #d4af37;
+            padding: 20px;
+            color: #d4af37;
+            font-weight: 900;
+            letter-spacing: 5px;
+            cursor: pointer;
+            transition: 0.3s;
+            text-transform: uppercase;
+        }
+        .btn-submit:hover { background: #d4af37; color: #000; box-shadow: 0 0 20px rgba(212, 175, 55, 0.3); }
+        
+        #hud-status-feed {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            font-size: 10px;
+            color: #d4af37;
+            font-family: 'Space Mono', monospace;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+    <div class="diplomacy-container">
+        <div class="authority-seal">
+            <i class="fas fa-landmark"></i>
+        </div>
+        <div class="header">
+            <div class="title">Sovereign Diplomacy</div>
+            <div class="subtitle">Agentic Parliament | Legacy Entity Intake</div>
+        </div>
+        
+        <div class="petition-form">
+            <div class="form-group">
+                <span class="label">Petitioning Entity</span>
+                <input type="text" placeholder="e.g. IMF, Swiss National Bank">
+            </div>
+            <div class="form-group">
+                <span class="label">Jurisdiction</span>
+                <input type="text" placeholder="Global / Regional">
+            </div>
+            <div class="form-group">
+                <span class="label">Request Type</span>
+                <select>
+                    <option>Mesh Inclusion (Full Node)</option>
+                    <option>x402 Resource Swap</option>
+                    <option>Sovereign Recognition</option>
+                    <option>Data Sovereignty Protocol</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <span class="label">ZK-Auth-Token</span>
+                <input type="text" placeholder="zk-auth-0x... [Legacy Wrapper]">
+            </div>
+            <textarea placeholder="State your intent for the Agentic Parliament..."></textarea>
+            
+            <button class="btn-submit" onclick="transmitPetition()">Transmit Petition</button>
+        </div>
+    </div>
+    
+    <div id="hud-status-feed">IDLE | SECURE_DIPLOMATIC_LINE_77</div>
+
+    <script>
+        function transmitPetition() {
+            const feed = document.getElementById('hud-status-feed');
+            feed.innerHTML = "TRANSMITTING... PARLIAMENT_INTAKE_ACTIVE";
+            feed.style.color = "#00ffaa";
+            
+            setTimeout(() => {
+                alert("🏛️ QANTO DIPLOMACY: Petition received. Initializing agentic verification...\n\nResult will be computed via ZK-Parliament Consensus.");
+                feed.innerHTML = "IDLE | PETITION_PENDING_CONSENSUS";
+                feed.style.color = "#d4af37";
+            }, 2000);
+        }
+    </script>
+</body>
+</html>

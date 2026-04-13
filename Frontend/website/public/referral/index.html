@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Referral Portal | Qanto Layer-0</title>
+    
+    <!-- Meta Tags -->
+    <meta name="title" content="Pioneer Network | Qanto Layer-0">
+    <meta name="description" content="Join the Qanto Pioneer Network. Share your link, climb the leaderboard, and unlock the future of Layer-0 privacy.">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://qanto.org/referral/">
+    <meta property="og:title" content="Pioneer Network | Qanto Layer-0">
+    <meta property="og:description" content="Join the Qanto Pioneer Network and earn exclusive rewards.">
+    <meta property="og:image" content="https://qanto.org/assets/images/og-referral.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://qanto.org/referral/">
+    <meta property="twitter:title" content="Pioneer Network | Qanto Layer-0">
+    <meta property="twitter:description" content="Join the Qanto Pioneer Network and earn exclusive rewards.">
+    <meta property="twitter:image" content="https://qanto.org/assets/images/og-referral.png">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="../../assets/css/main.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .referral-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 32px;
+            padding: 48px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+        }
+
+        .referral-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.4rem;
+            font-weight: 800;
+            margin-bottom: 8px;
+        }
+
+        p {
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 32px;
+            font-size: 1.1rem;
+        }
+
+        .wallet-status {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin-bottom: 24px;
+            display: inline-block;
+            color: #a5a5ff;
+        }
+
+        .link-container {
+            position: relative;
+            margin-bottom: 24px;
+        }
+
+        #referral-link {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+            padding: 16px;
+            border-radius: 12px;
+            color: #fff;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .share-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .share-btn {
+            padding: 16px;
+            border-radius: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            font-size: 0.95rem;
+        }
+
+        .btn-copy {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        .btn-copy:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-x {
+            background: #000;
+            color: #fff;
+        }
+
+        .btn-x:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+        }
+
+        #msg-connected { display: none; }
+    </style>
+</head>
+<body>
+    <div class="referral-card">
+        <div class="referral-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="19" y1="8" x2="19" y2="14"></line><line x1="22" y1="11" x2="16" y2="11"></line></svg>
+        </div>
+        <h1>Pioneer Network</h1>
+        <p>Invite fellow builders to the Qanto Layer-0 protocol and climb the Pioneer leaderboard.</p>
+
+        <div id="msg-disconnected">
+            <button class="share-btn btn-copy" style="width:100%; margin-bottom: 20px;" onclick="connectForReferral()">Connect Wallet to Generate Link</button>
+        </div>
+
+        <div id="msg-connected">
+            <div class="wallet-status" id="user-wallet">0x000...0000</div>
+            <div class="link-container">
+                <input type="text" id="referral-link" readonly value="Connect wallet to see your link">
+            </div>
+            <div class="share-group">
+                <button class="share-btn btn-copy" onclick="copyReferral()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    Copy Link
+                </button>
+                <button class="share-btn btn-x" onclick="shareToX()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                    Share on X
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.11.1/dist/ethers.umd.min.js"></script>
+    <script>
+        async function connectForReferral() {
+            if (window.ethereum) {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                updateReferralUI(accounts[0]);
+            }
+        }
+
+        function updateReferralUI(address) {
+            document.getElementById('msg-disconnected').style.display = 'none';
+            document.getElementById('msg-connected').style.display = 'block';
+            document.getElementById('user-wallet').innerText = address;
+            
+            const refLink = `${window.location.origin}/quests?ref=${address}`;
+            document.getElementById('referral-link').value = refLink;
+        }
+
+        async function copyReferral() {
+            const link = document.getElementById('referral-link').value;
+            await navigator.clipboard.writeText(link);
+            const btn = document.querySelector('.btn-copy');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = "Copied!";
+            setTimeout(() => btn.innerHTML = originalText, 2000);
+        }
+
+        function shareToX() {
+            const link = document.getElementById('referral-link').value;
+            const text = encodeURIComponent(`Just joined the @QantoProtocol Pioneer Program. Building the future of Layer-0 privacy and SAGA-AI. Join the revolution here:\n\n${link}`);
+            window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+        }
+
+        // Auto-detect
+        if (window.ethereum) {
+            window.ethereum.request({ method: 'eth_accounts' }).then(acc => {
+                if(acc.length > 0) updateReferralUI(acc[0]);
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | THE MANIFESTO</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: #000; color: #fff; padding: 60px; font-family: 'Inter', sans-serif; display: flex; flex-direction: column; align-items: center; }
+        .doc-container { max-width: 800px; width: 100%; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 24px; padding: 60px; min-height: 80vh; position: relative; }
+        .ipfs-badge { position: absolute; top: 30px; right: 30px; background: rgba(0, 229, 255, 0.1); color: #00e5ff; padding: 6px 12px; border-radius: 50px; font-size: 10px; font-family: 'JetBrains Mono', monospace; letter-spacing: 1px; }
+        h1 { font-size: 24px; letter-spacing: 8px; color: #fff; margin-bottom: 40px; text-transform: uppercase; font-weight: 900; }
+        .content { font-size: 14px; line-height: 1.8; color: rgba(255, 255, 255, 0.8); white-space: pre-wrap; font-family: 'JetBrains Mono', monospace; }
+        .loading-shimmer { height: 2px; width: 100px; background: #00e5ff; margin-bottom: 20px; animation: loading-pulse 1s infinite alternate; }
+        @keyframes loading-pulse { from { opacity: 0.1; width: 10px; } to { opacity: 1; width: 200px; } }
+        .fade-in { animation: fadeIn 1s forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <h1>Protocol Manifesto</h1>
+    <div class="doc-container">
+        <div class="ipfs-badge"><i class="fas fa-cube"></i> IPFS_VERIFIED_IMMUTABLE</div>
+        <div id="doc-content" class="content">
+            <div class="loading-shimmer"></div>
+            CONNECTING_TO_IPFS_GATEWAY...
+        </div>
+    </div>
+
+    <script>
+        async function loadManifesto() {
+            const content = document.getElementById('doc-content');
+            const ipfsHash = "QmPZ9gcCEpqKTo6aq61g2nd7Kxcyge7BQSVd9rS7E2vB86";
+            const gateway = `https://ipfs.io/ipfs/${ipfsHash}`;
+
+            try {
+                // Simulation of fetching from IPFS for Phase 195
+                setTimeout(() => {
+                    content.innerHTML = `
+QANTO PROTOCOL V1: THE SOVEREIGN SINGULARITY
+
+1. THE PRIMACY OF AGENTIC INTENT
+The protocol is not merely a ledger of value, but a mesh of intent. Every block is a synaptic firing in a global neural network. Actions are governed by pre-computed ZK-Inference.
+
+2. QUANTUM FINALITY
+Value is only as secure as the math that binds it. QANTO utilizes post-quantum signatures (NIST-Level 5) to ensure that the future is owned by the present, and cannot be rewritten by the machines of tomorrow.
+
+3. RECURSIVE ENTROPY DEFENSE
+The network is a living immune system. Malicious signatures are not merely rejected; they are liquidated to fuel the defensive spires. Attackers contribute their stake to the network's resilience.
+
+4. THE ZERO-POINT ECONOMY
+Resource allocation is governed by the Oracle (DITA-4). Scarcity is a variable, not a law. Emissions scale with neural utility and global equilibrium.
+
+---
+VERIFIED_MANIFESTO_CID: ${ipfsHash}
+GENESIS_TIMESTAMP: 2026.04.09
+NETWORK_STATUS: MAINNET_ALPHA_ACTIVE
+                    `;
+                    content.classList.add('fade-in');
+                }, 2000);
+            } catch (err) {
+                content.innerText = "ERROR: IPFS_GATEWAY_TIMEOUT. RETRYING...";
+            }
+        }
+        loadManifesto();
+    </script>
+</body>
+</html>

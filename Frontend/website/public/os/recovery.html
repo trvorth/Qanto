@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO RECOVERY | Persistent Mesh</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(5, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .r-header { border-bottom: 2px solid #00ffaa; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .recovery-card { background: linear-gradient(135deg, rgba(0, 255, 170, 0.1), rgba(0, 102, 255, 0.1)); border: 1px solid rgba(0, 255, 170, 0.3); padding: 25px; border-radius: 16px; margin-bottom: 30px; position: relative; overflow: hidden; }
+        .pulse-bar { height: 12px; background: #222; border-radius: 6px; position: relative; margin-top: 20px; overflow: hidden; }
+        .pulse-progress { height: 100%; background: #00ffaa; box-shadow: 0 0 15px #00ffaa; width: 92%; }
+        
+        .uptime-stats { display: flex; justify-content: space-between; margin-top: 20px; }
+        .stat-box { background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); text-align: center; flex: 1; margin: 0 5px; }
+    </style>
+</head>
+<body>
+    <div class="r-header">
+        <div>
+            <h1 style="margin:0; letter-spacing: 6px;">MESH RECOVERY</h1>
+            <div style="font-size: 11px; color: #888;">Disaster Mitigation & Uptime Persistence</div>
+        </div>
+        <div style="font-size: 11px; color: #00ffaa; font-weight: 900;"><i class="fas fa-shield-alt"></i> STATUS: STABLE</div>
+    </div>
+
+    <div class="recovery-card">
+        <div style="display: flex; justify-content: space-between;">
+            <span style="font-weight: 900; letter-spacing: 1px;">RECONSTRUCTION: SHARD_1</span>
+            <span style="color: #00ffaa;">92% COMPLETE</span>
+        </div>
+        <div class="pulse-bar"><div class="pulse-progress"></div></div>
+        <div class="uptime-stats">
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">UPTIME</div><div style="font-size: 18px; font-weight: 900;">99.999%</div></div>
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">NODES_RESTORED</div><div style="font-size: 18px; font-weight: 900; color: #00ffaa;">112 / 128</div></div>
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">RECOVERY_TIME</div><div style="font-size: 18px; font-weight: 900;">14.5s</div></div>
+        </div>
+    </div>
+
+    <h3 style="letter-spacing: 2px;">RECOVERY LOG (TMR)</h3>
+    <div style="background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); font-family: 'Space Mono', monospace; font-size: 11px;">
+        <div style="margin-bottom: 5px; color: #00ffaa;">[12:40] TMR: BLACK_SWAN detected in Shard_1. Triggering Recovery.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[12:41] TMR: Evaluating Recursive ZK-Snapshot (Depth 850).</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[12:42] TMR: Shard_1 Topology Reconstruction initiated.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[12:44] TMR: 112 Sentinel nodes re-seeded. STATUS: OK.</div>
+    </div>
+</body>
+</html>
