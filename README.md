@@ -483,7 +483,7 @@ qanto-cli node status
 
 - **Network ID**: qanto-testnet-1
 - **Chain ID**: 1001
-- **RPC**: https://testnet-rpc.qanto.org
+- **RPC**: https://testnet-trvorth-qanto-testnet.hf.space/rpc
 - **WebSocket**: wss://testnet-ws.qanto.org
 - **Explorer**: https://testnet-explorer.qanto.org
 - **Faucet**: https://faucet.qanto.org

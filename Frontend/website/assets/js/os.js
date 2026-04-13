@@ -1460,7 +1460,7 @@ function resolveSovereignState(state, detectedRpc = null) {
 
     if (detectedRpc) {
         window.rpcUrl = RPC_URL;
-        console.log(`[v1.1-HARDENED] 🌐 SAGA CONTROLLER: Connected to ${RPC_URL}`);
+        console.log(`[v1.0-STABLE] 🌐 SAGA CONTROLLER: Connected to ${RPC_URL}`);
     }
 
     if (state === 'SIMULATED') {
@@ -1672,11 +1672,17 @@ window.initNodeScanner = async function() {
                         
                         resolveSovereignState('ACTIVE', rpc);
                         if (typeof window.updatePortalHUD === 'function') window.updatePortalHUD();
-                        if (typeof window.updateHUD === 'function') window.updateHUD('TESTNET LIVE');
+                        if (typeof window.updateHUD === 'function') window.updateHUD('TESTNET LIVE | SYNCED');
+                        
+                        const hudStatus = document.getElementById('hud-status-text');
+                        if (hudStatus) {
+                            hudStatus.innerText = 'TESTNET LIVE | SYNCED';
+                            hudStatus.style.color = '#00ff9d';
+                        }
                         
                         const debugRpc = document.getElementById('debug-rpc');
                         if (debugRpc) {
-                            debugRpc.innerHTML = `TESTNET LIVE <span class="pulse-green" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00ff9d; margin-left:5px;"></span> <span style="font-size:9px;">(${rpc})</span>`;
+                            debugRpc.innerHTML = `TESTNET LIVE | SYNCED <span class="pulse-green" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00ff9d; margin-left:5px;"></span> <span style="font-size:9px;">(${rpc})</span>`;
                             debugRpc.style.color = '#00ff9d';
                         }
                         
