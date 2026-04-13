@@ -600,7 +600,7 @@ if (window.location.hash === "#THE-MERGE") {
 }
 
 // Phase 100: Metamask Unification
-const QANTO_CHAIN_ID = '0x5341'; // SAGA in hex
+const QANTO_CHAIN_ID = '0x1234'; // SAGA in hex
 const QANTO_NETWORK_PARAMS = {
     chainId: QANTO_CHAIN_ID,
     chainName: 'QANTO Testnet',
@@ -640,8 +640,8 @@ async function addQantoNetwork() {
             });
             const hudStatusText = document.getElementById('hud-status-text');
             if (hudStatusText) {
-                hudStatusText.innerText = "SYSTEMS NOMINAL | CONNECTION VERIFIED";
-                hudStatusText.style.color = "#00ffaa";
+                hudStatusText.innerText = "TESTNET LIVE | SYNCED";
+                hudStatusText.style.color = "#00ff9d";
             }
             if (btnText) btnText.innerText = "VERIFIED";
         }
@@ -672,7 +672,10 @@ async function updatePortalHUD() {
         const accounts = await window.ethereum.request({ method: 'eth_accounts' });
         
         if (chainId === QANTO_CHAIN_ID) {
-            if (hudStatusText) hudStatusText.innerText = accounts.length > 0 ? "IDENTITY ACTIVE" : "SENTINEL SYNCED";
+            if (hudStatusText) {
+                hudStatusText.innerText = "TESTNET LIVE | SYNCED";
+                hudStatusText.style.color = "#00ff9d";
+            }
             if (hudIndicator) hudIndicator.className = "hud-indicator synced";
             if (btnText) btnText.innerText = accounts.length > 0 ? "PORTAL ACTIVE" : "AUTHORIZE NODES";
             connectBtn?.classList.remove('liquid-metal');
