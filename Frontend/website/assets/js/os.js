@@ -1485,13 +1485,13 @@ function resolveSovereignState(state, detectedRpc = null) {
         });
     } else if (state === 'ACTIVE') {
         if (hudStatus) {
-            hudStatus.innerText = "SYSTEMS NOMINAL | V1.0.0 SECURED";
+            hudStatus.innerText = "TESTNET LIVE | SYNCED";
             hudStatus.style.color = '#00ffaa';
             hudStatus.style.textShadow = '0 0 10px #00ffaa';
             hudStatus.classList.add('sentinel-local-heartbeat');
         }
         if (protocolStatus) {
-            protocolStatus.innerText = "QANTO V1.0.0 | IMMORTAL PROTOCOL";
+            protocolStatus.innerText = "QANTO V1.0.0 | TESTNET LIVE";
             protocolStatus.style.color = "#00ffaa";
         }
     }
@@ -1657,7 +1657,7 @@ window.initNodeScanner = async function() {
                     method: 'POST',
                     mode: 'cors',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ jsonrpc: "2.0", method: "eth_chainId", params: [], id: 1 }),
+                    body: JSON.stringify({ jsonrpc: "2.0", method: "eth_blockNumber", params: [], id: 1 }),
                     signal: controller.signal
                 });
                 
@@ -1669,7 +1669,7 @@ window.initNodeScanner = async function() {
                     resolveSovereignState('ACTIVE', rpc);
                     
                     if (debugRpc) {
-                        debugRpc.innerHTML = `ONLINE <span class="pulse-green" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00ffaa; margin-left:5px;"></span> <span style="font-size:9px;">(${rpc})</span>`;
+                        debugRpc.innerHTML = `TESTNET LIVE <span class="pulse-green" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00ffaa; margin-left:5px;"></span> <span style="font-size:9px;">(${rpc})</span>`;
                         debugRpc.style.color = '#00ffaa';
                     }
                     
@@ -1733,8 +1733,8 @@ async function initExplorerSync() {
     let processedBlocks = new Set();
     let pendingHashes = new Set();
 
-    const rpc = (window.QANTO_NETWORK_PARAMS && window.QANTO_NETWORK_PARAMS.rpcUrls) 
-        ? QANTO_NETWORK_PARAMS.rpcUrls[0]
+    const rpc = window.rpcUrl || (window.QANTO_NETWORK_PARAMS && window.QANTO_NETWORK_PARAMS.rpcUrls) 
+        ? (window.rpcUrl || QANTO_NETWORK_PARAMS.rpcUrls[0])
         : (typeof RPC_URL !== 'undefined' ? RPC_URL : 'https://trvorth-qanto-testnet.hf.space') + '/rpc';
 
     const sync = async () => {
