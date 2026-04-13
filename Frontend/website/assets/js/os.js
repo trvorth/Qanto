@@ -602,15 +602,11 @@ if (window.location.hash === "#THE-MERGE") {
 // Phase 100: Metamask Unification
 const QANTO_CHAIN_ID = '0x1234'; // SAGA in hex
 const QANTO_NETWORK_PARAMS = {
-    chainId: QANTO_CHAIN_ID,
+    chainId: '0x1234',
     chainName: 'QANTO Testnet',
-    nativeCurrency: {
-        name: 'QNTO',
-        symbol: 'QNTO',
-        decimals: 18
-    },
-    rpcUrls: ["https://trvorth-qanto-testnet.hf.space/rpc"],
-    blockExplorerUrls: ["https://qanto.org/explorer"]
+    nativeCurrency: { name: 'QANTO', symbol: 'QNTO', decimals: 18 },
+    rpcUrls: ['https://trvorth-qanto-testnet.hf.space/rpc'],
+    blockExplorerUrls: ['https://qanto.org/explorer/']
 };
 
 async function addQantoNetwork() {

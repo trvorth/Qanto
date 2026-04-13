@@ -31,7 +31,7 @@ import { QantoClient, NETWORKS } from '@qanto/sdk';
 const client = new QantoClient({
   network: NETWORKS.MAINNET,
   // Optional: custom endpoints
-  httpEndpoint: 'https://api.qanto.org',
+  httpEndpoint: 'https://trvorth-qanto-testnet.hf.space',
   wsEndpoint: 'wss://ws.qanto.org',
   graphqlEndpoint: 'https://graphql.qanto.org'
 });

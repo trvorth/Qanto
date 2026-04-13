@@ -162,7 +162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 $endpoint = $_GET['endpoint'] ?? '';
-$nodeUrl = 'http://api.qanto.org:8082'; // Production API endpoint
+$nodeUrl = 'http://trvorth-qanto-testnet.hf.space:8082'; // Production API endpoint
 
 // Validate endpoint
 $allowedEndpoints = ['health', 'info', 'dag', 'balance'];
@@ -309,7 +309,7 @@ server {
     
     # API proxy (if needed)
     location /api/ {
-        proxy_pass http://api.qanto.org:8082/;
+        proxy_pass http://trvorth-qanto-testnet.hf.space:8082/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -413,7 +413,7 @@ www.qanto.org.          300    IN    A      [VPS IP]
 explorer.qanto.org.     300    IN    A      [Shared Hosting IP]
 
 # API subdomain
-api.qanto.org.          300    IN    A      [API Server IP]
+trvorth-qanto-testnet.hf.space.          300    IN    A      [API Server IP]
 
 # Mail records
 qanto.org.              300    IN    MX     10 mail.qanto.org.
@@ -486,7 +486,7 @@ TTL: Auto
    - Browser Cache TTL: 8 hours
    - Always Use HTTPS: On
 
-3. Rule: api.qanto.org/*
+3. Rule: trvorth-qanto-testnet.hf.space/*
    Settings:
    - Cache Level: Bypass
    - Security Level: High
@@ -602,7 +602,7 @@ Alert Contacts: admin@qanto.org
 
 Monitor 3:
 Type: HTTP(s)
-URL: https://api.qanto.org/health
+URL: https://trvorth-qanto-testnet.hf.space/health
 Interval: 1 minute
 Timeout: 10 seconds
 Alert Contacts: admin@qanto.org, slack:webhook_url
@@ -723,7 +723,7 @@ echo "$(date): Website backup completed - website_$DATE.tar.gz" >> /var/log/back
 #### Security Headers Implementation
 ```nginx
 # Content Security Policy
-add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.qanto.org;" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://trvorth-qanto-testnet.hf.space;" always;
 
 # Prevent clickjacking
 add_header X-Frame-Options "SAMEORIGIN" always;

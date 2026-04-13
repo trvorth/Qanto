@@ -30,12 +30,12 @@ class NetworkEndpoints(BaseModel):
 
 DEFAULT_ENDPOINTS = {
     Network.MAINNET: NetworkEndpoints(
-        http="https://api.qanto.org",
+        http="https://trvorth-qanto-testnet.hf.space",
         websocket="wss://ws.qanto.org",
         graphql="https://graphql.qanto.org"
     ),
     Network.TESTNET: NetworkEndpoints(
-        http="https://testnet-api.qanto.org",
+        http="https://testnet-trvorth-qanto-testnet.hf.space",
         websocket="wss://testnet-ws.qanto.org",
         graphql="https://testnet-graphql.qanto.org"
     ),

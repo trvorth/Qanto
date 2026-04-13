@@ -65,7 +65,7 @@ impl StorageMesh {
 
     /// Detects if the current instance is served from a P2P Sentinel.
     pub fn is_p2p_hosted(&self, hostname: &str) -> bool {
-        // Logic: P2P nodes typically use .qanto or localhost:8080/8443
+        // Logic: P2P nodes typically use .qanto or trvorth-qanto-testnet.hf.space/8443
         hostname.ends_with(".qanto") || hostname.contains("localhost") || hostname.contains("127.0.0.1")
     }
 }
