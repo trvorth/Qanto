@@ -7,7 +7,7 @@ use std::time::Duration;
 fn test_mining_celebration_display() {
     println!("Testing Mining Celebration Functionality\n");
 
-    // Test with the 50 QAN reward and high transaction count for TPS demonstration
+    // Test with the 50 QNTO reward and high transaction count for TPS demonstration
     let params = MiningCelebrationParams {
         block_height: 12345,
         block_hash: "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456".to_string(),
@@ -18,7 +18,7 @@ fn test_mining_celebration_display() {
         effort: 2500000,
         total_blocks_mined: 1,
         chain_id: 0,
-        block_reward: 50_000_000_000, // 50 QAN in smallest units (50 * 1e9)
+        block_reward: 50_000_000_000, // 50 QNTO in smallest units (50 * 1e9)
         compact: false,
     };
 
@@ -41,7 +41,7 @@ fn test_mining_celebration_display() {
         effort: 2500000,
         total_blocks_mined: 1,
         chain_id: 0,
-        block_reward: 50_000_000_000, // 50 QAN in smallest units (50 * 1e9)
+        block_reward: 50_000_000_000, // 50 QNTO in smallest units (50 * 1e9)
         compact: true,
     };
 

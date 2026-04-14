@@ -96,10 +96,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Use varying amounts to test different fee tiers
                 let amount = match local_tx_count % 4 {
-                    0 => 500_000 * 1_000_000_000,     // 500K QAN (0% fee)
-                    1 => 2_000_000 * 1_000_000_000,   // 2M QAN (1% fee)
-                    2 => 15_000_000 * 1_000_000_000,  // 15M QAN (2% fee)
-                    _ => 150_000_000 * 1_000_000_000, // 150M QAN (3% fee)
+                    0 => 500_000 * 1_000_000_000,     // 500K QNTO (0% fee)
+                    1 => 2_000_000 * 1_000_000_000,   // 2M QNTO (1% fee)
+                    2 => 15_000_000 * 1_000_000_000,  // 15M QNTO (2% fee)
+                    _ => 150_000_000 * 1_000_000_000, // 150M QNTO (3% fee)
                 };
 
                 transaction.amount = amount;

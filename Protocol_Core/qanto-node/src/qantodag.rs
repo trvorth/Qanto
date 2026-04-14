@@ -73,7 +73,7 @@ pub const MAX_TRANSACTION_SIZE: usize = 102_400; // 100 KB per transaction
 pub const DEV_ADDRESS: &str = "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3";
 pub const CONTRACT_ADDRESS: &str =
     "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394";
-pub const INITIAL_BLOCK_REWARD: u64 = 50 * crate::transaction::SMALLEST_UNITS_PER_QAN; // 50 QAN in base units
+pub const INITIAL_BLOCK_REWARD: u64 = 50 * crate::transaction::SMALLEST_UNITS_PER_QAN; // 50 QNTO in base units
 const FINALIZATION_DEPTH: u64 = 8;
 const SHARD_THRESHOLD: u32 = 2;
 const TEMPORAL_CONSENSUS_WINDOW: u64 = 600;

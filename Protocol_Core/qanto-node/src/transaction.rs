@@ -41,10 +41,10 @@ const MAX_METADATA_KEY_LEN: usize = 64;
 const MAX_METADATA_VALUE_LEN: usize = 256;
 
 // --- New Dynamic Fee Structure ---
-// Thresholds are defined in the smallest units of QAN for precision.
-/// The number of smallest units in one QAN.
+// Thresholds are defined in the smallest units of QNTO for precision.
+/// The number of smallest units in one QNTO.
 pub const SMALLEST_UNITS_PER_QAN: u64 = 1_000_000;
-/// The number of decimals per QAN when formatting base units.
+/// The number of decimals per QNTO when formatting base units.
 pub const DECIMALS_PER_QAN: usize = 6;
 /// The threshold for the first fee tier (under 1,000,000 QAN).
 pub const FEE_TIER1_THRESHOLD: u64 = 1_000_000 * SMALLEST_UNITS_PER_QAN;

@@ -6,7 +6,7 @@ Qanto’s tokenomics are designed for fairness, sustainability, and decentraliza
 
 Guiding Principles
 
-**Fair Launch**: Everyone has the same opportunity to acquire QAN from the beginning. The core contributors will be funded through the community-governed Ecosystem & Development Fund, just like any other developer or contributor. This ensures accountability and long-term alignment. There are no pre-sale or private-sale investors who can dump on the market. Everyone starts on a level playing field.
+**Fair Launch**: Everyone has the same opportunity to acquire QNTO from the beginning. The core contributors will be funded through the community-governed Ecosystem & Development Fund, just like any other developer or contributor. This ensures accountability and long-term alignment. There are no pre-sale or private-sale investors who can dump on the market. Everyone starts on a level playing field.
 
 **Community Ownership**: The vast majority of tokens are distributed directly to the community.
 
@@ -27,7 +27,7 @@ Guiding Principles
 ## Vesting Model
 
 - **Ecosystem & Development Fund**: Tokens are vested over 2 years, with a 1-year cliff, ensuring a long-term commitment to the project's success.
-- **Public Liquidity**: Locked in a smart contract to provide a stable and secure market for QAN.
+- **Public Liquidity**: Locked in a smart contract to provide a stable and secure market for QNTO.
 - **Testnet Contributors**: 3-month vest after TGE.  
 - **Community & Mining Rewards**: Released gradually through consensus emissions, later shifting toward fee-based rewards.  
 

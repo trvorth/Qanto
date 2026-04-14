@@ -3417,7 +3417,7 @@ impl PalletSaga {
             "base_reward".to_string(),
             EpochRule {
                 value: 50_000_000_000.0,
-                description: "Base QAN reward per block (in smallest units) before modifiers."
+                description: "Base QNTO reward per block (in smallest units) before modifiers."
                     .to_string(),
             },
         );

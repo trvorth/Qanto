@@ -21,7 +21,7 @@ pub enum GasFeeError {
 }
 
 /// Gas fee model constants (in smallest units - microQAN)
-pub const BASE_FEE_MICRO_QAN: u64 = 100; // 0.0001 QAN = 100 microQAN
+pub const BASE_FEE_MICRO_QAN: u64 = 100; // 0.0001 QNTO = 100 microQAN
 pub const TARGET_TPS: u64 = 10_000_000;
 pub const CONGESTION_ADJUSTMENT_FACTOR: f64 = 0.5;
 

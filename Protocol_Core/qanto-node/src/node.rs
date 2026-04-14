@@ -380,7 +380,7 @@ impl Node {
         let utxos = Arc::new(RwLock::new(HashMap::with_capacity(MAX_UTXOS)));
         let proposals = Arc::new(RwLock::new(Vec::with_capacity(MAX_PROPOSALS)));
 
-        // Create genesis UTXO with the entire 21 billion QAN supply allocated to contract address
+        // Create genesis UTXO with the entire 21 billion QNTO supply allocated to contract address
         // Clear any existing UTXOs first to ensure clean state
         {
             if !genesis_exists {
@@ -395,7 +395,7 @@ impl Node {
                     genesis_utxo_id.clone(),
                     UTXO {
                         address: config.contract_address.clone(),
-                        amount: total_supply_base_units, // Entire 21 billion QAN supply in smallest units with 9 decimals
+                        amount: total_supply_base_units, // Entire 21 billion QNTO supply in smallest units with 9 decimals
                         tx_id: "genesis_total_supply_tx".to_string(),
                         output_index: 0,
                         explorer_link: {
@@ -408,7 +408,7 @@ impl Node {
                     },
                 );
                 info!(
-                    "Genesis UTXO created with 21 billion QAN allocated to contract address: {}",
+                    "Genesis UTXO created with 21 billion QNTO allocated to contract address: {}",
                     config.contract_address
                 );
                 info!("UTXO state reset - only contract address has balance now");

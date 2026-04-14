@@ -153,7 +153,7 @@ enum Commands {
         #[arg()]
         address: String,
     },
-    /// [send] Sends QAN with Governance-Aware Transaction Tracking™.
+    /// [send] Sends QNTO with Governance-Aware Transaction Tracking™.
     Send {
         #[arg(short, long, value_name = "WALLET_FILE")]
         wallet: Option<PathBuf>,
@@ -1030,7 +1030,7 @@ async fn receive_transactions(node_url: &str, wallet_path: PathBuf) -> Result<()
                                                             "\n✅ Incoming Transaction Received!"
                                                         );
                                                         println!(
-                                                            "   Amount: {amount} QAN",
+                                                            "   Amount: {amount} QNTO",
                                                             amount = output.amount
                                                         );
                                                         println!(

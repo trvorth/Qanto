@@ -636,7 +636,7 @@ impl Miner {
                     effort,
                     total_blocks_mined: 1,
                     chain_id: 0,
-                    block_reward: 50_000_000_000, // 50 QAN in smallest units
+                    block_reward: 50_000_000_000, // 50 QNTO in smallest units
                     compact: false,
                 };
 
