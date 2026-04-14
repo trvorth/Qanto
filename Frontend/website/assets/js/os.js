@@ -518,6 +518,8 @@ async function syncNetworkState() {
                     if (!isNaN(num)) {
                         ghostBlockHeight = num;
                         window.lastBlock = num;
+                        const qwBlock = document.getElementById('qw-block-height');
+                        if (qwBlock) qwBlock.innerText = stringVal;
                     }
                 }
             }
@@ -630,22 +632,27 @@ async function addQantoNetwork() {
         // Task 4: MetaMask Verification Loop
         const accounts = await window.ethereum.request({ method: 'eth_accounts' });
         if (accounts.length > 0) {
-            await window.ethereum.request({
+            const balanceHex = await window.ethereum.request({
                 method: 'eth_getBalance',
                 params: [accounts[0], 'latest']
             });
+            const wei = parseInt(balanceHex, 16);
+            const qwBal = document.getElementById('qw-balance');
+            if (qwBal) qwBal.innerText = (wei / 1e18).toFixed(4) + ' QNTO';
+            
             const hudStatusText = document.getElementById('hud-status-text');
             if (hudStatusText) {
                 hudStatusText.innerText = "TESTNET LIVE | SYNCED";
                 hudStatusText.style.color = "#00ff9d";
             }
             if (btnText) btnText.innerText = "VERIFIED";
+            if (typeof window.closeConnectModal === 'function') window.closeConnectModal();
         }
         
         updatePortalHUD();
     } catch (error) {
         console.error("Metamask error:", error);
-        if (btnText) btnText.innerText = "CONNECT PORTAL";
+        if (btnText) btnText.innerText = "CONNECT WALLET";
     }
 }
 
@@ -659,8 +666,13 @@ async function updatePortalHUD() {
     if (!window.ethereum) {
         if (hudStatusText) hudStatusText.innerText = "IDENTITY INACTIVE";
         if (hudIndicator) hudIndicator.className = "hud-indicator needs-wallet";
-        if (btnText) btnText.innerText = "INSTALL METAMASK";
+        if (btnText) btnText.innerText = "CONNECT WALLET";
+        const pt = document.getElementById('metamask-download-prompt');
+        if (pt) pt.style.display = 'block';
         return;
+    } else {
+        const pt = document.getElementById('metamask-download-prompt');
+        if (pt) pt.style.display = 'none';
     }
 
     try {
@@ -1680,6 +1692,9 @@ window.initNodeScanner = async function() {
                             hudStatus.style.color = '#00ff9d';
                         }
                         
+                        const qwBlock = document.getElementById('qw-block-height');
+                        if (qwBlock) qwBlock.innerText = parseInt(data.result, 16).toLocaleString();
+                        
                         const debugRpc = document.getElementById('debug-rpc');
                         if (debugRpc) {
                             debugRpc.innerHTML = `TESTNET LIVE | SYNCED <span class="pulse-green" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00ff9d; margin-left:5px;"></span> <span style="font-size:9px;">(${rpc})</span>`;
@@ -1945,4 +1960,35 @@ window.runNeuralOracle = (hash) => {
             </div>
         `;
     }, 2500);
+};
+
+// ==========================================
+// UNIVERSAL CONNECT MODAL LOGIC (V1.0)
+// ==========================================
+window.openConnectModal = function() {
+    const m = document.getElementById('connect-modal');
+    if (m) m.classList.add('active');
+    
+    const pt = document.getElementById('metamask-download-prompt');
+    if (pt) {
+        pt.style.display = window.ethereum ? 'none' : 'block';
+    }
+};
+
+window.closeConnectModal = function() {
+    const m = document.getElementById('connect-modal');
+    if (m) m.classList.remove('active');
+    
+    const qr = document.getElementById('wc-qr-container');
+    if (qr) qr.style.display = 'none';
+};
+
+window.toggleWalletConnectQR = function() {
+    const qr = document.getElementById('wc-qr-container');
+    if (qr) {
+        qr.style.display = qr.style.display === 'none' ? 'block' : 'none';
+        if (qr.style.display === 'block') {
+            console.log("[v1.0-STABLE] 🌐 WalletConnect Bridge Generated");
+        }
+    }
 };
