@@ -520,6 +520,7 @@ async function syncNetworkState() {
                         window.lastBlock = num;
                         const qwBlock = document.getElementById('qw-block-height');
                         if (qwBlock) qwBlock.innerText = stringVal;
+                        const wb = document.getElementById('widget-block'); if(wb) wb.innerText = parseInt(stringVal.replace(/,/g, ''), 10);
                     }
                 }
             }
@@ -1988,7 +1989,14 @@ window.toggleWalletConnectQR = function() {
     if (qr) {
         qr.style.display = qr.style.display === 'none' ? 'block' : 'none';
         if (qr.style.display === 'block') {
-            console.log("[v1.0-STABLE] 🌐 WalletConnect Bridge Generated");
+            const container = document.getElementById('wc-qrcode');
+            if(container && container.innerHTML === '') {
+                new QRCode(container, {
+                    text: "wc:qanto-v1?bridge=https://bridge.walletconnect.org&key=qanto1234",
+                    width: 200, height: 200, colorDark : "#000000", colorLight : "#ffffff"
+                });
+            }
+            console.log("[v1.0-STABLE] 🌐 WalletConnect QR Code Rendered");
         }
     }
 };

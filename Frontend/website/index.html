@@ -41,6 +41,9 @@
     <link rel="stylesheet" href="assets/css/main.css">
     <link rel="stylesheet" href="assets/css/components.css">
     <link rel="stylesheet" href="assets/css/animations.css">
+
+    <!-- QRCode.js for WalletConnect QR rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     
     <style>
         /* Phase 33: QantoSwap UI Styles */
@@ -267,7 +270,7 @@
                         <span>WalletConnect</span>
                     </div>
                     <div id="wc-qr-container" style="display: none; padding: 10px; background: rgba(0,0,0,0.5); border-radius: 10px; margin-top: 10px; text-align: center; width: 100%;">
-                        <div class="mock-qr" style="width: 150px; height: 150px; background: repeating-linear-gradient(45deg, #0099ff, #0099ff 10px, transparent 10px, transparent 20px); border: 2px solid #0099ff; border-radius: 10px; display: inline-block;"></div>
+                        <div id="wc-qrcode" style="display:flex; justify-content:center; padding:10px; background:#fff; border-radius:10px;"></div>
                         <div style="font-size: 10px; color: rgba(255,255,255,0.6); margin-top: 5px;">SCAN WITH COMPATIBLE WALLET</div>
                     </div>
                 </div>
@@ -287,25 +290,10 @@
     </div>
     
     <!-- QantoWallet Persistent Widget -->
-    <div id="qantowallet-widget" class="glass-2">
-        <div class="qw-header">
-            <span class="qw-title"><i class="fas fa-wallet" style="margin-right: 5px;"></i>QantoWallet</span>
-            <div class="qw-status" id="qw-dot"><span class="pulse-green"></span></div>
-        </div>
-        <div class="qw-body">
-            <div class="qw-row">
-                <span class="qw-label">NETWORK</span>
-                <span class="qw-value" style="color: #00ff9d;">V1.0 STABLE</span>
-            </div>
-            <div class="qw-row">
-                <span class="qw-label">BLOCKS</span>
-                <span class="qw-value" id="qw-block-height">0</span>
-            </div>
-            <div class="qw-row" style="margin-top: 5px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 5px;">
-                <span class="qw-label">BALANCE</span>
-                <span class="qw-value" id="qw-balance" style="color: #00e5ff; font-weight: bold;">0.00 QNTO</span>
-            </div>
-        </div>
+    <div id="qantowallet-widget" style="position:fixed; bottom:20px; right:20px; background:rgba(10,15,20,0.85); border:1px solid #00ff9d; padding:16px; border-radius:16px; color:#fff; z-index:9999; backdrop-filter:blur(12px); display:flex; flex-direction:column; gap:10px; font-family:monospace; box-shadow: 0 4px 20px rgba(0,255,157,0.15);">
+        <div style="display:flex; align-items:center; gap:10px;"><div style="width:12px; height:12px; background:#00ff9d; border-radius:50%; box-shadow:0 0 10px #00ff9d;"></div><b style="color:#00ff9d; font-size:14px;">QANTO LIVE</b></div>
+        <div style="font-size:13px; color:#ccc;">Block: <span id="widget-block" style="color:#fff;">Syncing...</span></div>
+        <div style="font-size:13px; color:#ccc;">Balance: <span id="widget-balance" style="color:#fff;">0.00 QNTO</span></div>
     </div>
 
     <style>
@@ -490,7 +478,7 @@
                 <a href="#community" class="nav-link">Community</a>
                 <div class="nav-cta">
                     <a href="public/explorer/index.html" class="btn btn-outline">Explorer</a>
-                    <a href="#get-started" class="btn btn-primary">Get Started</a>
+                    <a href="javascript:void(0)" class="btn btn-primary" onclick="openConnectModal()">Connect Wallet</a>
                 </div>
             </div>
             
@@ -1295,4 +1283,3 @@ async fn main() -&gt; Result&lt;()&gt; {
     </script>
 </body>
 </html>
-html>
