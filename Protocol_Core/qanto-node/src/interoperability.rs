@@ -303,7 +303,7 @@ pub struct BridgeValidator {
     pub address: String,
     pub public_key: Vec<u8>,
     pub voting_power: u64,
-    pub commission_rate: f64,
+    pub commission_rate: u128, // Scaled by 1e9
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -470,9 +470,9 @@ pub struct Relayer {
     pub chains: Vec<ChainType>,
     pub channels: Vec<String>,
     pub stake: u128,
-    pub reputation_score: f64,
+    pub reputation_score: u128, // Scaled by 1e9
     pub total_relayed: u64,
-    pub commission_rate: f64,
+    pub commission_rate: u128, // Scaled by 1e9
     pub status: RelayerStatus,
 }
 
@@ -1221,7 +1221,7 @@ impl InteroperabilityCoordinator {
 
         // Update relayer based on metrics
         relayer.reputation_score =
-            metrics.relayer_success_rate.load(Ordering::Relaxed) as f64 / 100.0;
+            (metrics.relayer_success_rate.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE) / 10000;
         relayer.total_relayed = metrics.relayer_packets_relayed.load(Ordering::Relaxed);
 
         info!("Updated metrics for relayer: {}", relayer_id);
@@ -1235,9 +1235,9 @@ impl InteroperabilityCoordinator {
     ) -> InteroperabilityResult<()> {
         // In production, this would persist to database
         debug!(
-            "Stored metrics for relayer {}: success_rate={}, latency={}",
+            "Stored metrics for relayer {}: success_rate_scaled={}, latency={}",
             relayer_id,
-            metrics.relayer_success_rate.load(Ordering::Relaxed) as f64 / 100.0,
+            (metrics.relayer_success_rate.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE) / 10000,
             metrics.finality_ms.load(Ordering::Relaxed)
         );
         Ok(())

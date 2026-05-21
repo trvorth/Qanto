@@ -11,7 +11,7 @@ pub struct NeuralTruthEngine {
 }
 
 pub struct FactCheckResult {
-    pub veracity_score: f64,
+    pub veracity_score: u128, // Scaled by 1e9
     pub timestamp: u64,
     pub consensus_count: u32,
     pub verified: bool,
@@ -37,17 +37,17 @@ impl NeuralTruthEngine {
      * @dev Calculates the final veracity score for a media event.
      * Weights: 0.7 * Physical_ZMA + 0.3 * Agent_Consensus.
      */
-    pub fn verify_claim(&mut self, claim_id: [u8; 32], zma_proof: Option<ZMAProof>, agent_consensus: f64) -> f64 {
+    pub fn verify_claim(&mut self, claim_id: [u8; 32], zma_proof: Option<ZMAProof>, agent_consensus: u128) -> u128 {
         println!("NTE: Analyzing Claim ID {:X?}...", claim_id);
         
-        let zma_score = zma_proof.map_or(0.0, |p| p.veracity_score);
-        let final_score = (0.7 * zma_score) + (0.3 * agent_consensus);
+        let zma_score = zma_proof.map_or(0u128, |p| p.veracity_score as u128); // Placeholder cast until ZMAProof is updated
+        let final_score = (7 * zma_score + 3 * agent_consensus) / 10;
 
         let result = FactCheckResult {
             veracity_score: final_score,
             timestamp: 1775492930, // Mock timestamp
             consensus_count: 12, // 12 agents participating
-            verified: final_score > 0.85,
+            verified: final_score > (85 * 1_000_000_000 / 100),
         };
 
         self.truth_registry.insert(claim_id, result);

@@ -8,7 +8,7 @@
 use crate::post_quantum_crypto::{pq_sign, pq_verify};
 use qanto_core::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature};
 use serde::{Deserialize, Serialize};
-use tfhe::{generate_keys, prelude::FheDecrypt, ConfigBuilder, FheUint64};
+use tfhe::{generate_keys, prelude::FheDecrypt, ConfigBuilder, FheUint128};
 
 // GraphQL types
 pub type Address = String;
@@ -17,7 +17,7 @@ pub type Hash = String;
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct UTXO {
     pub address: String,
-    pub amount: u64,
+    pub amount: u128,
     pub tx_id: String,
     pub output_index: u32,
     pub explorer_link: String,
@@ -56,7 +56,7 @@ pub struct HomomorphicEncrypted {
 }
 
 impl HomomorphicEncrypted {
-    pub fn new(_amount: u64, public_key_material: &[u8]) -> Self {
+    pub fn new(_amount: u128, public_key_material: &[u8]) -> Self {
         // For testing and development, use empty data to avoid 437MB serialization issue
         // TODO: In production, implement proper TFHE encryption with size limits
         Self {
@@ -65,18 +65,18 @@ impl HomomorphicEncrypted {
         }
     }
 
-    pub fn decrypt(&self, _private_key_material: &[u8]) -> Result<u64, String> {
+    pub fn decrypt(&self, _private_key_material: &[u8]) -> Result<u128, String> {
         // For TFHE decryption, we need the client key
         // In a real implementation, the private_key_material would contain the serialized client key
         let config = ConfigBuilder::default().build();
         let (client_key, _server_key) = generate_keys(config);
 
         // Deserialize the encrypted value
-        let encrypted_amount: FheUint64 = bincode::deserialize(&self.ciphertext)
+        let encrypted_amount: FheUint128 = bincode::deserialize(&self.ciphertext)
             .map_err(|e| format!("Failed to deserialize ciphertext: {e}"))?;
 
         // Decrypt the value
-        let decrypted_amount: u64 = encrypted_amount.decrypt(&client_key);
+        let decrypted_amount: u128 = encrypted_amount.decrypt(&client_key);
 
         Ok(decrypted_amount)
     }
@@ -87,9 +87,9 @@ impl HomomorphicEncrypted {
         let (_client_key, _server_key) = generate_keys(config);
 
         // Deserialize both encrypted values
-        let encrypted_a: FheUint64 = bincode::deserialize(&self.ciphertext)
+        let encrypted_a: FheUint128 = bincode::deserialize(&self.ciphertext)
             .map_err(|e| format!("Failed to deserialize first ciphertext: {e}"))?;
-        let encrypted_b: FheUint64 = bincode::deserialize(&other.ciphertext)
+        let encrypted_b: FheUint128 = bincode::deserialize(&other.ciphertext)
             .map_err(|e| format!("Failed to deserialize second ciphertext: {e}"))?;
 
         // Perform homomorphic addition

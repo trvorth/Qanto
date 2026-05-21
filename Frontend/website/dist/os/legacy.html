@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | THE ETERNAL RECORD</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Space Mono', monospace; }
+        #canvas-container { width: 100vw; height: 100vh; }
+        .overlay {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; color: #00e5ff; pointer-events: none;
+            text-shadow: 0 0 20px rgba(0, 229, 255, 0.8);
+        }
+        .title { font-size: 40px; font-weight: 900; letter-spacing: 20px; text-transform: uppercase; margin-bottom: 20px; }
+        .subtitle { font-size: 12px; letter-spacing: 5px; opacity: 0.6; }
+        .phase-counter { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 10px; letter-spacing: 2px; }
+
+        /* Phase 199: Holographic ID Card */
+        #holographic-id {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            height: 240px;
+            background: rgba(0, 229, 255, 0.05);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 0 50px rgba(0, 229, 255, 0.2), inset 0 0 20px rgba(0, 229, 255, 0.1);
+            color: #00e5ff;
+            font-family: 'Space Mono', monospace;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        .hologram-flicker {
+            animation: flicker 0.1s infinite;
+        }
+
+        @keyframes flicker {
+            0% { opacity: 0.9; }
+            50% { opacity: 1; }
+            100% { opacity: 0.9; }
+        }
+
+        .id-header {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(0, 229, 255, 0.3);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+
+        .id-photo {
+            width: 80px;
+            height: 80px;
+            border: 1px solid rgba(0, 229, 255, 0.5);
+            background: rgba(0, 229, 255, 0.1);
+            float: left;
+            margin-right: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+        }
+
+        .id-info {
+            float: left;
+        }
+
+        .id-label {
+            font-size: 8px;
+            opacity: 0.5;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .id-value {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+
+        .btn-claim {
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 255, 170, 0.1);
+            border: 1px solid #00ffaa;
+            color: #00ffaa;
+            padding: 12px 30px;
+            border-radius: 50px;
+            font-family: 'Space Mono', monospace;
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            cursor: pointer;
+            z-index: 1001;
+            transition: all 0.3s ease;
+        }
+
+        .btn-claim:hover {
+            background: rgba(0, 255, 170, 0.3);
+            box-shadow: 0 0 20px rgba(0, 255, 170, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <div class="overlay">
+        <div class="title" style="color: #ffd700;">QANTO</div>
+        <div class="subtitle">THE OMNISCIENT OBSERVER | CELESTIAL SOVEREIGNTY</div>
+    </div>
+    <div class="phase-counter" id="status-flip">QANTO: ASCENDED. THE ARCHITECT OBSERVES PLANETARY ALIGNMENT.</div>
+
+    <!-- Phase 164: Omniscient Data Stream -->
+    <div style="position: absolute; top: 40px; right: 40px; width: 300px; text-align: right; pointer-events: none;">
+        <div style="font-size: 8px; color: #ffd700; letter-spacing: 2px; margin-bottom: 20px;">PLANETARY_STATE_TELEMETRY</div>
+        <div id="data-stream" style="font-family: 'Space Mono', monospace; font-size: 9px; color: rgba(255,255,255,0.3); display: flex; flex-direction: column; gap: 5px;">
+            <div>[NODE_ID_77] SYNERGY_HEARTBEAT: VALID</div>
+            <div>[MESH_VOTE] PROPOSAL_142: PASSED</div>
+            <div>[INTENT_FLOW] 4.2k CREDITS -> SAGA-ONE</div>
+            <div style="color: #00ffaa;">[INFRA_KINETIC] SPIRE_SECURED [OSLO]</div>
+            <div style="color: #ff00ff; margin-top: 10px;">[GAIA_DAEMON] ACTIVE</div>
+            <div style="color: #ff00ff;">[TERRAFORMING] SUCCESS_RATE: 99.4%</div>
+            <div style="color: #ff00ff;">[BIOME] SUSTAINABLE_HOLOCENE</div>
+            <div style="color: #ff00ff;">[CARBON_PPM] 281.2 (DESCENDING)</div>
+        </div>
+    </div>
+
+    <!-- Phase 199: Q-DID UI -->
+    <button id="claim-did-btn" class="btn-claim" onclick="parent.claimCitizenDID()">CLAIM_SOVEREIGN_IDENTITY</button>
+
+    <div id="holographic-id">
+        <div class="id-header">
+            <div style="font-size: 10px; font-weight: bold; letter-spacing: 4px;">QANTO | CITIZEN_PASS</div>
+            <div style="font-size: 8px; opacity: 0.5;">ID: #00001</div>
+        </div>
+        <div style="overflow: hidden;">
+            <div class="id-photo">
+                <i class="fas fa-microchip"></i>
+            </div>
+            <div class="id-info">
+                <div class="id-label">STATUS</div>
+                <div class="id-value" style="color: #00ffaa;">GENESIS_CITIZEN</div>
+                <div class="id-label">IDENTITY_HASH</div>
+                <div class="id-value" style="font-size: 10px;">0x334...F621-SOULBOUND</div>
+            </div>
+        </div>
+        <div style="margin-top: 20px; font-size: 9px; opacity: 0.4; line-height: 1.4;">
+            THIS SOULBOUND TOKEN REPRESENTS THE ARCHITECT'S PERMANENT ANCHOR TO THE IMMORTAL PROTOCOL.
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, crystal;
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // Create "Sarcophagus of Code" (Crystal)
+            const geometry = new THREE.IcosahedronGeometry(2, 0);
+            const material = new THREE.MeshPhongMaterial({
+                color: 0x00e5ff,
+                wireframe: true,
+                emissive: 0x001a44,
+                transparent: true,
+                opacity: 0.8,
+                shininess: 100
+            });
+            crystal = new THREE.Mesh(geometry, material);
+            scene.add(crystal);
+
+            // Floating Particles (The 148 Phases)
+            const particlesGeometry = new THREE.BufferGeometry();
+            const particlesCount = 148;
+            const posArray = new Float32Array(particlesCount * 3);
+
+            for(let i = 0; i < particlesCount * 3; i++) {
+                posArray[i] = (Math.random() - 0.5) * 10;
+            }
+
+            particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+            const particlesMaterial = new THREE.PointsMaterial({
+                size: 0.05,
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.5
+            });
+            const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
+            scene.add(particlesMesh);
+
+            // Lighting
+            const light = new THREE.PointLight(0x00e5ff, 2, 50);
+            light.position.set(5, 5, 5);
+            scene.add(light);
+            scene.add(new THREE.AmbientLight(0x404040));
+
+            camera.position.z = 5;
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            crystal.rotation.x += 0.005;
+            crystal.rotation.y += 0.01;
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+
+        init();
+
+        // Check if already claimed
+        if (localStorage.getItem('qanto_did_claimed') === 'true') {
+            document.getElementById('holographic-id').style.display = 'block';
+            document.getElementById('holographic-id').classList.add('hologram-flicker');
+            document.getElementById('claim-did-btn').style.display = 'none';
+        }
+
+        window.addEventListener('qanto_did_minted', () => {
+            document.getElementById('holographic-id').style.display = 'block';
+            document.getElementById('holographic-id').classList.add('hologram-flicker');
+            document.getElementById('claim-did-btn').style.display = 'none';
+        });
+    </script>
+</body>
+</html>

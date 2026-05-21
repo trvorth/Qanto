@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLOCK ZERO ARTIFACT | THE SARCOPHAGUS</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { 
+            background: #000; 
+            color: #00ffaa; 
+            margin: 0; 
+            overflow: hidden; 
+            font-family: 'JetBrains Mono', monospace; 
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #canvas-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            background: radial-gradient(circle at center, transparent 30%, rgba(0,0,0,0.8) 100%);
+        }
+
+        .artifact-container {
+            position: relative;
+            width: 400px;
+            height: 400px;
+            perspective: 1200px;
+        }
+
+        .sarcophagus {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            animation: rotate_sarcophagus 20s linear infinite;
+        }
+
+        @keyframes rotate_sarcophagus {
+            from { transform: rotateX(-20deg) rotateY(0deg); }
+            to { transform: rotateX(-20deg) rotateY(360deg); }
+        }
+
+        .face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 1px solid rgba(0, 255, 170, 0.2);
+            background: rgba(0, 255, 170, 0.02);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            overflow: hidden;
+            word-break: break-all;
+            color: rgba(0, 255, 170, 0.4);
+            user-select: none;
+        }
+
+        .front  { transform: translateZ(200px); }
+        .back   { transform: rotateY(180deg) translateZ(200px); }
+        .left   { transform: rotateY(-90deg) translateZ(200px); }
+        .right  { transform: rotateY(90deg) translateZ(200px); }
+        .top    { transform: rotateX(90deg) translateZ(200px); }
+        .bottom { transform: rotateX(-90deg) translateZ(200px); }
+
+        .core-artifact {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px; height: 80px;
+            background: #00ffaa;
+            box-shadow: 0 0 100px #00ffaa, 0 0 200px rgba(0, 255, 170, 0.5);
+            border-radius: 50%;
+            z-index: 5;
+            animation: core_pulse 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes core_pulse {
+            from { transform: translate(-50%, -50%) scale(1); opacity: 0.8; }
+            to { transform: translate(-50%, -50%) scale(1.2); opacity: 1; filter: brightness(1.5); }
+        }
+
+        .pioneer-count {
+            position: absolute;
+            bottom: -80px;
+            width: 100%;
+            text-align: center;
+            letter-spacing: 5px;
+            font-size: 14px;
+            font-weight: 900;
+            text-shadow: 0 0 10px #00ffaa;
+        }
+
+        .artifact-label {
+            position: absolute;
+            top: -80px;
+            width: 100%;
+            text-align: center;
+            letter-spacing: 12px;
+            font-size: 10px;
+            color: rgba(0, 255, 170, 0.6);
+        }
+
+        /* Phase 135: Hall of Founders CSS */
+        .monument-overlay {
+            position: absolute;
+            right: 40px;
+            top: 40px;
+            width: 320px;
+            height: calc(100vh - 80px);
+            background: rgba(0, 20, 10, 0.4);
+            border: 1px solid rgba(0, 255, 170, 0.2);
+            backdrop-filter: blur(20px);
+            border-radius: 16px;
+            padding: 20px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            z-index: 20;
+            box-shadow: 0 0 30px rgba(0, 255, 170, 0.05);
+        }
+
+        .monument-header {
+            font-size: 14px;
+            font-weight: 900;
+            letter-spacing: 4px;
+            margin-bottom: 15px;
+            text-shadow: 0 0 10px rgba(0, 255, 170, 0.5);
+            border-bottom: 1px solid rgba(0, 255, 170, 0.2);
+            padding-bottom: 10px;
+        }
+
+        .monument-search {
+            width: 100%;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(0, 255, 170, 0.3);
+            border-radius: 6px;
+            color: white;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            outline: none;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+        }
+
+        .monument-search:focus {
+            border-color: #00ffaa;
+            box-shadow: 0 0 10px rgba(0, 255, 170, 0.3);
+        }
+
+        .founders-list {
+            flex: 1;
+            overflow-y: auto;
+            font-size: 10px;
+            padding-right: 5px;
+        }
+
+        .founders-list::-webkit-scrollbar { width: 4px; }
+        .founders-list::-webkit-scrollbar-track { background: transparent; }
+        .founders-list::-webkit-scrollbar-thumb { background: rgba(0, 255, 170, 0.3); border-radius: 2px; }
+
+        .founder-item {
+            padding: 8px 10px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.02);
+            margin-bottom: 5px;
+            transition: all 0.2s;
+            cursor: pointer;
+            letter-spacing: 1px;
+            color: rgba(0, 255, 170, 0.7);
+        }
+
+        .founder-item:hover {
+            background: rgba(0, 255, 170, 0.1);
+            color: #00ffaa;
+        }
+
+        .architect-glow {
+            animation: architect_aura 2s infinite alternate;
+            border: 1px solid #ffd700;
+            color: #ffd700 !important;
+            font-weight: 900;
+        }
+
+        @keyframes architect_aura {
+            from { box-shadow: 0 0 10px rgba(255, 215, 0, 0.2); background: rgba(255, 215, 0, 0.05); }
+            to { box-shadow: 0 0 20px rgba(255, 215, 0, 0.8); background: rgba(255, 215, 0, 0.2); }
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-overlay"></div>
+    
+    <div class="artifact-container">
+        <div class="artifact-label">BLOCK ZERO ARTIFACT</div>
+        <div class="core-artifact"></div>
+        <div class="sarcophagus" id="pioneer-mesh">
+            <div class="face front"></div>
+            <div class="face back"></div>
+            <div class="face left"></div>
+            <div class="face right"></div>
+            <div class="face top"></div>
+            <div class="face bottom"></div>
+        </div>
+        <div class="pioneer-count">100,000 IDENTITIES SEALED</div>
+    </div>
+
+    <div class="monument-overlay">
+        <div class="monument-header">HALL OF FOUNDERS</div>
+        <input type="text" class="monument-search" id="search-founder" placeholder="SEARCH PIONEER ID OR ADDRESS..." onkeyup="searchMonument()">
+        <div class="founders-list" id="founders-list">
+            <!-- Simulated list to be populated by JS -->
+        </div>
+    </div>
+
+    <script>
+        // Phase 135: Hall of Founders Logic
+        const foundersList = document.getElementById('founders-list');
+        const searchInput = document.getElementById('search-founder');
+        const genesisArchitect = "0xARCHITECT0000000000000000000000000000001";
+        
+        // Generate a mock list of early founders
+        const mockFounders = [
+            genesisArchitect,
+            "0x1A4b...9C2D (Pioneer_Node_002)",
+            "0x5F3a...11B4 (Pioneer_Node_003)",
+            "0x8C21...E4A9 (Pioneer_Node_004)",
+            "0x3B99...2D1F (Pioneer_Node_005)",
+            "0x7E12...C88B (Pioneer_Node_006)",
+            "0x2D44...9A3C (Pioneer_Node_007)",
+            "... 99,993 MORE IDENTITIES SEALED"
+        ];
+
+        function renderFounders(filter = "") {
+            foundersList.innerHTML = "";
+            mockFounders.forEach((founder) => {
+                if (founder.toLowerCase().includes(filter.toLowerCase())) {
+                    const el = document.createElement('div');
+                    el.className = 'founder-item';
+                    
+                    if (founder === genesisArchitect) {
+                        el.classList.add('architect-glow');
+                        el.innerText = "👑 GENESIS ARCHITECT: " + founder;
+                    } else {
+                        el.innerText = founder;
+                    }
+                    foundersList.appendChild(el);
+                }
+            });
+        }
+
+        function searchMonument() {
+            renderFounders(searchInput.value);
+        }
+
+        renderFounders();
+
+        // Generate random Pioneer hashes for the sarcophagus faces
+        const faces = document.querySelectorAll('.face');
+        const hashChars = '0123456789ABCDEF';
+        
+        function generateNoise() {
+            faces.forEach(face => {
+                let noise = '';
+                for(let i = 0; i < 1000; i++) {
+                    noise += hashChars[Math.floor(Math.random() * 16)];
+                }
+                face.innerText = noise;
+            });
+        }
+
+        setInterval(generateNoise, 100);
+        generateNoise();
+
+        // High-frequency console log for unboxing feel
+        console.log("%c🏛️ BLOCK ZERO ARTIFACT: Immutable Sarcophagus active.", "color: #00ffaa; font-weight: 900;");
+        console.log("%c🏛️ GENESIS_HASH: 0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", "color: #00ffaa; opacity: 0.6;");
+    </script>
+</body>
+</html>

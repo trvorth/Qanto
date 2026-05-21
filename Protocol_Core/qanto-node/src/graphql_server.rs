@@ -223,7 +223,7 @@ impl QueryRoot {
             block_count: dag.get_block_count().await as i32,
             total_transactions: dag.get_total_transactions().await as i32,
             network_hash_rate: "1.5 TH/s".to_string(), // Placeholder
-            difficulty: dag.get_current_difficulty().await,
+            difficulty: dag.get_current_difficulty().await as f64 / crate::QANTO_SCALE as f64,
             latest_block_hash: dag.get_latest_block_hash().await.unwrap_or_default(),
         })
     }
@@ -306,7 +306,7 @@ impl QueryRoot {
 
         Ok(MempoolInfo {
             size: mempool_guard.len().await as i32,
-            total_fees: mempool_guard.get_total_fees().await as f64,
+            total_fees: mempool_guard.get_total_fees().await as f64 / crate::QANTO_SCALE as f64,
             pending_transactions,
         })
     }
@@ -355,8 +355,8 @@ impl MutationRoot {
             id: input.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
             sender: input.from.clone(),
             receiver: input.to.clone(),
-            amount: input.amount as u64,
-            fee: input.fee.unwrap_or(1000.0) as u64,
+            amount: (input.amount * crate::QANTO_SCALE as f64) as u128,
+            fee: (input.fee.unwrap_or(0.0001) * crate::QANTO_SCALE as f64) as u128,
             gas_limit: 21000,
             gas_used: 0,
             gas_price: 1,
@@ -517,8 +517,8 @@ impl From<Transaction> for TransactionGQL {
             id: ID(tx.id.clone()),
             from: tx.sender.clone(),
             to: tx.receiver.clone(),
-            amount: tx.amount as f64,
-            fee: tx.fee as f64,
+            amount: tx.amount as f64 / crate::QANTO_SCALE as f64,
+            fee: tx.fee as f64 / crate::QANTO_SCALE as f64,
             timestamp: tx.timestamp as i32,
             signature: hex::encode(tx.signature.signature.clone()),
             nonce: 0, // Transaction struct doesn't have nonce field
@@ -532,8 +532,8 @@ fn transaction_to_gql(tx: &Transaction) -> TransactionGQL {
         id: ID(tx.id.clone()),
         from: tx.sender.clone(),
         to: tx.receiver.clone(),
-        amount: tx.amount as f64,
-        fee: tx.fee as f64,
+        amount: tx.amount as f64 / crate::QANTO_SCALE as f64,
+        fee: tx.fee as f64 / crate::QANTO_SCALE as f64,
         timestamp: tx.timestamp as i32,
         signature: hex::encode(tx.signature.signature.clone()),
         nonce: 0,

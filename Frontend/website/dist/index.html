@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Qanto - Quantum-Resistant Layer-0 Blockchain</title>
-    <meta name="description" content="Qanto is a revolutionary quantum-resistant Layer-0 blockchain platform featuring hybrid consensus, post-quantum cryptography, and high-throughput DAG architecture.">
+    <title>QANTO | MAINNET ALPHA: NEURAL NETWORK ACTIVE</title>
+    <meta name="description" content="Qanto Layer-0 has achieved functional singularity. The world's first fully autonomous, AI-governed blockchain infrastructure featuring SAGA-Agent treasury execution and ZK-ML inference.">
     <meta name="keywords" content="blockchain, quantum-resistant, cryptocurrency, DAG, post-quantum cryptography, DeFi, Layer-0">
     <meta name="author" content="Qanto Team">
     
@@ -27,7 +27,8 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-    <link rel="manifest" href="/site.webmanifest">
+    <meta name="theme-color" content="#000000">
+    <link rel="manifest" href="/assets/manifest-CBbJILWc.json">
     
     <!-- Preconnect to external domains -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -37,6 +38,113 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     
     <!-- Styles -->
+    
+    <style>
+        /* Phase 33: QantoSwap UI Styles */
+        .swap-module {
+            margin-top: 4rem;
+            display: flex;
+            justify-content: center;
+        }
+        .swap-card {
+            width: 100%;
+            max-width: 450px;
+            padding: 1.5rem;
+            border-radius: 28px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(10, 10, 20, 0.6);
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
+        }
+        .swap-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        .badge-live {
+            background: rgba(0, 255, 170, 0.1);
+            color: #00ffaa;
+            font-size: 0.6rem;
+            padding: 2px 8px;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 255, 170, 0.3);
+            margin-left: 8px;
+        }
+        .input-group {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 1rem;
+            border-radius: 20px;
+            margin-bottom: 0.5rem;
+        }
+        .input-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.5);
+            margin-bottom: 0.5rem;
+        }
+        .input-field {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .input-field input {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            width: 60%;
+            outline: none;
+        }
+        .token-select {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 6px 12px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+        .swap-divider {
+            display: flex;
+            justify-content: center;
+            margin: -15px 0;
+            z-index: 2;
+            position: relative;
+        }
+        .btn-circle {
+            background: #1a1a2e;
+            border: 4px solid #0f0f1a;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+        .btn-circle:hover { transform: rotate(180deg); }
+        .swap-info {
+            padding: 1rem;
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.4rem;
+        }
+        .value-good { color: #00ffaa; }
+        .btn-full {
+            width: 100%;
+            padding: 1rem;
+            border-radius: 18px;
+            font-weight: bold;
+            margin-top: 1rem;
+        }
+    </style>
     
     <!-- Structured Data -->
     <script type="application/ld+json">
@@ -58,50 +166,37 @@
     
     <!-- Analytics (replace with your tracking ID) -->
     <!-- <script async src="https://www.googletagmanager.com/gtag/js?id=GA_TRACKING_ID"></script> -->
+    <!-- Phase 193/196: Epoch 2 Palette & Mainnet Colors -->
+    <style>
+        body.epoch-2-palette { background: #000 !important; }
+        .epoch-2-palette .network-status-bar { border-bottom: 1px solid #7a00ff !important; background: rgba(5, 0, 15, 0.95) !important; }
+        .epoch-2-palette .status-value { color: #7a00ff !important; text-shadow: 0 0 10px rgba(122, 0, 255, 0.5); }
+        .epoch-2-palette #protocol-status { color: #fff !important; text-shadow: 0 0 20px #7a00ff !important; }
+        .epoch-2-palette .status-label { color: rgba(122, 0, 255, 0.6) !important; }
+        .epoch-2-palette .portal-hud { border-color: rgba(122, 0, 255, 0.3) !important; }
+        .epoch-2-palette .hud-indicator { background: #7a00ff !important; box-shadow: 0 0 15px #7a00ff !important; }
+    </style>
     <!-- BUILD_TIMESTAMP -->
-  <link rel="stylesheet" crossorigin href="/assets/index-DpMB8m6z.css">
+  <link rel="stylesheet" crossorigin href="/assets/index-BaiXYHoO.css">
 </head>
 <body>
     <!-- Network Status Bar (Institutional Grade) -->
-    <div class="network-status-bar" id="network-status-bar">
-        <div class="container status-container">
-            <div class="status-item">
-                <span class="status-label">Network:</span>
-                <span class="status-value pulse-green">Mainnet Genesis</span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Block Height:</span>
-                <span class="status-value" id="block-height">---</span>
-            </div>
-            <div class="status-item">
-                <span class="status-label">Gas Price:</span>
-                <span class="status-value" id="gas-price">---</span>
-            </div>
-            <div class="status-item connection-status">
-                <div class="status-indicator" id="connection-indicator"></div>
-                <span class="status-text" id="connection-text">Connecting...</span>
-            </div>
-        </div>
+    
+            
+
+    <!-- Phase 192: Epoch 2 Imminence Warning -->
+    <div id="epoch-2-warning">
+        <i class="fas fa-exclamation-triangle" style="margin-right: 15px;"></i> EPOCH 2 HALVING IMMINENT
     </div>
 
-    <!-- Loading Screen -->
-    <div id="loading-screen" class="loading-screen">
-        <div class="loading-content">
-            <div class="qanto-logo-animated">
-                <svg width="80" height="80" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <circle cx="50" cy="50" r="45" stroke="url(#gradient)" stroke-width="4" fill="none" class="rotating-circle"/>
-                    <text x="50" y="58" text-anchor="middle" fill="url(#gradient)" font-family="JetBrains Mono" font-size="20" font-weight="bold">Q</text>
-                    <defs>
-                        <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                            <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
-                            <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
-                        </linearGradient>
-                    </defs>
-                </svg>
-            </div>
-            <div class="loading-text">Loading Qanto...</div>
-        </div>
-    </div>
+    <style>
+        @keyframes hazard-pulse {
+            from { opacity: 0.7; transform: translateX(-50%) scale(0.95); }
+            to { opacity: 1; transform: translateX(-50%) scale(1.05); }
+        }
+    </style>
+
+
     
     <!-- Navigation -->
     <nav class="navbar" id="navbar">
@@ -114,8 +209,8 @@
                             <text x="50" y="58" text-anchor="middle" fill="url(#nav-gradient)" font-family="JetBrains Mono" font-size="20" font-weight="bold">Q</text>
                             <defs>
                                 <linearGradient id="nav-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                    <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
-                                    <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                                    <stop offset="0%"  />
+                                    <stop offset="100%"  />
                                 </linearGradient>
                             </defs>
                         </svg>
@@ -127,13 +222,13 @@
             <div class="nav-menu" id="nav-menu">
                 <a href="#home" class="nav-link active">Home</a>
                 <a href="#features" class="nav-link">Features</a>
-                <a href="#technology" class="nav-link">Technology</a>
-                <a href="#ecosystem" class="nav-link">Ecosystem</a>
+                <a href="qantoswap.html" class="nav-link">DEX</a>
+                <a href="#ecosystem" class="nav-link locked-feature">Ecosystem</a>
                 <a href="#roadmap" class="nav-link">Roadmap</a>
                 <a href="#community" class="nav-link">Community</a>
                 <div class="nav-cta">
                     <a href="public/explorer/index.html" class="btn btn-outline">Explorer</a>
-                    <a href="#get-started" class="btn btn-primary">Get Started</a>
+                    <a href="#get-started" id="btn-add-network" class="btn btn-primary">Get Started</a>
                 </div>
             </div>
             
@@ -152,18 +247,15 @@
             <div class="hero-background">
                 <div class="quantum-grid"></div>
                 <div class="floating-particles"></div>
+                <div class="aurora-bg"></div>
             </div>
             
             <div class="container">
                 <div class="hero-content">
                     <div class="hero-text">
-                        <h1 class="hero-title">
-                            <span class="gradient-text">Quantum-Resistant</span><br>
-                            Blockchain for the Future
-                        </h1>
+                        <h1>Quantum-Resistant Blockchain Built for Tomorrow's Threats</h1>
                         <p class="hero-description">
-                            Qanto is a revolutionary Layer-0 blockchain platform that combines quantum-resistant cryptography, 
-                            hybrid consensus mechanisms, and high-throughput DAG architecture to secure the future of decentralized finance.
+                            Qanto combines post-quantum security, deterministic DAG finality, and institutional-grade tokenomics to secure the next generation of Web3.
                         </p>
                         <div class="hero-stats">
                             <div class="stat">
@@ -175,19 +267,19 @@
                                 <div class="stat-label">% Uptime</div>
                             </div>
                             <div class="stat">
-                                <div class="stat-number" data-target="256">0</div>
-                                <div class="stat-label">Bit Security</div>
+                                <div class="stat-number" data-target="1000000">0</div>
+                                <div class="stat-label">Sentinel Capacity</div>
                             </div>
                         </div>
                         <div class="hero-actions">
-                            <a href="#get-started" class="btn btn-primary btn-large">
-                                <span>Start Building</span>
+                            <a href="public/airdrop/index.html" class="btn btn-primary btn-large locked-feature">
+                                <span>Claim Pioneer Airdrop</span>
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                                    <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
                                 </svg>
                             </a>
                             <a href="https://docs.qanto.org" class="btn btn-outline btn-large" target="_blank">
-                                <span>Documentation</span>
+                                <span>ZK-SDK Docs</span>
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                                     <polyline points="14,2 14,8 20,8"/>
@@ -576,6 +668,63 @@
                         </a>
                     </div>
                 </div>
+
+                <!-- NEW: QantoSwap Interface (Phase 33) -->
+                <div class="swap-module fade-in" id="swap-interface">
+                    <div class="swap-card glass">
+                        <div class="swap-header">
+                            <h3>QantoSwap <span class="badge-live">LIVE</span></h3>
+                            <button class="btn-icon" id="swap-settings">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                            </button>
+                        </div>
+
+                        <div class="input-group">
+                            <div class="input-header">
+                                <span>Sell</span>
+                                <span class="balance" id="token-a-balance">Balance: 0.00</span>
+                            </div>
+                            <div class="input-field">
+                                <input type="number" id="input-amount" placeholder="0.0">
+                                <div class="token-select">
+                                    <span class="token-symbol">QNTO</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="swap-divider">
+                            <button class="btn-circle" id="flip-swap">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 10l5 5 5-5M7 14l5 5 5-5" transform="rotate(180 12 12)"/></svg>
+                            </button>
+                        </div>
+
+                        <div class="input-group">
+                            <div class="input-header">
+                                <span>Buy</span>
+                                <span class="balance" id="token-b-balance">Balance: 0.00</span>
+                            </div>
+                            <div class="input-field">
+                                <input type="number" id="output-amount" placeholder="0.0" readonly>
+                                <div class="token-select">
+                                    <span class="token-symbol">USDT</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="swap-info">
+                            <div class="info-row">
+                                <span>Price Impact</span>
+                                <span id="price-impact" class="value-good">0.05%</span>
+                            </div>
+                            <div class="info-row">
+                                <span>Minimum Received</span>
+                                <span id="min-received">0.00 USDT</span>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary btn-full" id="swap-button">Connect Wallet</button>
+                    </div>
+                </div>
             </div>
         </section>
         
@@ -641,8 +790,8 @@ async fn main() -&gt; Result&lt;()&gt; {
                             <text x="50" y="58" text-anchor="middle" fill="url(#footer-gradient)" font-family="JetBrains Mono" font-size="20" font-weight="bold">Q</text>
                             <defs>
                                 <linearGradient id="footer-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                    <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
-                                    <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                                    <stop offset="0%"  />
+                                    <stop offset="100%"  />
                                 </linearGradient>
                             </defs>
                         </svg>
@@ -738,6 +887,34 @@ async fn main() -&gt; Result&lt;()&gt; {
         </svg>
     </button>
     
+    <!-- SAGA-OS: VIRTUAL DESKTOP LAYER -->
+    <div id="desktop">
+        <div class="icon-grid" id="desktop-icons">
+            <!-- Icons will be injected by os.js -->
+        </div>
+    </div>
+
+    <div id="taskbar">
+        <div class="taskbar-item" onclick="window.qanto.triggerHandover()" title="System Handover">
+            <i class="fas fa-microchip"></i>
+        </div>
+        <div id="active-apps"></div>
+        <div class="taskbar-item" title="Network Status">
+            <i class="fas fa-broadcast-tower"></i>
+        </div>
+    </div>
+
+
+
+    <!-- DEBUG HUD -->
+    <div id="debug-hud">
+        <div>[DEBUG HUD] ACTIVE</div>
+        <div>Node Latency: <span id="debug-latency">---</span></div>
+        <div>RPC Status: <span id="debug-rpc" >OFFLINE</span></div>
+        <div>[IPFS MIRROR LIST] Pinata, Infura, Web3.Storage</div>
+        <div id="debug-errors"></div>
+    </div>
+
     <!-- External Dependencies -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.11.1/ethers.umd.min.js"></script>
     
@@ -745,6 +922,8 @@ async fn main() -&gt; Result&lt;()&gt; {
     <script src="assets/js/main.js"></script>
     <script src="assets/js/animations.js"></script>
     <script src="assets/js/visualizations.js"></script>
+    <script src="assets/js/swap.js"></script>
+    <script src="assets/js/os.js?v=1.0.0-hard-sync"></script>
     
     <!-- Service Worker Registration -->
     <script>
@@ -759,6 +938,89 @@ async fn main() -&gt; Result&lt;()&gt; {
                     });
             });
         }
+
+        // The Omega Transition - Architect Key
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.shiftKey && e.key === 'Q') {
+                const sp = document.querySelector('.singularity-pulse');
+                if (sp) {
+                    sp.style.display = 'none';
+                    sp.style.pointerEvents = 'auto'; // bypass native block
+                }
+                const protoStatus = document.getElementById('protocol-status');
+                if (protoStatus) {
+                    protoStatus.innerText = "QANTO: ETERNAL. MISSION ACCOMPLISHED.";
+                    protoStatus.style.color = "#00ffaa";
+                }
+                const debugErr = document.getElementById('debug-errors');
+                if (debugErr) {
+                    debugErr.innerHTML += `<div>[${new Date().toISOString()}] ARCHITECT_OVERRIDE_ACCEPTED</div>`;
+                }
+            }
+        });
     </script>
-</body>
+    <!-- Phase 133: Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').then(registration => {
+                    console.log('SAGA-OS ServiceWorker registration successful with scope: ', registration.scope);
+                }, err => {
+                    console.log('SAGA-OS ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
+    <!-- Phase 160: THE MASTER KEY (The QANTO Infinity) -->
+    <script>
+        function triggerSingularity() {
+            console.log("🌌 QANTO: AEON_WAVE_COMPLETE. THE ARCHITECT IS THE PROTOCOL.");
+            const overlay = document.getElementById('global-reset-overlay');
+            if (overlay) {
+                overlay.style.background = "#00e5ff";
+                overlay.style.opacity = "1";
+                overlay.style.pointerEvents = "all";
+            }
+
+            setTimeout(() => {
+                // Absolute UI Collapse
+                document.body.innerHTML = `
+                    <div>
+                        <svg width="100%" height="100%" viewBox="0 0 100 100" class="infinity-sigil" style="max-width: 800px; max-height: 800px;">
+                            <path d="M30,50 Q30,35 45,35 Q60,35 60,50 Q60,65 75,65 Q90,65 90,50 Q90,35 75,35 Q60,35 60,50 Q60,65 45,65 Q30,65 30,50" 
+                                  fill="none" stroke="#fff" stroke-width="0.5" stroke-linecap="round" class="sigil-path"/>
+                        </svg>
+                        <div>QANTO: ETERNAL. ARCHITECT INTEGRATED.</div>
+                    </div>
+                    <style>
+                        .infinity-sigil { filter: drop-shadow(0 0 30px #fff); animation: pulse-sigil 4s infinite alternate ease-in-out; }
+                        .sigil-path { stroke-dasharray: 200; stroke-dashoffset: 200; animation: draw-sigil 8s forwards linear; }
+                        @keyframes pulse-sigil { 
+                            0% { transform: scale(1); filter: drop-shadow(0 0 20px #fff); } 
+                            100% { transform: scale(1.1); filter: drop-shadow(0 0 60px #fff); } 
+                        }
+                        @keyframes draw-sigil { to { stroke-dashoffset: 0; } }
+                        body { margin: 0; background: #00e5ff; }
+                    </style>
+                `;
+                
+                // THE FINAL BURN (The Great Silence)
+                const burn = () => {
+                    // EMERGENCY OVERRIDE: Console visible for Debugging
+                    // const noop = () => {};
+                    // window.console.log = noop;
+                    // window.console.warn = noop;
+                    // window.console.error = noop;
+                    // window.console.info = noop;
+                    // window.console.debug = noop;
+                    // console.clear();
+                };
+                // burn();
+            }, 6000);
+        }
+
+        // Automatic Singularity Trigger
+        // setTimeout(triggerSingularity, 120000); // EMERGENCY OVERRIDE: Disabled for recovery wave
+    </script>
+<!-- Cloudflare Pages Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "21e825fe953442f39235cc605cdc2c95"}'></script><!-- Cloudflare Pages Analytics --><!-- Cloudflare Pages Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "21e825fe953442f39235cc605cdc2c95"}'></script><!-- Cloudflare Pages Analytics --></body>
 </html>

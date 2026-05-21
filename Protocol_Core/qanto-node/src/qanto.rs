@@ -13,7 +13,8 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tracing::{error, info};
-// use tracing_subscriber::EnvFilter;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Qanto Node CLI", long_about = None)]
@@ -59,6 +60,14 @@ enum Commands {
             help = "Enable debug mode with detailed mining and strata logging"
         )]
         debug_mode: bool,
+        #[arg(long, help = "RPC port to bind to (overrides config)")]
+        rpc_port: Option<u16>,
+        #[arg(long, help = "P2P port to bind to (overrides config)")]
+        p2p_port: Option<u16>,
+        #[arg(long, help = "Listen multiaddress to bind to (overrides config)")]
+        listen: Option<String>,
+        #[arg(long, help = "Bootnode peer multiaddresses to connect to (overrides config)")]
+        bootnode: Vec<String>,
         #[command(flatten)]
         diagnostics: Box<DiagnosticsArgs>,
     },
@@ -75,8 +84,11 @@ enum Commands {
 }
 
 pub async fn run() -> Result<()> {
-    // Initialize logging with env_logger to support RUST_LOG environment variable
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let _ = tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt::layer().with_target(true))
+        .try_init();
 
     let cli = Cli::parse();
 
@@ -93,6 +105,10 @@ pub async fn run() -> Result<()> {
             tls_key,
             clean,
             debug_mode,
+            rpc_port,
+            p2p_port,
+            listen,
+            bootnode,
             diagnostics,
         } => {
             println!("Qanto node starting...");
@@ -105,7 +121,13 @@ pub async fn run() -> Result<()> {
 
             let mut node_config = Config::load(&config)?;
 
-            // Apply CLI path overrides using the new method
+            let bootnodes_opt = if bootnode.is_empty() {
+                None
+            } else {
+                Some(bootnode)
+            };
+
+            // Apply CLI overrides including network overrides
             node_config.apply_cli_overrides(
                 wallet,
                 p2p_identity,
@@ -115,6 +137,10 @@ pub async fn run() -> Result<()> {
                 tls_cert,
                 tls_key,
                 None, // adaptive_mining_enabled not supported in this binary
+                rpc_port,
+                p2p_port,
+                listen,
+                bootnodes_opt,
             );
 
             let db_path = node_config.db_path.clone();
@@ -137,11 +163,11 @@ pub async fn run() -> Result<()> {
                 info!("Clean flag not set, proceeding without database removal");
             }
 
-            info!("Prompting for wallet password");
-            // Correctly load config and wallet with password.
-            let password = prompt_for_password(false, None)
-                .map_err(|e| anyhow::anyhow!("Password error: {e}"))?;
-            info!("Wallet password obtained successfully");
+            info!("Node running seamlessly without interactive password prompt.");
+            // Use environment variable if set, otherwise default to empty password for seamless startup
+            let password_str = std::env::var("WALLET_PASSWORD").unwrap_or_else(|_| String::new());
+            let password = secrecy::SecretString::new(password_str.trim().to_string());
+            info!("Wallet password loaded (defaulting to empty if not provided)");
 
             // Use paths from config instead of hardcoded values
             let wallet_path = node_config.wallet_path.clone();
@@ -198,8 +224,9 @@ pub async fn run() -> Result<()> {
                 info!("Debug mode enabled with comprehensive diagnostics");
             }
 
-            // Use peer_cache from CLI or default
-            let peer_cache_path = peer_cache.unwrap_or_else(|| "peer_cache.json".to_string());
+            // Default peer cache under the node data dir so multiple local nodes do not collide.
+            let peer_cache_path =
+                peer_cache.unwrap_or_else(|| format!("{}/peer_cache.json", node_config.data_dir));
 
             let node = Node::new(
                 node_config,

@@ -87,7 +87,7 @@ struct BatchSubmitResponse {
     rejected: Vec<RejectedItem>,
 }
 
-fn make_output(addr: String, amount: u64, pk_bytes: &[u8]) -> Output {
+fn make_output(addr: String, amount: u128, pk_bytes: &[u8]) -> Output {
     Output {
         address: addr,
         amount,
@@ -119,7 +119,7 @@ fn choose_best_funding_utxo(mut utxos: Vec<UTXO>) -> Option<UTXO> {
 fn infer_genesis_utxo(address: &str) -> UTXO {
     UTXO {
         address: address.to_string(),
-        amount: 21_000_000_000u64 * qanto::transaction::SMALLEST_UNITS_PER_QAN,
+        amount: 21_000_000_000u128 * qanto::transaction::SMALLEST_UNITS_PER_QAN,
         tx_id: "genesis_total_supply_tx".to_string(),
         output_index: 0,
         explorer_link: String::new(),
@@ -208,12 +208,12 @@ async fn build_funding_tx(
     // Prevent zero-value outputs: cap output count by spendable amount and ensure all outputs > 0
     let effective_outputs = outputs_count.max(1).min(spendable as usize);
     let base = if effective_outputs > 0 {
-        spendable / effective_outputs as u64
+        spendable / effective_outputs as u128
     } else {
         0
     };
     let remainder = if effective_outputs > 0 {
-        spendable % effective_outputs as u64
+        spendable % effective_outputs as u128
     } else {
         0
     };
@@ -225,7 +225,7 @@ async fn build_funding_tx(
         seed.extend_from_slice(pk_bytes);
         seed.extend_from_slice(&(i as u64).to_be_bytes());
         let addr = hex::encode(qanto_hash(&seed).as_bytes());
-        let extra = if (i as u64) < remainder { 1 } else { 0 };
+        let extra = if (i as u128) < remainder { 1 } else { 0 };
         let amt = base + extra; // ensures strictly positive when effective_outputs <= spendable
         outputs.push(make_output(addr, amt, pk_bytes));
     }

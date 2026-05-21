@@ -108,3 +108,21 @@ pub fn init_test_tracing() {
             .try_init();
     });
 }
+pub mod ipc_server;
+
+pub const Q_SCALE: u128 = 1_000_000_000;
+pub const QANTO_SCALE: u128 = Q_SCALE;
+pub const SCORE_SCALE: i128 = 1_000_000_000;
+
+/// QAmount: Fixed-point u128 representing a decimal quantity (scale 1e9).
+/// Used for balances, rewards, fees, and stakes.
+pub type QAmount = u128;
+
+/// QScore: Fixed-point i128 representing a signed score (scale 1e9).
+/// Used for Saga scoring and reputation.
+pub type QScore = i128;
+
+/// QDifficulty: Mining difficulty ONLY.
+pub type QDifficulty = u64;
+
+pub mod math;

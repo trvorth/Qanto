@@ -1,0 +1,93 @@
+{
+  "projectInfo": {
+    "name": "QANTO",
+    "symbol": "QNTO",
+    "description": "The Ultimate Layer-0 Ecosystem Synchronization & QA Protocol. Fully autonomous, AI-governed blockchain infrastructure with post-quantum security.",
+    "website": "https://qanto.org",
+    "documentation": "https://docs.qanto.org",
+    "github": "https://github.com/trvorth/Qanto",
+    "whitepaper": "https://qanto.org/docs/whitepaper/Qanto-whitepaper.pdf"
+  },
+  "tokenomics": {
+    "nativeDecimals": 6,
+    "maxSupply": 21000000000,
+    "maxSupplyFormatted": "21,000,000,000 QNTO",
+    "emissionStrategy": {
+      "type": "Deflationary with asymptotic halving",
+      "initialBlockReward": 2.5,
+      "initialBlockRewardFormatted": "2.5 QNTO",
+      "halvingPeriodSeconds": 8400000,
+      "halvingPeriodHumanReadable": "~97.2 days",
+      "halvingFactor": 0.999,
+      "halvingDescription": "0.1% reduction per halving period (multiplier: 0.999)",
+      "targetBlockTimeSeconds": 1.0
+    }
+  },
+  "networkData": {
+    "chainId": "0x1234",
+    "chainIdDecimal": 4660,
+    "networkName": "QANTO Testnet",
+    "nativeCurrency": {
+      "name": "QNTO",
+      "symbol": "QNTO",
+      "decimals": 6
+    },
+    "rpcEndpoint": "https://trvorth-qanto-testnet.hf.space/rpc",
+    "webSocketEndpoint": "wss://trvorth-qanto-testnet.hf.space/ws",
+    "blockExplorer": {
+      "url": "https://qanto.org/public/explorer/index.html",
+      "apiEndpoint": "https://trvorth-qanto-testnet.hf.space/api/v1/explorer"
+    }
+  },
+  "apiEndpoints": {
+    "circulatingSupply": {
+      "url": "https://trvorth-qanto-testnet.hf.space/api/v1/supply/circulating",
+      "method": "GET",
+      "responseFormat": "text/plain",
+      "description": "Returns raw circulating supply as a plain number (CoinMarketCap/CoinGecko compatible)"
+    },
+    "totalSupply": {
+      "url": "https://trvorth-qanto-testnet.hf.space/api/v1/supply/total",
+      "method": "GET",
+      "responseFormat": "text/plain",
+      "description": "Returns total supply as a plain number: 21000000000"
+    },
+    "maxSupply": {
+      "url": "https://trvorth-qanto-testnet.hf.space/api/v1/supply/max",
+      "method": "GET",
+      "responseFormat": "text/plain",
+      "description": "Returns fixed max supply: 21000000000"
+    },
+    "blockHeight": {
+      "url": "https://trvorth-qanto-testnet.hf.space/rpc",
+      "method": "POST",
+      "body": "{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}",
+      "description": "Standard JSON-RPC eth_blockNumber, returns hex-encoded block number"
+    },
+    "richList": {
+      "url": "https://trvorth-qanto-testnet.hf.space/api/v1/accounts/rich-list",
+      "method": "GET",
+      "description": "Top 100 holders by balance"
+    }
+  },
+  "smartContracts": {
+    "dexWrapper": {
+      "name": "WQNTO",
+      "fullName": "Wrapped QANTO",
+      "decimals": 6,
+      "standard": "ERC-20 Compatible",
+      "solidityVersion": "^0.8.20",
+      "address": "TBD_UPON_MAINNET_DEPLOYMENT",
+      "abiEndpoint": "https://qanto.org/assets/json/WQNTO_ABI.json",
+      "sourceCode": "https://github.com/trvorth/Qanto/blob/main/SmartContracts/WQNTO.sol"
+    }
+  },
+  "compliance": {
+    "securityAudits": [
+      "Passed internal recursive QA",
+      "Post-quantum cryptography peer review (CRYSTALS-Dilithium)"
+    ],
+    "legalDisclaimer": "Testnet environment active. WQNTO wrapper contract verified. Not financial advice.",
+    "contactEmail": "listing@qanto.org"
+  }
+}

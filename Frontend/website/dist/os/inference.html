@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO INFERENCE | Global Ubiquity</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(5, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .i-header { border-bottom: 2px solid #00f2ff; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .inference-card { background: linear-gradient(135deg, rgba(0, 242, 255, 0.1), rgba(0, 102, 255, 0.1)); border: 1px solid rgba(0, 242, 255, 0.3); padding: 25px; border-radius: 16px; margin-bottom: 30px; position: relative; overflow: hidden; }
+        .mesh-map { height: 200px; background: rgba(0,0,0,0.4); border-radius: 12px; margin-top: 20px; position: relative; border: 1px solid rgba(255,255,255,0.05); overflow: hidden; }
+        .ping-pulse { position: absolute; height: 10px; width: 10px; background: #00f2ff; border-radius: 50%; box-shadow: 0 0 10px #00f2ff; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(4); opacity: 0; } }
+        
+        .routing-stats { display: flex; justify-content: space-between; margin-top: 20px; }
+        .stat-box { background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); text-align: center; flex: 1; margin: 0 5px; }
+    </style>
+</head>
+<body>
+    <div class="i-header">
+        <div>
+            <h1 style="margin:0; letter-spacing: 6px;">GLOBAL INFERENCE</h1>
+            <div style="font-size: 11px; color: #888;">Latency-Aware Task Routing & PoI Pulses</div>
+        </div>
+        <div style="font-size: 11px; color: #00f2ff; font-weight: 900;"><i class="fas fa-network-wired"></i> STATUS: ACTIVE</div>
+    </div>
+
+    <div class="inference-card">
+        <div style="display: flex; justify-content: space-between;">
+            <span style="font-weight: 900; letter-spacing: 1px;">ROUTING: TASK_101</span>
+            <span style="color: #00f2ff;">85ms</span>
+        </div>
+        <div class="mesh-map">
+            <div class="ping-pulse" style="top: 30%; left: 20%;"></div> <!-- US -->
+            <div class="ping-pulse" style="top: 25%; left: 50%;"></div> <!-- EU -->
+            <div class="ping-pulse" style="top: 40%; left: 80%;"></div> <!-- ASIA -->
+        </div>
+        <div class="routing-stats">
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">OPTIMIZATION</div><div style="font-size: 18px; font-weight: 900;">GLOBAL</div></div>
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">SENTINEL_ID</div><div style="font-size: 18px; font-weight: 900; color: #00f2ff;">NODE_01</div></div>
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">REPUTATION</div><div style="font-size: 18px; font-weight: 900;">HI-FI</div></div>
+        </div>
+    </div>
+
+    <h3 style="letter-spacing: 2px;">INFERENCE LOG (TIM)</h3>
+    <div style="background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); font-family: 'Space Mono', monospace; font-size: 11px;">
+        <div style="margin-bottom: 5px; color: #00f2ff;">[14:10] TIM: Latency-aware Sentinel scanning started.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[14:11] TIM: Optimized Global Pulse in Task 101. 85ms Latency.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[14:12] TIM: Task routed to SENTINEL_NODE_GLOBAL_01.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[14:14] TIM: Inference completed. Status: OK.</div>
+    </div>
+</body>
+</html>

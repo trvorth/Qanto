@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | Genesis Migration</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
+    <style>
+        :root {
+            --primary: #00ffa3;
+            --accent: #bc13fe;
+            --bg: #050505;
+            --glass: rgba(15, 15, 15, 0.7);
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            background: var(--bg);
+            color: #fff;
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .background-glow {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 800px;
+            height: 800px;
+            background: radial-gradient(circle, rgba(0, 255, 163, 0.05) 0%, rgba(188, 19, 254, 0) 70%);
+            filter: blur(100px);
+            z-index: -1;
+        }
+
+        .nav {
+            width: 100%;
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-sizing: border-box;
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            font-weight: 600;
+            font-size: 24px;
+            letter-spacing: 2px;
+            background: linear-gradient(45deg, #fff, var(--primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .container {
+            max-width: 1000px;
+            width: 90%;
+            margin-top: 60px;
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        .header {
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 48px;
+            margin: 0;
+            margin-bottom: 15px;
+        }
+
+        .header p {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 18px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+
+        .stat-card {
+            background: var(--glass);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            backdrop-filter: blur(20px);
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 255, 163, 0.1);
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .migration-panel {
+            background: var(--glass);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 40px;
+            backdrop-filter: blur(20px);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .input-group label {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+        }
+
+        .input-wrapper {
+            display: flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 0 20px;
+        }
+
+        input {
+            background: transparent;
+            border: none;
+            color: #fff;
+            padding: 15px 0;
+            width: 100%;
+            font-size: 18px;
+            font-family: inherit;
+            outline: none;
+        }
+
+        .token-symbol {
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .btn-migrate {
+            background: linear-gradient(45deg, var(--primary), var(--accent));
+            color: #000;
+            border: none;
+            padding: 20px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .btn-migrate:hover {
+            transform: scale(0.98);
+            filter: brightness(1.1);
+        }
+
+        .terminal {
+            background: #000;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            color: #00ffa3;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .terminal-line {
+            margin-bottom: 5px;
+        }
+
+        .terminal-line span {
+            color: #fff;
+            opacity: 0.5;
+        }
+
+        .reward-tag {
+            display: inline-block;
+            background: rgba(188, 19, 254, 0.2);
+            color: var(--accent);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid rgba(188, 19, 254, 0.3);
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="background-glow"></div>
+    
+    <nav class="nav">
+        <div class="logo">QANTO // BRIDGE</div>
+        <div class="wallet-status" id="wallet-status">DISCONNECTED</div>
+    </nav>
+
+    <div class="container">
+        <header class="header">
+            <span class="reward-tag">PHASE 40: GENESIS MULTIPLIER ACTIVE (1.5x)</span>
+            <h1>Sovereign Migration</h1>
+            <p>Migrate your assets to the QANTO Layer-0 Hyper-Bridge and claim your Genesis rewards.</p>
+        </header>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value" id="total-migrated">142.8M</div>
+                <div class="stat-label">Total QNTO Migrated</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="bonus-multiplier">1.50x</div>
+                <div class="stat-label">Bonus Multiplier</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="migration-yield">24.5%</div>
+                <div class="stat-label">Est. Migration Yield</div>
+            </div>
+        </div>
+
+        <div class="migration-panel">
+            <div class="input-group">
+                <label>Amount to Migrate</label>
+                <div class="input-wrapper">
+                    <input type="number" id="migrate-amount" placeholder="0.00">
+                    <span class="token-symbol">QNTO</span>
+                </div>
+            </div>
+
+            <button class="btn-migrate" id="btn-migrate">INITIATE TELEPORT</button>
+
+            <div class="terminal" id="terminal">
+                <div class="terminal-line"><span>[SYS]</span> Awaiting connection...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const terminal = document.getElementById('terminal');
+        const btnMigrate = document.getElementById('btn-migrate');
+
+        function logToTerminal(msg) {
+            const line = document.createElement('div');
+            line.className = 'terminal-line';
+            line.innerHTML = `<span>[${new Date().toLocaleTimeString()}]</span> ${msg}`;
+            terminal.appendChild(line);
+            terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        btnMigrate.addEventListener('click', async () => {
+            const amount = document.getElementById('migrate-amount').value;
+            if (!amount || amount <= 0) {
+                logToTerminal("ERROR: Invalid migration amount.");
+                return;
+            }
+
+            logToTerminal(`Initializing Teleport for ${amount} QNTO...`);
+            logToTerminal("Generating Nullifier commitment for ZK-Mesh...");
+            
+            setTimeout(() => {
+                logToTerminal("ZK-Proof generated successfully.");
+                logToTerminal("Calling initiateTeleport() on QantoHyperBridge...");
+                setTimeout(() => {
+                    logToTerminal("TRANSACTION SUCCESSFUL: 0x93f...b82e");
+                    logToTerminal("Migration complete. Assets being bridged to QANTO Mainnet.");
+                }, 1500);
+            }, 1000);
+        });
+
+        // Ethers logic (Mocked for testing)
+        logToTerminal("Hyper-Bridge Terminal v1.0.4 loaded.");
+        logToTerminal("Genesis Multiplier verified: 1.5x active.");
+    </script>
+</body>
+</html>

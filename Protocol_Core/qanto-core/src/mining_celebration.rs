@@ -56,15 +56,15 @@ pub struct MiningStats {
     pub block_height: u64,
     pub block_hash: String,
     pub nonce: u64,
-    pub difficulty: f64,
+    pub difficulty: u64,
     pub timestamp: DateTime<Local>,
     pub transactions_count: usize,
     pub mining_time: Duration,
     pub hash_rate: f64,
     pub total_blocks_mined: u64,
     pub chain_id: u32,
-    pub effort: u64,       // Number of hashes tried
-    pub block_reward: u64, // Block reward in smallest units
+    pub effort: u128,       // Number of hashes tried
+    pub block_reward: u128, // Block reward in smallest units
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -74,13 +74,13 @@ impl MiningStats {
         block_height: u64,
         block_hash: String,
         nonce: u64,
-        difficulty: f64,
+        difficulty: u64,
         transactions_count: usize,
         mining_time: Duration,
-        effort: u64,
+        effort: u128,
         total_blocks_mined: u64,
         chain_id: u32,
-        block_reward: u64,
+        block_reward: u128,
     ) -> Self {
         let hash_rate = if mining_time.as_secs() > 0 {
             effort as f64 / mining_time.as_secs_f64()
@@ -155,7 +155,7 @@ impl MiningStats {
         );
         println!("  {} {}", "Difficulty:".bright_blue().bold(), {
             let mut diff_str = String::with_capacity(12);
-            diff_str.push_str(&format!("{:.6}", self.difficulty));
+            diff_str.push_str(&format!("{:.6}", self.difficulty as f64 / 1_000_000_000.0));
             diff_str.bright_red().bold()
         });
         println!(
@@ -389,7 +389,7 @@ impl MiningStats {
     }
 
     /// Formats large numbers with thousand separators
-    fn format_number(&self, num: u64) -> String {
+    fn format_number<T: std::fmt::Display>(&self, num: T) -> String {
         let num_str = num.to_string();
         let len = num_str.len();
 
@@ -427,13 +427,13 @@ pub struct MiningCelebrationParams {
     pub block_height: u64,
     pub block_hash: String,
     pub nonce: u64,
-    pub difficulty: f64,
+    pub difficulty: u64,
     pub transactions_count: usize,
     pub mining_time: Duration,
-    pub effort: u64,
+    pub effort: u128,
     pub total_blocks_mined: u64,
     pub chain_id: u32,
-    pub block_reward: u64,
+    pub block_reward: u128,
     pub compact: bool,
 }
 

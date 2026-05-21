@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SAGA Prediction Terminal</title>
+    <style>
+        body {
+            background: #0d0f14;
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .market-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
+        }
+
+        .card h4 { margin: 0 0 10px 0; font-size: 14px; text-transform: uppercase; color: #888; }
+        .card .price { font-size: 32px; font-weight: 700; }
+        
+        .pass .price { color: #00ffaa; }
+        .fail .price { color: #ff4444; }
+
+        .delta-box {
+            background: rgba(0, 102, 255, 0.1);
+            border: 1px solid #0066ff;
+            color: #0066ff;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 25px;
+        }
+
+        .chart-mock {
+            height: 150px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            margin-top: 20px;
+            display: flex;
+            align-items: flex-end;
+            gap: 5px;
+            padding: 10px;
+        }
+
+        .bar { flex: 1; background: #333; }
+
+        .btn {
+            background: #00ffaa;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2 style="margin:0; font-size: 18px;">📈 FUTARCHY MARKET #042</h2>
+        <div style="font-size: 12px; color: #0066ff;">MARKET ENDS IN: 22h 45m</div>
+    </div>
+
+    <p style="font-size: 14px; color: #ccc;">Proposal: Enable Elastic Sharding Shard-Split threshold to 2,000 TPS?</p>
+
+    <div class="delta-box">
+        PROJECTED VALUE DELTA: +14.2% (Pass > Fail)
+    </div>
+
+    <div class="market-grid">
+        <div class="card pass">
+            <h4>Outcome: PASS</h4>
+            <div class="price">$1.42</div>
+            <div class="chart-mock">
+                <!-- Simple mock bars -->
+                <div class="bar" style="height: 40%;"></div>
+                <div class="bar" style="height: 60%;"></div>
+                <div class="bar" style="height: 55%;"></div>
+                <div class="bar" style="height: 75%; background: #00ffaa;"></div>
+            </div>
+            <button class="btn">BET ON PASS</button>
+        </div>
+        <div class="card fail">
+            <h4>Outcome: FAIL</h4>
+            <div class="price">$1.24</div>
+             <div class="chart-mock">
+                <div class="bar" style="height: 50%;"></div>
+                <div class="bar" style="height: 45%;"></div>
+                <div class="bar" style="height: 55%;"></div>
+                <div class="bar" style="height: 40%; background: #ff4444;"></div>
+            </div>
+            <button class="btn" style="background: #ff4444; color: #fff;">BET ON FAIL</button>
+        </div>
+    </div>
+</body>
+</html>

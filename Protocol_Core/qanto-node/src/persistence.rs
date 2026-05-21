@@ -24,17 +24,17 @@ pub fn balance_key(address: &str) -> Vec<u8> {
     key.into_bytes()
 }
 
-pub fn encode_balance(value: u64) -> Vec<u8> {
+pub fn encode_balance(value: u128) -> Vec<u8> {
     value.to_le_bytes().to_vec()
 }
 
-pub fn decode_balance(bytes: &[u8]) -> Result<u64, String> {
-    if bytes.len() != 8 {
+pub fn decode_balance(bytes: &[u8]) -> Result<u128, String> {
+    if bytes.len() != 16 {
         return Err(format!("Invalid balance value length: {}", bytes.len()));
     }
-    let mut arr = [0u8; 8];
+    let mut arr = [0u8; 16];
     arr.copy_from_slice(bytes);
-    Ok(u64::from_le_bytes(arr))
+    Ok(u128::from_le_bytes(arr))
 }
 
 pub fn tips_prefix(chain_id: u32) -> Vec<u8> {

@@ -26,8 +26,8 @@ pub enum PerformanceMonitoringError {
     )]
     PerformanceDegradation {
         metric: String,
-        current: f64,
-        threshold: f64,
+        current: u128,
+        threshold: u128,
     },
 
     #[error("Resource exhaustion: {resource}")]
@@ -42,16 +42,16 @@ pub enum PerformanceMonitoringError {
 pub struct PerformanceSnapshot {
     pub timestamp: u64,
     pub memory_usage_mb: u64,
-    pub cpu_utilization: f64,
-    pub blocks_per_second: f64,
-    pub transactions_per_second: f64,
-    pub avg_block_time_ms: f64,
-    pub avg_tx_processing_time_us: f64,
+    pub cpu_utilization: u128, // Scaled by Q_SCALE
+    pub blocks_per_second: u128, // Scaled by Q_SCALE
+    pub transactions_per_second: u128, // Scaled by Q_SCALE
+    pub avg_block_time_ms: u128, // Scaled by Q_SCALE
+    pub avg_tx_processing_time_us: u128, // Scaled by Q_SCALE
     pub active_connections: usize,
     pub mempool_size: usize,
     pub utxo_set_size: usize,
-    pub cache_hit_ratio: f64,
-    pub gc_pressure: f64,
+    pub cache_hit_ratio: u128, // Scaled by Q_SCALE
+    pub gc_pressure: u128, // Scaled by Q_SCALE
 }
 
 /// Adaptive tuning parameters
@@ -61,8 +61,8 @@ pub struct AdaptiveTuningParams {
     pub worker_threads: usize,
     pub cache_size: usize,
     pub gc_threshold_mb: u64,
-    pub backpressure_threshold: f64,
-    pub mining_difficulty_adjustment: f64,
+    pub backpressure_threshold: u128, // Scaled by Q_SCALE
+    pub mining_difficulty_adjustment: u128, // Scaled by Q_SCALE
 }
 
 impl Default for AdaptiveTuningParams {
@@ -72,8 +72,8 @@ impl Default for AdaptiveTuningParams {
             worker_threads: num_cpus::get(),
             cache_size: 1000,
             gc_threshold_mb: 512,
-            backpressure_threshold: 0.8,
-            mining_difficulty_adjustment: 1.0,
+            backpressure_threshold: 800_000_000, // 0.8
+            mining_difficulty_adjustment: 1_000_000_000, // 1.0
         }
     }
 }
@@ -91,9 +91,9 @@ pub enum MemoryOptimizationStrategy {
 pub struct PerformanceMonitoringConfig {
     pub monitoring_interval_ms: u64,
     pub memory_threshold_mb: u64,
-    pub cpu_threshold: f64,
-    pub bps_threshold: f64,
-    pub tps_threshold: f64,
+    pub cpu_threshold: u128,
+    pub bps_threshold: u128,
+    pub tps_threshold: u128,
     pub history_size: usize,
     pub enable_adaptive_tuning: bool,
     pub memory_optimization_strategy: MemoryOptimizationStrategy,
@@ -104,9 +104,9 @@ impl Default for PerformanceMonitoringConfig {
         Self {
             monitoring_interval_ms: 1000,
             memory_threshold_mb: 1024,
-            cpu_threshold: 80.0,
-            bps_threshold: 30.0,
-            tps_threshold: 1_000_000.0,
+            cpu_threshold: 800_000_000, // 80%
+            bps_threshold: 30_000_000_000, // 30.0
+            tps_threshold: 1_000_000_000_000_000, // 1,000,000.0 * 1e9 (scaled)
             history_size: 1000,
             enable_adaptive_tuning: true,
             memory_optimization_strategy: MemoryOptimizationStrategy::Balanced,
@@ -164,16 +164,16 @@ impl PerformanceMonitor {
                 .unwrap()
                 .as_secs(),
             memory_usage_mb: 0,
-            cpu_utilization: 0.0,
-            blocks_per_second: 0.0,
-            transactions_per_second: 0.0,
-            avg_block_time_ms: 0.0,
-            avg_tx_processing_time_us: 0.0,
+            cpu_utilization: 0,
+            blocks_per_second: 0,
+            transactions_per_second: 0,
+            avg_block_time_ms: 0,
+            avg_tx_processing_time_us: 0,
             active_connections: 0,
             mempool_size: 0,
             utxo_set_size: 0,
-            cache_hit_ratio: 0.0,
-            gc_pressure: 0.0,
+            cache_hit_ratio: 0,
+            gc_pressure: 0,
         };
 
         Self {
@@ -276,9 +276,9 @@ impl PerformanceMonitor {
         let cache_hits = self.cache_hits.load(Ordering::Relaxed);
         let cache_misses = self.cache_misses.load(Ordering::Relaxed);
         let cache_hit_ratio = if cache_hits + cache_misses > 0 {
-            cache_hits as f64 / (cache_hits + cache_misses) as f64
+            (cache_hits as u128 * crate::QANTO_SCALE) / (cache_hits + cache_misses) as u128
         } else {
-            0.0
+            0
         };
 
         let snapshot = PerformanceSnapshot {
@@ -287,8 +287,8 @@ impl PerformanceMonitor {
             cpu_utilization,
             blocks_per_second: bps,
             transactions_per_second: tps,
-            avg_block_time_ms: if bps > 0.0 { 1000.0 / bps } else { 0.0 },
-            avg_tx_processing_time_us: if tps > 0.0 { 1_000_000.0 / tps } else { 0.0 },
+            avg_block_time_ms: if bps > 0 { (1000 * crate::QANTO_SCALE) / bps } else { 0 },
+            avg_tx_processing_time_us: if tps > 0 { (1_000_000 * crate::QANTO_SCALE) / tps } else { 0 },
             active_connections: self
                 .resource_usage
                 .get("connections")
@@ -305,7 +305,7 @@ impl PerformanceMonitor {
                 .map(|v| *v as usize)
                 .unwrap_or(0),
             cache_hit_ratio,
-            gc_pressure: self.memory_pressure.load(Ordering::Relaxed) as f64 / 100.0,
+            gc_pressure: self.memory_pressure.load(Ordering::Relaxed) as u128 * (crate::QANTO_SCALE / 100),
         };
 
         // Update current snapshot
@@ -321,7 +321,7 @@ impl PerformanceMonitor {
         }
 
         debug!(
-            "Performance metrics collected: BPS={:.2}, TPS={:.0}, Memory={}MB",
+            "Performance metrics collected: BPS={}, TPS={}, Memory={}MB",
             bps, tps, memory_usage_mb
         );
 
@@ -366,21 +366,21 @@ impl PerformanceMonitor {
         params: &mut AdaptiveTuningParams,
     ) -> Result<(), PerformanceMonitoringError> {
         // Adjust batch size based on TPS performance
-        if snapshot.transactions_per_second < self.config.tps_threshold * 0.8 {
+        if snapshot.transactions_per_second < self.config.tps_threshold * 8 / 10 {
             params.batch_size = (params.batch_size * 110 / 100).min(100_000);
-        } else if snapshot.transactions_per_second > self.config.tps_threshold * 1.2 {
+        } else if snapshot.transactions_per_second > self.config.tps_threshold * 12 / 10 {
             params.batch_size = (params.batch_size * 90 / 100).max(1000);
         }
 
         // Adjust worker threads based on CPU utilization
-        if snapshot.cpu_utilization < 60.0 && params.worker_threads < num_cpus::get() * 2 {
+        if snapshot.cpu_utilization < 60 * crate::QANTO_SCALE && params.worker_threads < num_cpus::get() * 2 {
             params.worker_threads += 1;
-        } else if snapshot.cpu_utilization > 90.0 && params.worker_threads > 1 {
+        } else if snapshot.cpu_utilization > 90 * crate::QANTO_SCALE && params.worker_threads > 1 {
             params.worker_threads -= 1;
         }
 
         // Adjust cache size based on hit ratio and memory pressure
-        if snapshot.cache_hit_ratio < 0.8
+        if snapshot.cache_hit_ratio < 800_000_000 // 0.8
             && snapshot.memory_usage_mb < self.config.memory_threshold_mb * 80 / 100
         {
             params.cache_size = (params.cache_size * 110 / 100).min(10_000);
@@ -389,9 +389,9 @@ impl PerformanceMonitor {
         }
 
         // Adjust GC threshold based on memory pressure
-        if snapshot.gc_pressure > 0.8 {
+        if snapshot.gc_pressure > 800_000_000 { // 0.8
             params.gc_threshold_mb = (params.gc_threshold_mb * 90 / 100).max(128);
-        } else if snapshot.gc_pressure < 0.3 {
+        } else if snapshot.gc_pressure < 300_000_000 { // 0.3
             params.gc_threshold_mb = (params.gc_threshold_mb * 110 / 100).min(2048);
         }
 
@@ -414,7 +414,7 @@ impl PerformanceMonitor {
         // CPU threshold check
         if snapshot.cpu_utilization > self.config.cpu_threshold {
             warn!(
-                "CPU utilization high: {:.1}% > {:.1}%",
+                "CPU utilization high: {} > {}",
                 snapshot.cpu_utilization, self.config.cpu_threshold
             );
         }
@@ -422,14 +422,14 @@ impl PerformanceMonitor {
         // Performance threshold checks
         if snapshot.blocks_per_second < self.config.bps_threshold {
             warn!(
-                "BPS below threshold: {:.2} < {:.2}",
+                "BPS below threshold: {} < {}",
                 snapshot.blocks_per_second, self.config.bps_threshold
             );
         }
 
         if snapshot.transactions_per_second < self.config.tps_threshold {
             warn!(
-                "TPS below threshold: {:.0} < {:.0}",
+                "TPS below threshold: {} < {}",
                 snapshot.transactions_per_second, self.config.tps_threshold
             );
         }
@@ -542,33 +542,33 @@ impl PerformanceMonitor {
     }
 
     /// Get current CPU utilization percentage
-    async fn get_cpu_utilization(&self) -> f64 {
+    async fn get_cpu_utilization(&self) -> u128 {
         // Simplified CPU utilization - in production, use proper system monitoring
         self.resource_usage
             .get("cpu_utilization")
-            .map(|v| *v as f64)
-            .unwrap_or(0.0)
+            .map(|v| *v as u128 * (crate::QANTO_SCALE / 100))
+            .unwrap_or(0)
     }
 
     /// Calculate BPS and TPS rates from history
-    async fn calculate_rates(&self) -> (f64, f64) {
+    async fn calculate_rates(&self) -> (u128, u128) {
         let history = self.history.read().await;
 
         if history.len() < 2 {
-            return (0.0, 0.0);
+            return (0, 0);
         }
 
         let recent = &history[history.len() - 1];
         let previous = &history[history.len() - 2];
 
-        let time_diff = recent.timestamp.saturating_sub(previous.timestamp) as f64;
+        let time_diff = recent.timestamp.saturating_sub(previous.timestamp) as u128;
 
-        if time_diff > 0.0 {
-            let bps = (recent.blocks_per_second + previous.blocks_per_second) / 2.0;
-            let tps = (recent.transactions_per_second + previous.transactions_per_second) / 2.0;
+        if time_diff > 0 {
+            let bps = (recent.blocks_per_second + previous.blocks_per_second) / 2;
+            let tps = (recent.transactions_per_second + previous.transactions_per_second) / 2;
             (bps, tps)
         } else {
-            (0.0, 0.0)
+            (0, 0)
         }
     }
 

@@ -1,14 +1,13 @@
 use log::debug;
 use prometheus::{register_int_counter, IntCounter};
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 // Made constants public
-pub const INITIAL_REWARD: u64 = 50_000_000_000; // Initial block reward (50 QAN in smallest units)
-pub const TOTAL_SUPPLY: u64 = 21_000_000_000_000_000; // Total supply cap set to 21 Billion QAN (in smallest units with 6 decimals)
-pub const HALVING_PERIOD: u64 = 7_776_000; // 3 months in seconds
-pub const HALVING_FACTOR: f64 = 0.875; // 12.5% reduction per halving
-pub const SCALE: u64 = 1_000_000; // Fixed-point scale for precision
+pub const INITIAL_REWARD: u128 = 50 * 1_000_000_000; // Initial block reward: 50.0 QAN (scale 1e9)
+pub const TOTAL_SUPPLY: u128 = 21_000_000_000 * 1_000_000_000; // Total supply cap: 21,000,000,000 QAN (scale 1e9)
+pub const HALVING_PERIOD: u64 = 8_400_000; // Halving period in seconds (~97.2 days)
+pub const HALVING_FACTOR_FIXED: u128 = 999_000_000; // 0.999 represented as u128 (scale 1e9)
+pub const SCALE: u128 = 1_000_000_000; // Fixed-point scale for precision (9 decimals)
 
 lazy_static::lazy_static! {
     static ref HALVING_EVENTS: IntCounter = register_int_counter!(
@@ -23,22 +22,22 @@ lazy_static::lazy_static! {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Emission {
-    initial_reward: u64,
-    total_supply: u64,
+    initial_reward: u128,
+    total_supply: u128,
     halving_period: u64,
-    halving_factor: f64,
+    halving_factor_fixed: u128,
     genesis_timestamp: u64,
-    current_supply: u64,
+    current_supply: u128,
     num_chains: u32,
     last_halving_period: u64,
 }
 
 impl Emission {
     pub fn new(
-        initial_reward: u64,
-        total_supply: u64,
+        initial_reward: u128,
+        total_supply: u128,
         halving_period: u64,
-        halving_factor: f64,
+        halving_factor_fixed: u128,
         genesis_timestamp: u64,
         num_chains: u32,
     ) -> Self {
@@ -46,7 +45,11 @@ impl Emission {
             initial_reward: initial_reward.max(1),
             total_supply,
             halving_period: halving_period.max(1),
-            halving_factor: halving_factor.clamp(0.0, 1.0),
+            halving_factor_fixed: if halving_factor_fixed > crate::QANTO_SCALE {
+                crate::QANTO_SCALE
+            } else {
+                halving_factor_fixed
+            },
             genesis_timestamp,
             current_supply: 0,
             num_chains: num_chains.max(1),
@@ -59,13 +62,13 @@ impl Emission {
             INITIAL_REWARD,
             TOTAL_SUPPLY,
             HALVING_PERIOD,
-            HALVING_FACTOR,
+            HALVING_FACTOR_FIXED,
             genesis_timestamp,
             num_chains,
         )
     }
 
-    pub fn calculate_reward(&self, timestamp: u64) -> Result<u64, String> {
+    pub fn calculate_reward(&self, timestamp: u64) -> Result<u128, String> {
         if timestamp < self.genesis_timestamp {
             return Err("Timestamp cannot be before genesis".into());
         }
@@ -73,16 +76,27 @@ impl Emission {
         let elapsed_time = timestamp.saturating_sub(self.genesis_timestamp);
         let elapsed_periods = elapsed_time / self.halving_period;
 
-        let mut reward = self.initial_reward as f64;
+        // Perform reward calculation using deterministic fixed-point arithmetic
+        let mut reward = self.initial_reward;
+        let scale = SCALE;
+        
+        // Apply halving factors iteratively
         for _ in 0..elapsed_periods {
-            reward *= self.halving_factor;
+            reward = reward.checked_mul(self.halving_factor_fixed).and_then(|r| r.checked_div(scale)).unwrap_or(0);
         }
 
-        let reward = reward.round() as u64;
-        let per_chain_reward = reward
-            .checked_div(self.num_chains as u64)
+        let mut per_chain_reward = reward
+            .checked_div(self.num_chains as u128)
             .unwrap_or(1)
             .max(1);
+
+        // Mathematically seal the 21B cap: never emit more than the remaining supply
+        let max_remaining = self.total_supply.saturating_sub(self.current_supply);
+        if max_remaining == 0 {
+            per_chain_reward = 0;
+        } else {
+            per_chain_reward = per_chain_reward.min(max_remaining);
+        }
 
         if elapsed_periods > self.last_halving_period {
             HALVING_EVENTS.inc();
@@ -92,12 +106,15 @@ impl Emission {
         Ok(per_chain_reward)
     }
 
-    pub fn update_supply(&mut self, reward: u64) -> Result<(), String> {
+    pub fn update_supply(&mut self, reward: u128) -> Result<(), String> {
         let new_supply = self.current_supply.saturating_add(reward);
 
+        // If adding the reward exceeds the mathematically sealed cap, gracefully clamp it.
+        // This ensures the node doesn't crash but simply enforces the supply limit.
         if new_supply > self.total_supply {
             self.current_supply = self.total_supply;
-            return Err("Total supply cap reached or exceeded".to_string());
+            debug!("Total supply cap of 21B QAN reached. Entering non-inflationary phase.");
+            return Ok(());
         }
 
         self.current_supply = new_supply;
@@ -109,11 +126,11 @@ impl Emission {
         Ok(())
     }
 
-    pub fn current_supply(&self) -> u64 {
+    pub fn current_supply(&self) -> u128 {
         self.current_supply
     }
 
-    pub fn total_supply(&self) -> u64 {
+    pub fn total_supply(&self) -> u128 {
         self.total_supply
     }
 
@@ -130,15 +147,5 @@ impl Emission {
             );
             self.last_halving_period = current_calculated_period;
         }
-    }
-
-    pub fn quantum_resistant_adjustment(&self, entropy_seed: u64) -> u64 {
-        let now_secs = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        let base_reward = self.calculate_reward(now_secs).unwrap_or(1);
-        let adjustment = (entropy_seed % 1000).saturating_add(base_reward) % SCALE.max(1);
-        base_reward.saturating_add(adjustment).max(1)
     }
 }

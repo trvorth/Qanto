@@ -756,7 +756,7 @@ class QantoWebsite {
     // ==========================================================================
 
     async initTelemetry() {
-        this.rpcUrl = 'https://trvorth-qanto-testnet.hf.space'; // Cloud HF Node RPC
+        this.rpcUrl = 'https://trvorth-qanto-testnet.hf.space/rpc'; // Cloud HF Node RPC
         this.maxBackoff = 60000; // 1 minute
         this.currentBackoff = 1000; // 1 second start
         this.isConnected = false;

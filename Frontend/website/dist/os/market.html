@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO MARKET | Futarchy Odds</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(5, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .mkt-header { border-bottom: 2px solid #00ffaa; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .odds-card { background: linear-gradient(135deg, rgba(0, 255, 170, 0.1), rgba(0, 102, 255, 0.1)); border: 1px solid rgba(0, 255, 170, 0.3); padding: 25px; border-radius: 16px; margin-bottom: 30px; text-align: center; }
+        .price-delta { font-size: 36px; font-weight: 900; letter-spacing: 2px; color: #00ffaa; text-shadow: 0 0 20px #00ffaa; }
+        .chart-mock { height: 100px; background: rgba(0,0,0,0.4); border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); margin-top: 20px; padding: 10px; display: flex; align-items: flex-end; gap: 5px; }
+        .chart-bar { flex: 1; background: #00ffaa; border-radius: 2px; }
+    </style>
+</head>
+<body>
+    <div class="mkt-header">
+        <div>
+            <h1 style="margin:0; letter-spacing: 6px;">FUTARCHY MARKET</h1>
+            <div style="font-size: 11px; color: #888;">Value-Prediction & Market-Driven Discovery</div>
+        </div>
+        <div style="font-size: 11px; color: #00ffaa; font-weight: 900;"><i class="fas fa-chart-line"></i> Δ: +12.5%</div>
+    </div>
+
+    <div class="odds-card">
+        <div style="font-size: 11px; color: #aaa; margin-bottom: 5px;">PREDICTED QNTO VALUE (PASS)</div>
+        <div class="price-delta">$1.45</div>
+        <div style="font-size: 11px; color: #aaa; margin: 10px 0;">PREDICTED QNTO VALUE (FAIL)</div>
+        <div style="font-size: 24px; font-weight: 700; color: #ff004a;">$1.22</div>
+        <div class="chart-mock">
+            <div class="chart-bar" style="height: 10%;"></div>
+            <div class="chart-bar" style="height: 30%;"></div>
+            <div class="chart-bar" style="height: 45%;"></div>
+            <div class="chart-bar" style="height: 60%;"></div>
+            <div class="chart-bar" style="height: 85%;"></div>
+            <div class="chart-bar" style="height: 100%;"></div>
+        </div>
+        <div style="text-align: center; margin-top: 15px; color: #00ffaa; font-weight: 700; font-size: 11px;">OUTCOME: PASS PROBABILITY 88%</div>
+    </div>
+
+    <h3 style="letter-spacing: 2px;">RESOLUTION FEED (DFM)</h3>
+    <div style="background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); font-family: 'Space Mono', monospace; font-size: 11px;">
+        <div style="margin-bottom: 5px; color: #00ffaa;">[21:20] DFM: MKT_501 SETTLED. RESOLUTION: PASS.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[21:22] DFM: EVOLUTION_TRIGGERED: PROP_501.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[21:24] DFM: Δ+0.23 QNTO VALUE DISCOVERED.</div>
+    </div>
+</body>
+</html>

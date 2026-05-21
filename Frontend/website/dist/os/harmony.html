@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO HARMONY | Mesh Tranquility</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(5, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .h-header { border-bottom: 2px solid #ddd; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .harmony-mesh { height: 180px; background: rgba(0,0,0,0.4); border-radius: 12px; border: 1px dotted rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; position: relative; }
+        .harmony-node { position: absolute; width: 40px; height: 40px; background: #fff; border-radius: 50%; opacity: 0.2; animation: peace_pulse 6s infinite; }
+        @keyframes peace_pulse { 0%, 100% { transform: scale(1); opacity: 0.1; } 50% { transform: scale(1.5); opacity: 0.4; filter: blur(4px); } }
+        
+        .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 20px; }
+        .stat-item { background: rgba(221, 221, 221, 0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="h-header">
+        <div>
+            <h1 style="margin:0; letter-spacing: 6px;">MESH HARMONY</h1>
+            <div style="font-size: 11px; color: #888;">Universal Agentic Tranquility Density</div>
+        </div>
+        <div style="font-size: 11px; color: #fff; font-weight: 900;"><i class="fas fa-wave-square"></i> HARMONY: 99.5%</div>
+    </div>
+
+    <div class="harmony-mesh">
+        <div class="harmony-node" style="left: 20%; top: 30%;"></div>
+        <div class="harmony-node" style="left: 50%; top: 60%; animation-delay: 1s;"></div>
+        <div class="harmony-node" style="left: 80%; top: 20%; animation-delay: 2s;"></div>
+        <div style="font-weight: 900; letter-spacing: 4px; font-size: 10px; opacity: 0.8; z-index: 2;">UNIVERSAL TRANQUILITY: ACTIVE</div>
+    </div>
+
+    <div class="stat-grid">
+        <div class="stat-item"><div style="font-size: 10px; color: #888;">AVG HARMONY</div><div style="font-size: 16px; font-weight: 900;">99.4%</div></div>
+        <div class="stat-item"><div style="font-size: 10px; color: #888;">PEAK TRANSCENDENCE</div><div style="font-size: 16px; font-weight: 900; color: #fff;">100%</div></div>
+        <div class="stat-item"><div style="font-size: 10px; color: #888;">STABILITY</div><div style="font-size: 16px; font-weight: 900;">HIGH</div></div>
+    </div>
+
+    <h3 style="letter-spacing: 2px;">TRANQUILITY REGISTRY</h3>
+    <table style="width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 10px;">
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: #888; text-align: left;">
+            <th style="padding: 10px;">ID</th><th style="padding: 10px;">DENSITY</th><th style="padding: 10px;">PULSE</th><th style="padding: 10px;">STATUS</th>
+        </tr>
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <td style="padding: 10px; font-weight: 900;">HARMONY_01</td><td style="padding: 10px;">99.5%</td><td style="padding: 10px;">TFT_01</td><td style="padding: 10px; color: #fff;">HARMONIOUS</td>
+        </tr>
+        <tr>
+            <td style="padding: 10px; font-weight: 900;">TRANSCEND_01</td><td style="padding: 10px;">99.4%</td><td style="padding: 10px;">PoH_01</td><td style="padding: 10px; color: #fff;">TRANSCENDENT</td>
+        </tr>
+    </table>
+</body>
+</html>

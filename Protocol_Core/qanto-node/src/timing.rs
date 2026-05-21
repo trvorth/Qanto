@@ -32,7 +32,7 @@ pub struct TimingMetrics {
     pub mining_intervals_us: Vec<u64>,
     pub tx_processing_times_us: Vec<u64>,
     pub average_block_time_us: u64,
-    pub blocks_per_second: f64,
+    pub blocks_per_second: u64, // Scaled by QANTO_SCALE
     pub timing_drift_us: i64,
     pub precision_violations: u64,
 }
@@ -207,26 +207,48 @@ impl MicrosecondTimer {
         let min = *intervals.iter().min().unwrap();
         let max = *intervals.iter().max().unwrap();
 
-        let variance: f64 = intervals
+        // Integer variance: sum((x - avg)^2) / n
+        let variance_scaled: u128 = intervals
             .iter()
-            .map(|&x| (x as f64 - avg as f64).powi(2))
-            .sum::<f64>()
-            / intervals.len() as f64;
-        let std_dev = variance.sqrt();
-
-        // Use Mean Absolute Percentage Deviation (MAPE) against target for a more stable
-        // precision metric in varied test environments. This is less sensitive to outliers
-        // than standard deviation and better reflects timing accuracy relative to target.
+            .map(|&x| {
+                let diff = if x > avg { x - avg } else { avg - x };
+                diff as u128 * diff as u128
+            })
+            .sum::<u128>()
+            / intervals.len() as u128;
+            
+        // Integer sqrt for std_dev
+        // Integer sqrt for std_dev (Newton's method or simple estimation)
+        let std_dev = if variance_scaled == 0 { 0 } else {
+            let mut x = variance_scaled / 2 + 1;
+            let mut y = (x + variance_scaled / x) / 2;
+            while y < x {
+                x = y;
+                y = (x + variance_scaled / x) / 2;
+            }
+            x as u64
+        };
+        // Wait, I should use a custom isqrt if crate doesn't have it.
+        // Actually, let's use the property that std_dev^2 = variance.
+        
         let precision_percentage = if target == 0 {
-            0.0
+            0
         } else {
-            let mape = intervals
+            let mape_scaled = intervals
                 .iter()
-                .map(|&x| ((x as i64 - target as i64).abs() as f64) / target as f64)
-                .sum::<f64>()
-                / intervals.len() as f64;
+                .map(|&x| {
+                    let diff = if x as i64 > target as i64 { (x as i64 - target as i64) as u64 } else { (target as i64 - x as i64) as u64 };
+                    (diff as u128 * crate::QANTO_SCALE) / target as u128
+                })
+                .sum::<u128>()
+                / intervals.len() as u128;
+            
             // Convert to percentage and clamp to [0, 100]
-            (1.0 - mape).clamp(0.0, 1.0) * 100.0
+            if mape_scaled > crate::QANTO_SCALE {
+                0
+            } else {
+                ((crate::QANTO_SCALE - mape_scaled) * 100) / crate::QANTO_SCALE
+            }
         };
 
         TimingStats {
@@ -236,7 +258,7 @@ impl MicrosecondTimer {
             max_interval_us: max,
             std_deviation_us: std_dev,
             drift_us: avg as i64 - target as i64,
-            precision_percentage,
+            precision_percentage: precision_percentage as u64,
             tick_count: self.tick_count.load(Ordering::Relaxed),
         }
     }
@@ -249,9 +271,9 @@ pub struct TimingStats {
     pub average_interval_us: u64,
     pub min_interval_us: u64,
     pub max_interval_us: u64,
-    pub std_deviation_us: f64,
+    pub std_deviation_us: u64,
     pub drift_us: i64,
-    pub precision_percentage: f64,
+    pub precision_percentage: u64,
     pub tick_count: u64,
 }
 
@@ -262,9 +284,9 @@ impl Default for TimingStats {
             average_interval_us: 0,
             min_interval_us: 0,
             max_interval_us: 0,
-            std_deviation_us: 0.0,
+            std_deviation_us: 0,
             drift_us: 0,
-            precision_percentage: 0.0,
+            precision_percentage: 0,
             tick_count: 0,
         }
     }
@@ -282,12 +304,12 @@ pub struct BlockTimingCoordinator {
     // Adaptive timing fields
     load_factor: AtomicU64, // 0-100 representing system load percentage
     adaptive_interval_us: AtomicU64, // Current adaptive interval
-    performance_history: Arc<std::sync::Mutex<VecDeque<f64>>>, // BPS history for trend analysis
+    performance_history: Arc<std::sync::Mutex<VecDeque<u128>>>, // BPS history for trend analysis
     last_adjustment_time: AtomicU64,
     // New: Predictive scheduling fields
     moving_average_window: Arc<std::sync::Mutex<VecDeque<u64>>>, // Block time moving average
     predicted_next_block_time: AtomicU64, // Predicted optimal next block time
-    difficulty_adjustment_factor: Arc<std::sync::Mutex<f64>>, // Dynamic difficulty multiplier
+    difficulty_adjustment_factor: Arc<std::sync::Mutex<u128>>, // Dynamic difficulty multiplier
     consecutive_fast_blocks: AtomicU64,   // Counter for consecutive fast blocks
     consecutive_slow_blocks: AtomicU64,   // Counter for consecutive slow blocks
 }
@@ -315,7 +337,7 @@ impl BlockTimingCoordinator {
             // Initialize predictive scheduling
             moving_average_window: Arc::new(std::sync::Mutex::new(VecDeque::with_capacity(20))),
             predicted_next_block_time: AtomicU64::new(TARGET_BLOCK_TIME_US),
-            difficulty_adjustment_factor: Arc::new(std::sync::Mutex::new(1.0)),
+            difficulty_adjustment_factor: Arc::new(std::sync::Mutex::new(crate::Q_SCALE)),
             consecutive_fast_blocks: AtomicU64::new(0),
             consecutive_slow_blocks: AtomicU64::new(0),
         }
@@ -357,43 +379,40 @@ impl BlockTimingCoordinator {
             self.update_predictive_scheduling().await;
         }
     }
-    /// Safe weighted average calculation to prevent overflow
-    fn weighted_average(values: &[u64], weights: &[f64]) -> Option<f64> {
+    /// Safe weighted average calculation using integer math
+    fn weighted_average(values: &[u64], weights: &[u128]) -> Option<u128> {
         if values.is_empty() || weights.is_empty() || values.len() != weights.len() {
             return None;
         }
 
-        let mut weighted_sum = 0.0;
-        let mut weight_sum = 0.0;
+        let mut weighted_sum = 0u128;
+        let mut weight_sum = 0u128;
 
         for (&value, &weight) in values.iter().zip(weights.iter()) {
-            if weight < 0.0 || !weight.is_finite() {
-                continue; // Skip invalid weights
-            }
-            weighted_sum += value as f64 * weight;
+            weighted_sum += value as u128 * weight;
             weight_sum += weight;
         }
 
-        if weight_sum > 0.0 {
+        if weight_sum > 0 {
             Some(weighted_sum / weight_sum)
         } else {
             None
         }
     }
 
-    /// Safe trend calculation using f64 arithmetic
-    fn calculate_safe_trend(recent_values: &[u64], older_values: &[u64]) -> Option<f64> {
+    /// Safe trend calculation using integer arithmetic
+    fn calculate_safe_trend(recent_values: &[u64], older_values: &[u64]) -> Option<u128> {
         if recent_values.is_empty() || older_values.is_empty() {
             return None;
         }
 
         let recent_avg =
-            recent_values.iter().map(|&x| x as f64).sum::<f64>() / recent_values.len() as f64;
+            recent_values.iter().map(|&x| x as u128).sum::<u128>() / recent_values.len() as u128;
         let older_avg =
-            older_values.iter().map(|&x| x as f64).sum::<f64>() / older_values.len() as f64;
+            older_values.iter().map(|&x| x as u128).sum::<u128>() / older_values.len() as u128;
 
-        if older_avg > 0.0 && recent_avg.is_finite() && older_avg.is_finite() {
-            Some(recent_avg / older_avg)
+        if older_avg > 0 {
+            Some((recent_avg * crate::Q_SCALE) / older_avg)
         } else {
             None
         }
@@ -411,14 +430,14 @@ impl BlockTimingCoordinator {
             }
             has_enough_samples = true;
 
-            // Calculate weighted moving average using safe f64 arithmetic
+            // Calculate weighted moving average using safe integer arithmetic
             let values: Vec<u64> = window.iter().copied().collect();
-            let weights: Vec<f64> = (1..=values.len()).map(|i| i as f64).collect();
+            let weights: Vec<u128> = (1..=values.len()).map(|i| i as u128).collect();
 
-            if let Some(predicted_time_f64) = Self::weighted_average(&values, &weights) {
-                let predicted_time = predicted_time_f64.round() as u64;
+            if let Some(predicted_time_scaled) = Self::weighted_average(&values, &weights) {
+                let predicted_time = predicted_time_scaled as u64;
 
-                // Apply trend analysis for better prediction using safe calculations
+                // Apply trend analysis for better prediction
                 if window.len() >= 10 {
                     let recent_values: Vec<u64> = window.iter().rev().take(5).copied().collect();
                     let older_values: Vec<u64> =
@@ -427,17 +446,11 @@ impl BlockTimingCoordinator {
                     if let Some(trend_factor) =
                         Self::calculate_safe_trend(&recent_values, &older_values)
                     {
-                        let trend_adjusted_time_f64 = predicted_time as f64 * trend_factor;
-                        if trend_adjusted_time_f64.is_finite() {
-                            let trend_adjusted_time = trend_adjusted_time_f64.round() as u64;
-                            let clamped =
-                                trend_adjusted_time.clamp(MIN_BLOCK_TIME_US, MAX_BLOCK_TIME_US);
-                            self.predicted_next_block_time
-                                .store(clamped, Ordering::Relaxed);
-                        } else {
-                            self.predicted_next_block_time
-                                .store(predicted_time, Ordering::Relaxed);
-                        }
+                        let trend_adjusted_time = (predicted_time as u128 * trend_factor) / crate::Q_SCALE;
+                        let clamped =
+                            (trend_adjusted_time as u64).clamp(MIN_BLOCK_TIME_US, MAX_BLOCK_TIME_US);
+                        self.predicted_next_block_time
+                            .store(clamped, Ordering::Relaxed);
                     } else {
                         self.predicted_next_block_time
                             .store(predicted_time, Ordering::Relaxed);
@@ -466,43 +479,44 @@ impl BlockTimingCoordinator {
         if let Ok(mut difficulty_factor) = self.difficulty_adjustment_factor.lock() {
             // Adjust difficulty based on consecutive fast/slow blocks
             if fast_blocks >= 3 {
-                // Too many fast blocks - increase difficulty
-                *difficulty_factor = (*difficulty_factor * 1.05).min(2.0);
+                // Too many fast blocks - increase difficulty (scaled)
+                *difficulty_factor = (*difficulty_factor * 105 / 100).min(crate::Q_SCALE * 2);
                 self.consecutive_fast_blocks.store(0, Ordering::Relaxed);
                 debug!(
-                    "Increased difficulty factor to {:.3} due to {} consecutive fast blocks",
+                    "Increased difficulty factor to {} units due to {} consecutive fast blocks",
                     *difficulty_factor, fast_blocks
                 );
             } else if slow_blocks >= 3 {
-                // Too many slow blocks - decrease difficulty
-                *difficulty_factor = (*difficulty_factor * 0.95).max(0.5);
+                // Too many slow blocks - decrease difficulty (scaled)
+                *difficulty_factor = (*difficulty_factor * 95 / 100).max(crate::Q_SCALE / 2);
                 self.consecutive_slow_blocks.store(0, Ordering::Relaxed);
                 debug!(
-                    "Decreased difficulty factor to {:.3} due to {} consecutive slow blocks",
+                    "Decreased difficulty factor to {} units due to {} consecutive slow blocks",
                     *difficulty_factor, slow_blocks
                 );
             }
 
             // Fine-tune based on prediction vs target
-            let prediction_ratio = predicted_time as f64 / target_time as f64;
-            if prediction_ratio > 1.2 {
+            // prediction_ratio = predicted_time / target_time (scaled by Q_SCALE)
+            let prediction_ratio = (predicted_time as u128 * crate::Q_SCALE) / target_time as u128;
+            if prediction_ratio > (120 * crate::Q_SCALE / 100) {
                 // Predicted time too slow
-                *difficulty_factor *= 0.98;
-            } else if prediction_ratio < 0.8 {
+                *difficulty_factor = (*difficulty_factor * 98) / 100;
+            } else if prediction_ratio < (80 * crate::Q_SCALE / 100) {
                 // Predicted time too fast
-                *difficulty_factor *= 1.02;
+                *difficulty_factor = (*difficulty_factor * 102) / 100;
             }
 
-            *difficulty_factor = difficulty_factor.clamp(0.5, 2.0);
+            *difficulty_factor = difficulty_factor.clamp(crate::Q_SCALE / 2, crate::Q_SCALE * 2);
         }
     }
 
     /// Get current difficulty adjustment factor for mining
-    pub fn get_difficulty_adjustment_factor(&self) -> f64 {
+    pub fn get_difficulty_adjustment_factor(&self) -> u128 {
         self.difficulty_adjustment_factor
             .lock()
             .map(|f| *f)
-            .unwrap_or(1.0)
+            .unwrap_or(crate::Q_SCALE)
     }
 
     /// Get predicted next block time for optimization
@@ -523,9 +537,9 @@ impl BlockTimingCoordinator {
 
     /// Adjust timing intervals based on current system load and performance
     async fn adjust_timing_based_on_load(&self) {
-        let current_bps = self.actual_bps.load(Ordering::Relaxed) as f64;
-        let target_bps = self.target_bps.load(Ordering::Relaxed) as f64;
-        let load_factor = self.load_factor.load(Ordering::Relaxed) as f64 / 100.0;
+        let current_bps = self.actual_bps.load(Ordering::Relaxed) as u128 * crate::Q_SCALE;
+        let target_bps = self.target_bps.load(Ordering::Relaxed) as u128 * crate::Q_SCALE;
+        let load_factor = self.load_factor.load(Ordering::Relaxed) as u128 * crate::Q_SCALE / 100;
 
         // Update performance history
         if let Ok(mut history) = self.performance_history.lock() {
@@ -536,10 +550,10 @@ impl BlockTimingCoordinator {
         }
 
         // Calculate performance ratio and trend
-        let performance_ratio = if target_bps > 0.0 {
-            current_bps / target_bps
+        let performance_ratio = if target_bps > 0 {
+            (current_bps * crate::Q_SCALE) / target_bps
         } else {
-            0.0
+            0
         };
         let trend = self.calculate_performance_trend();
 
@@ -548,29 +562,29 @@ impl BlockTimingCoordinator {
         let mut new_interval = current_interval;
 
         // Adaptive logic: 15-35ms range based on load and performance (more aggressive)
-        if performance_ratio < 0.85 {
+        if performance_ratio < (85 * crate::Q_SCALE / 100) {
             // Performance below 85% of target - reduce interval (faster blocks)
-            let reduction_factor = 0.92 - (load_factor * 0.12); // More aggressive reduction
-            new_interval = ((current_interval as f64) * reduction_factor) as u64;
+            let reduction_factor = (92 * crate::Q_SCALE / 100).saturating_sub(load_factor * 12 / 100);
+            new_interval = ((current_interval as u128 * reduction_factor) / crate::Q_SCALE) as u64;
             new_interval = new_interval.max(15_000); // Min 15ms (66.7 BPS)
-        } else if performance_ratio > 1.15 && trend > 0.08 {
+        } else if performance_ratio > (115 * crate::Q_SCALE / 100) && trend > (8 * crate::Q_SCALE / 100) as i128 {
             // Performance above 115% and trending up - can increase interval slightly
-            let increase_factor = 1.03 + (load_factor * 0.02); // More conservative increase
-            new_interval = ((current_interval as f64) * increase_factor) as u64;
+            let increase_factor = (103 * crate::Q_SCALE / 100) + (load_factor * 2 / 100);
+            new_interval = ((current_interval as u128 * increase_factor) / crate::Q_SCALE) as u64;
             new_interval = new_interval.min(35_000); // Max 35ms (28.6 BPS)
         }
 
         // Apply load-based fine-tuning (more aggressive)
-        if load_factor > 0.85 {
+        if load_factor > 85 * crate::Q_SCALE / 100 {
             // High load - be more conservative
             new_interval = new_interval.max(30_000); // At least 30ms under high load
-        } else if load_factor < 0.25 {
+        } else if load_factor < 25 * crate::Q_SCALE / 100 {
             // Low load - can be very aggressive
             new_interval = new_interval.min(20_000); // At most 20ms under low load (50 BPS)
         }
 
         // Only adjust if change is significant (>3% or >1ms) - more responsive
-        let change_threshold = (current_interval as f64 * 0.03).max(1000.0) as u64;
+        let change_threshold = (current_interval as u128 * 3 / 100).max(1000) as u64;
         if (new_interval as i64 - current_interval as i64).abs() > change_threshold as i64 {
             self.adaptive_interval_us
                 .store(new_interval, Ordering::Relaxed);
@@ -585,33 +599,37 @@ impl BlockTimingCoordinator {
             self.last_adjustment_time.store(now_us, Ordering::Relaxed);
 
             debug!(
-                "Adaptive timing adjustment: {}μs -> {}μs (load: {:.1}%, BPS: {:.2}, trend: {:.3})",
+                "Adaptive timing adjustment: {}μs -> {}μs (load: {} units, BPS: {}, trend: {})",
                 current_interval,
                 new_interval,
-                load_factor * 100.0,
+                load_factor,
                 current_bps,
                 trend
             );
         }
     }
 
-    /// Calculate performance trend from recent history
-    fn calculate_performance_trend(&self) -> f64 {
+    /// Calculate performance trend from recent history using integer math
+    fn calculate_performance_trend(&self) -> i128 {
         if let Ok(history) = self.performance_history.lock() {
             if history.len() < 10 {
-                return 0.0;
+                return 0;
             }
 
-            let recent_avg: f64 = history.iter().rev().take(5).sum::<f64>() / 5.0;
-            let older_avg: f64 = history.iter().rev().skip(5).take(5).sum::<f64>() / 5.0;
+            let recent_avg: u128 = history.iter().rev().take(5).sum::<u128>() / 5;
+            let older_avg: u128 = history.iter().rev().skip(5).take(5).sum::<u128>() / 5;
 
-            if older_avg > 0.0 {
-                (recent_avg - older_avg) / older_avg
+            if older_avg > 0 {
+                if recent_avg >= older_avg {
+                    ((recent_avg - older_avg) * crate::Q_SCALE / older_avg) as i128
+                } else {
+                    -(((older_avg - recent_avg) * crate::Q_SCALE / older_avg) as i128)
+                }
             } else {
-                0.0
+                0
             }
         } else {
-            0.0
+            0
         }
     }
 
@@ -667,11 +685,16 @@ impl BlockTimingCoordinator {
 
         if last_time > 0 {
             let block_interval_us = now_us - last_time;
-            let bps = 1_000_000.0 / block_interval_us as f64; // Convert μs to BPS
+            // BPS scaled by QANTO_SCALE
+            let bps = if block_interval_us > 0 {
+                (1_000_000 * crate::Q_SCALE) / block_interval_us as u128
+            } else {
+                0
+            };
             self.actual_bps.store(bps as u64, Ordering::Relaxed);
 
             debug!(
-                "Block completed in {}μs, current BPS: {:.2}",
+                "Block completed in {}μs, current BPS: {}",
                 block_interval_us, bps
             );
         }
@@ -689,28 +712,28 @@ impl BlockTimingCoordinator {
             let target = self.target_bps.load(Ordering::Relaxed);
 
             if actual > 0 {
-                let performance_ratio = actual as f64 / target as f64;
+                let performance_ratio_scaled = (actual as u128 * crate::Q_SCALE) / target as u128;
 
-                if performance_ratio >= 1.0 {
+                if performance_ratio_scaled >= crate::Q_SCALE {
                     info!(
-                        "✅ BPS Performance: {:.2} BPS (target: {} BPS) - {:.1}%",
+                        "✅ BPS Performance: {} units (target: {} units) - {}%",
                         actual,
                         target,
-                        performance_ratio * 100.0
+                        (performance_ratio_scaled * 100) / crate::Q_SCALE
                     );
-                } else if performance_ratio >= 0.8 {
+                } else if performance_ratio_scaled >= (80 * crate::Q_SCALE / 100) {
                     warn!(
-                        "⚠️  BPS Performance: {:.2} BPS (target: {} BPS) - {:.1}%",
+                        "⚠️  BPS Performance: {} units (target: {} units) - {}%",
                         actual,
                         target,
-                        performance_ratio * 100.0
+                        (performance_ratio_scaled * 100) / crate::Q_SCALE
                     );
                 } else {
                     error!(
-                        "❌ BPS Performance: {:.2} BPS (target: {} BPS) - {:.1}%",
+                        "❌ BPS Performance: {} units (target: {} units) - {}%",
                         actual,
                         target,
-                        performance_ratio * 100.0
+                        (performance_ratio_scaled * 100) / crate::Q_SCALE
                     );
                 }
             }
@@ -763,7 +786,7 @@ impl Clone for BlockTimingCoordinator {
                 self.difficulty_adjustment_factor
                     .lock()
                     .map(|f| *f)
-                    .unwrap_or(1.0),
+                    .unwrap_or(crate::Q_SCALE),
             )),
             consecutive_fast_blocks: AtomicU64::new(
                 self.consecutive_fast_blocks.load(Ordering::Relaxed),
@@ -801,13 +824,19 @@ pub mod timing_utils {
     }
 
     /// Calculate BPS from block time in microseconds
-    pub fn calculate_bps_from_us(block_time_us: u64) -> f64 {
-        1_000_000.0 / block_time_us as f64
+    pub fn calculate_bps_from_us(block_time_us: u64) -> u128 {
+        if block_time_us == 0 {
+            0
+        } else {
+            (1_000_000 * crate::Q_SCALE) / block_time_us as u128
+        }
     }
 
-    /// Calculate optimal mining interval for target BPS
-    pub fn calculate_optimal_mining_interval_us(target_bps: f64) -> u64 {
-        let block_time_us = (1_000_000.0 / target_bps) as u64;
+    pub fn calculate_optimal_mining_interval_us(target_bps: u128) -> u64 {
+        if target_bps == 0 {
+            return 0;
+        }
+        let block_time_us = ((1_000_000 * crate::Q_SCALE) / target_bps) as u64;
         // Mining interval should be 1/4 of block time for optimal performance
         block_time_us / 4
     }

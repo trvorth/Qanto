@@ -381,7 +381,7 @@ impl PerformanceValidator {
                     id: tx_id,
                     sender,
                     receiver,
-                    amount: 1000 + (i as u64 * 10),
+                    amount: 1000 + (i as u64 * 10) as u128,
                     fee: 10,
                     gas_limit: 21_000,
                     gas_used: 0,
@@ -440,7 +440,7 @@ impl PerformanceValidator {
             let tx_config = crate::transaction::TransactionConfig {
                 sender,
                 receiver,
-                amount: 1000 + (i as u64 * 10),
+                amount: 1000 + (i as u64 * 10) as u128,
                 fee: 10,
                 gas_limit: 21_000,
                 gas_price: 1_000,
@@ -489,7 +489,7 @@ impl PerformanceValidator {
             chain_id: 0,
             parents,
             transactions,
-            difficulty: 0.1, // Use very low difficulty for fast testing
+            difficulty: 100_000_000, // Use very low difficulty for fast testing (0.1 scaled)
             validator: crate::qantodag::DEV_ADDRESS.to_string(),
             miner: crate::qantodag::DEV_ADDRESS.to_string(),
             validator_private_key: QantoPQPrivateKey::new_dummy(),
@@ -641,7 +641,7 @@ pub async fn validate_performance_targets(
         initial_validator: crate::qantodag::DEV_ADDRESS.to_string(),
         target_block_time: 30,
         num_chains: 4,
-        dev_fee_rate: 0.10,
+        dev_fee_rate: 100_000_000,
     };
 
     let dag_instance = QantoDAG::new(

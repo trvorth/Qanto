@@ -911,14 +911,14 @@ impl EnhancedOmegaOrchestrator {
             },
             parents: vec![],      // Would need proper parent resolution
             transactions: vec![], // Would contain actual transactions
-            difficulty: 1.0,
+            difficulty: 1_000_000_000,
             validator: "enhanced_omega".to_string(),
             miner: "enhanced_omega".to_string(),
             nonce: 0,
             timestamp: result.context.timestamp,
             height: 0, // Would need proper height calculation
             reward: 0,
-            effort: result.gas_used,
+            effort: result.gas_used as u128,
             cross_chain_references: vec![],
             cross_chain_swaps: vec![],
             merkle_root: hex::encode(&transaction_data[..32.min(transaction_data.len())]),
@@ -1054,7 +1054,7 @@ impl EnhancedOmegaOrchestrator {
                     .transactions
                     .iter()
                     .map(|tx| tx.fee)
-                    .sum::<u64>()
+                    .sum::<u128>() as u64
             })
             .sum::<u64>();
         Ok((block_count, total_gas))
@@ -1113,7 +1113,7 @@ pub mod enhanced_simulation {
             num_chains: 1,
             initial_validator: "mock_validator".to_string(),
             target_block_time: 10000, // 10 seconds in milliseconds
-            dev_fee_rate: 0.10,
+            dev_fee_rate: 100_000_000,
         };
         let mock_saga = Arc::new(PalletSaga::new(
             #[cfg(feature = "infinite-strata")]

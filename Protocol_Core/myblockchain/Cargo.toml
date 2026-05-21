@@ -90,6 +90,7 @@ name = "main"
 harness = false
 
 [features]
+analyzer = []
 default = ["zk"]
 zk = [
     "bellman",

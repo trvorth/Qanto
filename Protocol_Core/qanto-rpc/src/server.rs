@@ -35,14 +35,14 @@ pub struct NetworkStats {
 #[async_trait]
 pub trait RpcBackend: Send + Sync + 'static {
     async fn submit_transaction(&self, tx: generated::Transaction) -> Result<(), String>;
-    async fn get_balance(&self, address: String) -> Result<u64, String>;
+    async fn get_balance(&self, address: String) -> Result<u128, String>;
     async fn get_block(&self, block_id: String) -> Result<generated::QantoBlock, String>;
     async fn get_network_stats(&self) -> Result<NetworkStats, String>;
     fn balance_updates_receiver(
         &self,
     ) -> tokio::sync::broadcast::Receiver<generated::BalanceUpdate>;
     // Wallet-specific balance with unconfirmed delta
-    async fn get_wallet_balance(&self, address: String) -> Result<(u64, u64), String>;
+    async fn get_wallet_balance(&self, address: String) -> Result<(u128, u128), String>;
 }
 
 #[derive(Clone)]
@@ -55,7 +55,7 @@ impl RpcService {
         Self { backend }
     }
 
-    fn format_balance(base_units: u64) -> String {
+    fn format_balance(base_units: u128) -> String {
         // Represent balance as base units string to avoid cross-crate constants.
         base_units.to_string()
     }
@@ -91,7 +91,7 @@ impl QantoRpc for RpcService {
         let addr = request.into_inner().address;
         match self.backend.get_balance(addr).await {
             Ok(total) => Ok(Response::new(GetBalanceResponse {
-                base_units: total,
+                base_units: total as u64,
                 balance: Self::format_balance(total),
             })),
             Err(e) => Err(Status::invalid_argument(e)),
@@ -165,8 +165,8 @@ impl WalletService for RpcService {
         let addr = request.into_inner().address;
         match self.backend.get_wallet_balance(addr).await {
             Ok((confirmed, unconfirmed_delta)) => Ok(Response::new(BalanceResponse {
-                balance: confirmed,
-                unconfirmed_balance: unconfirmed_delta,
+                balance: confirmed as u64,
+                unconfirmed_balance: unconfirmed_delta as u64,
             })),
             Err(e) => Err(Status::invalid_argument(e)),
         }

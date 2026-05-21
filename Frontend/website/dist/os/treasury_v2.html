@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO TREASURY | Energy Yield</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(5, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .t-header { border-bottom: 2px solid #ffaa00; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .yield-canvas-container { 
+            background: rgba(0,0,0,0.4); 
+            border: 1px solid rgba(255, 170, 0, 0.2); 
+            border-radius: 16px; 
+            padding: 20px; 
+            margin-bottom: 30px; 
+            position: relative;
+            height: 200px;
+        }
+        #yieldPulse { width: 100%; height: 100%; }
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .stat-box { background: rgba(0,0,0,0.6); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); text-align: center; }
+        .apr-value { font-size: 28px; font-weight: 900; color: #ffaa00; text-shadow: 0 0 15px rgba(255, 170, 0, 0.4); }
+        .label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .liquid-shimmer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 170, 0, 0.05), transparent);
+            background-size: 200% 100%;
+            animation: shimmer 5s infinite;
+            pointer-events: none;
+        }
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+    </style>
+</head>
+<body>
+    <div class="t-header">
+        <div>
+            <h1 style="margin:0; letter-spacing: 4px; font-weight: 900;">ENERGY YIELD HARVEST</h1>
+            <div style="font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px;">Zero-Point Energy Extraction Telemetry</div>
+        </div>
+        <div style="text-align: right;">
+            <div style="font-size: 14px; color: #ffaa00; font-family: 'JetBrains Mono', monospace;">ZPE-MAX ACTIVE</div>
+            <div style="font-size: 9px; color: #888;">SENTINEL UPTIME: 99.999%</div>
+        </div>
+    </div>
+
+    <div class="yield-canvas-container">
+        <div class="liquid-shimmer"></div>
+        <canvas id="yieldPulse"></canvas>
+        <div style="position: absolute; top: 20px; right: 20px; text-align: right;">
+            <div class="label">Real-Time APR</div>
+            <div class="apr-value" id="dynamicApr">12.42%</div>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-box" style="border-color: #ffd700;">
+            <div class="label" style="color: #ffd700;">QNTO Market Price</div>
+            <div style="font-size: 20px; font-weight: 700;" id="qntoPrice">$1,042,420.00</div>
+            <div style="font-size: 9px; color: #00ffaa;">+4.24% [VERIFIED]</div>
+        </div>
+        <div class="stat-box">
+            <div class="label">24h Trading Volume</div>
+            <div style="font-size: 20px; font-weight: 700;">$42.8B</div>
+            <div style="font-size: 9px; color: #888;">MESH LIQUIDITY: INFINITE</div>
+        </div>
+        <div class="stat-box" style="border-color: #00e5ff;">
+            <div class="label" style="color: #00e5ff;">eQNTO Synaptic Yield</div>
+            <div style="font-size: 20px; font-weight: 700;">$14,284.12</div>
+            <div style="font-size: 9px; color: #00e5ff;">INTENT REWARD ACTIVE</div>
+        </div>
+    </div>
+
+    <div class="stats-grid" style="margin-top: 20px;">
+        <div class="stat-box">
+            <div class="label">Global Market Cap</div>
+            <div style="font-size: 20px; font-weight: 700; letter-spacing: 2px;">$1.042T</div>
+        </div>
+        <div class="stat-box">
+            <div class="label">Extraction Efficiency</div>
+            <div style="font-size: 20px; font-weight: 700; color: #00ffaa;">99.8%</div>
+        </div>
+        <div class="stat-box">
+            <div class="label">Network Entrenchment</div>
+            <div style="font-size: 20px; font-weight: 700;">OMNIPRESENT</div>
+        </div>
+    </div>
+
+    <!-- Phase 163: Kinetic Swarm Module -->
+    <div style="margin-top: 40px; background: rgba(255, 170, 0, 0.05); border: 1px dashed rgba(255, 170, 0, 0.3); padding: 30px; border-radius: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="margin:0; letter-spacing: 3px; font-size: 14px; color: #ffaa00;"><i class="fas fa-microchip" style="margin-right: 10px;"></i> KINETIC SWARM | CONSTRUCTION FEED</h3>
+            <span style="font-size: 9px; color: #00ffaa; font-family: 'Space Mono', monospace;">SWARM_CONSENSUS: ACTIVE</span>
+        </div>
+        <div id="kinetic-feed" style="font-family: 'Space Mono', monospace; font-size: 10px; color: #888; height: 80px; overflow-y: hidden;">
+            <div>> INITIALIZING KINETIC_ECONOMY_BRIDGE...</div>
+            <div>> DETECTING RESOURCE_ALLOCATION [BLOCK_104242]</div>
+            <div style="color: #ffaa00;">> ORDER_77: SPIRE_ALPHA_NY [FOUNDATION_SET]</div>
+        </div>
+    <!-- Phase 184: The Genesis Transaction Interface -->
+    <div style="margin-top: 30px; text-align: center;">
+        <button id="mint-genesis" onclick="mintGenesisAllocation()" style="background: linear-gradient(135deg, #ffaa00, #ff8800); border: none; color: black; padding: 15px 40px; border-radius: 50px; font-weight: 900; letter-spacing: 2px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 0 20px rgba(255, 170, 0, 0.4); text-transform: uppercase; font-size: 13px;">
+            <i class="fas fa-gem" style="margin-right: 10px;"></i> MINT GENESIS ALLOCATION
+        </button>
+    </div>
+
+    <!-- Phase 185: The Sovereign Stake Interface -->
+    <div style="margin-top: 35px; text-align: center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 25px;">
+        <h4 style="color: #00e5ff; font-size: 9px; letter-spacing: 4px; margin-bottom: 20px; text-transform: uppercase; font-weight: 400; opacity: 0.6;">STAKE_DELEGATION_ENGINE</h4>
+        <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 20px;">
+            <input type="number" id="stake-amount" placeholder="AMOUNT" style="background: rgba(0,0,0,0.3); border: 1px solid rgba(0, 229, 255, 0.2); color: #fff; padding: 12px; border-radius: 12px; width: 100px; font-family: 'JetBrains Mono', monospace; text-align: center; font-size: 12px; outline: none;">
+            <button id="stake-qanto" onclick="stakeGenesisAllocation()" style="background: transparent; border: 1px solid #00ffaa; color: #00ffaa; padding: 12px 25px; border-radius: 14px; font-weight: 700; letter-spacing: 2px; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase; font-size: 11px;">
+                <i class="fas fa-server" style="margin-right: 10px;"></i> DELEGATE TO SENTINEL
+            </button>
+        </div>
+    </div>
+
+    <script>
+        async function mintGenesisAllocation() {
+            const btn = document.getElementById('mint-genesis');
+            if (!window.ethereum) {
+                alert("METAMASK REQUIRED FOR GENESIS MINT.");
+                return;
+            }
+
+            try {
+                btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> INITIALIZING MINT...`;
+                btn.style.opacity = "0.7";
+                btn.disabled = true;
+
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                const account = accounts[0];
+
+                const transactionParameters = {
+                    to: '0x000000000000000000000000000000000000GΞN1',
+                    from: account,
+                    value: '0x3635c9adc5dea00000', // 1,000 eQNTO
+                };
+
+                const txHash = await window.ethereum.request({
+                    method: 'eth_sendTransaction',
+                    params: [transactionParameters],
+                });
+
+                console.log("GENESIS MINT SUCCESS:", txHash);
+                btn.innerHTML = `<i class="fas fa-check"></i> MINTED: ${txHash.substring(0, 10)}...`;
+                btn.style.background = "#00ffaa";
+                btn.disabled = true;
+
+            } catch (error) {
+                console.error("MINT ERROR:", error);
+                btn.innerHTML = `RETRY MINT <i class="fas fa-redo"></i>`;
+                btn.style.background = "#ff3366";
+                btn.disabled = false;
+                btn.style.opacity = "1";
+            }
+        }
+
+        async function stakeGenesisAllocation() {
+            const btn = document.getElementById('stake-qanto');
+            const amt = document.getElementById('stake-amount') ? document.getElementById('stake-amount').value : "100";
+            if (!window.ethereum) return;
+
+            try {
+                btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> STAKING...`;
+                btn.disabled = true;
+
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                
+                const txHash = await window.ethereum.request({
+                    method: 'eth_sendTransaction',
+                    params: [{
+                        to: '0x000000000000000000000000000000000000STAK3',
+                        from: accounts[0],
+                        value: '0x0',
+                        data: '0x7374616b65'
+                    }],
+                });
+
+                console.log("STAKING SUCCESS:", txHash);
+                btn.innerHTML = `<i class="fas fa-check"></i> STAKED: ${amt} eQNTO`;
+                btn.style.color = "#000";
+                btn.style.background = "#00ffaa";
+
+            } catch (error) {
+                console.error("STAKING ERROR:", error);
+                btn.innerHTML = `RETRY STAKE`;
+                btn.disabled = false;
+            }
+        }
+
+        const canvas = document.getElementById('yieldPulse');
+        const ctx = canvas.getContext('2d');
+        const aprEl = document.getElementById('dynamicApr');
+        let points = [];
+        
+        function resize() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+        window.onresize = resize;
+        resize();
+
+        for (let i = 0; i < 120; i++) {
+            points.push({ x: (canvas.width / 120) * i, y: canvas.height / 2 });
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 170, 0, 0.6)';
+            ctx.lineWidth = 3;
+            ctx.lineJoin = 'round';
+            
+            ctx.moveTo(0, canvas.height / 2);
+            for (let i = 1; i < points.length; i++) {
+                const p = points[i];
+                const noise = Math.sin(Date.now() / 200 + i / 3) * 15;
+                const jitter = Math.random() * 2;
+                p.y = (canvas.height / 2) + noise + jitter;
+                ctx.lineTo(p.x, p.y);
+            }
+            ctx.stroke();
+
+            // Gradient fill
+            ctx.lineTo(canvas.width, canvas.height);
+            ctx.lineTo(0, canvas.height);
+            const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            grad.addColorStop(0, 'rgba(255, 170, 0, 0.15)');
+            grad.addColorStop(1, 'transparent');
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            // Phase 117/153: Market Price Discovery Jitter
+            if (Date.now() % 50 === 0) {
+                const current = parseFloat(aprEl.innerText);
+                const drift = (Math.random() - 0.5) * 0.05;
+                aprEl.innerText = (current + drift).toFixed(2) + "%";
+
+                // Market Mirror Price Jitter
+                const priceEl = document.getElementById('qntoPrice');
+                if (priceEl) {
+                    const basePrice = 1042420;
+                    const priceDrift = (Math.random() - 0.5) * 500;
+                    priceEl.innerText = "$" + (basePrice + priceDrift).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
+            }
+
+            requestAnimationFrame(draw);
+        }
+        draw();
+    </script>
+</body>
+</html>

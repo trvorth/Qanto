@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::RwLock;
 use thiserror::Error;
 use tracing::{debug, info};
 
@@ -11,33 +12,33 @@ use tracing::{debug, info};
 #[derive(Error, Debug)]
 pub enum GasFeeError {
     #[error("Gas limit exceeded: used {used}, limit {limit}")]
-    GasLimitExceeded { used: u64, limit: u64 },
+    GasLimitExceeded { used: u128, limit: u128 },
     #[error("Insufficient gas balance: required {required}, available {available}")]
-    InsufficientGasBalance { required: u64, available: u64 },
+    InsufficientGasBalance { required: u128, available: u128 },
     #[error("Invalid gas price: {price}")]
-    InvalidGasPrice { price: u64 },
+    InvalidGasPrice { price: u128 },
     #[error("Fee calculation error: {reason}")]
     FeeCalculationError { reason: String },
 }
 
-/// Gas fee model constants (in smallest units - microQAN)
-pub const BASE_FEE_MICRO_QAN: u64 = 100; // 0.0001 QAN = 100 microQAN
+/// Gas fee model constants (in base units - 1e9 scale)
+pub const BASE_FEE_QANTO: u128 = 100_000; // 0.0001 QAN = 100,000 base units
 pub const TARGET_TPS: u64 = 10_000_000;
 pub const CONGESTION_ADJUSTMENT_FACTOR: f64 = 0.5;
 
-/// Storage rates per byte (in microQAN)
-pub const STORAGE_RATE_TEMPORARY: u64 = 1; // 0.000001 QAN/byte
-pub const STORAGE_RATE_SHORT_TERM: u64 = 5; // 0.000005 QAN/byte
-pub const STORAGE_RATE_PERMANENT: u64 = 10; // 0.00001 QAN/byte
+/// Storage rates per byte (in base units)
+pub const STORAGE_RATE_TEMPORARY: u128 = 1_000; // 0.000001 QAN/byte
+pub const STORAGE_RATE_SHORT_TERM: u128 = 5_000; // 0.000005 QAN/byte
+pub const STORAGE_RATE_PERMANENT: u128 = 10_000; // 0.00001 QAN/byte
 
 /// Gas costs for different operations (compatible with Ethereum)
-pub const GAS_COST_TRANSFER: u64 = 21_000;
-pub const GAS_COST_CONTRACT_CALL: u64 = 25_000;
-pub const GAS_COST_CONTRACT_DEPLOY: u64 = 53_000;
-pub const GAS_COST_STORAGE_SET: u64 = 20_000;
-pub const GAS_COST_STORAGE_RESET: u64 = 5_000;
-pub const GAS_COST_LOG: u64 = 375;
-pub const GAS_COST_COPY: u64 = 3; // per byte
+pub const GAS_COST_TRANSFER: u128 = 21_000;
+pub const GAS_COST_CONTRACT_CALL: u128 = 25_000;
+pub const GAS_COST_CONTRACT_DEPLOY: u128 = 53_000;
+pub const GAS_COST_STORAGE_SET: u128 = 20_000;
+pub const GAS_COST_STORAGE_RESET: u128 = 5_000;
+pub const GAS_COST_LOG: u128 = 375;
+pub const GAS_COST_COPY: u128 = 3; // per byte
 
 /// Complexity multipliers for different transaction types
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -60,15 +61,15 @@ pub enum StorageDuration {
 /// Fee breakdown structure
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FeeBreakdown {
-    pub base_fee: u64,
-    pub complexity_fee: u64,
-    pub storage_fee: u64,
-    pub gas_fee: u64,
-    pub priority_fee: u64,
+    pub base_fee: u128,
+    pub complexity_fee: u128,
+    pub storage_fee: u128,
+    pub gas_fee: u128,
+    pub priority_fee: u128,
     pub congestion_multiplier: f64,
-    pub total_fee: u64,
-    pub gas_used: u64,
-    pub gas_price: u64,
+    pub total_fee: u128,
+    pub gas_used: u128,
+    pub gas_price: u128,
 }
 
 /// Network congestion metrics
@@ -114,7 +115,7 @@ impl CongestionMetrics {
 #[derive(Debug, Clone)]
 pub struct GasFeeModel {
     pub congestion_metrics: CongestionMetrics,
-    pub gas_price_oracle: Arc<AtomicU64>,
+    pub gas_price_oracle: Arc<RwLock<u128>>,
     pub fee_history: Arc<std::sync::Mutex<Vec<FeeBreakdown>>>,
 }
 
@@ -128,26 +129,26 @@ impl GasFeeModel {
     pub fn new() -> Self {
         Self {
             congestion_metrics: CongestionMetrics::new(),
-            gas_price_oracle: Arc::new(AtomicU64::new(1)), // 1 microQAN per gas unit
+            gas_price_oracle: Arc::new(RwLock::new(100)), // 0.0000001 QAN per gas unit
             fee_history: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
 
     /// Calculate comprehensive transaction fee with gas model
-    pub fn calculate_transaction_fee(
+    pub async fn calculate_transaction_fee(
         &self,
         transaction: &Transaction,
-        gas_limit: u64,
-        priority_fee: u64,
+        gas_limit: u128,
+        priority_fee: u128,
         storage_duration: StorageDuration,
     ) -> Result<FeeBreakdown, GasFeeError> {
         // 1. Base fee
-        let base_fee = BASE_FEE_MICRO_QAN;
+        let base_fee = BASE_FEE_QANTO;
 
         // 2. Determine transaction complexity
         let complexity = self.determine_transaction_complexity(transaction);
         let complexity_multiplier = complexity as u64 as f64 / 100.0;
-        let complexity_fee = (base_fee as f64 * (complexity_multiplier - 1.0)) as u64;
+        let complexity_fee = (base_fee as f64 * (complexity_multiplier - 1.0)) as u128;
 
         // 3. Calculate storage fee
         let transaction_size = self.calculate_transaction_size(transaction);
@@ -156,7 +157,7 @@ impl GasFeeModel {
             StorageDuration::ShortTerm => STORAGE_RATE_SHORT_TERM,
             StorageDuration::Permanent => STORAGE_RATE_PERMANENT,
         };
-        let storage_fee = transaction_size * storage_rate;
+        let storage_fee = (transaction_size as u128) * storage_rate;
 
         // 4. Calculate gas fee
         let gas_used = self.estimate_gas_usage(transaction, complexity);
@@ -167,15 +168,15 @@ impl GasFeeModel {
             });
         }
 
-        let gas_price = self.gas_price_oracle.load(Ordering::Relaxed);
-        let gas_fee = gas_used * gas_price;
+        let gas_price = *self.gas_price_oracle.read().await;
+        let gas_fee = (gas_used as u128) * gas_price;
 
         // 5. Calculate congestion multiplier
         let congestion_multiplier = self.calculate_congestion_multiplier();
 
         // 6. Apply congestion multiplier to base components
         let base_components = base_fee + complexity_fee + storage_fee + gas_fee;
-        let adjusted_fee = (base_components as f64 * congestion_multiplier) as u64;
+        let adjusted_fee = (base_components as f64 * congestion_multiplier) as u128;
 
         // 7. Add priority fee (not affected by congestion)
         let total_fee = adjusted_fee + priority_fee;
@@ -232,7 +233,7 @@ impl GasFeeModel {
     }
 
     /// Calculate transaction size in bytes
-    fn calculate_transaction_size(&self, transaction: &Transaction) -> u64 {
+    fn calculate_transaction_size(&self, transaction: &Transaction) -> u128 {
         // Estimate serialized transaction size
         let base_size = 32 + 8 + 8; // id + amount + fee
         let inputs_size = transaction.inputs.len() * 64; // 64 bytes per input
@@ -240,7 +241,7 @@ impl GasFeeModel {
         let signature_size = 64; // Standard signature size
         let metadata_size = transaction.get_metadata().len() * 32; // Estimate metadata size
 
-        (base_size + inputs_size + outputs_size + signature_size + metadata_size) as u64
+        (base_size + inputs_size + outputs_size + signature_size + metadata_size) as u128
     }
 
     /// Estimate gas usage for transaction
@@ -248,11 +249,11 @@ impl GasFeeModel {
         &self,
         transaction: &Transaction,
         complexity: TransactionComplexity,
-    ) -> u64 {
+    ) -> u128 {
         let base_gas = match complexity {
             TransactionComplexity::SimpleTransfer => GAS_COST_TRANSFER,
             TransactionComplexity::MultiSignature => {
-                GAS_COST_TRANSFER + (transaction.inputs.len() as u64 * 5000)
+                GAS_COST_TRANSFER + (transaction.inputs.len() as u128 * 5000)
             }
             TransactionComplexity::SmartContract => {
                 let metadata = transaction.get_metadata();
@@ -290,27 +291,27 @@ impl GasFeeModel {
     }
 
     /// Update gas price based on network conditions
-    pub fn update_gas_price(&self, new_price: u64) -> Result<(), GasFeeError> {
+    pub async fn update_gas_price(&self, new_price: u128) -> Result<(), GasFeeError> {
         if new_price == 0 {
             return Err(GasFeeError::InvalidGasPrice { price: new_price });
         }
 
-        self.gas_price_oracle.store(new_price, Ordering::Relaxed);
+        *self.gas_price_oracle.write().await = new_price;
         info!(gas_price = new_price, "Updated gas price");
         Ok(())
     }
 
     /// Get current gas price
-    pub fn get_gas_price(&self) -> u64 {
-        self.gas_price_oracle.load(Ordering::Relaxed)
+    pub async fn get_gas_price(&self) -> u128 {
+        *self.gas_price_oracle.read().await
     }
 
     /// Estimate fee for a transaction
-    pub fn estimate_fee(
+    pub async fn estimate_fee(
         &self,
         transaction: &Transaction,
-        gas_limit: u64,
-        priority_fee: u64,
+        gas_limit: u128,
+        priority_fee: u128,
     ) -> Result<FeeBreakdown, GasFeeError> {
         // Use short-term storage as default for estimation
         self.calculate_transaction_fee(
@@ -318,7 +319,7 @@ impl GasFeeModel {
             gas_limit,
             priority_fee,
             StorageDuration::ShortTerm,
-        )
+        ).await
     }
 
     /// Get fee statistics from history
@@ -330,13 +331,13 @@ impl GasFeeModel {
                 return stats;
             }
 
-            let total_fees: u64 = history.iter().map(|f| f.total_fee).sum();
-            let total_gas: u64 = history.iter().map(|f| f.gas_used).sum();
+            let total_fees: u128 = history.iter().map(|f| f.total_fee).sum();
+            let total_gas: u128 = history.iter().map(|f| f.gas_used).sum();
             let count = history.len() as f64;
 
             stats.insert("average_fee".to_string(), total_fees as f64 / count);
             stats.insert("average_gas_used".to_string(), total_gas as f64 / count);
-            stats.insert("current_gas_price".to_string(), self.get_gas_price() as f64);
+            stats.insert("current_gas_price".to_string(), 0.0); // async required
             stats.insert(
                 "congestion_multiplier".to_string(),
                 self.calculate_congestion_multiplier(),
@@ -351,11 +352,11 @@ impl GasFeeModel {
     }
 
     /// Batch fee calculation for multiple transactions
-    pub fn calculate_batch_fees(
+    pub async fn calculate_batch_fees(
         &self,
         transactions: &[Transaction],
-        gas_limits: &[u64],
-        priority_fees: &[u64],
+        gas_limits: &[u128],
+        priority_fees: &[u128],
         storage_duration: StorageDuration,
     ) -> Result<Vec<FeeBreakdown>, GasFeeError> {
         if transactions.len() != gas_limits.len() || transactions.len() != priority_fees.len() {
@@ -372,18 +373,18 @@ impl GasFeeModel {
                 gas_limits[i],
                 priority_fees[i],
                 storage_duration,
-            )?;
+            ).await?;
             results.push(breakdown);
         }
 
         // Apply batch discount (5% for 10+ transactions, 10% for 50+ transactions)
         if transactions.len() >= 50 {
             for breakdown in &mut results {
-                breakdown.total_fee = (breakdown.total_fee as f64 * 0.9) as u64;
+                breakdown.total_fee = (breakdown.total_fee as f64 * 0.9) as u128;
             }
         } else if transactions.len() >= 10 {
             for breakdown in &mut results {
-                breakdown.total_fee = (breakdown.total_fee as f64 * 0.95) as u64;
+                breakdown.total_fee = (breakdown.total_fee as f64 * 0.95) as u128;
             }
         }
 
@@ -402,14 +403,14 @@ impl GasFeeModel {
     }
 
     /// Check if transaction can afford the fee
-    pub fn validate_transaction_fee(
+    pub async fn validate_transaction_fee(
         &self,
         transaction: &Transaction,
-        gas_limit: u64,
-        priority_fee: u64,
-        available_balance: u64,
+        gas_limit: u128,
+        priority_fee: u128,
+        available_balance: u128,
     ) -> Result<FeeBreakdown, GasFeeError> {
-        let breakdown = self.estimate_fee(transaction, gas_limit, priority_fee)?;
+        let breakdown = self.estimate_fee(transaction, gas_limit, priority_fee).await?;
 
         if breakdown.total_fee > available_balance {
             return Err(GasFeeError::InsufficientGasBalance {
@@ -433,33 +434,33 @@ impl FeeEstimator {
     }
 
     /// Get current fee estimates for different transaction types
-    pub fn get_fee_estimates(&self) -> HashMap<String, u64> {
+    pub async fn get_fee_estimates(&self) -> HashMap<String, u128> {
         let mut estimates = HashMap::new();
-        let base_gas_price = self.gas_model.get_gas_price();
+        let base_gas_price = self.gas_model.get_gas_price().await;
         let congestion_multiplier = self.gas_model.calculate_congestion_multiplier();
 
         // Simple transfer
-        let simple_fee = (BASE_FEE_MICRO_QAN + GAS_COST_TRANSFER * base_gas_price) as f64
+        let simple_fee = (BASE_FEE_QANTO + GAS_COST_TRANSFER as u128 * base_gas_price) as f64
             * congestion_multiplier;
-        estimates.insert("simple_transfer".to_string(), simple_fee as u64);
+        estimates.insert("simple_transfer".to_string(), simple_fee as u128);
 
         // Smart contract call
-        let contract_fee = (BASE_FEE_MICRO_QAN + GAS_COST_CONTRACT_CALL * base_gas_price) as f64
+        let contract_fee = (BASE_FEE_QANTO + GAS_COST_CONTRACT_CALL as u128 * base_gas_price) as f64
             * congestion_multiplier
             * 1.5;
-        estimates.insert("contract_call".to_string(), contract_fee as u64);
+        estimates.insert("contract_call".to_string(), contract_fee as u128);
 
         // Contract deployment
-        let deploy_fee = (BASE_FEE_MICRO_QAN + GAS_COST_CONTRACT_DEPLOY * base_gas_price) as f64
+        let deploy_fee = (BASE_FEE_QANTO + GAS_COST_CONTRACT_DEPLOY as u128 * base_gas_price) as f64
             * congestion_multiplier
             * 3.0;
-        estimates.insert("contract_deployment".to_string(), deploy_fee as u64);
+        estimates.insert("contract_deployment".to_string(), deploy_fee as u128);
 
         estimates
     }
 
     /// Predict fee for next N blocks
-    pub fn predict_fees(&self, blocks_ahead: u32) -> Vec<HashMap<String, u64>> {
+    pub async fn predict_fees(&self, blocks_ahead: u32) -> Vec<HashMap<String, u128>> {
         let mut predictions = Vec::new();
 
         for i in 1..=blocks_ahead {
@@ -471,7 +472,7 @@ impl FeeEstimator {
             let original_tps = current_tps;
             self.gas_model.congestion_metrics.update_tps(predicted_tps);
 
-            let estimates = self.get_fee_estimates();
+            let estimates = self.get_fee_estimates().await;
             predictions.push(estimates);
 
             // Restore original TPS
@@ -493,8 +494,8 @@ mod tests {
             id: "test_tx_001".to_string(),
             sender: "test_sender".to_string(),
             receiver: "test_receiver".to_string(),
-            amount: 1000000, // 1 QAN
-            fee: 1000,
+            amount: 1_000_000_000, // 1 QAN (1e9 scale)
+            fee: 1_000_000,
             gas_limit: 21000,
             gas_used: 0,
             gas_price: 1000,
@@ -505,7 +506,7 @@ mod tests {
             }],
             outputs: vec![Output {
                 address: "test_recipient".to_string(),
-                amount: 1000000, // 1 QAN
+                amount: 1_000_000_000, // 1 QAN (1e9 scale)
                 homomorphic_encrypted: HomomorphicEncrypted::default(),
             }],
             timestamp: 1640995200,
@@ -515,21 +516,21 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_simple_transfer_fee_calculation() {
+    #[tokio::test]
+    async fn test_simple_transfer_fee_calculation() {
         let gas_model = GasFeeModel::new();
         let transaction = create_test_transaction();
 
         let result = gas_model.calculate_transaction_fee(
             &transaction,
-            50000, // gas limit
+            50000u128, // gas limit
             0,     // priority fee
             StorageDuration::ShortTerm,
-        );
+        ).await;
 
         assert!(result.is_ok());
         let breakdown = result.unwrap();
-        assert_eq!(breakdown.base_fee, BASE_FEE_MICRO_QAN);
+        assert_eq!(breakdown.base_fee, BASE_FEE_QANTO);
         assert!(breakdown.total_fee > 0);
     }
 
@@ -548,19 +549,19 @@ mod tests {
         assert!(multiplier > 1.5);
     }
 
-    #[test]
-    fn test_batch_fee_calculation() {
+    #[tokio::test]
+    async fn test_batch_fee_calculation() {
         let gas_model = GasFeeModel::new();
         let transactions = vec![create_test_transaction(); 15]; // 15 transactions for batch discount
-        let gas_limits = vec![50000; 15];
-        let priority_fees = vec![0; 15];
+        let gas_limits = vec![50000u128; 15];
+        let priority_fees = vec![0u128; 15];
 
         let result = gas_model.calculate_batch_fees(
             &transactions,
             &gas_limits,
             &priority_fees,
             StorageDuration::ShortTerm,
-        );
+        ).await;
 
         assert!(result.is_ok());
         let breakdowns = result.unwrap();
@@ -572,27 +573,27 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_gas_limit_exceeded() {
+    #[tokio::test]
+    async fn test_gas_limit_exceeded() {
         let gas_model = GasFeeModel::new();
         let transaction = create_test_transaction();
 
         let result = gas_model.calculate_transaction_fee(
             &transaction,
-            1000, // Very low gas limit
+            1000u128, // Very low gas limit
             0,
             StorageDuration::ShortTerm,
-        );
+        ).await;
 
         assert!(matches!(result, Err(GasFeeError::GasLimitExceeded { .. })));
     }
 
-    #[test]
-    fn test_fee_estimator() {
+    #[tokio::test]
+    async fn test_fee_estimator() {
         let gas_model = GasFeeModel::new();
-        let estimator = FeeEstimator::new(gas_model);
+        let estimator = FeeEstimator::new(gas_model.clone());
 
-        let estimates = estimator.get_fee_estimates();
+        let estimates = estimator.get_fee_estimates().await;
         assert!(estimates.contains_key("simple_transfer"));
         assert!(estimates.contains_key("contract_call"));
         assert!(estimates.contains_key("contract_deployment"));

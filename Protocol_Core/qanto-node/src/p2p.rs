@@ -220,7 +220,7 @@ fn convert_internal_tx_to_proto(tx: &crate::transaction::Transaction) -> proto::
         .iter()
         .map(|o| proto::Output {
             address: o.address.clone(),
-            amount: o.amount,
+            amount: o.amount as u64,
             homomorphic_encrypted: Some(proto::HomomorphicEncrypted {
                 ciphertext: o.homomorphic_encrypted.ciphertext.clone(),
                 public_key: o.homomorphic_encrypted.public_key.clone(),
@@ -234,27 +234,27 @@ fn convert_internal_tx_to_proto(tx: &crate::transaction::Transaction) -> proto::
     });
 
     let fee_breakdown = tx.fee_breakdown.as_ref().map(|fb| proto::FeeBreakdown {
-        base_fee: fb.base_fee,
-        complexity_fee: fb.complexity_fee,
-        storage_fee: fb.storage_fee,
-        gas_fee: fb.gas_fee,
-        priority_fee: fb.priority_fee,
+        base_fee: fb.base_fee as u64,
+        complexity_fee: fb.complexity_fee as u64,
+        storage_fee: fb.storage_fee as u64,
+        gas_fee: fb.gas_fee as u64,
+        priority_fee: fb.priority_fee as u64,
         congestion_multiplier: fb.congestion_multiplier,
-        total_fee: fb.total_fee,
-        gas_used: fb.gas_used,
-        gas_price: fb.gas_price,
+        total_fee: fb.total_fee as u64,
+        gas_used: fb.gas_used as u64,
+        gas_price: fb.gas_price as u64,
     });
 
     proto::Transaction {
         id: tx.id.clone(),
         sender: tx.sender.clone(),
         receiver: tx.receiver.clone(),
-        amount: tx.amount,
-        fee: tx.fee,
-        gas_limit: tx.gas_limit,
-        gas_used: tx.gas_used,
-        gas_price: tx.gas_price,
-        priority_fee: tx.priority_fee,
+        amount: tx.amount as u64,
+        fee: tx.fee as u64,
+        gas_limit: tx.gas_limit as u64,
+        gas_used: tx.gas_used as u64,
+        gas_price: tx.gas_price as u64,
+        priority_fee: tx.priority_fee as u64,
         inputs,
         outputs,
         timestamp: tx.timestamp,
@@ -279,7 +279,7 @@ fn convert_proto_tx(ptx: proto::Transaction) -> Result<crate::transaction::Trans
         .into_iter()
         .map(|o| crate::transaction::Output {
             address: o.address,
-            amount: o.amount,
+            amount: o.amount as u128,
             homomorphic_encrypted: match o.homomorphic_encrypted {
                 Some(he) => crate::types::HomomorphicEncrypted {
                     ciphertext: he.ciphertext,
@@ -304,27 +304,27 @@ fn convert_proto_tx(ptx: proto::Transaction) -> Result<crate::transaction::Trans
     let fee_breakdown = ptx
         .fee_breakdown
         .map(|fb| crate::gas_fee_model::FeeBreakdown {
-            base_fee: fb.base_fee,
-            complexity_fee: fb.complexity_fee,
-            storage_fee: fb.storage_fee,
-            gas_fee: fb.gas_fee,
-            priority_fee: fb.priority_fee,
+            base_fee: fb.base_fee as u128,
+            complexity_fee: fb.complexity_fee as u128,
+            storage_fee: fb.storage_fee as u128,
+            gas_fee: fb.gas_fee as u128,
+            priority_fee: fb.priority_fee as u128,
             congestion_multiplier: fb.congestion_multiplier,
-            total_fee: fb.total_fee,
-            gas_used: fb.gas_used,
-            gas_price: fb.gas_price,
+            total_fee: fb.total_fee as u128,
+            gas_used: fb.gas_used as u128,
+            gas_price: fb.gas_price as u128,
         });
 
     Ok(crate::transaction::Transaction {
         id: ptx.id,
         sender: ptx.sender,
         receiver: ptx.receiver,
-        amount: ptx.amount,
-        fee: ptx.fee,
-        gas_limit: ptx.gas_limit,
-        gas_used: ptx.gas_used,
-        gas_price: ptx.gas_price,
-        priority_fee: ptx.priority_fee,
+        amount: ptx.amount as u128,
+        fee: ptx.fee as u128,
+        gas_limit: ptx.gas_limit as u128,
+        gas_used: ptx.gas_used as u128,
+        gas_price: ptx.gas_price as u128,
+        priority_fee: ptx.priority_fee as u128,
         inputs,
         outputs,
         timestamp: ptx.timestamp,
@@ -337,7 +337,7 @@ fn convert_proto_tx(ptx: proto::Transaction) -> Result<crate::transaction::Trans
 fn convert_internal_utxo_to_proto(u: &crate::types::UTXO) -> proto::Utxo {
     proto::Utxo {
         address: u.address.clone(),
-        amount: u.amount,
+        amount: u.amount as u64 as u64,
         tx_id: u.tx_id.clone(),
         output_index: u.output_index,
         explorer_link: u.explorer_link.clone(),
@@ -347,7 +347,7 @@ fn convert_internal_utxo_to_proto(u: &crate::types::UTXO) -> proto::Utxo {
 fn convert_proto_utxo(u: proto::Utxo) -> crate::types::UTXO {
     crate::types::UTXO {
         address: u.address,
-        amount: u.amount,
+        amount: u.amount as u128 as u128,
         tx_id: u.tx_id,
         output_index: u.output_index,
         explorer_link: u.explorer_link,
@@ -482,12 +482,16 @@ impl P2PServer {
                 libp2p::tcp::Config::default().nodelay(true),
                 noise::Config::new,
                 yamux::Config::default,
-            )?
-            .with_dns()?
+            )
+            .map_err(|e| P2PError::SwarmBuild(format!("TCP error: {:?}", e)))?
+            .with_dns()
+            .map_err(|e| P2PError::SwarmBuild(format!("DNS error: {:?}", e)))?
             .with_websocket(
                 noise::Config::new,
                 yamux::Config::default,
-            )?
+            )
+            .await
+            .map_err(|e| P2PError::SwarmBuild(format!("Websocket error: {:?}", e)))?
             .with_behaviour(|_key| Ok(behaviour))
             .map_err(|e| {
                 let e_str = format!("{e:?}");
@@ -1253,7 +1257,7 @@ impl P2PServer {
                         code: sc.code.clone(),
                         storage: sc.storage.clone(),
                         owner: sc.owner.clone(),
-                        gas_balance: sc.gas_balance,
+                        gas_balance: sc.gas_balance as u64,
                     })
                     .collect::<Vec<_>>();
                 let carbon_credentials = b
@@ -1263,13 +1267,13 @@ impl P2PServer {
                         id: cc.id.clone(),
                         issuer_id: cc.issuer_id.clone(),
                         beneficiary_node: cc.beneficiary_node.clone(),
-                        tonnes_co2_sequestered: cc.tonnes_co2_sequestered,
+                        tonnes_co2_sequestered: (cc.tonnes_co2_sequestered as f64) / crate::Q_SCALE as f64,
                         project_id: cc.project_id.clone(),
                         vintage_year: cc.vintage_year,
                         verification_signature: cc.verification_signature.clone(),
                         additionality_proof_hash: cc.additionality_proof_hash.clone(),
-                        issuer_reputation_score: cc.issuer_reputation_score,
-                        geospatial_consistency_score: cc.geospatial_consistency_score,
+                        issuer_reputation_score: (cc.issuer_reputation_score as f64) / crate::Q_SCALE as f64,
+                        geospatial_consistency_score: (cc.geospatial_consistency_score as f64) / crate::Q_SCALE as f64,
                     })
                     .collect::<Vec<_>>();
                 let pb = proto::QantoBlock {
@@ -1277,14 +1281,14 @@ impl P2PServer {
                     id: b.id.clone(),
                     parents: b.parents.clone(),
                     transactions,
-                    difficulty: b.difficulty,
+                    difficulty: b.difficulty as f64,
                     validator: b.validator.clone(),
                     miner: b.miner.clone(),
                     nonce: b.nonce,
                     timestamp: b.timestamp,
                     height: b.height,
-                    reward: b.reward,
-                    effort: b.effort,
+                    reward: b.reward as u64,
+                    effort: b.effort as u64,
                     cross_chain_references,
                     cross_chain_swaps,
                     merkle_root: b.merkle_root.clone(),
@@ -1293,6 +1297,8 @@ impl P2PServer {
                     smart_contracts,
                     carbon_credentials,
                     epoch: b.epoch,
+                    finality_proof: b.finality_proof.clone(),
+                    reservation_miner_id: b.reservation_miner_id.clone(),
                 };
                 (proto::P2pPayloadType::Block as i32, pb.encode_to_vec())
             }
@@ -1301,13 +1307,13 @@ impl P2PServer {
                     id: cc.id.clone(),
                     issuer_id: cc.issuer_id.clone(),
                     beneficiary_node: cc.beneficiary_node.clone(),
-                    tonnes_co2_sequestered: cc.tonnes_co2_sequestered,
+                    tonnes_co2_sequestered: (cc.tonnes_co2_sequestered as f64) / crate::Q_SCALE as f64,
                     project_id: cc.project_id.clone(),
                     vintage_year: cc.vintage_year,
                     verification_signature: cc.verification_signature.clone(),
                     additionality_proof_hash: cc.additionality_proof_hash.clone(),
-                    issuer_reputation_score: cc.issuer_reputation_score,
-                    geospatial_consistency_score: cc.geospatial_consistency_score,
+                    issuer_reputation_score: (cc.issuer_reputation_score as f64) / crate::Q_SCALE as f64,
+                    geospatial_consistency_score: (cc.geospatial_consistency_score as f64) / crate::Q_SCALE as f64,
                 };
                 (proto::P2pPayloadType::Credential as i32, pc.encode_to_vec())
             }
@@ -1358,7 +1364,7 @@ impl P2PServer {
                                 code: sc.code.clone(),
                                 storage: sc.storage.clone(),
                                 owner: sc.owner.clone(),
-                                gas_balance: sc.gas_balance,
+                                gas_balance: sc.gas_balance as u64,
                             })
                             .collect::<Vec<_>>();
                         let carbon_credentials = b
@@ -1368,13 +1374,13 @@ impl P2PServer {
                                 id: cc.id.clone(),
                                 issuer_id: cc.issuer_id.clone(),
                                 beneficiary_node: cc.beneficiary_node.clone(),
-                                tonnes_co2_sequestered: cc.tonnes_co2_sequestered,
+                                tonnes_co2_sequestered: cc.tonnes_co2_sequestered as f64,
                                 project_id: cc.project_id.clone(),
                                 vintage_year: cc.vintage_year,
                                 verification_signature: cc.verification_signature.clone(),
                                 additionality_proof_hash: cc.additionality_proof_hash.clone(),
-                                issuer_reputation_score: cc.issuer_reputation_score,
-                                geospatial_consistency_score: cc.geospatial_consistency_score,
+                                issuer_reputation_score: cc.issuer_reputation_score as f64,
+                                geospatial_consistency_score: cc.geospatial_consistency_score as f64,
                             })
                             .collect::<Vec<_>>();
                         proto::QantoBlock {
@@ -1382,14 +1388,14 @@ impl P2PServer {
                             id: b.id.clone(),
                             parents: b.parents.clone(),
                             transactions,
-                            difficulty: b.difficulty,
+                            difficulty: b.difficulty as f64,
                             validator: b.validator.clone(),
                             miner: b.miner.clone(),
                             nonce: b.nonce,
                             timestamp: b.timestamp,
                             height: b.height,
-                            reward: b.reward,
-                            effort: b.effort,
+                            reward: b.reward as u64,
+                            effort: b.effort as u64,
                             cross_chain_references,
                             cross_chain_swaps,
                             merkle_root: b.merkle_root.clone(),
@@ -1398,6 +1404,8 @@ impl P2PServer {
                             smart_contracts,
                             carbon_credentials,
                             epoch: b.epoch,
+                            finality_proof: b.finality_proof.clone(),
+                            reservation_miner_id: b.reservation_miner_id.clone(),
                         }
                     })
                     .collect::<Vec<_>>();
@@ -1486,7 +1494,7 @@ fn convert_proto_block(pb: proto::QantoBlock) -> Result<crate::qantodag::QantoBl
                 swap_id: s.swap_id,
                 source_chain: s.source_chain,
                 target_chain: s.target_chain,
-                amount: s.amount,
+                amount: s.amount as u128,
                 initiator: s.initiator,
                 responder: s.responder,
                 timelock: s.timelock,
@@ -1525,7 +1533,7 @@ fn convert_proto_block(pb: proto::QantoBlock) -> Result<crate::qantodag::QantoBl
             code: sc.code,
             storage: sc.storage,
             owner: sc.owner,
-            gas_balance: sc.gas_balance,
+            gas_balance: sc.gas_balance as u128,
         })
         .collect::<Vec<_>>();
 
@@ -1541,14 +1549,14 @@ fn convert_proto_block(pb: proto::QantoBlock) -> Result<crate::qantodag::QantoBl
         id: pb.id,
         parents: pb.parents,
         transactions,
-        difficulty: pb.difficulty,
+        difficulty: pb.difficulty as u64,
         validator: pb.validator,
         miner: pb.miner,
         nonce: pb.nonce,
         timestamp: pb.timestamp,
         height: pb.height,
-        reward: pb.reward,
-        effort: pb.effort,
+        reward: pb.reward as u128,
+        effort: pb.effort as u128,
         cross_chain_references,
         cross_chain_swaps,
         merkle_root: pb.merkle_root,
@@ -1557,8 +1565,8 @@ fn convert_proto_block(pb: proto::QantoBlock) -> Result<crate::qantodag::QantoBl
         smart_contracts,
         carbon_credentials,
         epoch: pb.epoch,
-        reservation_miner_id: None,
-        finality_proof: None,
+        reservation_miner_id: pb.reservation_miner_id,
+        finality_proof: pb.finality_proof,
     })
 }
 
@@ -1569,13 +1577,13 @@ fn convert_proto_credential(
         id: pc.id,
         issuer_id: pc.issuer_id,
         beneficiary_node: pc.beneficiary_node,
-        tonnes_co2_sequestered: pc.tonnes_co2_sequestered,
+        tonnes_co2_sequestered: (pc.tonnes_co2_sequestered * crate::Q_SCALE as f64) as u64,
         project_id: pc.project_id,
         vintage_year: pc.vintage_year,
         verification_signature: pc.verification_signature,
         additionality_proof_hash: pc.additionality_proof_hash,
-        issuer_reputation_score: pc.issuer_reputation_score,
-        geospatial_consistency_score: pc.geospatial_consistency_score,
+        issuer_reputation_score: (pc.issuer_reputation_score * crate::Q_SCALE as f64) as u64,
+        geospatial_consistency_score: (pc.geospatial_consistency_score * crate::Q_SCALE as f64) as u64,
     }
 }
 

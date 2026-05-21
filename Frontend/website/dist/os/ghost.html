@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO GHOST | Eternal Mesh</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(5, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .ghost-header { border-bottom: 2px solid cyan; padding-bottom: 20px; margin-bottom: 30px; }
+        .upload-card { background: linear-gradient(135deg, rgba(0, 255, 255, 0.1), rgba(0, 102, 255, 0.1)); border: 1px solid rgba(0, 255, 255, 0.3); padding: 25px; border-radius: 16px; margin-bottom: 30px; text-align: center; }
+        .pulse-display { display: flex; flex-direction: column; gap: 15px; background: rgba(0,0,0,0.4); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); }
+        .pulse-item { display: flex; justify-content: space-between; font-family: 'Space Mono', monospace; font-size: 11px; color: #00ffaa; }
+        
+        .action-btn { background: cyan; color: black; border: none; padding: 12px 25px; border-radius: 8px; font-weight: 700; cursor: pointer; transition: transform 0.2s; }
+        .action-btn:hover { transform: scale(1.05); }
+
+        .ghost-status { color: cyan; font-weight: 900; letter-spacing: 2px; animation: ghost-pulse 2s infinite; }
+        @keyframes ghost-pulse { 0% { opacity: 0.4; text-shadow: 0 0 5px cyan; } 50% { opacity: 1; text-shadow: 0 0 20px cyan; } 100% { opacity: 0.4; text-shadow: 0 0 5px cyan; } }
+    </style>
+</head>
+<body>
+    <div class="ghost-header">
+        <h1 style="margin:0; letter-spacing: 6px;">ETERNAL MESH</h1>
+        <div style="font-size: 12px; color: #888;">Digital Resurrection & Post-Human Agency (v1.0.0)</div>
+    </div>
+
+    <div class="upload-card">
+        <div style="font-size: 40px; margin-bottom: 10px;"><i class="fas fa-ghost"></i></div>
+        <h2 style="margin:0; letter-spacing: 2px;">NEURAL UPLOAD</h2>
+        <p style="font-size: 11px; color: #888; max-width: 400px; margin: 15px auto;">Anchor your neural weight snapshots and moral axioms into the QANTO protocol. Establish your perpetual agentic legacy.</p>
+        <button class="action-btn" onclick="startUpload()">INITIALIZE UPLOAD</button>
+    </div>
+
+    <h3 style="letter-spacing: 2px;">LEGACY PULSE (GHOST_A1)</h3>
+    <div class="pulse-display">
+        <div class="pulse-item"><span>[20:21] ARBITRATOR: DISP_4301 SETTLED BY GHOST_A1.</span><span>VERDICT: VALID</span></div>
+        <div class="pulse-item"><span>[20:23] FUTARCHY: VOTED FOR UPGRADE_P53.</span><span>ALIGNMENT: 100.0%</span></div>
+        <div class="pulse-item"><span>[20:25] VAULT: SWEPT CREDIT LTV (42%).</span><span>STATUS: HEALTHY</span></div>
+        <div style="text-align: center; margin-top: 10px;" class="ghost-status">GHOST_A1: ACTIVE_PERPETUAL</div>
+    </div>
+
+    <script>
+        function startUpload() {
+            alert("RTO: Verifying Sovereign Identity... SUCCESS.\nNeural Weights Snapshot Anchored to Legacy ID_0xGHOST...SINGULARITY.\nContinuity Verification Proof Generated.");
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentinel Network | QANTO Layer-0</title>
+    <link rel="stylesheet" href="../../assets/css/main.css">
+    <link rel="stylesheet" href="../../assets/css/animations.css">
+    <style>
+        :root {
+            --sentinel-blue: #0099ff;
+            --terminal-green: #00ffcc;
+            --stealth-dark: #050505;
+        }
+
+        body {
+            background: var(--stealth-dark);
+            color: #eee;
+            margin: 0;
+            padding: 40px;
+        }
+
+        .network-layout {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 40px;
+        }
+
+        .stat-panel {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 30px;
+            backdrop-filter: blur(20px);
+        }
+
+        .map-container {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 153, 255, 0.1);
+            border-radius: 16px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 600px;
+        }
+
+        /* SVG Map Styling */
+        #worldMap {
+            width: 100%;
+            height: auto;
+            opacity: 0.3;
+            filter: drop-shadow(0 0 20px rgba(0, 153, 255, 0.1));
+        }
+
+        .node-pulse {
+            fill: var(--sentinel-blue);
+            animation: nodePulse 3s infinite;
+        }
+
+        @keyframes nodePulse {
+            0% { r: 2; opacity: 1; }
+            100% { r: 12; opacity: 0; }
+        }
+
+        .score-gauge {
+            height: 10px;
+            background: #111;
+            border-radius: 5px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+
+        .score-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff4444, #00ffcc);
+            width: 82%; /* Security Score */
+            box-shadow: 0 0 15px var(--terminal-green);
+        }
+
+        .pioneer-link {
+            display: inline-block;
+            margin-top: 30px;
+            padding: 12px 25px;
+            background: var(--sentinel-blue);
+            color: #fff;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            transition: transform 0.2s;
+        }
+
+        .pioneer-link:hover {
+            transform: translateY(-2px);
+            background: #007acc;
+        }
+    </style>
+</head>
+<body>
+    <div class="network-layout">
+        <div class="stat-panel">
+            <h1 style="font-size: 1.5rem; margin-top: 0; color: #fff;">SENTINEL_MESH</h1>
+            <p style="font-size: 0.8rem; opacity: 0.5;">Global Node Resilience Dashboard</p>
+
+            <div style="margin-top: 40px;">
+                <label style="font-size: 0.7rem; opacity: 0.4;">GLOBAL_RESILIENCE_SCORE</label>
+                <div style="font-size: 2rem; font-weight: bold; color: var(--terminal-green);">82.4%</div>
+                <div class="score-gauge">
+                    <div class="score-fill"></div>
+                </div>
+            </div>
+
+            <div style="margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div>
+                    <label style="font-size: 0.6rem; opacity: 0.4;">ACTIVE_NODES</label>
+                    <div style="font-size: 1.2rem; color: #fff;">1,429</div>
+                </div>
+                <div>
+                    <label style="font-size: 0.6rem; opacity: 0.4;">PUAI_YIELD</label>
+                    <div style="font-size: 1.2rem; color: var(--terminal-green);">+12.4%</div>
+                </div>
+            </div>
+
+            <div style="margin-top: 50px;">
+                <h3 style="font-size: 0.8rem; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 10px;">RECENT_ENROLLMENTS</h3>
+                <div style="font-size: 0.75rem; color: #888; line-height: 2;">
+                    <div>> 0x82...F1 [TOKYO] - <span style="color: var(--terminal-green);">LIVE</span></div>
+                    <div>> 0x1A...9E [BERLIN] - <span style="color: var(--terminal-green);">LIVE</span></div>
+                    <div>> 0xC4...02 [AUSTIN] - <span style="color: var(--terminal-green);">LIVE</span></div>
+                    <div>> 0xFB...3D [SEOUL] - <span style="color: var(--terminal-green);">LIVE</span></div>
+                </div>
+            </div>
+
+            <a href="../../infrastructure/sentinel/setup.sh" class="pioneer-link">Become a Sentinel →</a>
+        </div>
+
+        <div class="map-container">
+            <!-- Simplified SVG World Map with Pulse Points -->
+            <svg id="worldMap" viewBox="0 0 1000 500" xmlns="http://www.w3.org/2000/svg">
+                <!-- Continents (Simplified Shapes) -->
+                <path d="M150,100 Q200,80 300,100 T400,200 T300,350 T150,250 Z" fill="#222"/> <!-- Americas -->
+                <path d="M500,150 Q550,100 650,120 T700,250 T600,400 T500,300 Z" fill="#222"/> <!-- Eurasia/Africa -->
+                <path d="M800,300 Q850,280 900,320 T850,450 Z" fill="#222"/> <!-- Australia -->
+
+                <!-- Sentinel Pulse Points -->
+                <circle class="node-pulse" cx="210" cy="180" r="5" /> <!-- USA East -->
+                <circle class="node-pulse" cx="160" cy="320" r="5" /> <!-- S. America -->
+                <circle class="node-pulse" cx="540" cy="140" r="5" /> <!-- Europe -->
+                <circle class="node-pulse" cx="720" cy="180" r="5" /> <!-- East Asia -->
+                <circle class="node-pulse" cx="580" cy="300" r="5" /> <!-- Africa -->
+                <circle class="node-pulse" cx="840" cy="380" r="5" /> <!-- Australia -->
+                <circle class="node-pulse" cx="140" cy="160" r="5" /> <!-- USA West -->
+            </svg>
+
+            <div style="position: absolute; bottom: 30px; left: 30px; font-size: 0.7rem; opacity: 0.3;">
+                QANTO_MESH_PROTOCOL: DATA_REFRESHED_EVERY_NODE_CYCLE
+            </div>
+
+            <div style="position: absolute; top: 30px; right: 30px; text-align: right;">
+                <div style="font-size: 0.7rem; color: var(--sentinel-blue);">LATENCY: <span style="color: #fff;">14ms</span></div>
+                <div style="font-size: 0.7rem; color: var(--sentinel-blue);">UPTIME: <span style="color: #fff;">99.98%</span></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

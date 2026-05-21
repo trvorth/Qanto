@@ -19,7 +19,7 @@ pub struct NodeRpcBackend {
     pub mempool: Arc<RwLock<Mempool>>,
     pub p2p_sender: mpsc::Sender<P2PCommand>,
     pub rpc_balance_sender: broadcast::Sender<proto::BalanceUpdate>,
-    pub balance_cache: Arc<RwLock<HashMap<String, u64>>>,
+    pub balance_cache: Arc<RwLock<HashMap<String, u128>>>,
 }
 
 impl NodeRpcBackend {
@@ -48,7 +48,7 @@ impl NodeRpcBackend {
                             // Bridge to RPC subscribers
                             let update = proto::BalanceUpdate {
                                 address: ev.address,
-                                base_units: ev.balance,
+                                base_units: ev.balance as u64 as u64,
                                 timestamp: ev.timestamp,
                             };
                             let _ = rpc_tx.send(update);
@@ -86,7 +86,7 @@ fn convert_proto_tx(ptx: proto::Transaction) -> Result<Transaction, String> {
         .into_iter()
         .map(|o| crate::transaction::Output {
             address: o.address,
-            amount: o.amount,
+            amount: o.amount as u128 as u128,
             homomorphic_encrypted: match o.homomorphic_encrypted {
                 Some(he) => crate::types::HomomorphicEncrypted {
                     ciphertext: he.ciphertext,
@@ -111,27 +111,27 @@ fn convert_proto_tx(ptx: proto::Transaction) -> Result<Transaction, String> {
     let fee_breakdown = ptx
         .fee_breakdown
         .map(|fb| crate::gas_fee_model::FeeBreakdown {
-            base_fee: fb.base_fee,
-            complexity_fee: fb.complexity_fee,
-            storage_fee: fb.storage_fee,
-            gas_fee: fb.gas_fee,
-            priority_fee: fb.priority_fee,
+            base_fee: fb.base_fee as u128 as u128,
+            complexity_fee: fb.complexity_fee as u128 as u128,
+            storage_fee: fb.storage_fee as u128 as u128,
+            gas_fee: fb.gas_fee as u128 as u128,
+            priority_fee: fb.priority_fee as u128 as u128,
             congestion_multiplier: fb.congestion_multiplier,
-            total_fee: fb.total_fee,
-            gas_used: fb.gas_used,
-            gas_price: fb.gas_price,
+            total_fee: fb.total_fee as u128 as u128,
+            gas_used: fb.gas_used as u128 as u128,
+            gas_price: fb.gas_price as u128 as u128,
         });
 
     Ok(Transaction {
         id: ptx.id,
         sender: ptx.sender,
         receiver: ptx.receiver,
-        amount: ptx.amount,
-        fee: ptx.fee,
-        gas_limit: ptx.gas_limit,
-        gas_used: ptx.gas_used,
-        gas_price: ptx.gas_price,
-        priority_fee: ptx.priority_fee,
+        amount: ptx.amount as u128,
+        fee: ptx.fee as u128,
+        gas_limit: ptx.gas_limit as u128 as u128,
+        gas_used: ptx.gas_used as u128 as u128,
+        gas_price: ptx.gas_price as u128,
+        priority_fee: ptx.priority_fee as u128 as u128,
         inputs,
         outputs,
         timestamp: ptx.timestamp,
@@ -156,7 +156,7 @@ fn convert_internal_tx_to_proto(tx: &crate::transaction::Transaction) -> proto::
         .iter()
         .map(|o| proto::Output {
             address: o.address.clone(),
-            amount: o.amount,
+            amount: o.amount as u64,
             homomorphic_encrypted: Some(proto::HomomorphicEncrypted {
                 ciphertext: o.homomorphic_encrypted.ciphertext.clone(),
                 public_key: o.homomorphic_encrypted.public_key.clone(),
@@ -170,27 +170,27 @@ fn convert_internal_tx_to_proto(tx: &crate::transaction::Transaction) -> proto::
     });
 
     let fee_breakdown = tx.fee_breakdown.as_ref().map(|fb| proto::FeeBreakdown {
-        base_fee: fb.base_fee,
-        complexity_fee: fb.complexity_fee,
-        storage_fee: fb.storage_fee,
-        gas_fee: fb.gas_fee,
-        priority_fee: fb.priority_fee,
+        base_fee: fb.base_fee as u64 as u64,
+        complexity_fee: fb.complexity_fee as u64 as u64,
+        storage_fee: fb.storage_fee as u64 as u64,
+        gas_fee: fb.gas_fee as u64 as u64,
+        priority_fee: fb.priority_fee as u64 as u64,
         congestion_multiplier: fb.congestion_multiplier,
-        total_fee: fb.total_fee,
-        gas_used: fb.gas_used,
-        gas_price: fb.gas_price,
+        total_fee: fb.total_fee as u64 as u64,
+        gas_used: fb.gas_used as u64 as u64,
+        gas_price: fb.gas_price as u64 as u64,
     });
 
     proto::Transaction {
         id: tx.id.clone(),
         sender: tx.sender.clone(),
         receiver: tx.receiver.clone(),
-        amount: tx.amount,
-        fee: tx.fee,
-        gas_limit: tx.gas_limit,
-        gas_used: tx.gas_used,
-        gas_price: tx.gas_price,
-        priority_fee: tx.priority_fee,
+        amount: tx.amount as u64,
+        fee: tx.fee as u64,
+        gas_limit: tx.gas_limit as u64 as u64,
+        gas_used: tx.gas_used as u64 as u64,
+        gas_price: tx.gas_price as u64 as u64,
+        priority_fee: tx.priority_fee as u64 as u64,
         inputs,
         outputs,
         timestamp: tx.timestamp,
@@ -223,7 +223,7 @@ fn convert_block_to_proto(b: &crate::qantodag::QantoBlock) -> proto::QantoBlock 
             swap_id: s.swap_id.clone(),
             source_chain: s.source_chain,
             target_chain: s.target_chain,
-            amount: s.amount,
+            amount: s.amount as u64 as u64,
             initiator: s.initiator.clone(),
             responder: s.responder.clone(),
             timelock: s.timelock,
@@ -259,7 +259,7 @@ fn convert_block_to_proto(b: &crate::qantodag::QantoBlock) -> proto::QantoBlock 
             code: sc.code.clone(),
             storage: sc.storage.clone(),
             owner: sc.owner.clone(),
-            gas_balance: sc.gas_balance,
+            gas_balance: sc.gas_balance as u64 as u64,
         })
         .collect::<Vec<_>>();
 
@@ -270,13 +270,13 @@ fn convert_block_to_proto(b: &crate::qantodag::QantoBlock) -> proto::QantoBlock 
             id: cc.id.clone(),
             issuer_id: cc.issuer_id.clone(),
             beneficiary_node: cc.beneficiary_node.clone(),
-            tonnes_co2_sequestered: cc.tonnes_co2_sequestered,
+            tonnes_co2_sequestered: cc.tonnes_co2_sequestered as f64,
             project_id: cc.project_id.clone(),
             vintage_year: cc.vintage_year,
             verification_signature: cc.verification_signature.clone(),
             additionality_proof_hash: cc.additionality_proof_hash.clone(),
-            issuer_reputation_score: cc.issuer_reputation_score,
-            geospatial_consistency_score: cc.geospatial_consistency_score,
+            issuer_reputation_score: cc.issuer_reputation_score as f64,
+            geospatial_consistency_score: cc.geospatial_consistency_score as f64,
         })
         .collect::<Vec<_>>();
 
@@ -285,14 +285,14 @@ fn convert_block_to_proto(b: &crate::qantodag::QantoBlock) -> proto::QantoBlock 
         id: b.id.clone(),
         parents: b.parents.clone(),
         transactions,
-        difficulty: b.difficulty,
+        difficulty: b.difficulty as f64,
         validator: b.validator.clone(),
         miner: b.miner.clone(),
         nonce: b.nonce,
         timestamp: b.timestamp,
         height: b.height,
-        reward: b.reward,
-        effort: b.effort,
+        reward: b.reward as u64,
+        effort: b.effort as u64 as u64,
         cross_chain_references,
         cross_chain_swaps,
         merkle_root: b.merkle_root.clone(),
@@ -301,6 +301,8 @@ fn convert_block_to_proto(b: &crate::qantodag::QantoBlock) -> proto::QantoBlock 
         smart_contracts,
         carbon_credentials,
         epoch: b.epoch,
+        finality_proof: b.finality_proof.clone(),
+        reservation_miner_id: b.reservation_miner_id.clone(),
     }
 }
 
@@ -326,7 +328,7 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
         Ok(())
     }
 
-    async fn get_wallet_balance(&self, address: String) -> Result<(u64, u64), String> {
+    async fn get_wallet_balance(&self, address: String) -> Result<(u128, u128), String> {
         if address.len() != 64 || !address.chars().all(|c| c.is_ascii_hexdigit()) {
             return Err("Invalid address format".to_string());
         }
@@ -339,7 +341,7 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
             } else {
                 // UTXO scan
                 let utxos = self.utxos.read().await;
-                let mut total: u64 = 0;
+                let mut total: u128 = 0;
                 for (_k, utxo) in utxos.iter() {
                     if utxo.address == address {
                         total = total.saturating_add(utxo.amount);
@@ -374,8 +376,8 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
         };
         let utxos = self.utxos.read().await;
 
-        let mut incoming: u64 = 0;
-        let mut outgoing: u64 = 0;
+        let mut incoming: u128 = 0;
+        let mut outgoing: u128 = 0;
 
         for tx in mempool_map.values() {
             // Sum outputs directed to this address
@@ -399,7 +401,7 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
         Ok((confirmed, unconfirmed_delta))
     }
 
-    async fn get_balance(&self, address: String) -> Result<u64, String> {
+    async fn get_balance(&self, address: String) -> Result<u128, String> {
         match self.get_wallet_balance(address).await {
             Ok((confirmed, _)) => Ok(confirmed),
             Err(e) => Err(e),
@@ -421,7 +423,7 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
         let bps = metrics.get_bps();
         let finality_ms = metrics.get_finality_ms();
         // get_network_throughput() returns MB/s; convert to Mbps
-        let network_throughput_mbps = metrics.get_network_throughput() * 8.0;
+        let network_throughput_mbps = (metrics.get_network_throughput() * 8) as f64;
 
         // Mempool stats
         let (mempool_tx_count, mempool_size_bytes) = {
@@ -443,15 +445,16 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
             let peers = rx
                 .await
                 .map_err(|e| format!("Failed to receive peer list: {e}"))?;
-            peers.len() as u64
+            let peers_count = peers.len() as u64;
+            peers_count
         };
 
         // Block count from DAG
         let block_count = self.dag.get_block_count().await;
 
         Ok(qanto_rpc::NetworkStats {
-            tps,
-            bps,
+            tps: tps as f64,
+            bps: bps as f64,
             mempool_tx_count,
             mempool_size_bytes,
             connected_peers,

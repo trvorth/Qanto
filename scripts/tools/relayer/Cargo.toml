@@ -27,3 +27,7 @@ psutil = "3.2"
 [[bin]]
 name = "qanto-relayer"
 path = "src/main.rs"
+
+[features]
+analyzer = []
+

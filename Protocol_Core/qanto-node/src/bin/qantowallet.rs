@@ -5,7 +5,7 @@ use qanto::qantowallet;
 pub fn get_balance_storage(
     address: &str,
     storage: &QantoStorage,
-) -> Result<u64, Box<dyn std::error::Error>> {
+) -> Result<u128, Box<dyn std::error::Error>> {
     // Try to get cached balance first
     let key = balance_key(address);
     if let Ok(Some(cached_balance)) = storage.get(&key) {
@@ -18,7 +18,7 @@ pub fn get_balance_storage(
     let prefix = utxos_prefix();
     let keys = storage.keys_with_prefix(&prefix)?;
 
-    let mut total_balance = 0u64;
+    let mut total_balance = 0u128;
     for k in keys {
         if let Ok(Some(utxo_data)) = storage.get(&k) {
             if let Ok(utxo) = decode_utxo(&utxo_data) {

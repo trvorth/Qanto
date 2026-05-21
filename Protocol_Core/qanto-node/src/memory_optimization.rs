@@ -438,11 +438,11 @@ impl ArenaMempool {
                 // Calculate fee per byte using serialized transaction size
                 let serialized_size = bincode::serialize(&transaction)
                     .map_err(|e| format!("Failed to serialize transaction: {e}"))?
-                    .len() as u64;
+                    .len() as u128;
                 if serialized_size > 0 {
                     transaction.fee / serialized_size
                 } else {
-                    0
+                    0u128
                 }
             },
             timestamp: SystemTime::now()

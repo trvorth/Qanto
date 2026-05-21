@@ -114,6 +114,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         None, // tls_cert not supported in this binary
         None, // tls_key not supported in this binary
         adaptive_mining_flag,
+        None, // rpc_port
+        None, // p2p_port
+        None, // listen
+        None, // bootnodes
     );
 
     // Initialize tracing (console + optional file) using config.logging.level

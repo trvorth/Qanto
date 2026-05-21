@@ -12,6 +12,7 @@ use crate::block_producer::BlockProducer;
 use crate::config::LoggingConfig;
 use crate::mempool::Mempool;
 use crate::miner::Miner;
+use crate::p2p::P2PCommand;
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError};
 use crate::types::UTXO;
 use crate::wallet::Wallet;
@@ -33,6 +34,7 @@ pub struct DecoupledProducer {
 
     // Logging configuration
     logging_config: LoggingConfig,
+    p2p_broadcast_tx: Option<mpsc::Sender<P2PCommand>>,
 
     shutdown_token: CancellationToken,
     // Re-evaluation signaling and cancellation
@@ -80,6 +82,7 @@ impl DecoupledProducer {
         candidate_buffer_size: usize,
         mined_buffer_size: usize,
         logging_config: LoggingConfig,
+        p2p_broadcast_tx: Option<mpsc::Sender<P2PCommand>>,
         shutdown_token: CancellationToken,
     ) -> Self {
         let (generation_tx, generation_rx) = watch::channel(0u64);
@@ -96,6 +99,7 @@ impl DecoupledProducer {
             candidate_buffer_size,
             mined_buffer_size,
             logging_config,
+            p2p_broadcast_tx,
             shutdown_token,
             generation_tx,
             generation_rx,
@@ -219,6 +223,7 @@ impl DecoupledProducer {
                                 public_key.as_bytes(),
                                 chain_id,
                                 parents_override,
+                                None, // difficulty_override
                             ).await {
                                 Ok(block) => block,
                                 Err(e) => {
@@ -303,6 +308,7 @@ impl DecoupledProducer {
                             public_key.as_bytes(),
                             chain_id,
                             parents_override,
+                            None, // difficulty_override
                         ).await {
                             Ok(block) => {
                                 let is_heartbeat = block.transactions.len() == 1; // coinbase-only
@@ -412,6 +418,14 @@ impl DecoupledProducer {
                                             Ok(mined_block) => {
                                                 let mining_duration = mining_start.elapsed();
                                                 blocks_mined += 1;
+                                                info!(
+                                                    "BLOCK_MINED worker_id={} block_id={} height={} tx_count={} duration_ms={}",
+                                                    worker_id,
+                                                    mined_block.id,
+                                                    mined_block.height,
+                                                    mined_block.transactions.len(),
+                                                    mining_duration.as_millis()
+                                                );
 
                                                 let mined = MinedBlock {
                                                     block: mined_block,
@@ -524,6 +538,7 @@ impl DecoupledProducer {
         let cancel_debounce_ms = self.cancel_debounce_ms;
         let logging_config = self.logging_config.clone();
         let tip_tx = self.canonical_tip_tx.clone();
+        let p2p_broadcast_tx = self.p2p_broadcast_tx.clone();
 
         let pending_ttl_ms = self.block_creation_interval_ms.saturating_mul(3).max(500);
         // Use fixed retry interval to reduce busy-looping and stabilize processing
@@ -554,6 +569,7 @@ impl DecoupledProducer {
                 mempool: &Arc<RwLock<Mempool>>,
                 utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
                 block_to_add: QantoBlock,
+                p2p_broadcast_tx: &Option<mpsc::Sender<P2PCommand>>,
                 generation_tx: &watch::Sender<u64>,
                 generation_token_holder: &Arc<RwLock<CancellationToken>>,
                 last_cancel_instant_holder: &Arc<RwLock<Instant>>,
@@ -578,6 +594,16 @@ impl DecoupledProducer {
                         info!("✅ QANTOBLOCK ACCEPTED");
                         let block_str = format!("{}", block_to_add);
                         info!("\n{}", block_str);
+                        if let Some(tx) = p2p_broadcast_tx {
+                            if let Err(err) =
+                                tx.send(P2PCommand::BroadcastBlock(block_to_add.clone())).await
+                            {
+                                warn!(
+                                    "BLOCK PROCESSOR: Failed to broadcast accepted block {}: {}",
+                                    block_to_add.id, err
+                                );
+                            }
+                        }
 
                         // Remove transactions from mempool after successful block addition
                         {
@@ -715,12 +741,15 @@ impl DecoupledProducer {
                                         &mempool,
                                         &utxos,
                                         child.block.clone(),
+                                        &p2p_broadcast_tx,
                                         &generation_tx,
                                         &generation_token_holder,
-                                    &last_cancel_instant_holder,
-                                    cancel_debounce_ms,
-                                    &tip_tx,
-                                ).await {
+                                        &last_cancel_instant_holder,
+                                        cancel_debounce_ms,
+                                        &tip_tx,
+                                    )
+                                    .await
+                                    {
                                     Ok(true) => {
                                         blocks_processed += 1;
                                         debug!(
@@ -788,6 +817,7 @@ impl DecoupledProducer {
                                     &mempool,
                                     &utxos,
                                     block_to_add.clone(),
+                                    &p2p_broadcast_tx,
                                     &generation_tx,
                                     &generation_token_holder,
                                     &last_cancel_instant_holder,
@@ -887,6 +917,7 @@ impl DecoupledProducer {
         public_key: &[u8],
         chain_id: u32,
         parents: Option<Vec<String>>, // Optional explicit parents override
+        difficulty_override: Option<u64>,
     ) -> Result<QantoBlock, QantoDAGError> {
         use crate::post_quantum_crypto::{QantoPQPrivateKey, QantoPQPublicKey};
 
@@ -921,6 +952,7 @@ impl DecoupledProducer {
                 miner,
                 None, // homomorphic_public_key
                 parents,
+                difficulty_override,
             )
             .await?;
 

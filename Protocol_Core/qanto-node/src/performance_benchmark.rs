@@ -230,7 +230,7 @@ impl PerformanceBenchmark {
             initial_validator: "benchmark_validator".to_string(),
             target_block_time: 1000,
             num_chains: 1,
-            dev_fee_rate: 0.10,
+            dev_fee_rate: 100_000_000,
         };
 
         let logging_config = LoggingConfig {

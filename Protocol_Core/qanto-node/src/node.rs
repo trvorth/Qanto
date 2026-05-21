@@ -43,6 +43,7 @@ use crate::transaction::Transaction;
 use crate::types::UTXO;
 use crate::wallet::Wallet;
 use crate::websocket_server::{create_websocket_router, WebSocketServerState};
+use crate::ipc_server::IpcServer;
 use qanto_core::balance_stream::BalanceBroadcaster;
 use axum::{
     body::Body,
@@ -149,7 +150,7 @@ impl From<NodeError> for String {
 struct DagInfo {
     block_count: usize,
     tip_count: usize,
-    current_difficulty: f64,
+    current_difficulty: u128, // Scaled by QANTO_SCALE
     target_block_time: u64,
     validator_count: usize,
     num_chains: u32,
@@ -366,7 +367,7 @@ impl Node {
             initial_validator,
             target_block_time: config.target_block_time,
             num_chains: config.num_chains,
-            dev_fee_rate: config.dev_fee_rate.unwrap_or(0.10),
+            dev_fee_rate: config.dev_fee_rate.unwrap_or(100_000_000), // Default 10% (0.10 scaled by 1e9)
         };
         info!("QantoDagConfig configured successfully");
 
@@ -388,8 +389,8 @@ impl Node {
                 utxos_lock.clear(); // Reset UTXO state completely
 
                 // Compute total supply in base units using canonical constant
-                let total_supply_base_units: u64 =
-                    21_000_000_000u64 * crate::transaction::SMALLEST_UNITS_PER_QAN;
+                let total_supply_base_units: u128 =
+                    21_000_000_000u128 * crate::transaction::SMALLEST_UNITS_PER_QAN;
                 let genesis_utxo_id = "genesis_total_supply_tx_0".to_string();
                 utxos_lock.insert(
                     genesis_utxo_id.clone(),
@@ -480,7 +481,8 @@ impl Node {
     /// and the core command processing loop. It gracefully handles shutdown on Ctrl+C.
     pub async fn start(&self) -> Result<(), NodeError> {
         // Create a channel for passing commands between the P2P layer and the core logic.
-        let (tx_p2p_commands, mut rx_p2p_commands) = mpsc::channel::<P2PCommand>(100);
+        let (tx_from_p2p, mut rx_p2p_commands) = mpsc::channel::<P2PCommand>(100);
+        let (tx_to_p2p, rx_to_p2p) = mpsc::channel::<P2PCommand>(100);
         let mut join_set: JoinSet<Result<(), anyhow::Error>> = JoinSet::new();
 
         // Get the cancellation token from resource cleanup system
@@ -541,13 +543,23 @@ impl Node {
                 .await?;
         }
 
+        // Phase 1: Start IPC Server for lightweight real-time state channel
+        {
+            let dag_clone = self.dag.clone();
+            let ipc_config = self.config.clone();
+            join_set.spawn(async move {
+                IpcServer::start(dag_clone, ipc_config).await;
+                Ok(())
+            });
+        }
+
         // --- Core Command Processor Task ---
         // This task is the heart of the node, processing incoming P2P commands.
         let command_processor_task = {
             let dag_clone = self.dag.clone();
             let mempool_clone = self.mempool.clone();
             let utxos_clone = self.utxos.clone();
-            let p2p_tx_clone = tx_p2p_commands.clone();
+            let p2p_tx_clone = tx_to_p2p.clone();
             let saga_clone = self.saga_pallet.clone();
             let mempool_batch_size = self.config.mempool_batch_size.unwrap_or(40000);
 
@@ -759,7 +771,7 @@ impl Node {
                     match rx.recv().await {
                         Ok(update) => {
                             // Clamp u128 base units to u64 for WebSocket/RPC consumers.
-                            let base_units = (update.balance.min(u128::from(u64::MAX))) as u64;
+                            let base_units = update.balance;
                             // Forward using existing helper (computes seconds timestamp).
                             ws_state
                                 .broadcast_balance_update(update.address.clone(), base_units)
@@ -804,7 +816,7 @@ impl Node {
 
                 let mut last_block_count = 0;
                 let mut last_mempool_size = 0;
-                let mut last_balances: std::collections::HashMap<String, u64> =
+                let mut last_balances: std::collections::HashMap<String, u128> =
                     std::collections::HashMap::new();
 
                 loop {
@@ -866,7 +878,7 @@ impl Node {
                             for address in addresses {
                                 let resp = make_balance_response(&utxos_reader, &address);
                                 let current_balance = resp.base_units;
-                                let prev = last_balances.get(&address).copied().unwrap_or(u64::MAX);
+                                let prev = last_balances.get(&address).copied().unwrap_or(u128::MAX);
                                 if prev != current_balance {
                                     last_balances.insert(address.clone(), current_balance);
                                     ws_state
@@ -902,13 +914,15 @@ impl Node {
 
         // --- P2P Server / Solo Miner Task ---
         // If peers are configured, start the P2P server. Otherwise, run in solo mining mode.
-        if !self.config.peers.is_empty() {
-            info!("Peers detected in config, initializing P2P server task...");
+        {
+            info!("Initializing P2P server task...");
             let p2p_dag_clone = self.dag.clone();
             let p2p_mempool_clone = self.mempool.clone();
             let p2p_utxos_clone = self.utxos.clone();
             let p2p_proposals_clone = self.proposals.clone();
-            let p2p_command_sender_clone = tx_p2p_commands.clone();
+            let p2p_command_sender_clone = tx_from_p2p.clone();
+            let p2p_internal_tx = tx_to_p2p.clone();
+            let p2p_internal_rx = rx_to_p2p;
             let p2p_identity_keypair_clone = self.p2p_identity_keypair.clone();
             let p2p_listen_address_config_clone = self.config.p2p_address.clone();
             let p2p_initial_peers_config_clone = self.config.peers.clone();
@@ -964,7 +978,7 @@ impl Node {
 
                 // Request state from peers on startup to sync the DAG.
                 if !p2p_initial_peers_config_clone.is_empty() {
-                    if let Err(e) = p2p_command_sender_clone
+                    if let Err(e) = p2p_internal_tx
                         .send(P2PCommand::RequestState)
                         .await
                     {
@@ -973,9 +987,8 @@ impl Node {
                 }
 
                 // Run the P2P server's event loop.
-                let (_p2p_tx, p2p_rx) = mpsc::channel::<P2PCommand>(100);
                 p2p_server
-                    .run(p2p_rx)
+                    .run(p2p_internal_rx)
                     .await
                     .map_err(|e| anyhow::anyhow!("P2P server error: {e}"))
             };
@@ -989,9 +1002,11 @@ impl Node {
                     Ok(())
                 })
                 .await?;
-        } else if self.config.mining_enabled {
+        }
+
+        if self.config.mining_enabled {
             if self.config.adaptive_mining_enabled {
-                info!("No peers found. Running in single-node mode. Spawning adaptive miner...");
+                info!("Spawning adaptive miner task...");
 
                 // Create adaptive mining configuration
                 let adaptive_config = crate::adaptive_mining::TestnetMiningConfig::default();
@@ -1012,6 +1027,7 @@ impl Node {
                 let adaptive_miner_clone = self.miner.clone();
                 let adaptive_mempool_clone = self.mempool.clone();
                 let adaptive_utxos_clone = self.utxos.clone();
+                let adaptive_p2p_broadcast_tx = tx_to_p2p.clone();
                 let adaptive_shutdown_token = shutdown_token.clone();
 
                 let _adaptive_miner_task_handle = join_set.spawn(async move {
@@ -1023,6 +1039,7 @@ impl Node {
                             adaptive_miner_clone,
                             adaptive_mempool_clone,
                             adaptive_utxos_clone,
+                            Some(adaptive_p2p_broadcast_tx),
                             adaptive_shutdown_token,
                         )
                         .await
@@ -1042,7 +1059,7 @@ impl Node {
                     })
                     .await?;
             } else {
-                info!("No peers found. Running in single-node mode. Spawning solo miner...");
+                info!("Spawning solo miner task...");
 
                 // Capture values before moving into async closure
                 let _producer_type = self
@@ -1059,6 +1076,7 @@ impl Node {
                 let mempool = self.mempool.clone();
                 let utxos = self.utxos.clone();
                 let miner = self.miner.clone();
+                let p2p_broadcast_tx = tx_to_p2p.clone();
                 let shutdown_token = shutdown_token.clone();
                 let logging_config = self.config.logging.clone();
 
@@ -1074,19 +1092,18 @@ impl Node {
                               target_block_time);
                         1
                     } else {
-                        (target_block_time as f64 / 1000.0) as u64
+                        target_block_time / 1000
                     };
 
                     #[cfg(not(feature = "performance-test"))]
                     let mining_interval_secs = {
                         // Calculate mining interval from target_block_time without forcing minimum
                         // Allow sub-second intervals for high-performance mining (e.g., 200ms target)
-                        let target_secs = target_block_time as f64 / 1000.0;
-                        if target_secs < 1.0 {
+                        if target_block_time < 1000 {
                             // For sub-second intervals, use 0 to indicate millisecond precision
                             0
                         } else {
-                            target_secs as u64
+                            target_block_time / 1000
                         }
                     };
 
@@ -1115,6 +1132,7 @@ impl Node {
                         100,  // candidate_buffer_size
                         50,   // mined_buffer_size
                         logging_config,
+                        Some(p2p_broadcast_tx),
                         shutdown_token,
                     );
                     let result = decoupled_producer.run().await;
@@ -1135,7 +1153,7 @@ impl Node {
             mempool: self.mempool.clone(),
             utxos: self.utxos.clone(),
             api_address: self.config.api_address.clone(),
-            p2p_command_sender: tx_p2p_commands.clone(),
+            p2p_command_sender: tx_to_p2p.clone(),
             saga: self.saga_pallet.clone(),
             websocket_state: websocket_state.clone(),
             native_network: None,
@@ -1232,8 +1250,7 @@ impl Node {
                     .allow_headers(Any);
                 let app = api_routes.merge(websocket_routes).merge(graphql_routes).layer(cors);
 
-                // EMERGENCY OVERRIDE: Bind JSON-RPC server explicitly to 0.0.0.0:8080
-                let addr: SocketAddr = "0.0.0.0:8080".parse().map_err(|e| {
+                let addr: SocketAddr = self.config.api_address.parse().map_err(|e| {
                     NodeError::Config(ConfigError::Validation(format!("Invalid API address: {e}")))
                 })?;
 
@@ -1286,7 +1303,7 @@ impl Node {
                     self.dag.clone(),
                     self.utxos.clone(),
                     self.mempool.clone(),
-                    tx_p2p_commands.clone(),
+                    tx_to_p2p.clone(),
                     websocket_state.balance_sender.clone(),
                 ));
 
@@ -1522,7 +1539,7 @@ async fn info_handler(
     let num_chains_val = *state.dag.num_chains.read().await;
     let current_difficulty = {
         let rules = state.dag.saga.economy.epoch_rules.read().await;
-        rules.get("base_difficulty").map_or(10.0, |r| r.value)
+        rules.get("base_difficulty").map_or(10 * crate::Q_SCALE as u128, |r| r.value as u128)
     };
 
     Ok(Json(serde_json::json!({
@@ -1615,14 +1632,14 @@ async fn publish_readiness_handler(
 #[derive(Serialize, Debug)]
 struct BalanceResponse {
     balance: String,
-    base_units: u64,
+    pub base_units: u128,
 }
 
 fn make_balance_response(
     utxos: &std::collections::HashMap<String, UTXO>,
     address: &str,
 ) -> BalanceResponse {
-    let balance_base_units: u64 = utxos
+    let balance_base_units: u128 = utxos
         .values()
         .filter(|utxo_item| utxo_item.address == address)
         .map(|utxo_item| utxo_item.amount)
@@ -1891,7 +1908,7 @@ async fn get_dag(State(state): State<AppState>) -> Result<Json<DagInfo>, StatusC
     let validator_count = state.dag.validators.len();
     let current_difficulty = {
         let rules = state.dag.saga.economy.epoch_rules.read().await;
-        rules.get("base_difficulty").map_or(10.0, |r| r.value)
+        rules.get("base_difficulty").map_or(10 * crate::Q_SCALE as u128, |r| r.value as u128)
     };
     let num_chains_val = *state.dag.num_chains.read().await;
 
@@ -1987,12 +2004,12 @@ async fn analytics_dashboard_handler(
 
     // AI model performance metrics
     let ai_performance = crate::saga::AIModelPerformance {
-        neural_network_accuracy: 0.95,
-        prediction_confidence: 0.88,
-        training_loss: 0.12,
-        validation_loss: 0.08,
-        model_drift_score: 0.02,
-        inference_latency_ms: 15.0,
+        neural_network_accuracy: (95 * crate::QANTO_SCALE as i128) / 100,
+        prediction_confidence: (88 * crate::QANTO_SCALE as i128) / 100,
+        training_loss: (12 * crate::QANTO_SCALE as i128) / 100,
+        validation_loss: (8 * crate::QANTO_SCALE as i128) / 100,
+        model_drift_score: (2 * crate::QANTO_SCALE as i128) / 100,
+        inference_latency_ms: 15,
         last_retrain_epoch: 100,
         feature_importance: std::collections::HashMap::new(),
     };
@@ -2000,36 +2017,29 @@ async fn analytics_dashboard_handler(
     // Security insights
     let security_insights = crate::saga::SecurityInsights {
         threat_level: crate::saga::ThreatLevel::Low,
-        anomaly_score: 0.15,
+        anomaly_score: (15 * crate::QANTO_SCALE as i128) / 100,
         attack_attempts_24h: 0,
         blocked_transactions: 0,
         suspicious_patterns: vec![],
-        security_confidence: 0.85,
+        security_confidence: (85 * crate::QANTO_SCALE as i128) / 100,
     };
 
     // Economic indicators (real calculations from DAG and SAGA)
-    let total_value_locked: u64 = crate::metrics::get_global_metrics()
-        .total_value_locked
-        .load(std::sync::atomic::Ordering::Relaxed);
+    let metrics = crate::metrics::get_global_metrics();
+    let total_value_locked: i128 = *metrics.total_value_locked.read().await as i128;
+    let transaction_fees_24h: i128 = *metrics.transaction_fees_24h.read().await as i128;
+    let validator_rewards_24h: i128 = *metrics.validator_rewards_24h.read().await as i128;
 
-    let transaction_fees_24h: u64 = crate::metrics::get_global_metrics()
-        .transaction_fees_24h
-        .load(std::sync::atomic::Ordering::Relaxed);
-
-    let validator_rewards_24h: u64 = crate::metrics::get_global_metrics()
-        .validator_rewards_24h
-        .load(std::sync::atomic::Ordering::Relaxed);
-
-    let network_utilization: f64 = if !dag.blocks.is_empty() {
-        let total_txs: f64 = dag
+    let network_utilization_scaled: u128 = if !dag.blocks.is_empty() {
+        let total_txs: u128 = dag
             .blocks
             .iter()
-            .map(|entry| entry.value().transactions.len() as f64)
-            .sum::<f64>();
-        let avg_tx_per_block = total_txs / dag.blocks.len() as f64;
-        (avg_tx_per_block / 1000.0).min(1.0)
+            .map(|entry| entry.value().transactions.len() as u128)
+            .sum::<u128>();
+        let avg_tx_per_block_scaled = (total_txs * crate::QANTO_SCALE) / dag.blocks.len() as u128;
+        std::cmp::min(avg_tx_per_block_scaled / 1000, crate::QANTO_SCALE)
     } else {
-        0.0
+        0
     };
 
     let env_metrics = state.saga.economy.environmental_metrics.read().await;
@@ -2041,22 +2051,22 @@ async fn analytics_dashboard_handler(
     drop(env_metrics);
 
     let economic_indicators = crate::saga::EconomicIndicators {
-        total_value_locked: total_value_locked as f64,
-        transaction_fees_24h: transaction_fees_24h as f64,
-        validator_rewards_24h: validator_rewards_24h as f64,
-        network_utilization,
-        economic_security,
+        total_value_locked: total_value_locked as i128,
+        transaction_fees_24h: transaction_fees_24h as i128,
+        validator_rewards_24h: validator_rewards_24h as i128,
+        network_utilization: network_utilization_scaled as i128,
+        economic_security: economic_security as i128,
         // Align with AnalyticsDashboard simplification
-        fee_market_efficiency: 0.85,
+        fee_market_efficiency: (crate::QANTO_SCALE * 85 / 100) as i128,
     };
 
     // Environmental metrics
     let environmental_metrics = crate::saga::EnvironmentalDashboardMetrics {
-        carbon_footprint_kg: 0.1,
-        energy_efficiency_score: 95.0,
-        renewable_energy_percentage: 100.0, // Assuming green energy
-        carbon_offset_credits: 1000.0,      // Placeholder
-        green_validator_ratio: 0.95,        // Placeholder
+        carbon_footprint_kg: (10 * crate::QANTO_SCALE as i128) / 100,
+        energy_efficiency_score: (95 * crate::QANTO_SCALE as i128) / 100,
+        renewable_energy_percentage: (100 * crate::QANTO_SCALE as i128) / 100, // Assuming green energy
+        carbon_offset_credits: (1000 * crate::QANTO_SCALE as i128) / 100,      // Placeholder
+        green_validator_ratio: (95 * crate::QANTO_SCALE as i128) / 100,        // Placeholder
     };
 
     // Compile dashboard data
@@ -2069,18 +2079,16 @@ async fn analytics_dashboard_handler(
         environmental_metrics,
         total_transactions: crate::metrics::get_global_metrics()
             .transactions_processed
-            .load(std::sync::atomic::Ordering::Relaxed),
-        active_addresses: utxos.len() as u64,
-        mempool_size: mempool.get_transactions().await.len() as u64,
-        block_height: dag.blocks.len() as u64,
-        tps_current: crate::metrics::get_global_metrics()
+            .load(std::sync::atomic::Ordering::Relaxed) as u128,
+        active_addresses: utxos.len() as u128,
+        mempool_size: mempool.get_transactions().await.len() as u128,
+        block_height: dag.blocks.len() as u128,
+        tps_current: (crate::metrics::get_global_metrics()
             .tps_current
-            .load(std::sync::atomic::Ordering::Relaxed) as f64
-            / 1000.0,
-        tps_peak: crate::metrics::get_global_metrics()
+            .load(std::sync::atomic::Ordering::Relaxed) as i128 * crate::QANTO_SCALE as i128) / 1000,
+        tps_peak: (crate::metrics::get_global_metrics()
             .tps_peak_24h
-            .load(std::sync::atomic::Ordering::Relaxed) as f64
-            / 1000.0,
+            .load(std::sync::atomic::Ordering::Relaxed) as i128 * crate::QANTO_SCALE as i128) / 1000,
     };
 
     Ok(Json(dashboard_data))
@@ -2189,7 +2197,7 @@ async fn jsonrpc_handler(
 
 async fn metrics_json_handler(
     State(_state): State<AppState>,
-) -> Result<Json<HashMap<String, f64>>, StatusCode> {
+) -> Result<Json<HashMap<String, u128>>, StatusCode> {
     let metrics = crate::metrics::get_global_metrics();
     Ok(Json(metrics.export_metrics()))
 }
@@ -2202,7 +2210,7 @@ async fn metrics_prometheus_handler(State(_state): State<AppState>) -> Result<St
 #[cfg(test)]
 mod balance_tests {
     use super::*;
-    fn build_utxo(id: &str, addr: &str, amount: u64) -> (String, UTXO) {
+    fn build_utxo(id: &str, addr: &str, amount: u128) -> (String, UTXO) {
         (
             id.to_string(),
             UTXO {
@@ -2283,15 +2291,15 @@ mod balance_tests {
 // --- Phase 146: Sovereign Urban Zones (Geo-Fencing) ---
 
 pub struct GeoFencing {
-    pub saga_one_center: (f64, f64), // (Lat, Lng)
-    pub enclosure_radius_meters: f64,
+    pub saga_one_center: (i128, i128), // (Lat, Lng) scaled by 1e9
+    pub enclosure_radius_meters: u128, // Scaled by 1e9
 }
 
 impl GeoFencing {
     pub fn new() -> Self {
         Self {
-            saga_one_center: (40.7128, -74.0060), // Manhattan / SAGA-ONE
-            enclosure_radius_meters: 5000.0,
+            saga_one_center: (40_712_800_000, -74_006_000_000), // Manhattan / SAGA-ONE (40.7128, -74.0060)
+            enclosure_radius_meters: 5000 * crate::QANTO_SCALE,
         }
     }
 }
@@ -2303,15 +2311,20 @@ impl Default for GeoFencing {
 }
 
 impl GeoFencing {
-
     /// Verifies if a node's physical coordinates fall within a Sovereign Urban Zone.
-    pub fn is_within_sovereign_zone(&self, lat: f64, lng: f64) -> bool {
+    pub fn is_within_sovereign_zone(&self, lat: i128, lng: i128) -> bool {
         let (c_lat, c_lng) = self.saga_one_center;
         let d_lat = (lat - c_lat).abs();
         let d_lng = (lng - c_lng).abs();
-        
+
         // Simplified Euclidean distance for urban scale
-        let distance_approx = (d_lat.powi(2) + d_lng.powi(2)).sqrt() * 111_000.0;
-        distance_approx <= self.enclosure_radius_meters
+        // d_lat and d_lng are scaled by 1e9
+        let d_lat_sq = d_lat * d_lat; // Scaled by 1e18
+        let d_lng_sq = d_lng * d_lng; // Scaled by 1e18
+        
+        let distance_degrees_scaled = crate::math::integer_sqrt((d_lat_sq + d_lng_sq) as u128); // Scaled by 1e9
+        let distance_approx_meters_scaled = distance_degrees_scaled * 111_000;
+        
+        distance_approx_meters_scaled <= self.enclosure_radius_meters
     }
 }

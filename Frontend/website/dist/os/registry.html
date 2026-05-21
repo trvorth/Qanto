@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PHYSICAL REGISTRY | Hardware Activation</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(5, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; box-sizing: border-box; }
+        .registry-container {
+            background: linear-gradient(135deg, rgba(221, 221, 221, 0.05), rgba(255, 255, 255, 0.05));
+            border: 1px solid rgba(0, 255, 170, 0.3);
+            border-radius: 20px;
+            padding: 40px;
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(0, 255, 170, 0.1);
+        }
+        .icon { font-size: 50px; color: #00ffaa; margin-bottom: 20px; text-shadow: 0 0 20px rgba(0, 255, 170, 0.5); }
+        .title { font-size: 24px; font-weight: 900; letter-spacing: 4px; margin-bottom: 10px; }
+        .subtitle { font-size: 11px; color: #aaa; margin-bottom: 30px; line-height: 1.5; text-transform: uppercase; letter-spacing: 1px; }
+        
+        .input-group { margin-bottom: 20px; text-align: left; }
+        .input-group label { display: block; font-size: 10px; color: #00ffaa; margin-bottom: 8px; letter-spacing: 2px; }
+        .serial-input {
+            width: 100%;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(0, 255, 170, 0.2);
+            border-radius: 8px;
+            color: white;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 16px;
+            letter-spacing: 2px;
+            outline: none;
+            box-sizing: border-box;
+            transition: all 0.3s;
+        }
+        .serial-input:focus { border-color: #00ffaa; box-shadow: 0 0 15px rgba(0, 255, 170, 0.3); }
+        
+        .btn-activate {
+            width: 100%;
+            padding: 15px;
+            background: rgba(0, 255, 170, 0.1);
+            border: 1px solid #00ffaa;
+            border-radius: 8px;
+            color: #00ffaa;
+            font-weight: 900;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            font-size: 14px;
+            letter-spacing: 2px;
+            margin-top: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-activate:hover {
+            background: #00ffaa;
+            color: black;
+            box-shadow: 0 0 20px rgba(0, 255, 170, 0.5);
+        }
+        
+        .liquid-metal-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(270deg, transparent, rgba(0, 255, 170, 0.2), transparent);
+            background-size: 200% 100%;
+            animation: liquid-flow 2s ease-in-out infinite;
+            pointer-events: none;
+            display: none;
+        }
+        @keyframes liquid-flow {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+        
+        .status-box {
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0,0,0,0.4);
+            border-radius: 8px;
+            border: 1px dashed rgba(255,255,255,0.1);
+            font-family: 'Space Mono', monospace;
+            font-size: 11px;
+            color: #888;
+            text-align: left;
+            display: none;
+        }
+        .success-text { color: #00ffaa; font-weight: bold; }
+        .error-text { color: #ff3366; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="registry-container">
+        <div class="icon"><i class="fas fa-microchip"></i></div>
+        <div class="title">HARDWARE REGISTRY</div>
+        <div class="subtitle">Bond your physical Pioneer Sentinel to your sovereign digital identity via ZK-RoT Attestation.</div>
+        
+        <div class="input-group">
+            <label>ENTER SENTINEL SERIAL NUMBER</label>
+            <input type="text" id="serial" class="serial-input" placeholder="QANTO-SN-XXXX-XXXX" spellcheck="false">
+        </div>
+        
+        <button class="btn-activate" id="activate-btn" onclick="activateHardware()">
+            <div class="liquid-metal-overlay" id="btn-fx"></div>
+            <span id="btn-text">Initiate Bond</span>
+        </button>
+        
+        <div class="status-box" id="status-log"></div>
+    </div>
+
+    <script>
+        function activateHardware() {
+            const serial = document.getElementById('serial').value.trim().toUpperCase();
+            const log = document.getElementById('status-log');
+            const btnText = document.getElementById('btn-text');
+            const btnFx = document.getElementById('btn-fx');
+            const btn = document.getElementById('activate-btn');
+            
+            log.style.display = 'block';
+            log.innerHTML = `> VERIFYING SERIAL FORMAT...<br>`;
+            
+            if(!serial.startsWith('QANTO-SN-')) {
+                log.innerHTML += `> <span class="error-text">ERROR: INVALID_FORMAT. MUST START WITH 'QANTO-SN-'</span>`;
+                return;
+            }
+            
+            btn.disabled = true;
+            btnText.innerText = "ATTESTING HARDWARE...";
+            btnFx.style.display = 'block';
+            
+            setTimeout(() => {
+                log.innerHTML += `> EXTRACTING ROOT-OF-TRUST (RoT)...<br>`;
+                setTimeout(() => {
+                    log.innerHTML += `> ZK-VERIFICATION: VALID.<br>`;
+                    setTimeout(() => {
+                        log.innerHTML += `> <span class="success-text">BOND COMPLETE. PHYSICAL NODE LINKED.</span>`;
+                        btn.style.background = "#00ffaa";
+                        btn.style.color = "black";
+                        btnText.innerText = "SENTINEL ACTIVATED";
+                        btnFx.style.display = 'none';
+                        if(window.parent && window.parent.triggerPulseEffect) {
+                            window.parent.triggerPulseEffect();
+                        }
+                    }, 1000);
+                }, 1500);
+            }, 1000);
+        }
+    </script>
+</body>
+</html>

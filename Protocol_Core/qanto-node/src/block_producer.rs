@@ -210,6 +210,7 @@ impl SoloProducer {
                 miner,
                 homomorphic_public_key,
                 None,
+                None,
             )
             .await
         {
@@ -359,7 +360,7 @@ impl SoloProducer {
         let tx_count = mined_block.transactions.len();
 
         let block_hash_hex = mined_block.hash();
-        let _total_fees: u64 = mined_block.transactions.iter().map(|tx| tx.fee).sum();
+        let _total_fees: u128 = mined_block.transactions.iter().map(|tx| tx.fee).sum();
 
         let current_block_count = self.dag.get_block_count().await;
         info!(
@@ -551,7 +552,7 @@ mod tests {
             initial_validator: "test_validator".to_string(),
             target_block_time: 1000,
             num_chains: 1,
-            dev_fee_rate: 0.10,
+            dev_fee_rate: 100_000_000,
         };
 
         let logging_config = LoggingConfig {

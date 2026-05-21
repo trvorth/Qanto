@@ -15,12 +15,9 @@ pub fn prompt_for_password(confirm: bool, message: Option<&str>) -> Result<Secre
         // Trim whitespace and newlines from environment variable
         let trimmed_password = env_password.trim().to_string();
 
-        // Validate that the password is not empty after trimming
+        // Allow empty passwords for seamless testnet/mining node operation
         if trimmed_password.is_empty() {
-            // Match integration test expectation exactly
-            return Err(anyhow!(
-                "WALLET_PASSWORD environment variable is set but empty!"
-            ));
+            println!("WALLET_PASSWORD environment variable is set but empty. Using empty password.");
         }
 
         println!("Using password from WALLET_PASSWORD environment variable.");
@@ -34,10 +31,7 @@ pub fn prompt_for_password(confirm: bool, message: Option<&str>) -> Result<Secre
 
     let password: SecretString = rpassword::read_password()?.into();
 
-    // Validate that the password is not empty
-    if password.expose_secret().trim().is_empty() {
-        return Err(anyhow!("Password cannot be empty."));
-    }
+    // Allow empty passwords for seamless testnet/mining node operation
 
     if confirm {
         print!("Confirm wallet password: ");
@@ -74,10 +68,10 @@ mod tests {
 
     #[test]
     fn test_empty_env_password() {
-        // Test that empty environment variable passwords are rejected
+        // Test that empty environment variable passwords are now permitted for seamless node startup
         env::set_var("WALLET_PASSWORD", "   \n  ");
         let result = prompt_for_password(false, None);
-        assert!(result.is_err());
+        assert!(result.is_ok());
         env::remove_var("WALLET_PASSWORD");
     }
 

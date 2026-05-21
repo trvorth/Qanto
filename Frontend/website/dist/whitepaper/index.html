@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qanto Whitepaper | Layer-0 Protocol Evolution</title>
+    
+    <!-- Meta -->
+    <meta name="title" content="Qanto Technical Whitepaper | Layer-0 Evolution">
+    <meta name="description" content="Technical foundation of Qanto Layer-0. High-throughput DAG architecture, ZK-Shield privacy, and SAGA-AI decentralized inference.">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://qanto.org/whitepaper/">
+    <meta property="og:title" content="Qanto Technical Whitepaper">
+    <meta property="og:description" content="Explore the architecture of the first AI-native Layer-0 protocol.">
+    <meta property="og:image" content="https://qanto.org/assets/images/og-whitepaper.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:title" content="Qanto Technical Whitepaper">
+    <meta property="twitter:description" content="Explore the architecture of the first AI-native Layer-0 protocol.">
+    <meta property="twitter:image" content="https://qanto.org/assets/images/og-whitepaper.png">
+    
+    <!-- Fonts (Academic) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=JetBrains+Mono:wght@400&family=Outfit:wght@600&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-paper: #fdfdfd;
+            --text-main: #1a1a1a;
+            --text-accent: #444;
+            --border-latex: #ddd;
+        }
+
+        body {
+            background-color: #f1f1f1;
+            color: var(--text-main);
+            font-family: 'Crimson Pro', serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 40px 20px;
+        }
+
+        .paper-canvas {
+            max-width: 900px;
+            margin: 0 auto;
+            background: var(--bg-paper);
+            padding: 80px 100px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            position: relative;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 60px;
+            border-bottom: 0.5px solid var(--border-latex);
+            padding-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 2.8rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .authors {
+            font-size: 1.2rem;
+            color: var(--text-accent);
+            margin-bottom: 20px;
+        }
+
+        .abstract {
+            background: #f9f9f9;
+            padding: 24px;
+            border: 0.5px solid var(--border-latex);
+            margin-bottom: 40px;
+            font-style: italic;
+        }
+
+        .abstract-title {
+            font-style: normal;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        section {
+            margin-bottom: 40px;
+        }
+
+        h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.8rem;
+            border-bottom: 1.5px solid #333;
+            padding-bottom: 8px;
+            margin-top: 50px;
+        }
+
+        h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.4rem;
+            margin-top: 30px;
+        }
+
+        p {
+            margin-bottom: 20px;
+            font-size: 1.15rem;
+            text-align: justify;
+        }
+
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            background: #f4f4f4;
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .math-block {
+            text-align: center;
+            margin: 30px 0;
+            font-size: 1.4rem;
+        }
+
+        .citation {
+            color: #007bff;
+            text-decoration: none;
+            font-size: 0.9rem;
+            vertical-align: super;
+        }
+
+        footer {
+            margin-top: 80px;
+            text-align: center;
+            font-size: 0.9rem;
+            color: #888;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .paper-canvas { padding: 40px 20px; }
+            h1 { font-size: 2rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="paper-canvas">
+        <header>
+            <h1>Qanto: A Fully Decoupled Layer-0 Protocol with ZK-Privacy and SAGA-AI Integration</h1>
+            <div class="authors">The Qanto Core Research Group</div>
+            <div class="date">April 2026 | Version 1.0.0-Genesis</div>
+        </header>
+
+        <section class="abstract">
+            <span class="abstract-title">Abstract</span>
+            We present Qanto, a novel Layer-0 protocol designed to eliminate the scalability bottlenecks of traditional blockchains while ensuring zero-knowledge privacy at the base layer. Qanto introduces the SAGA-AI executor, a localized inference engine that allows validators to verify AI-driven state transitions without revealing sensitive training data. By leveraging a DAG-GHOST consensus mechanism, Qanto achieves sub-second finality and near-infinite horizontal scalability.
+        </section>
+
+        <section id="introduction">
+            <h2>1. Introduction</h2>
+            <p>The current landscape of distributed ledger technology (DLT) is fragmented by the "Blockchain Trilemma." Existing Layer-1 and Layer-2 solutions attempt to solve scalability at the cost of decentralization or privacy. Qanto proposes a fundamentally different approach: a **Layer-0 Orchestrator** that decouples state execution from consensus propagation.</p>
+        </section>
+
+        <section id="saga-ai">
+            <h2>2. SAGA-AI: Decentralized Intelligence</h2>
+            <p>SAGA-AI (Synthetic Agentic Grayscale Architecture) is the core execution engine of Qanto. Unlike standard EVM execution, SAGA-AI utilizes decentralized inference to validate complex agentic behaviors.</p>
+            <h3>2.1 Validator-Inference Handshake</h3>
+            <p>Validators in the Qanto network do not merely verify transaction signatures. They participate in a multi-party computation (MPC) to generate proofs for SAGA-AI model outputs.</p>
+            <div class="math-block">
+                \[ \Psi(S, A, \theta) \to (S', \pi) \]
+            </div>
+            <p>Where \(S\) is the current state, \(A\) is the agent's action, \(\theta\) is the opaque model parameter set, and \(\pi\) is the ZK-proof of correct execution.</p>
+        </section>
+
+        <section id="zk-shield">
+            <h2>3. ZK-Shield: Privacy by Default</h2>
+            <p>Privacy is not an add-on in Qanto; it is the fundamental state of every address. Through ZK-Shield, every transaction utilizes stealth addresses and confidential values by default.</p>
+            <p>Utilizing Groth16 and PLONK proof systems, Qanto ensures that the underlying DAG remains opaque to external observers while remaining fully verifiable by the consensus layer.</p>
+        </section>
+
+        <section id="consensus">
+            <h2>4. DAG-GHOST Consensus</h2>
+            <p>Qanto moves away from linear block structures. Instead, it utilizes a Directed Acyclic Graph (DAG) for transaction recording, coupled with a GHOST-weighted selection algorithm for the main chain.</p>
+            <p>This allows for asynchronous transaction processing, effectively removing the "Next Block" waiting time common in legacy networks.</p>
+        </section>
+
+        <section id="conclusion">
+            <h2>5. Conclusion</h2>
+            <p>Qanto represents the next evolutionary step in protocol design. By combining high-velocity consensus with ZK-privacy and AI-native execution, we establish a foundation for the next decade of decentralized applications.</p>
+        </section>
+
+        <footer>
+            &copy; 2026 Qanto Protocol. All Rights Reserved. Published under the Pioneer License.
+        </footer>
+    </div>
+
+    <!-- KaTeX for math rendering -->
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.0/dist/katex.min.js" onload="renderMath()"></script>
+    <script>
+        function renderMath() {
+            // Future math auto-render logic
+        }
+    </script>
+</body>
+</html>

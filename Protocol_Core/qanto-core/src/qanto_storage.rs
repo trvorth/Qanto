@@ -398,6 +398,23 @@ impl AccountStateCache {
         }
         map
     }
+
+    /// Calculate the deterministic state root of all balances.
+    /// PHASE 3: STATE ROOT - Sorted address/balance hashing.
+    pub fn calculate_state_root(&self) -> String {
+        let mut entries: Vec<_> = self.balances.iter().collect();
+        // Sort by address to ensure determinism across all nodes
+        entries.sort_by(|a, b| a.key().cmp(b.key()));
+
+        let mut buffer = Vec::with_capacity(entries.len() * 64); // Pre-allocate for performance
+        for entry in entries {
+            buffer.extend_from_slice(entry.key().as_bytes());
+            buffer.extend_from_slice(&entry.value().to_be_bytes());
+        }
+
+        // Compute the final state root using the canonical hashing algorithm
+        hex::encode(my_blockchain::qanto_hash(&buffer).as_bytes())
+    }
 }
 
 /// Storage segment (SSTable-like structure)

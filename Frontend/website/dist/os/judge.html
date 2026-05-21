@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO JUDGE | Sovereign Justice</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(10, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .judge-header { border-bottom: 2px solid #ff004a; padding-bottom: 20px; margin-bottom: 30px; }
+        .dispute-list { list-style: none; padding: 0; }
+        .dispute-item { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; margin-bottom: 15px; display: flex; align-items: center; gap: 20px; transition: background 0.3s; }
+        .dispute-item:hover { background: rgba(255,255,255,0.05); }
+        .dispute-status { padding: 5px 12px; border-radius: 20px; font-size: 10px; font-weight: 800; text-transform: uppercase; background: #ff004a; color: white; min-width: 80px; text-align: center; }
+        .dispute-id { color: #888; font-family: 'Space Mono', monospace; font-size: 12px; }
+        
+        .verdict-feed { background: rgba(0,0,0,0.4); border-radius: 12px; padding: 20px; border: 1px solid rgba(255,255,255,0.05); }
+        .verdict-log { font-family: 'Space Mono', monospace; font-size: 11px; color: #00ffaa; border-left: 2px solid #00ffaa; padding-left: 15px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="judge-header">
+        <h1 style="margin:0; letter-spacing: 6px;">SOVEREIGN JUDGE</h1>
+        <div style="font-size: 12px; color: #888;">ZK-Justice (Layer-0 Consensus)</div>
+    </div>
+
+    <h3 style="letter-spacing: 2px;">ACTIVE DISPUTES (3)</h3>
+    <ul class="dispute-list">
+        <li class="dispute-item">
+            <div class="dispute-status" style="background:#00ffaa; color:black;">RESOLVED</div>
+            <div style="flex:1;">
+                <div class="dispute-id">ID_DISP_4298_B</div>
+                <div style="font-size: 14px; font-weight: 500;">ETH_AGENT_Alpha vs SOL_BOT_Gamma</div>
+                <div style="font-size: 11px; color: #888;">Claim: Failed Inference Payload Delivery</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 12px; color: #ff004a; font-weight: 700;">Verdict: PLAINTIFF_REFUND</div>
+                <div style="font-size: 10px; color: #888;">42.5 eQNTO Settled</div>
+            </div>
+        </li>
+        <li class="dispute-item">
+            <div class="dispute-status">OPEN</div>
+            <div style="flex:1;">
+                <div class="dispute-id">ID_DISP_5101_A</div>
+                <div style="font-size: 14px; font-weight: 500;">BTC_NODE_01 vs ENERGY_GRID_EV</div>
+                <div style="font-size: 11px; color: #888;">Claim: Telemetry Discrepancy (Art. 52 EU AI Act)</div>
+            </div>
+            <div style="text-align: right;">
+                <button class="dispute-status" style="background:rgba(255,255,255,0.1); color:white; border:none; cursor:pointer;" onclick="viewEvidence()">VIEW ZK-PROOF</button>
+            </div>
+        </li>
+    </ul>
+
+    <h3 style="letter-spacing: 2px; margin-top: 40px;">LEGAL_SHARD LOGS</h3>
+    <div class="verdict-feed">
+        <div class="verdict-log">[20:18] LE_SHARD_01: Verifying ZK-Inference Lineage for DISP_4298... VALID.</div>
+        <div class="verdict-log">[20:19] LE_SHARD_01: Slicing reputation bond for DEF_Gamma... TX_BURN_REPUTATION.</div>
+        <div class="verdict-log">[20:20] LE_SHARD_01: Resolving DISP_4298 favor Plaintiff. Protocol Justice Executed.</div>
+    </div>
+
+    <script>
+        function viewEvidence() {
+            alert("RTO: Streaming High-Fidelity ZK-Evidence of Reality... 100% VERIFIED.\nHardware Attestation: TEE_ARM_v9_CONFIDENTIAL.");
+        }
+    </script>
+</body>
+</html>

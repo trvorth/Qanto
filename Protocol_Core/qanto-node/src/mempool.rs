@@ -37,7 +37,7 @@ pub enum MempoolError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PrioritizedTransaction {
     pub tx: Transaction,
-    pub fee_per_byte: u64,
+    pub fee_per_byte: u128,
     pub timestamp: u64,
 }
 
@@ -68,7 +68,7 @@ impl PartialOrd for PrioritizedTransaction {
 #[derive(Clone, Debug)]
 pub struct Mempool {
     transactions: Arc<RwLock<HashMap<String, PrioritizedTransaction>>>,
-    priority_queue: Arc<RwLock<BTreeMap<u64, Vec<String>>>>,
+    priority_queue: Arc<RwLock<BTreeMap<u128, Vec<String>>>>,
     priority_heap: Arc<ParkingRwLock<BinaryHeap<PrioritizedTransaction>>>,
     max_age: Duration,
     max_size_bytes: usize,
@@ -230,12 +230,12 @@ impl EnhancedMempool {
 
             let min_fee_threshold = self.calculate_adaptive_fee_threshold().await;
             let fee_per_byte = if tx_size > 0 {
-                (transaction.fee * 1000) / (tx_size as u64) // Scale by 1000 for precision
+                (transaction.fee * 1000) / (tx_size as u128) // Scale by 1000 for precision
             } else {
                 0
             };
 
-            if fee_per_byte < min_fee_threshold {
+            if fee_per_byte < min_fee_threshold as u128 {
                 self.rejected_tx_counter.fetch_add(1, Ordering::Relaxed);
                 self.performance_metrics
                     .total_transactions_rejected
@@ -249,7 +249,7 @@ impl EnhancedMempool {
         }
 
         let fee_per_byte = if tx_size > 0 {
-            (transaction.fee * 1000) / (tx_size as u64)
+            (transaction.fee * 1000) / (tx_size as u128)
         } else {
             0
         };
@@ -633,14 +633,14 @@ impl OptimizedMempool {
             self.backpressure_active
                 .store(true, std::sync::atomic::Ordering::Relaxed);
             let min_fee_threshold = self.calculate_dynamic_fee_threshold().await;
-            let fee_preview = if tx_size > 0 {
+            let fee_preview: u128 = if tx_size > 0 {
                 (transaction.fee * 100)
-                    .checked_div(tx_size as u64)
+                    .checked_div(tx_size as u128)
                     .unwrap_or(0)
             } else {
                 0
             };
-            if fee_preview < min_fee_threshold {
+            if fee_preview < min_fee_threshold as u128 {
                 self.rejected_tx_counter.fetch_add(1, Ordering::Relaxed);
                 return Err(MempoolError::BackpressureActive(format!(
                     "fee_per_byte {} below threshold {} at {:.1}% capacity",
@@ -654,9 +654,9 @@ impl OptimizedMempool {
                 .store(false, std::sync::atomic::Ordering::Relaxed);
         }
 
-        let fee_per_byte = if tx_size > 0 {
+        let fee_per_byte: u128 = if tx_size > 0 {
             (transaction.fee * 100)
-                .checked_div(tx_size as u64)
+                .checked_div(tx_size as u128)
                 .unwrap_or(0)
         } else {
             0
@@ -731,7 +731,7 @@ impl OptimizedMempool {
                 self.transactions
                     .iter()
                     .map(|entry| entry.value().fee_per_byte)
-                    .sum::<u64>() as f64
+                    .sum::<u128>() as f64
                     / tx_count_in_pool as f64
             } else {
                 0.0
@@ -1209,12 +1209,12 @@ impl OptimizedMempool {
 
         // Calculate average fee of current transactions for better threshold
         let avg_fee = if !self.transactions.is_empty() {
-            let total_fee: u64 = self
+            let total_fee: u128 = self
                 .transactions
                 .iter()
                 .map(|entry| entry.value().fee_per_byte)
                 .sum();
-            total_fee / self.transactions.len() as u64
+            (total_fee / self.transactions.len() as u128) as u64
         } else {
             base_threshold
         };
@@ -1471,8 +1471,8 @@ impl Mempool {
         let projected_size = current_size + tx_size;
         if projected_size > self.max_size_bytes {
             let capacity_percentage = (projected_size as f64 / self.max_size_bytes as f64) * 100.0;
-            let fee_per_byte_dbg = if tx_size > 0 {
-                tx.fee / tx_size as u64
+            let fee_per_byte_dbg: u128 = if tx_size > 0 {
+                tx.fee / tx_size as u128
             } else {
                 0
             };
@@ -1493,8 +1493,8 @@ impl Mempool {
             .map_err(|_| MempoolError::TimestampError)?
             .as_secs();
 
-        let fee_per_byte = if tx_size > 0 {
-            tx.fee / tx_size as u64
+        let fee_per_byte: u128 = if tx_size > 0 {
+            tx.fee / tx_size as u128
         } else {
             0
         };
@@ -1570,7 +1570,7 @@ impl Mempool {
             };
             let avg_fee_per_byte = if transactions_count > 0 {
                 let transactions = self.transactions.read().await;
-                let total_fee_per_byte: u64 =
+                let total_fee_per_byte: u128 =
                     transactions.values().map(|ptx| ptx.fee_per_byte).sum();
                 total_fee_per_byte as f64 / transactions_count as f64
             } else {
@@ -1813,9 +1813,9 @@ impl Mempool {
     }
 
     /// Get the total fees of all transactions in the mempool
-    pub async fn get_total_fees(&self) -> u64 {
+    pub async fn get_total_fees(&self) -> u128 {
         let transactions = self.transactions.read().await;
-        transactions.values().map(|ptx| ptx.tx.fee).sum()
+        transactions.values().map(|ptx| ptx.tx.fee).sum::<u128>()
     }
 
     /// Get all pending transactions

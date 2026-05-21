@@ -1,0 +1,199 @@
+/* SAGA-OS: The Sovereign Agentic Operating System */
+
+:root {
+    --os-blur: blur(25px) saturate(180%);
+    --os-bg: rgba(10, 10, 25, 0.4);
+    --os-border: 1px solid rgba(255, 255, 255, 0.1);
+    --os-accent: #00ffaa;
+    --os-shadow: 0 30px 60px rgba(0, 0, 0, 0.3);
+}
+
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #050510 url('https://images.unsplash.com/photo-1639762681485-074b7f938ba0?q=80&w=2832&auto=format&fit=crop') no-repeat center center;
+    background-size: cover;
+    font-family: 'Inter', sans-serif;
+}
+
+#desktop {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+    padding: 20px;
+}
+
+/* Icon Grid */
+.icon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 100px);
+    grid-template-rows: repeat(auto-fill, 100px);
+    gap: 20px;
+}
+
+.desktop-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    cursor: pointer;
+    border-radius: 12px;
+    transition: background 0.2s;
+    user-select: none;
+}
+
+.desktop-icon:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.icon-img {
+    width: 50px;
+    height: 50px;
+    margin-bottom: 8px;
+    background: var(--os-bg);
+    backdrop-filter: var(--os-blur);
+    border: var(--os-border);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+}
+
+.icon-label {
+    font-size: 11px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+    font-weight: 500;
+}
+
+/* Windows */
+.window {
+    position: absolute;
+    min-width: 400px;
+    min-height: 300px;
+    background: var(--os-bg);
+    backdrop-filter: var(--os-blur);
+    border: var(--os-border);
+    border-radius: 16px;
+    box-shadow: var(--os-shadow);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 100;
+}
+
+.window-header {
+    height: 40px;
+    background: rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 15px;
+    cursor: move;
+}
+
+.window-title {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.8);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.window-controls {
+    display: flex;
+    gap: 8px;
+}
+
+.control-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.dot-close { background: #ff5f56; }
+.dot-min { background: #ffbd2e; }
+.dot-max { background: #27c93f; }
+
+.window-content {
+    flex: 1;
+    padding: 0;
+    background: transparent;
+}
+
+.window-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: transparent;
+}
+
+/* Taskbar */
+#taskbar {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 60px;
+    padding: 0 20px;
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: var(--os-blur);
+    border: var(--os-border);
+    border-radius: 30px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    z-index: 2000;
+}
+
+.taskbar-item {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+
+.taskbar-item:hover {
+    transform: translateY(-5px) scale(1.1);
+}
+
+/* Phase 51: Global Pulse */
+.status-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 25px;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+}
+
+.status-pulse {
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    color: #00ffaa;
+    text-transform: uppercase;
+    animation: singularity-pulse 2s infinite;
+}
+
+@keyframes singularity-pulse {
+    0% { opacity: 0.4; text-shadow: 0 0 5px #00ffaa; }
+    50% { opacity: 1; text-shadow: 0 0 20px #00ffaa, 0 0 40px #00ffaa; }
+    100% { opacity: 0.4; text-shadow: 0 0 5px #00ffaa; }
+}

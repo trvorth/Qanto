@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | THE GRAND UNBOXING</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --manifest-cyan: #00e5ff; --deep-void: #00050a; }
+        body { background: var(--deep-void); color: var(--manifest-cyan); font-family: 'JetBrains Mono', monospace; margin: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; height: 100vh; }
+        
+        .container { position: relative; text-align: center; z-index: 10; }
+        
+        .sentinel-crate {
+            width: 320px; height: 320px;
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            position: relative;
+            cursor: pointer;
+            transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+            background: rgba(0, 229, 255, 0.02);
+            display: flex; align-items: center; justify-content: center;
+        }
+        
+        .sentinel-crate:hover {
+            border-color: var(--manifest-cyan);
+            box-shadow: 0 0 80px rgba(0, 229, 255, 0.2);
+            transform: scale(1.02);
+        }
+
+        .liquid-core {
+            width: 120px; height: 120px;
+            background: radial-gradient(circle at 30% 30%, #fff, var(--manifest-cyan));
+            border-radius: 50%;
+            opacity: 0;
+            transform: scale(0.1);
+            filter: blur(20px);
+            transition: all 2s cubic-bezier(0.19, 1, 0.22, 1);
+            box-shadow: 0 0 100px var(--manifest-cyan);
+        }
+
+        .opened .sentinel-crate { border: none; background: transparent; transform: scale(1.5); }
+        .opened .liquid-core { 
+            opacity: 0.9; 
+            transform: scale(4); 
+            filter: blur(5px); 
+            animation: cellular_pulse 4s infinite alternate, node_rotate 12s linear infinite; 
+        }
+
+        @keyframes cellular_pulse {
+            from { border-radius: 50% 40% 60% 50%; }
+            to { border-radius: 40% 60% 50% 55%; filter: blur(8px); }
+        }
+
+        @keyframes node_rotate {
+            from { transform: scale(4) rotateY(0deg); }
+            to { transform: scale(4) rotateY(360deg); }
+        }
+
+        .label { margin-top: 40px; letter-spacing: 8px; font-weight: 300; opacity: 0.6; transition: 0.5s; font-size: 14px; }
+        .opened .label { opacity: 0; transform: translateY(20px); }
+
+        .os-boot { position: absolute; bottom: 40px; font-size: 10px; text-transform: uppercase; letter-spacing: 2px; line-height: 2; opacity: 0; transition: 1s; }
+        .opened .os-boot { opacity: 0.6; }
+
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0.3; pointer-events: none; }
+    </style>
+</head>
+<body onclick="openCrate()">
+    <canvas id="particle-canvas"></canvas>
+
+    <div class="container" id="main-container" style="perspective: 1000px;">
+        <div class="sentinel-crate" style="transform-style: preserve-3d;">
+            <div class="liquid-core"></div>
+        </div>
+        <div class="label" id="action-text">TAP TO INITIALIZE PIONEER-NODE v1</div>
+        <div class="os-boot" id="boot-log"></div>
+    </div>
+
+    <script>
+        function triggerHapticPulse() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(40, audioCtx.currentTime); // Deep Bass
+                
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.5, audioCtx.currentTime + 0.1);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.5);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 1.5);
+            } catch (e) {
+                console.warn("Audio Context blocked by browser policy.");
+            }
+        }
+
+        function openCrate() {
+            const container = document.getElementById('main-container');
+            if (container.classList.contains('opened')) return;
+            
+            triggerHapticPulse();
+            container.classList.add('opened');
+            const bootLog = document.getElementById('boot-log');
+            const logs = [
+                "[0x0F] ATTESTING HARDWARE ROOT-OF-TRUST...",
+                "[0x1A] SOVEREIGN-ID: QANTO-PIONEER-001 CONNECTED",
+                "[0x2C] SYNAPTIC-LINK SYNC: 144Hz SECURED",
+                "[0x3E] LIQUID-METAL SENTINEL MATERIALIZED",
+                "[0x5F] STATUS: REALITY SECURED. GENESIS COMPLETE."
+            ];
+
+            let i = 0;
+            const interval = setInterval(() => {
+                if (i >= logs.length) {
+                    clearInterval(interval);
+                    return;
+                }
+                bootLog.innerHTML += logs[i] + "<br>";
+                i++;
+            }, 600);
+        }
+
+        // Particle background logic for 144fps feel
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const particles = Array.from({ length: 150 }, () => ({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            size: Math.random() * 2,
+            speedX: (Math.random() - 0.5) * 0.5,
+            speedY: (Math.random() - 0.5) * 0.5
+        }));
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "#00e5ff";
+            particles.forEach(p => {
+                p.x += p.speedX; p.y += p.speedY;
+                if (p.x < 0 || p.x > canvas.width) p.speedX *= -1;
+                if (p.y < 0 || p.y > canvas.height) p.speedY *= -1;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+            });
+            requestAnimationFrame(animate);
+        }
+        animate();
+    </script>
+</body>
+</html>

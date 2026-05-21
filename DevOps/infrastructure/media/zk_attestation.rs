@@ -13,14 +13,14 @@ pub struct MediaAttestation {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct MediaMetadata {
     pub timestamp: u64,
-    pub gps_coords: (f64, f64),
+    pub gps_coords: (i128, i128), // Scaled by 1e9
     pub device_id: String,
     pub camera_parameters_hash: [u8; 32],
 }
 
 pub struct ZMAProof {
     pub proof_bytes: Vec<u8>,
-    pub veracity_score: f64,
+    pub veracity_score: u128, // Scaled by 1e9
 }
 
 impl MediaAttestation {
@@ -37,7 +37,7 @@ impl MediaAttestation {
         // without revealing the full device-serial.
         ZMAProof {
             proof_bytes: vec![0xDE, 0xAD, 0xBE, 0xEF], // Mock proof
-            veracity_score: 0.99, // High veracity if hardware signature is valid
+            veracity_score: 990_000_000, // High veracity (0.99 scaled by 1e9)
         }
     }
 }

@@ -128,7 +128,7 @@ impl TelemetryManager {
 
     /// Get current hash rate in H/s
     pub fn get_current_hash_rate(&self) -> f64 {
-        get_global_metrics().get_hash_rate_hps()
+        get_global_metrics().get_hash_rate_hps() as f64
     }
 
     /// Get total hash attempts
@@ -151,12 +151,12 @@ pub fn get_hash_attempts() -> u64 {
 
 /// Convert hash attempts delta and time interval to hash rate
 pub fn calculate_hash_rate(attempts_delta: u64, interval_ms: u64) -> f64 {
-    QantoMetrics::compute_hash_rate(attempts_delta, interval_ms)
+    QantoMetrics::compute_hash_rate(attempts_delta, interval_ms) as f64
 }
 
 /// Format hash rate with appropriate units (H/s, KH/s, MH/s, etc.)
 pub fn format_hash_rate(hash_rate_hps: f64) -> String {
-    QantoMetrics::format_hash_rate(hash_rate_hps)
+    QantoMetrics::format_hash_rate(hash_rate_hps as u128)
 }
 
 #[cfg(test)]

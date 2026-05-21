@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO CONSENSUS | Neural Pulse</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(5, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .con-header { border-bottom: 2px solid #00ffaa; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .pulse-card { background: linear-gradient(135deg, rgba(0, 255, 170, 0.1), rgba(0, 102, 255, 0.1)); border: 1px solid rgba(0, 255, 170, 0.3); padding: 25px; border-radius: 16px; margin-bottom: 30px; position: relative; overflow: hidden; }
+        .pulse-line { height: 2px; width: 100%; background: #222; margin-top: 25px; position: relative; }
+        .pulse-wave { position: absolute; height: 100%; width: 30px; background: #00ffaa; box-shadow: 0 0 15px #00ffaa; left: 0; animation: pulseMove 2s infinite linear; }
+        @keyframes pulseMove { 0% { left: 0; } 100% { left: 100%; } }
+        
+        .consensus-stats { display: flex; justify-content: space-between; margin-top: 20px; }
+        .stat-box { background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); text-align: center; flex: 1; margin: 0 5px; }
+    </style>
+</head>
+<body>
+    <div class="con-header">
+        <div>
+            <h1 style="margin:0; letter-spacing: 6px;">NEURAL CONSENSUS</h1>
+            <div style="font-size: 11px; color: #888;">Proof-of-Veracity & Agentic Synchronization</div>
+        </div>
+        <div style="font-size: 11px; color: #00ffaa; font-weight: 900;"><i class="fas fa-heartbeat"></i> SYNC: OK</div>
+    </div>
+
+    <div class="pulse-card">
+        <div style="display: flex; justify-content: space-between;">
+            <span style="font-weight: 900; letter-spacing: 1px;">PULSE: TRUTH_SHARD_A1</span>
+            <span style="color: #00ffaa;">ACTIVE SYNCING</span>
+        </div>
+        <div class="pulse-line"><div class="pulse-wave"></div></div>
+        <div class="consensus-stats">
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">PARTICIPANTS</div><div style="font-size: 18px; font-weight: 900;">128</div></div>
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">VERACITY MEAN</div><div style="font-size: 18px; font-weight: 900; color: #00ffaa;">0.92</div></div>
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">PULSE DEPTH</div><div style="font-size: 18px; font-weight: 900;">1,200ms</div></div>
+        </div>
+    </div>
+
+    <h3 style="letter-spacing: 2px;">SYNC LOG (TNC)</h3>
+    <div style="background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); font-family: 'Space Mono', monospace; font-size: 11px; height: 100px; overflow-y: auto;">
+        <div style="margin-bottom: 5px; color: #00ffaa;">[21:30] TNC: PULSE_INIT: SHARD_ID: 101. STATUS: OK.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[21:32] TNC: AGGREGATING SCORES: CLAIM_ID: 0xTRUTH_501.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[21:34] TNC: SYNC_CONFIRMED: DEPTH: 120 CYCLES.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[21:36] TNC: BROADCASTING_PULSE: ALL_EXPERT_SHARDS.</div>
+    </div>
+</body>
+</html>

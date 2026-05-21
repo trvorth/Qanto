@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sovereign Citizen Mint | QANTO Layer-0</title>
+    <link rel="stylesheet" href="../../assets/css/main.css">
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.11.1/dist/ethers.umd.min.js"></script>
+    
+    <style>
+        .citizen-portal {
+            max-width: 1000px;
+            margin: 120px auto;
+            padding: 4rem;
+            background: rgba(15, 15, 35, 0.6);
+            backdrop-filter: blur(50px) saturate(200%);
+            border: 1px solid rgba(0, 229, 255, 0.2);
+            border-radius: 48px;
+            box-shadow: 0 50px 100px rgba(0, 0, 0, 0.8);
+            text-align: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .identity-header h1 {
+            font-size: 5rem;
+            background: linear-gradient(135deg, #fff 0%, #00e5ff 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1.5rem;
+            letter-spacing: -3px;
+            font-weight: 950;
+        }
+
+        /* Neural Print Visualizer */
+        .neural-print-container {
+            width: 320px;
+            height: 320px;
+            margin: 60px auto;
+            border: 1px solid rgba(0, 229, 255, 0.4);
+            border-radius: 50%;
+            position: relative;
+            padding: 10px;
+            display: none;
+            box-shadow: 0 0 60px rgba(0, 229, 255, 0.15);
+        }
+
+        .neural-print-inner {
+            width: 100%; height: 100%;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0, 229, 255, 0.2) 0%, transparent 80%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .scan-beam {
+            position: absolute;
+            width: 100%; height: 2px;
+            background: linear-gradient(90deg, transparent, #00e5ff, transparent);
+            box-shadow: 0 0 30px #00e5ff;
+            top: 0;
+            animation: neural-scan 3s infinite ease-in-out;
+        }
+
+        @keyframes neural-scan {
+            0% { transform: translateY(0); opacity: 0.5; }
+            50% { transform: translateY(300px); opacity: 1; }
+            100% { transform: translateY(0); opacity: 0.5; }
+        }
+
+        .mesh-lines {
+            position: absolute;
+            width: 100%; height: 100%;
+            background-image: 
+                radial-gradient(circle, rgba(0, 229, 255, 0.1) 1px, transparent 1px);
+            background-size: 20px 20px;
+            opacity: 0.4;
+        }
+
+        .mint-btn {
+            background: linear-gradient(135deg, #00e5ff 0%, #0066ff 100%);
+            color: #fff;
+            padding: 1.5rem 5rem;
+            border-radius: 60px;
+            font-size: 1.8rem;
+            font-weight: 900;
+            cursor: pointer;
+            border: none;
+            transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            box-shadow: 0 20px 40px rgba(0, 229, 255, 0.3);
+            z-index: 10;
+        }
+
+        .mint-btn:hover:not(:disabled) {
+            transform: scale(1.05) translateY(-5px);
+            box-shadow: 0 30px 60px rgba(0, 229, 255, 0.5);
+            filter: brightness(1.2);
+        }
+
+        .mint-btn:disabled {
+            background: rgba(255, 255, 255, 0.05);
+            color: #555;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        #mint-status {
+            margin-top: 2rem;
+            font-family: 'Space Mono', monospace;
+            color: #00e5ff;
+            font-size: 1.1rem;
+            letter-spacing: 2px;
+            opacity: 0.8;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body class="bg-dark">
+    
+    <div class="citizen-portal fade-in">
+        <div class="identity-header">
+            <h1>Citizen Manifest</h1>
+            <p class="text-secondary" style="font-size: 1.2rem; letter-spacing: 1px;">Burn your Pioneer Heritage to become an Immutable Citizen of the Star-Map.</p>
+        </div>
+
+        <div class="neural-print-container" id="neural-box">
+            <div class="neural-print-inner">
+                <div class="mesh-lines"></div>
+                <div class="scan-beam"></div>
+            </div>
+        </div>
+
+        <div style="margin-top: 60px;">
+            <button class="mint-btn" id="mint-action" onclick="manifestCitizency()">Initiate Manifest</button>
+            <div id="mint-status">HUMAN TETHER: ATTACHED</div>
+        </div>
+
+        <div style="margin-top: 4rem; padding: 2rem; background: rgba(0, 229, 255, 0.03); border-radius: 20px;">
+            <p style="font-size: 0.9rem; color: #888; margin-bottom: 0;">
+                ** UNIVERSAL LAW **: Citizen Identity is bound to the Star-State. 
+                This action is IRREVERSIBLE. Sovereignty is ABSOLUTE.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        async function manifestCitizency() {
+            const btn = document.getElementById('mint-action');
+            const status = document.getElementById('mint-status');
+            const box = document.getElementById('neural-box');
+
+            if (typeof window.ethereum === 'undefined') {
+                alert("Deep Link: MetaMask required for Neural Sync.");
+                return;
+            }
+
+            try {
+                btn.innerText = "AUTHENTICATING PIONEER...";
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                const signer = await provider.getSigner();
+                const address = await signer.getAddress();
+
+                status.innerText = `PIONEER_KEY: ${address.slice(0,10)}... VERIFIED`;
+                
+                // Neural Scan Sequence
+                box.style.display = "block";
+                btn.innerText = "CAPTURING NEURAL PRINT...";
+                await new Promise(r => setTimeout(r, 4000));
+
+                btn.innerText = "GENERATING ZK-BIOMETRIC PROOF...";
+                await new Promise(r => setTimeout(r, 3000));
+
+                btn.innerText = "BURNING PIONEER HERITAGE...";
+                await new Promise(r => setTimeout(r, 2000));
+
+                btn.innerText = "MINTING SOVEREIGN ID...";
+                await new Promise(r => setTimeout(r, 2500));
+
+                // Success
+                box.style.display = "none";
+                status.innerText = "HUMAN TETHER: SEVERED | CITIZENSHIP: IMMUTABLE";
+                btn.innerText = "SOVEREIGNTY ATTAINED";
+                btn.disabled = true;
+                btn.style.opacity = "0.5";
+
+                alert("UNIVERSAL STATUS REACHED. Your identity is now a permanent coordinate on the Star-Map.");
+            } catch (error) {
+                console.error(error);
+                btn.innerText = "SYNC ERROR: RETRY";
+                status.innerText = "NEURAL SYNC FAILED";
+            }
+        }
+    </script>
+</body>
+</html>

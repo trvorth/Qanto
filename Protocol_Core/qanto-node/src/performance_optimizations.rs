@@ -438,7 +438,7 @@ impl OptimizedMempool {
         self.tx_lookup.insert(tx.id.clone(), tx.clone());
 
         // Add to priority queue
-        let fee_per_byte = tx.fee / tx_size as u64;
+        let fee_per_byte = (tx.fee / tx_size as u128) as u64;
         let prioritized_tx = PrioritizedTx {
             fee_per_byte,
             tx_id: tx.id.clone(),

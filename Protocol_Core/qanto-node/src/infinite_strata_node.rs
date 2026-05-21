@@ -106,8 +106,8 @@ pub struct Heartbeat {
     pub node_id: String,
     pub epoch: u64,
     pub timestamp: u64,
-    pub cpu_usage: f32,
-    pub memory_usage_mb: f32,
+    pub cpu_usage: u64, // Scaled u64 (scale Q_SCALE)
+    pub memory_usage_mb: u64, // Scaled u64 (scale Q_SCALE)
     pub signature: Vec<u8>,
     pub public_key_hash: Vec<u8>, // For key rotation verification
     pub multi_sig_proof: Option<MultiSignatureProof>, // For validator consensus
@@ -188,27 +188,27 @@ impl Heartbeat {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceSample {
-    pub cpu_usage: f32,
-    pub memory_usage_mb: f32,
+    pub cpu_usage: u64,
+    pub memory_usage_mb: u64,
     pub timestamp: u64, // Add timestamp for epoch tracking
     pub epoch: u64,     // Add epoch for better tracking
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeConfig {
-    pub free_tier_cpu_threshold: f32,
-    pub free_tier_memory_threshold_mb: f32,
-    pub performance_target_cpu: f32,
-    pub performance_target_memory_mb: f32,
+    pub free_tier_cpu_threshold: u64,
+    pub free_tier_memory_threshold_mb: u64,
+    pub performance_target_cpu: u64,
+    pub performance_target_memory_mb: u64,
 }
 
 impl Default for NodeConfig {
     fn default() -> Self {
         Self {
-            free_tier_cpu_threshold: 10.0,
-            free_tier_memory_threshold_mb: 100.0,
-            performance_target_cpu: 2.0,
-            performance_target_memory_mb: 50.0,
+            free_tier_cpu_threshold: 10 * crate::QANTO_SCALE as u64,
+            free_tier_memory_threshold_mb: 100 * crate::QANTO_SCALE as u64,
+            performance_target_cpu: 2 * crate::QANTO_SCALE as u64,
+            performance_target_memory_mb: 50 * crate::QANTO_SCALE as u64,
         }
     }
 }
@@ -228,15 +228,15 @@ impl DecentralizedOracleAggregator {
     }
 
     /// Calculates aggregate network health from all received heartbeats.
-    pub async fn get_network_health(&self) -> (usize, u64, f64) {
+    pub async fn get_network_health(&self) -> (usize, u64, u64) {
         let heartbeats = self.heartbeats.read().await;
         if heartbeats.is_empty() {
-            return (0, 0, 0.0);
+            return (0, 0, 0);
         }
         let total_nodes = heartbeats.len();
         let avg_epoch = heartbeats.values().map(|h| h.epoch).sum::<u64>() / total_nodes as u64;
-        let avg_cpu = heartbeats.values().map(|h| h.cpu_usage).sum::<f32>() / total_nodes as f32;
-        (total_nodes, avg_epoch, avg_cpu as f64)
+        let avg_cpu = heartbeats.values().map(|h| h.cpu_usage).sum::<u64>() / total_nodes as u64;
+        (total_nodes, avg_epoch, avg_cpu)
     }
 
     /// Retrieves all multi-signature proofs from the network
@@ -270,8 +270,8 @@ pub struct InfiniteStrataNode {
     is_free_tier: Arc<RwLock<bool>>,
     #[allow(dead_code)]
     last_performance_check: Arc<RwLock<u64>>,
-    performance_history: Arc<RwLock<Vec<f64>>>,
-    cached_reward_multiplier: Arc<RwLock<f64>>,
+    performance_history: Arc<RwLock<Vec<u128>>>,
+    cached_reward_multiplier: Arc<RwLock<u128>>,
     pub threshold_signatures: Arc<RwLock<HashMap<String, MultiSignatureProof>>>,
     pub verifiable_delay_function: Arc<RwLock<VDFState>>,
     pub zero_knowledge_proofs: Arc<RwLock<Vec<ZKProof>>>,
@@ -284,14 +284,14 @@ pub struct InfiniteStrataNode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EpochPerformanceMetrics {
     pub epoch: u64,
-    pub avg_cpu_usage: f32,
-    pub avg_memory_usage_mb: f32,
-    pub max_cpu_usage: f32,
-    pub max_memory_usage_mb: f32,
-    pub min_cpu_usage: f32,
-    pub min_memory_usage_mb: f32,
+    pub avg_cpu_usage: u64,
+    pub avg_memory_usage_mb: u64,
+    pub max_cpu_usage: u64,
+    pub max_memory_usage_mb: u64,
+    pub min_cpu_usage: u64,
+    pub min_memory_usage_mb: u64,
     pub sample_count: u32,
-    pub performance_score: f64,
+    pub performance_score: u128,
     pub timestamp: u64,
 }
 
@@ -299,14 +299,14 @@ impl Default for EpochPerformanceMetrics {
     fn default() -> Self {
         Self {
             epoch: 0,
-            avg_cpu_usage: 0.0,
-            avg_memory_usage_mb: 0.0,
-            max_cpu_usage: 0.0,
-            max_memory_usage_mb: 0.0,
-            min_cpu_usage: f32::MAX,
-            min_memory_usage_mb: f32::MAX,
+            avg_cpu_usage: 0,
+            avg_memory_usage_mb: 0,
+            max_cpu_usage: 0,
+            max_memory_usage_mb: 0,
+            min_cpu_usage: u64::MAX,
+            min_memory_usage_mb: u64::MAX,
             sample_count: 0,
-            performance_score: 0.0,
+            performance_score: 0,
             timestamp: 0,
         }
     }
@@ -691,7 +691,7 @@ impl InfiniteStrataNode {
             is_free_tier: Arc::new(RwLock::new(true)),
             last_performance_check: Arc::new(RwLock::new(0)),
             performance_history: Arc::new(RwLock::new(Vec::new())),
-            cached_reward_multiplier: Arc::new(RwLock::new(1.0)),
+            cached_reward_multiplier: Arc::new(RwLock::new(crate::QANTO_SCALE)),
             threshold_signatures: Arc::new(RwLock::new(HashMap::new())),
             verifiable_delay_function: Arc::new(RwLock::new(VDFState::with_testnet_mode(
                 testnet_mode,
@@ -741,34 +741,39 @@ impl InfiniteStrataNode {
         }
 
         // Calculate aggregated metrics
-        let sample_count = epoch_samples.len() as u32;
+        let sample_count = epoch_samples.len() as u64;
         let avg_cpu_usage =
-            epoch_samples.iter().map(|s| s.cpu_usage).sum::<f32>() / sample_count as f32;
+            epoch_samples.iter().map(|s| s.cpu_usage).sum::<u64>() / sample_count;
         let avg_memory_usage_mb =
-            epoch_samples.iter().map(|s| s.memory_usage_mb).sum::<f32>() / sample_count as f32;
+            epoch_samples.iter().map(|s| s.memory_usage_mb).sum::<u64>() / sample_count;
         let max_cpu_usage = epoch_samples
             .iter()
             .map(|s| s.cpu_usage)
-            .fold(0.0f32, f32::max);
+            .max().unwrap_or(0);
         let max_memory_usage_mb = epoch_samples
             .iter()
             .map(|s| s.memory_usage_mb)
-            .fold(0.0f32, f32::max);
+            .max().unwrap_or(0);
         let min_cpu_usage = epoch_samples
             .iter()
             .map(|s| s.cpu_usage)
-            .fold(f32::MAX, f32::min);
+            .min().unwrap_or(u64::MAX);
         let min_memory_usage_mb = epoch_samples
             .iter()
             .map(|s| s.memory_usage_mb)
-            .fold(f32::MAX, f32::min);
+            .min().unwrap_or(u64::MAX);
 
         // Calculate performance score based on resource efficiency
         let config = self.config.read().await;
-        let cpu_efficiency = 1.0 - (avg_cpu_usage / 100.0).min(1.0);
-        let memory_efficiency =
-            1.0 - (avg_memory_usage_mb / config.performance_target_memory_mb).min(1.0);
-        let performance_score = ((cpu_efficiency + memory_efficiency) / 2.0) * 100.0;
+        // 100% in scaled units is 100 * Q_SCALE
+        let cpu_limit = 100 * crate::QANTO_SCALE as u64;
+        let cpu_efficiency = crate::QANTO_SCALE as u64 - (avg_cpu_usage.min(cpu_limit) * crate::QANTO_SCALE as u64 / cpu_limit);
+        
+        let mem_limit = config.performance_target_memory_mb.max(1);
+        let memory_efficiency = crate::QANTO_SCALE as u64 - (avg_memory_usage_mb.min(mem_limit) * crate::QANTO_SCALE as u64 / mem_limit);
+        
+        // performance_score scaled by QANTO_SCALE
+        let performance_score = (cpu_efficiency as u128 + memory_efficiency as u128) / 2;
         drop(config);
 
         let epoch_metrics = EpochPerformanceMetrics {
@@ -779,8 +784,8 @@ impl InfiniteStrataNode {
             max_memory_usage_mb,
             min_cpu_usage,
             min_memory_usage_mb,
-            sample_count,
-            performance_score: performance_score as f64,
+            sample_count: sample_count as u32,
+            performance_score,
             timestamp: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
         };
 
@@ -791,7 +796,7 @@ impl InfiniteStrataNode {
 
         // Update performance history
         let mut performance_history = self.performance_history.write().await;
-        performance_history.push(performance_score as f64);
+        performance_history.push(performance_score);
 
         // Limit performance history size
         if performance_history.len() > MAX_PERFORMANCE_HISTORY_SIZE {
@@ -801,7 +806,7 @@ impl InfiniteStrataNode {
         drop(performance_history);
 
         debug!(
-            "Collected epoch {} metrics: score={:.2}, samples={}",
+            "Collected epoch {} metrics: score={}, samples={}",
             epoch, performance_score, sample_count
         );
 
@@ -823,20 +828,20 @@ impl InfiniteStrataNode {
         let avg_performance_score = recent_epochs
             .iter()
             .map(|m| m.performance_score)
-            .sum::<f64>()
-            / recent_epochs.len() as f64;
+            .sum::<u128>()
+            / recent_epochs.len() as u128;
 
         let avg_cpu_usage =
-            recent_epochs.iter().map(|m| m.avg_cpu_usage).sum::<f32>() / recent_epochs.len() as f32;
+            recent_epochs.iter().map(|m| m.avg_cpu_usage).sum::<u64>() / recent_epochs.len() as u64;
 
         let avg_memory_usage = recent_epochs
             .iter()
             .map(|m| m.avg_memory_usage_mb)
-            .sum::<f32>()
-            / recent_epochs.len() as f32;
+            .sum::<u64>()
+            / recent_epochs.len() as u64;
 
         info!(
-            "Epoch Performance Summary (last {} epochs): avg_score={:.2}, avg_cpu={:.1}%, avg_memory={:.1}MB",
+            "Epoch Performance Summary (last {} epochs): avg_score={}, avg_cpu={} units, avg_memory={} units",
             recent_epochs.len(), avg_performance_score, avg_cpu_usage, avg_memory_usage
         );
 
@@ -877,7 +882,7 @@ impl InfiniteStrataNode {
     }
 
     /// Get performance history
-    pub async fn get_performance_history(&self) -> Vec<f64> {
+    pub async fn get_performance_history(&self) -> Vec<u128> {
         self.performance_history.read().await.clone()
     }
 
@@ -886,8 +891,8 @@ impl InfiniteStrataNode {
         let mut system = System::new_all();
         system.refresh_all();
 
-        let cpu_usage = system.global_cpu_info().cpu_usage();
-        let memory_usage_mb = (system.used_memory() as f32) / (1024.0 * 1024.0);
+        let cpu_usage = (system.global_cpu_info().cpu_usage() as u128 * crate::QANTO_SCALE / 100) as u64;
+        let memory_usage_mb = (system.used_memory() * crate::QANTO_SCALE as u64) / (1024 * 1024);
         let current_epoch = self.get_current_epoch().await;
 
         let sample = ResourceSample {
@@ -971,22 +976,25 @@ impl InfiniteStrataNode {
         // Update cached reward multiplier
         let performance_history = self.performance_history.read().await;
         if !performance_history.is_empty() {
-            let avg_performance: f64 =
-                performance_history.iter().sum::<f64>() / performance_history.len() as f64;
+            let avg_performance: u128 =
+                performance_history.iter().sum::<u128>() / performance_history.len() as u128;
             let mut cached_multiplier = self.cached_reward_multiplier.write().await;
-            *cached_multiplier = (avg_performance / 100.0).clamp(0.1, 2.0); // Clamp between 0.1 and 2.0
+            // Clamp between 0.1 and 2.0 (scaled)
+            *cached_multiplier = avg_performance.clamp(crate::QANTO_SCALE / 10, crate::QANTO_SCALE * 2);
         }
 
         Ok(())
     }
 
     /// Get rewards for the current node
-    pub async fn get_rewards(&self) -> Result<(f64, u64)> {
+    pub async fn get_rewards(&self) -> Result<(u128, u128)> {
         let multiplier = *self.cached_reward_multiplier.read().await;
-        let base_reward = 100u64; // Base reward amount
-        let redistributed_reward = (base_reward as f64 * multiplier) as u64;
+        let base_reward = 100 * crate::QANTO_SCALE; // Base reward amount
+        let redistributed_reward = base_reward.checked_mul(multiplier)
+            .and_then(|r| r.checked_div(crate::QANTO_SCALE))
+            .unwrap_or(0);
 
-        Ok((multiplier, redistributed_reward))
+        Ok((multiplier, redistributed_reward as u64 as u128)) // Ensuring type consistency
     }
 
     /// Detects potential quantum threats or anomalies in the network
@@ -1047,48 +1055,59 @@ impl InfiniteStrataNode {
         if !zk_proofs.is_empty() {
             // Analyze the distribution of ZK proof challenges
             // In a healthy network, these should have a uniform distribution
-            let mut challenge_bytes_sum = [0u8; 64]; // For QantoHash output
-            let mut challenge_variance = [0f64; 64];
-            let proof_count = zk_proofs.len() as f64;
+            let mut challenge_bytes_sum = [0u128; 64]; // Use u128 for sum
+            let mut challenge_variance = [0u128; 64];
+            let proof_count = zk_proofs.len() as u128;
 
             // First pass: calculate sums
             for proof in zk_proofs.iter() {
                 for (i, byte) in proof.challenge.iter().enumerate().take(64) {
-                    challenge_bytes_sum[i] = challenge_bytes_sum[i].wrapping_add(*byte);
+                    challenge_bytes_sum[i] += *byte as u128;
                 }
             }
 
-            // Calculate means for each byte position
-            let means: Vec<f64> = challenge_bytes_sum
+            // Calculate means for each byte position (scaled by QANTO_SCALE)
+            let means: Vec<u128> = challenge_bytes_sum
                 .iter()
-                .map(|&sum| sum as f64 / proof_count)
+                .map(|&sum| (sum * crate::QANTO_SCALE) / proof_count)
                 .collect();
 
             // Second pass: calculate variance
             for proof in zk_proofs.iter() {
                 for (i, byte) in proof.challenge.iter().enumerate().take(64) {
-                    let diff = *byte as f64 - means[i];
-                    challenge_variance[i] += diff * diff;
+                    let byte_scaled = *byte as u128 * crate::QANTO_SCALE;
+                    let diff = if byte_scaled > means[i] {
+                        byte_scaled - means[i]
+                    } else {
+                        means[i] - byte_scaled
+                    };
+                    // variance scaled by QANTO_SCALE^2, but we'll normalize it
+                    challenge_variance[i] += (diff * diff) / (crate::QANTO_SCALE * proof_count);
                 }
             }
 
-            // Finalize variance calculation
-            for variance in challenge_variance.iter_mut() {
-                *variance /= proof_count;
-            }
-
             // Check for statistical anomalies using chi-square test approximation
-            let overall_mean = means.iter().sum::<f64>() / 64.0;
-            let expected_mean = 127.5; // Expected mean for uniform distribution [0,255]
-            let expected_variance = 5460.25; // Expected variance for uniform distribution
+            let overall_mean = means.iter().sum::<u128>() / 64;
+            let expected_mean = 127_500_000_000u128; // 127.5 * 1e9
+            let expected_variance = 5_460_250_000_000u128; // 5460.25 * 1e9
 
-            let mean_deviation = (overall_mean - expected_mean).abs();
-            let avg_variance = challenge_variance.iter().sum::<f64>() / 64.0;
-            let variance_deviation = (avg_variance - expected_variance).abs() / expected_variance;
+            let mean_deviation = if overall_mean > expected_mean {
+                overall_mean - expected_mean
+            } else {
+                expected_mean - overall_mean
+            };
+            
+            let avg_variance = challenge_variance.iter().sum::<u128>() / 64;
+            let variance_diff = if avg_variance > expected_variance {
+                avg_variance - expected_variance
+            } else {
+                expected_variance - avg_variance
+            };
+            let variance_deviation_scaled = (variance_diff * crate::QANTO_SCALE) / expected_variance;
 
             // Enhanced anomaly detection thresholds
-            let mean_threshold = 15.0; // Allow some deviation from 127.5
-            let variance_threshold = 0.3; // 30% deviation from expected variance
+            let mean_threshold = 15 * crate::QANTO_SCALE; // 15.0
+            let variance_threshold = 300_000_000u128; // 0.3 * 1e9
 
             if mean_deviation > mean_threshold {
                 warn!(
@@ -1098,10 +1117,10 @@ impl InfiniteStrataNode {
                 info!("This may indicate a quantum computing attack attempting to bias the random challenges");
             }
 
-            if variance_deviation > variance_threshold {
+            if variance_deviation_scaled > variance_threshold {
                 warn!(
                     "Variance anomaly detected in ZK proof challenges: variance deviation {} exceeds threshold {}",
-                    variance_deviation, variance_threshold
+                    variance_deviation_scaled, variance_threshold
                 );
                 info!("This may indicate systematic manipulation of challenge generation");
             }
@@ -1119,8 +1138,8 @@ impl InfiniteStrataNode {
                 }
             }
 
-            let pattern_threshold = (proof_count * 0.05) as usize; // 5% threshold
-            if pattern_anomalies > pattern_threshold {
+            let pattern_threshold = (proof_count * 5) / 100; // 5% threshold
+            if pattern_anomalies > pattern_threshold as usize {
                 warn!(
                     "Pattern anomaly detected: {} repeating patterns found (threshold: {})",
                     pattern_anomalies, pattern_threshold
@@ -1129,7 +1148,7 @@ impl InfiniteStrataNode {
             }
 
             debug!(
-                "ZK proof challenge analysis: mean={:.2}, variance={:.2}, patterns={}",
+                "ZK proof challenge analysis: mean={}, variance={}, patterns={}",
                 overall_mean, avg_variance, pattern_anomalies
             );
         }
@@ -1303,10 +1322,10 @@ impl InfiniteStrataNode {
         &self,
         proofs: &HashMap<String, (MultiSignatureProof, Vec<u8>, QantoPQPublicKey)>,
         epoch: u64,
-    ) -> Result<f64> {
-        let total_proofs = proofs.len();
+    ) -> Result<u64> {
+        let total_proofs = proofs.len() as u64;
         if total_proofs == 0 {
-            return Ok(0.0);
+            return Ok(0);
         }
 
         let mut valid_count = 0;
@@ -1322,12 +1341,12 @@ impl InfiniteStrataNode {
             };
         }
 
-        let validity_percentage = (valid_count as f64) / (total_proofs as f64) * 100.0;
+        let validity_percentage_scaled = (valid_count as u64 * crate::QANTO_SCALE as u64) / total_proofs;
         info!(
-            "Network quantum state validation: {}% valid ({}/{} nodes)",
-            validity_percentage, valid_count, total_proofs
+            "Network quantum state validation: {} units valid ({}/{} nodes)",
+            validity_percentage_scaled, valid_count, total_proofs
         );
 
-        Ok(validity_percentage / 100.0) // Return as a fraction between 0 and 1
+        Ok(validity_percentage_scaled) // Return as a fraction scaled by QANTO_SCALE
     }
 }

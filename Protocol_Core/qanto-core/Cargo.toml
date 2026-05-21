@@ -44,3 +44,6 @@ zstd = "0.12"
 
 [dev-dependencies]
 mockall = "0.12"
+
+[features]
+analyzer = []

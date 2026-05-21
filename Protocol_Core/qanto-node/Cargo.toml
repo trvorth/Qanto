@@ -149,6 +149,7 @@ predicates = "3.1.0"
 
 
 [features]
+analyzer = [] # Dummy feature for rust-analyzer compatibility
 default = ["zk"]
 gpu = ["ocl", "opencl3", "my-blockchain/gpu"]
 zk = [
@@ -206,16 +207,3 @@ path = "src/bin/metrics_server.rs"
 [[bin]]
 name = "performance-benchmark"
 path = "src/performance_benchmark.rs"
-
-# --- Build Profiles ---
-[profile.release]
-lto = "thin"         # Faster builds with near-identical runtime performance
-codegen-units = 1    # Maximize optimization potential at the cost of compile time
-strip = true         # Remove debugging symbols to reduce binary size
-panic = "abort"      # Abort on panic for smaller and faster binaries
-opt-level = 3
-incremental = false  # Ensure consistent optimized builds
-
-[profile.dev]
-opt-level = 1        # Slightly optimize dev builds for realistic performance
-rustflags = ["-D", "warnings"]

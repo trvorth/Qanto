@@ -39,15 +39,15 @@ pub struct MiningStats {
     pub block_height: u64,
     pub block_hash: String,
     pub nonce: u64,
-    pub difficulty: f64,
+    pub difficulty: u128, // Scaled by QANTO_SCALE
     pub timestamp: DateTime<Local>,
     pub transactions_count: usize,
     pub mining_time: Duration,
-    pub hash_rate: f64,
+    pub hash_rate: u128, // Scaled by QANTO_SCALE
     pub total_blocks_mined: u64,
     pub chain_id: u32,
     pub effort: u64,       // Number of hashes tried
-    pub block_reward: u64, // Block reward in smallest units
+    pub block_reward: u128, // Block reward in base units (1e9 scale)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -57,18 +57,18 @@ impl MiningStats {
         block_height: u64,
         block_hash: String,
         nonce: u64,
-        difficulty: f64,
+        difficulty: u128,
         transactions_count: usize,
         mining_time: Duration,
         effort: u64,
         total_blocks_mined: u64,
         chain_id: u32,
-        block_reward: u64,
+        block_reward: u128,
     ) -> Self {
         let hash_rate = if mining_time.as_secs() > 0 {
-            effort as f64 / mining_time.as_secs_f64()
+            (effort as u128 * crate::QANTO_SCALE) / mining_time.as_secs() as u128
         } else {
-            effort as f64
+            effort as u128 * crate::QANTO_SCALE
         };
 
         Self {
@@ -138,7 +138,7 @@ impl MiningStats {
         );
         println!("  {} {}", "Difficulty:".bright_blue().bold(), {
             let mut diff_str = String::with_capacity(12);
-            diff_str.push_str(&format!("{:.6}", self.difficulty));
+            diff_str.push_str(&format!("{}", self.difficulty / crate::QANTO_SCALE));
             diff_str.bright_red().bold()
         });
         println!(
@@ -165,16 +165,16 @@ impl MiningStats {
         );
 
         // Calculate theoretical TPS based on 31ms block time
-        let theoretical_tps = if self.mining_time.as_millis() > 0 {
-            (self.transactions_count as f64 * 1000.0) / self.mining_time.as_millis() as f64
+        let theoretical_tps_scaled = if self.mining_time.as_millis() > 0 {
+            (self.transactions_count as u128 * 1000 * crate::QANTO_SCALE) / self.mining_time.as_millis() as u128
         } else {
-            0.0
+            0
         };
 
         println!(
             "  {} {} TPS",
             "Throughput:".bright_blue().bold(),
-            self.format_tps(theoretical_tps).bright_green().bold()
+            self.format_tps(theoretical_tps_scaled).bright_green().bold()
         );
 
         // Mining performance section with enhanced metrics
@@ -189,16 +189,16 @@ impl MiningStats {
         );
 
         // Calculate BPS (Blocks Per Second)
-        let bps = if self.mining_time.as_secs_f64() > 0.0 {
-            1.0 / self.mining_time.as_secs_f64()
+        let bps_scaled = if self.mining_time.as_millis() > 0 {
+            (1000 * crate::QANTO_SCALE) / self.mining_time.as_millis() as u128
         } else {
-            0.0
+            0
         };
 
         println!(
             "  {} {} BPS",
             "Block Rate:".bright_blue().bold(),
-            format!("{bps:.2}").bright_magenta().bold()
+            format!("{}", bps_scaled / crate::QANTO_SCALE).bright_magenta().bold()
         );
 
         println!(
@@ -214,18 +214,18 @@ impl MiningStats {
 
         // Enhanced block reward section
         println!("\n{}", "💰 Block Reward:".bold().bright_white().underline());
-        let reward_qanto = self.block_reward as f64 / 1_000_000_000.0;
+        let reward_qanto_scaled = self.block_reward;
         println!(
             "  {} {} QANTO",
             "Reward:".bright_blue().bold(),
-            format!("{reward_qanto:.6}")
+            format!("{}", reward_qanto_scaled / crate::QANTO_SCALE)
                 .bright_yellow()
                 .bold()
                 .on_bright_black()
         );
 
         // Add reward value indicator
-        if reward_qanto >= 50.0 {
+        if reward_qanto_scaled >= 50 * crate::QANTO_SCALE {
             println!(
                 "  {} {}",
                 "Status:".bright_blue().bold(),
@@ -250,7 +250,7 @@ impl MiningStats {
         );
 
         // Performance status indicators
-        if bps >= 30.0 {
+        if bps_scaled >= 30 * crate::QANTO_SCALE {
             println!(
                 "  {} {}",
                 "BPS Status:".bright_blue().bold(),
@@ -258,7 +258,7 @@ impl MiningStats {
             );
         }
 
-        if theoretical_tps >= 10_000_000.0 {
+        if theoretical_tps_scaled >= 10_000_000 * crate::QANTO_SCALE {
             println!(
                 "  {} {}",
                 "TPS Status:".bright_blue().bold(),
@@ -319,13 +319,14 @@ impl MiningStats {
     }
 
     /// Formats TPS in a human-readable way
-    fn format_tps(&self, tps: f64) -> String {
-        if tps >= 1_000_000.0 {
-            format!("{:.2}M", tps / 1_000_000.0)
-        } else if tps >= 1_000.0 {
-            format!("{:.2}K", tps / 1_000.0)
+    fn format_tps(&self, tps_scaled: u128) -> String {
+        let tps = tps_scaled / crate::QANTO_SCALE;
+        if tps >= 1_000_000 {
+            format!("{}.{:02}M", tps / 1_000_000, (tps % 1_000_000) / 10_000)
+        } else if tps >= 1_000 {
+            format!("{}.{:02}K", tps / 1_000, (tps % 1_000) / 10)
         } else {
-            format!("{tps:.2}")
+            format!("{}", tps)
         }
     }
 
@@ -393,12 +394,12 @@ impl MiningStats {
 
     /// Displays a compact one-line celebration
     pub fn display_compact(&self) {
-        let reward_qanto = self.block_reward as f64 / 1_000_000_000.0;
+        let reward_qanto_scaled = self.block_reward;
         println!(
-            "🎉 Block #{} Mined! | Hash: 0x{}... | 💰 Reward: {:.3} QANTO",
+            "🎉 Block #{} Mined! | Hash: 0x{}... | 💰 Reward: {} QANTO",
             self.block_height,
             &self.block_hash[..8],
-            reward_qanto
+            reward_qanto_scaled / crate::QANTO_SCALE
         );
     }
 }
@@ -410,13 +411,13 @@ pub struct MiningCelebrationParams {
     pub block_height: u64,
     pub block_hash: String,
     pub nonce: u64,
-    pub difficulty: f64,
+    pub difficulty: u128,
     pub transactions_count: usize,
     pub mining_time: Duration,
     pub effort: u64,
     pub total_blocks_mined: u64,
     pub chain_id: u32,
-    pub block_reward: u64,
+    pub block_reward: u128,
     pub compact: bool,
 }
 
@@ -491,16 +492,16 @@ pub fn celebrate_mining_success(params: MiningCelebrationParams) {
     on_block_mined(params, &default_config);
 }
 
-// Provide a free function for hash rate formatting used by tests and other modules
-pub fn format_hash_rate(rate_hps: f64) -> String {
-    if rate_hps >= 1_000_000_000.0 {
-        format!("{:.2} GH/s", rate_hps / 1_000_000_000.0)
-    } else if rate_hps >= 1_000_000.0 {
-        format!("{:.2} MH/s", rate_hps / 1_000_000.0)
-    } else if rate_hps >= 1_000.0 {
-        format!("{:.2} kH/s", rate_hps / 1_000.0)
+pub fn format_hash_rate(rate_hps_scaled: u128) -> String {
+    let rate_hps = rate_hps_scaled / crate::QANTO_SCALE;
+    if rate_hps >= 1_000_000_000 {
+        format!("{}.{:02} GH/s", rate_hps / 1_000_000_000, (rate_hps % 1_000_000_000) / 10_000_000)
+    } else if rate_hps >= 1_000_000 {
+        format!("{}.{:02} MH/s", rate_hps / 1_000_000, (rate_hps % 1_000_000) / 10_000)
+    } else if rate_hps >= 1_000 {
+        format!("{}.{:02} kH/s", rate_hps / 1_000, (rate_hps % 1_000) / 10)
     } else {
-        format!("{rate_hps:.2} H/s")
+        format!("{} H/s", rate_hps)
     }
 }
 
@@ -510,25 +511,25 @@ mod tests {
 
     #[test]
     fn test_format_hash_rate_h() {
-        let s = format_hash_rate(500.0);
-        assert_eq!(s, "500.00 H/s");
+        let s = format_hash_rate(500 * crate::QANTO_SCALE);
+        assert_eq!(s, "500 H/s");
     }
 
     #[test]
     fn test_format_hash_rate_kh() {
-        let s = format_hash_rate(2_500.0);
+        let s = format_hash_rate(2_500 * crate::QANTO_SCALE);
         assert_eq!(s, "2.50 kH/s");
     }
 
     #[test]
     fn test_format_hash_rate_mh() {
-        let s = format_hash_rate(5_000_000.0);
+        let s = format_hash_rate(5_000_000 * crate::QANTO_SCALE);
         assert_eq!(s, "5.00 MH/s");
     }
 
     #[test]
     fn test_format_hash_rate_gh() {
-        let s = format_hash_rate(6_000_000_000.0);
+        let s = format_hash_rate(6_000_000_000 * crate::QANTO_SCALE);
         assert_eq!(s, "6.00 GH/s");
     }
 }

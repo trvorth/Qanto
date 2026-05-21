@@ -57,7 +57,7 @@ impl ZKProofSystem {
         })
     }
 
-    pub async fn generate_range_proof(&self, value: u64, min: u64, max: u64) -> Result<ZKProof> {
+    pub async fn generate_range_proof(&self, value: u128, min: u128, max: u128) -> Result<ZKProof> {
         let mut buf = Vec::new();
         buf.extend_from_slice(&value.to_le_bytes());
         buf.extend_from_slice(&min.to_le_bytes());
@@ -65,18 +65,18 @@ impl ZKProofSystem {
         self.generate_proof(ZKProofType::RangeProof, &buf).await
     }
 
-    pub async fn generate_membership_proof(&self, element: u64, _set: Vec<u64>) -> Result<ZKProof> {
+    pub async fn generate_membership_proof(&self, element: u128, _set: Vec<u128>) -> Result<ZKProof> {
         self.generate_proof(ZKProofType::MembershipProof, &element.to_le_bytes())
             .await
     }
 
     pub async fn generate_balance_proof(
         &self,
-        inputs: Vec<u64>,
-        outputs: Vec<u64>,
+        inputs: Vec<u128>,
+        outputs: Vec<u128>,
     ) -> Result<ZKProof> {
-        let input_sum: u64 = inputs.iter().copied().sum();
-        let output_sum: u64 = outputs.iter().copied().sum();
+        let input_sum: u128 = inputs.iter().copied().sum();
+        let output_sum: u128 = outputs.iter().copied().sum();
         if input_sum != output_sum {
             return Err(anyhow!("stub balance check failed: inputs != outputs"));
         }

@@ -27,7 +27,8 @@ use tracing::{debug, info, instrument, span, warn, Level};
 
 // Threshold below use a lightweight single-threaded fast path
 // to minimize overhead during performance tests and very low difficulty runs.
-const FAST_MINING_DIFFICULTY_THRESHOLD: f64 = 0.01;
+// 0.01 represented as fixed-point u64 (scale 1e9)
+const FAST_MINING_DIFFICULTY_THRESHOLD: u64 = 10_000_000;
 
 #[derive(Error, Debug)]
 pub enum MiningError {
@@ -211,6 +212,34 @@ impl U256 {
         let (d2, borrow) = self.0[2].overflowing_sub(rhs.0[2].wrapping_add(borrow as u64));
         let (d3, _) = self.0[3].overflowing_sub(rhs.0[3].wrapping_add(borrow as u64));
         U256([d0, d1, d2, d3])
+    }
+
+    /// Multiply U256 by a u64, returning the result and a boolean indicating overflow.
+    fn mul_u64(self, rhs: u64) -> (Self, bool) {
+        let mut res = [0u64; 4];
+        let mut carry = 0u128;
+        for i in 0..4 {
+            let prod = (self.0[i] as u128) * (rhs as u128) + carry;
+            res[i] = prod as u64;
+            carry = prod >> 64;
+        }
+        (U256(res), carry > 0)
+    }
+
+    /// Add two U256 values with saturating semantics.
+    fn add_saturating(self, rhs: Self) -> Self {
+        let mut res = [0u64; 4];
+        let mut carry = 0u128;
+        for i in 0..4 {
+            let sum = (self.0[i] as u128) + (rhs.0[i] as u128) + carry;
+            res[i] = sum as u64;
+            carry = sum >> 64;
+        }
+        if carry > 0 {
+            Self::MAX
+        } else {
+            U256(res)
+        }
     }
 }
 
@@ -413,7 +442,7 @@ impl Miner {
         let adaptive_timeout = Duration::from_secs(self.target_block_time * 2);
         self.log_mining_start(block_template);
 
-        // FIX: Use the correct method `Self::calculate_target_from_difficulty` which accepts f64.
+        // Deterministic target calculation from u64 fixed-point difficulty
         let mut target_hash_bytes =
             Self::calculate_target_from_difficulty(block_template.difficulty);
         let (header_hash, mut target) =
@@ -441,7 +470,7 @@ impl Miner {
                 let tries = found_nonce - nonce + 1; // Removed unnecessary cast
                 self.total_hashes.fetch_add(tries, Ordering::Relaxed);
                 block_template.nonce = found_nonce;
-                block_template.effort = self.total_hashes.load(Ordering::Relaxed);
+                block_template.effort = self.total_hashes.load(Ordering::Relaxed) as u128;
                 return self.process_mining_result(
                     block_template,
                     MiningResult::Found {
@@ -461,7 +490,7 @@ impl Miner {
 
                 // Adjust difficulty every 3 failed attempts
                 if failed_attempts % 3 == 0 {
-                    block_template.difficulty *= 0.5;
+                    block_template.difficulty /= 2;
                     target_hash_bytes =
                         Self::calculate_target_from_difficulty(block_template.difficulty);
                     let (new_header_hash, new_target) =
@@ -615,7 +644,7 @@ impl Miner {
                     final_hash[6],
                     final_hash[7],
                 ]);
-                block_template.effort = effort;
+                block_template.effort = effort as u128;
                 debug!(
                     "PoW solved for block ID (pre-hash) {} with nonce {} and effort {}. Block is ready for finalization.",
                     block_template.id, found_nonce, effort
@@ -630,13 +659,13 @@ impl Miner {
                     block_height: block_template.height,
                     block_hash: hex::encode(&final_hash[..8]), // First 8 bytes as hex
                     nonce: found_nonce,
-                    difficulty: block_template.difficulty, // Use actual block difficulty
+                    difficulty: block_template.difficulty as u128 / crate::QANTO_SCALE as u128, // Convert for display
                     transactions_count: block_template.transactions.len(),
                     mining_time: Duration::from_secs(30), // Approximate mining time
                     effort,
                     total_blocks_mined: 1,
                     chain_id: 0,
-                    block_reward: 50_000_000_000, // 50 QAN in smallest units
+                    block_reward: 50 * crate::transaction::SMALLEST_UNITS_PER_QAN, // 50 QAN unified 9-decimal units
                     compact: false,
                 };
 
@@ -665,7 +694,7 @@ impl Miner {
 
         // Adaptive timeout based on difficulty and target block time
         // For very low difficulties (< 1.0), use a modest timeout to accommodate feature-enabled builds
-        let adaptive_timeout = if block_template.difficulty < 1.0 {
+        let adaptive_timeout = if block_template.difficulty < crate::QANTO_SCALE as u64 {
             // Allow up to 10s to avoid false timeouts when extra features are enabled
             Duration::from_secs(10)
         } else {
@@ -836,7 +865,7 @@ impl Miner {
     ) -> Result<(), MiningError> {
         let start_time = SystemTime::now();
         // Use adaptive timeout based on difficulty - low difficulty gets modest timeout
-        let adaptive_timeout = if block_template.difficulty < 1.0 {
+        let adaptive_timeout = if block_template.difficulty < crate::QANTO_SCALE as u64 {
             Duration::from_secs(10)
         } else {
             Duration::from_secs((self.target_block_time * 2).max(30))
@@ -1446,33 +1475,40 @@ impl Miner {
         false
     }
 
-    /// Calculates the PoW target from a floating-point difficulty value using
+    /// Calculates the PoW target from a fixed-point difficulty value using
     /// deterministic, fixed-point integer arithmetic. This is a consensus-critical function.
-    /// Formula: target = max_target / difficulty
-    pub fn calculate_target_from_difficulty(difficulty_value: f64) -> [u8; 32] {
-        // A difficulty of 0 or less is invalid and results in the easiest possible target.
-        if difficulty_value <= 0.0 {
-            let mut arr = [0u8; 32];
-            let vec = U256::MAX.to_big_endian_vec();
-            arr.copy_from_slice(&vec);
-            return arr;
+    /// Formula: target = (max_target * scale) / difficulty
+    /// Using higher precision (split division) to avoid truncation issues.
+    pub fn calculate_target_from_difficulty(difficulty_value: u64) -> [u8; 32] {
+        // A difficulty of 0 is invalid and results in the easiest possible target.
+        if difficulty_value == 0 {
+            return [0xFF; 32];
+        }
+        let scale = crate::QANTO_SCALE as u64;
+        
+        // If difficulty is less than 1.0 (scale), the target would exceed MAX.
+        // Cap difficulty at 1.0 (min_difficulty) for target calculation.
+        let actual_difficulty = if (difficulty_value as u128) < crate::QANTO_SCALE { crate::QANTO_SCALE as u64 } else { difficulty_value };
+        let actual_difficulty_int = U256::from(actual_difficulty);
+
+        // target = (U256::MAX * scale) / difficulty
+        // Split division to avoid U256 overflow during multiplication:
+        // target = (MAX / difficulty) * scale + ((MAX % difficulty) * scale) / difficulty
+        
+        let (quotient, remainder) = U256::MAX.div_rem(actual_difficulty_int).unwrap_or((U256::ZERO, U256::ZERO));
+        
+        // Apply scale to quotient
+        let (scaled_quotient, overflow) = quotient.mul_u64(scale);
+        if overflow {
+            return [0xFF; 32];
         }
 
-        // To avoid floating-point non-determinism in consensus, we convert the difficulty
-        // to a fixed-point integer representation.
-        // We use a larger scaling factor to handle small difficulties like 0.0001
-        const SCALE: u128 = 1_000_000; // 1e6 for better precision with small difficulties
-        let difficulty_scaled = (difficulty_value * SCALE as f64) as u128;
+        // Apply scale to remainder and divide
+        let (scaled_remainder, _) = remainder.mul_u64(scale);
+        let (final_remainder_component, _) = scaled_remainder.div_rem(actual_difficulty_int).unwrap_or((U256::ZERO, U256::ZERO));
 
-        // Ensure difficulty is at least 1 to prevent division by zero, although the
-        // initial check for <= 0.0 should handle this.
-        let difficulty_int = U256::from(difficulty_scaled.max(1));
+        let target = scaled_quotient.add_saturating(final_remainder_component);
 
-        // The max_target is 2^256 - 1. We perform the division in integer space.
-        // The formula `target = max_target / difficulty` becomes:
-        let target = U256::MAX / difficulty_int;
-
-        // FIX: The malformed line with `\n` has been rewritten as separate, valid Rust statements.
         let mut target_arr = [0u8; 32];
         let vec = target.to_big_endian_vec();
         target_arr[32 - vec.len()..].copy_from_slice(&vec);

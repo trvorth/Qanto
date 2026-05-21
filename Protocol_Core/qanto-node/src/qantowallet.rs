@@ -160,7 +160,7 @@ enum Commands {
         #[arg()]
         to: String,
         #[arg()]
-        amount: u64,
+        amount: u128,
     },
     /// [receive] Monitors for incoming transactions to this wallet.
     Receive {
@@ -311,7 +311,7 @@ async fn get_balance_p2p(p2p_client: &Option<Arc<QantoP2P>>, address: String) ->
     p2p.broadcast(MessageType::Custom(1), Bytes::from(payload))?;
 
     // Aggregate incoming balance updates without printing running totals
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<u64>();
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<u128>();
     let handler = Arc::new(move |msg: NetworkMessage, _peer: QantoHash| -> Result<()> {
         if msg.msg_type == MessageType::Custom(2) {
             let response: BalanceResponse = bincode::deserialize(&msg.payload)?;
@@ -325,7 +325,7 @@ async fn get_balance_p2p(p2p_client: &Option<Arc<QantoP2P>>, address: String) ->
 
     let response_timeout = Duration::from_secs(5);
     let deadline = Instant::now() + response_timeout;
-    let mut total_balance: u64 = 0;
+    let mut total_balance: u128 = 0;
 
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -352,7 +352,7 @@ async fn get_balance_p2p(p2p_client: &Option<Arc<QantoP2P>>, address: String) ->
 #[derive(serde::Deserialize)]
 struct ApiBalanceResponse {
     balance: String,
-    base_units: u64,
+    base_units: u128,
 }
 
 // HTTP RPC implementation (RPC-first)
@@ -399,7 +399,7 @@ async fn get_balance_http(api_address: &str, address: &str) -> Result<()> {
 
 // Direct storage-balanced lookup
 #[allow(dead_code)]
-async fn get_balance_storage(db_path: &str, address: &str) -> Result<Option<u64>> {
+async fn get_balance_storage(db_path: &str, address: &str) -> Result<Option<u128>> {
     // Initialize storage with read-only friendly config
     let cfg = StorageConfig {
         data_dir: PathBuf::from(db_path),
@@ -416,16 +416,16 @@ async fn get_balance_storage(db_path: &str, address: &str) -> Result<Option<u64>
 async fn get_balance_storage_with_instance(
     storage: &QantoStorage,
     address: &str,
-) -> Result<Option<u64>> {
+) -> Result<Option<u128>> {
     let key = balance_key(address);
 
     // Helper: scan UTXOs prefix and aggregate amounts for the given address
-    let scan_utxos_total = |storage: &QantoStorage| -> Result<u64> {
+    let scan_utxos_total = |storage: &QantoStorage| -> Result<u128> {
         let prefix = utxos_prefix();
         let keys = storage
             .keys_with_prefix(&prefix)
             .map_err(|e| anyhow!("Storage list error: {e}"))?;
-        let mut total: u64 = 0;
+        let mut total: u128 = 0;
         for k in keys {
             match storage.get(&k) {
                 Ok(Some(bytes)) => {
@@ -563,7 +563,7 @@ struct BalanceRequest {
 #[derive(Serialize, Deserialize)]
 struct BalanceResponse {
     query_id: Uuid,
-    balance: u64,
+    balance: u128,
 }
 
 // Similarly for send_transaction_p2p
@@ -571,7 +571,7 @@ async fn send_transaction_p2p(
     p2p_client: &Option<Arc<QantoP2P>>,
     wallet_path: PathBuf,
     to: String,
-    amount: u64,
+    amount: u128,
 ) -> Result<()> {
     if let Some(p2p) = p2p_client {
         // Create transaction (simplified)
@@ -615,7 +615,7 @@ async fn send_transaction_p2p(
 }
 
 // Add after send_transaction_p2p function
-async fn send_transaction_http(wallet_path: PathBuf, to: String, amount: u64) -> Result<()> {
+async fn send_transaction_http(wallet_path: PathBuf, to: String, amount: u128) -> Result<()> {
     println!("⚠️  HTTP fallback mode - consider enabling P2P discovery");
     println!(
         "Creating transaction from wallet at {}",
@@ -833,7 +833,7 @@ async fn get_wallet_balance_grpc(rpc_address: &str, address: &str) -> Result<()>
 async fn send_transaction_grpc(
     wallet_path: PathBuf,
     to: String,
-    amount: u64,
+    amount: u128,
     rpc_address: &str,
 ) -> Result<()> {
     use qanto_rpc::server::generated::{
@@ -879,12 +879,12 @@ async fn send_transaction_grpc(
         id: tx.id.clone(),
         sender: tx.sender.clone(),
         receiver: tx.receiver.clone(),
-        amount: tx.amount,
-        fee: tx.fee,
-        gas_limit: tx.gas_limit,
-        gas_used: tx.gas_used,
-        gas_price: tx.gas_price,
-        priority_fee: tx.priority_fee,
+        amount: tx.amount as u64,
+        fee: tx.fee as u64,
+        gas_limit: tx.gas_limit as u64,
+        gas_used: tx.gas_used as u64,
+        gas_price: tx.gas_price as u64,
+        priority_fee: tx.priority_fee as u64,
         inputs: tx
             .inputs
             .iter()
@@ -898,7 +898,7 @@ async fn send_transaction_grpc(
             .iter()
             .map(|o| ProtoOutput {
                 address: o.address.clone(),
-                amount: o.amount,
+                amount: o.amount as u64,
                 homomorphic_encrypted: Some(ProtoHE {
                     ciphertext: o.homomorphic_encrypted.ciphertext.clone(),
                     public_key: o.homomorphic_encrypted.public_key.clone(),
@@ -912,15 +912,15 @@ async fn send_transaction_grpc(
             signature: tx.signature.signature.clone(),
         }),
         fee_breakdown: tx.fee_breakdown.as_ref().map(|fb| ProtoFeeBreakdown {
-            base_fee: fb.base_fee,
-            complexity_fee: fb.complexity_fee,
-            storage_fee: fb.storage_fee,
-            gas_fee: fb.gas_fee,
-            priority_fee: fb.priority_fee,
+            base_fee: fb.base_fee as u64,
+            complexity_fee: fb.complexity_fee as u64,
+            storage_fee: fb.storage_fee as u64,
+            gas_fee: fb.gas_fee as u64,
+            priority_fee: fb.priority_fee as u64,
             congestion_multiplier: fb.congestion_multiplier,
-            total_fee: fb.total_fee,
-            gas_used: fb.gas_used,
-            gas_price: fb.gas_price,
+            total_fee: fb.total_fee as u64,
+            gas_used: fb.gas_used as u64,
+            gas_price: fb.gas_price as u64,
         }),
     };
 
@@ -1580,7 +1580,7 @@ mod tests {
         );
 
         // Test 6: Test balance overflow protection
-        let max_amount = u64::MAX - 1000; // Near max value
+        let max_amount = u128::MAX - 1000; // Near max value
         let overflow_utxo = UTXO {
             address: test_address.to_string(),
             amount: max_amount,

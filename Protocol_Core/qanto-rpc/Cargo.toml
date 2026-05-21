@@ -18,3 +18,7 @@ tokio-stream = "0.1"
 [build-dependencies]
 tonic-build = { version = "0.11", features = ["prost"] }
 protoc-bin-vendored = "3"
+
+[features]
+analyzer = []
+

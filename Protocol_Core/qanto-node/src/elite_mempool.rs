@@ -299,8 +299,8 @@ impl EliteMempool {
 
         // Calculate transaction size and fee
         let tx_size = self.calculate_transaction_size(&transaction);
-        let fee_per_byte = if tx_size > 0 {
-            transaction.fee / tx_size as u64
+        let fee_per_byte: u64 = if tx_size > 0 {
+            (transaction.fee / tx_size as u128) as u64
         } else {
             0
         };

@@ -2,6 +2,7 @@ use crate::diagnostics::{DiagnosticsEngine, MiningAttemptParams, StrataStatePara
 use crate::mempool::Mempool;
 use crate::miner::Miner;
 use crate::mining_metrics::{MiningFailureType, MiningMetrics};
+use crate::p2p::P2PCommand;
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError};
 use crate::types::UTXO;
 use crate::wallet::Wallet;
@@ -9,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, RwLock};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
@@ -141,12 +142,12 @@ pub struct TestnetMiningConfig {
     pub target_block_time_ms: u64,
     /// Maximum time to wait before reducing difficulty (in seconds)
     pub stall_threshold_secs: u64,
-    /// Difficulty reduction factor when stalled (0.5 = 50% reduction)
-    pub difficulty_reduction_factor: f64,
+    /// Difficulty reduction factor when stalled (0.7 = 700,000,000)
+    pub difficulty_reduction_factor: u64,
     /// Minimum difficulty floor for testnet
-    pub min_difficulty: f64,
+    pub min_difficulty: u64,
     /// Maximum difficulty ceiling for testnet
-    pub max_difficulty: f64,
+    pub max_difficulty: u64,
     /// Enable retry logic for failed mining attempts
     pub enable_retry_logic: bool,
     /// Maximum number of retries per mining attempt
@@ -169,9 +170,9 @@ impl Default for TestnetMiningConfig {
             adaptive_difficulty: true,
             target_block_time_ms: 5000, // Adjusted to 5 seconds target block time for testnet, promoting more stable mining cycles while maintaining network responsiveness
             stall_threshold_secs: 3,    // Reduced from 10 to 3 for faster recovery
-            difficulty_reduction_factor: 0.7, // Less aggressive reduction (0.7 vs 0.5)
-            min_difficulty: 0.0001,     // Lower minimum for easier mining
-            max_difficulty: 100.0,      // Reduced maximum to prevent over-difficulty
+            difficulty_reduction_factor: 700_000_000, // 0.7 represented as fixed-point u64
+            min_difficulty: 100_000,     // 0.0001 represented as fixed-point u64
+            max_difficulty: 100_000_000_000,      // 100.0 represented as fixed-point u64
             enable_retry_logic: true,
             max_retries: 2,     // Reduced from 3 to 2 for faster cycles
             retry_delay_ms: 50, // Reduced from 100 to 50ms
@@ -186,7 +187,7 @@ impl Default for TestnetMiningConfig {
 /// Adaptive mining state tracking
 #[derive(Debug, Clone)]
 pub struct AdaptiveMiningState {
-    pub current_difficulty: f64,
+    pub current_difficulty: u64,
     pub last_block_time: Instant,
     pub consecutive_failures: u32,
     pub total_attempts: u64,
@@ -208,7 +209,7 @@ pub struct AdaptiveMiningState {
 impl Default for AdaptiveMiningState {
     fn default() -> Self {
         Self {
-            current_difficulty: 1.0,
+            current_difficulty: crate::QANTO_SCALE as u64,
             last_block_time: Instant::now(),
             consecutive_failures: 0,
             total_attempts: 0,
@@ -271,7 +272,7 @@ impl AdaptiveMiningLoop {
             );
             self.state.degraded_mode = true;
             // Reduce difficulty to ease computational load
-            self.state.current_difficulty *= 0.5;
+            self.state.current_difficulty = (self.state.current_difficulty as u128 * 500_000_000 / 1_000_000_000) as u64;
         } else if !should_degrade && self.state.degraded_mode {
             info!(
                 "🚀 Disabling graceful degradation mode (memory recovered: {}MB)",
@@ -296,6 +297,7 @@ impl AdaptiveMiningLoop {
         miner: Arc<Miner>,
         mempool: Arc<RwLock<Mempool>>,
         utxos: Arc<RwLock<HashMap<String, UTXO>>>,
+        p2p_broadcast_tx: Option<mpsc::Sender<P2PCommand>>,
         shutdown_token: CancellationToken,
     ) -> Result<(), QantoDAGError> {
         info!("🚀 Starting resilient adaptive mining loop for testnet");
@@ -371,6 +373,7 @@ impl AdaptiveMiningLoop {
                         &miner,
                         &mempool,
                         &utxos,
+                        &p2p_broadcast_tx,
                         &shutdown_token,
                     ).await {
                         Ok(block_mined) => {
@@ -409,6 +412,7 @@ impl AdaptiveMiningLoop {
         miner: &Arc<Miner>,
         mempool: &Arc<RwLock<Mempool>>,
         utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
+        p2p_broadcast_tx: &Option<mpsc::Sender<P2PCommand>>,
         shutdown_token: &CancellationToken,
     ) -> Result<bool, QantoDAGError> {
         self.state.total_attempts += 1;
@@ -421,7 +425,7 @@ impl AdaptiveMiningLoop {
         }
 
         info!(
-            "⛏️  Mining attempt #{} - Difficulty: {:.6}, Target: {}ms",
+            "⛏️  Mining attempt #{} - Difficulty: {}, Target: {}ms",
             attempt_id, self.state.current_difficulty, self.config.target_block_time_ms
         );
 
@@ -468,7 +472,14 @@ impl AdaptiveMiningLoop {
             Ok((mined_block, mining_duration)) => {
                 // Process the successfully mined block
                 match self
-                    .process_mined_block(qanto_dag, mined_block, mempool, utxos, mining_duration)
+                    .process_mined_block(
+                        qanto_dag,
+                        mined_block,
+                        mempool,
+                        utxos,
+                        p2p_broadcast_tx,
+                        mining_duration,
+                    )
                     .await
                 {
                     Ok(_) => {
@@ -524,13 +535,13 @@ impl AdaptiveMiningLoop {
         };
 
         info!(
-            "Creating candidate block with {} transactions, difficulty: {:.6}",
+            "Creating candidate block with {} transactions, difficulty: {}",
             transactions.len(),
             self.state.current_difficulty
         );
 
-        // Create block with adaptive difficulty
-        let mut candidate_block = qanto_dag
+        // Create block with adaptive difficulty securely
+        let candidate_block = qanto_dag
             .create_candidate_block(
                 &qanto_dag.get_private_key().await?,
                 &qanto_dag.get_private_key().await?.public_key(),
@@ -541,11 +552,9 @@ impl AdaptiveMiningLoop {
                 miner,
                 None, // homomorphic_public_key
                 None, // parents_override
+                Some(self.state.current_difficulty), // override difficulty
             )
             .await?;
-
-        // Override difficulty with adaptive value
-        candidate_block.difficulty = self.state.current_difficulty;
 
         Ok(candidate_block)
     }
@@ -662,11 +671,19 @@ impl AdaptiveMiningLoop {
         mined_block: QantoBlock,
         mempool: &Arc<RwLock<Mempool>>,
         utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
+        p2p_broadcast_tx: &Option<mpsc::Sender<P2PCommand>>,
         mining_duration: Duration,
     ) -> Result<(), QantoDAGError> {
         let block_height = mined_block.height;
         let block_id = mined_block.id.clone();
         let tx_count = mined_block.transactions.len();
+        info!(
+            "BLOCK_MINED block_id={} height={} tx_count={} duration_ms={}",
+            block_id,
+            block_height,
+            tx_count,
+            mining_duration.as_millis()
+        );
 
         // Special celebration for first block post-genesis
         if block_height == 1 {
@@ -695,6 +712,16 @@ impl AdaptiveMiningLoop {
             {
                 Ok(true) => {
                     info!("✅ Block #{} successfully added to DAG", block_height);
+                    if let Some(tx) = p2p_broadcast_tx {
+                        if let Err(err) =
+                            tx.send(P2PCommand::BroadcastBlock(mined_block.clone())).await
+                        {
+                            warn!(
+                                "Failed to broadcast adaptive-mined block {}: {}",
+                                block_id, err
+                            );
+                        }
+                    }
                     break;
                 }
                 Ok(false) => {
@@ -807,7 +834,7 @@ impl AdaptiveMiningLoop {
 
         // Record mining success for diagnostics
         info!(
-            "📊 Mining metrics - Block #{}: {} transactions, {:.2}ms duration, {:.6} difficulty",
+            "📊 Mining metrics - Block #{}: {} transactions, {}ms duration, {} difficulty",
             block_height,
             tx_count,
             mining_duration.as_millis(),
@@ -838,28 +865,35 @@ impl AdaptiveMiningLoop {
         } else {
             // Fallback heuristic: use time since last block when no history
             // This avoids aggressive swings at startup and respects target timing later
-            time_since_last_block.as_millis() as f64
+            time_since_last_block.as_millis() as u64
         };
 
         // Bitcoin-inspired difficulty adjustment with proper clamping
         let difficulty_adjustment_factor = self.calculate_difficulty_adjustment_factor(
             avg_block_time_ms,
-            target_time_ms as f64,
+            target_time_ms,
             time_since_last_block,
             stall_threshold,
         );
 
-        if (difficulty_adjustment_factor - 1.0).abs() > 0.01 {
+        let one_percent = (crate::QANTO_SCALE / 100) as u64;
+        let delta = if difficulty_adjustment_factor > crate::QANTO_SCALE as u64 {
+            difficulty_adjustment_factor - crate::QANTO_SCALE as u64
+        } else {
+            crate::QANTO_SCALE as u64 - difficulty_adjustment_factor
+        };
+
+        if delta > one_percent {
             // Only adjust if the change is significant (> 1%)
             let old_difficulty = self.state.current_difficulty;
-            self.state.current_difficulty = (old_difficulty * difficulty_adjustment_factor)
+            self.state.current_difficulty = ((old_difficulty as u128 * difficulty_adjustment_factor as u128 / crate::QANTO_SCALE as u128) as u64)
                 .max(self.config.min_difficulty)
                 .min(self.config.max_difficulty);
 
             self.state.last_difficulty_adjustment = now;
 
             debug!(
-                "Difficulty adjusted from {:.6} to {:.6} (factor: {:.3}, avg_time: {:.1}ms, target: {}ms)",
+                "Difficulty adjusted from {} to {} (factor: {}, avg_time: {}ms, target: {}ms)",
                 old_difficulty,
                 self.state.current_difficulty,
                 difficulty_adjustment_factor,
@@ -870,41 +904,54 @@ impl AdaptiveMiningLoop {
     }
 
     /// Calculate sliding window average of recent block times
-    fn calculate_sliding_window_average(&self) -> f64 {
+    fn calculate_sliding_window_average(&self) -> u64 {
         if self.state.recent_block_times.is_empty() {
-            return self.config.target_block_time_ms as f64;
+            return self.config.target_block_time_ms;
         }
 
         let sum: u64 = self.state.recent_block_times.iter().sum();
-        sum as f64 / self.state.recent_block_times.len() as f64
+        sum / self.state.recent_block_times.len() as u64
     }
 
     /// Calculate difficulty adjustment factor using Bitcoin-inspired algorithm
+    /// Returns a fixed-point factor (scale 1e9). 1.0 = 1,000,000,000
     fn calculate_difficulty_adjustment_factor(
         &self,
-        avg_block_time_ms: f64,
-        target_time_ms: f64,
+        avg_block_time_ms: u64,
+        target_time_ms: u64,
         time_since_last_block: Duration,
         stall_threshold: Duration,
-    ) -> f64 {
+    ) -> u64 {
+        const SCALE: u128 = 1_000_000_000;
+        
         // Emergency stall protection (immediate difficulty reduction)
         if time_since_last_block > stall_threshold || self.state.consecutive_failures > 3 {
             return self.config.difficulty_reduction_factor;
         }
 
         // No failures and very fast blocks - increase difficulty
-        if self.state.consecutive_failures == 0 && avg_block_time_ms < target_time_ms / 3.0 {
-            return 1.05; // Conservative 5% increase
+        if self.state.consecutive_failures == 0 && avg_block_time_ms < target_time_ms / 3 {
+            return 1_050_000_000; // Conservative 5% increase
         }
 
         // Bitcoin-style proportional adjustment with dampening
-        let time_ratio = target_time_ms / avg_block_time_ms;
+        // factor = (target_time / avg_time)
+        // If avg_block_time_ms is 0, provide a sensible default
+        let avg_ms = avg_block_time_ms.max(1);
+        let factor = (target_time_ms as u128 * SCALE) / avg_ms as u128;
 
         // Apply dampening to prevent wild swings (limit to ±25% per adjustment)
-        let clamped_ratio = time_ratio.clamp(0.75, 1.25);
+        // 0.75 = 750,000,000, 1.25 = 1,250,000,000
+        let clamped_factor = factor.clamp(750_000_000, 1_250_000_000);
 
-        // Further smooth the adjustment and return directly
-        1.0 + (clamped_ratio - 1.0) * 0.5
+        // Further smooth the adjustment: 1.0 + (clamped_ratio - 1.0) * 0.5
+        let adjustment = if clamped_factor >= SCALE {
+            SCALE + (clamped_factor - SCALE) / 2
+        } else {
+            SCALE - (SCALE - clamped_factor) / 2
+        };
+        
+        adjustment as u64
     }
 
     /// Handle successful mining
@@ -961,7 +1008,7 @@ impl AdaptiveMiningLoop {
             diagnostics
                 .record_mining_attempt(MiningAttemptParams {
                     attempt_id,
-                    difficulty: self.state.current_difficulty as u64,
+                    difficulty: self.state.current_difficulty,
                     target_block_time: self.config.target_block_time_ms,
                     start_time: system_start,
                     nonce: 0,         // nonce - would need to be passed from mining result
@@ -994,18 +1041,13 @@ impl AdaptiveMiningLoop {
         }
     }
 
-    /// Calculate success rate with proper f64 tolerance handling
-    pub fn calculate_success_rate(&self) -> f64 {
+    pub fn calculate_success_rate(&self) -> u64 {
         if self.state.total_attempts == 0 {
-            return 0.0;
+            return 0;
         }
 
-        // Use f64 arithmetic throughout to avoid precision issues
-        let success_rate =
-            (self.state.successful_blocks as f64 / self.state.total_attempts as f64) * 100.0;
-
-        // Round to 1 decimal place for consistency
-        (success_rate * 10.0).round() / 10.0
+        // Calculate success rate as a percentage scaled by QANTO_SCALE
+        (self.state.successful_blocks * 100 * crate::QANTO_SCALE as u64) / self.state.total_attempts
     }
 }
 
@@ -1015,7 +1057,7 @@ pub struct AdaptiveMiningStats {
     pub total_attempts: u64,
     pub successful_blocks: u64,
     pub consecutive_failures: u32,
-    pub current_difficulty: f64,
-    pub success_rate: f64,
+    pub current_difficulty: u64,
+    pub success_rate: u64,
     pub uptime_secs: u64,
 }

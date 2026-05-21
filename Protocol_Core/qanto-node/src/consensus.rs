@@ -85,11 +85,11 @@ impl Consensus {
     ///
     /// # Arguments
     /// * `hash_bytes` - The block hash as raw bytes
-    /// * `difficulty` - The target difficulty as a floating-point number
+    /// * `difficulty` - The target difficulty as a u64 fixed-point (scale 1e9)
     ///
     /// # Returns
     /// * `true` if the hash meets the difficulty target, `false` otherwise
-    pub fn is_pow_valid(hash_bytes: &[u8], difficulty: f64) -> bool {
+    pub fn is_pow_valid(hash_bytes: &[u8], difficulty: crate::QDifficulty) -> bool {
         let target_hash = crate::miner::Miner::calculate_target_from_difficulty(difficulty);
         crate::miner::Miner::hash_meets_target(hash_bytes, &target_hash)
     }
@@ -245,7 +245,7 @@ impl Consensus {
             .iter()
             .skip(1)
             .map(|tx| tx.fee)
-            .sum::<u64>();
+            .sum::<u128>();
         let expected_reward = self
             .saga
             .calculate_dynamic_reward(block, dag_arc, total_fees)
@@ -276,7 +276,7 @@ impl Consensus {
         let validators = &dag.validators;
         let validator_stake = validators.get(validator_address).map(|v| *v).unwrap_or(0);
 
-        if validator_stake < min_stake_for_full_confidence {
+        if validator_stake < min_stake_for_full_confidence as u128 {
             // This error will be caught and logged as a warning in `validate_block`.
             let mut msg = String::with_capacity(128);
             msg.push_str("Low PoS confidence. Stake of ");
@@ -308,75 +308,39 @@ impl Consensus {
 
     /// Validates the block's Proof-of-Work against the dynamically adjusted difficulty target from SAGA.
     async fn validate_proof_of_work(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
-        let effective_difficulty = self.get_effective_difficulty(&block.miner).await;
+        let required_difficulty = self.get_required_difficulty(block.height).await;
 
-        // Use a small epsilon for floating-point comparison to avoid precision issues.
-        if (block.difficulty - effective_difficulty).abs() > f64::EPSILON {
+        if block.difficulty != required_difficulty {
             warn!(
-                "Block {} has difficulty mismatch. Claimed: {}, Required (by PoSe): {}",
-                block.id, block.difficulty, effective_difficulty
+                "Block {} has difficulty mismatch. Expected: {}, Received: {}",
+                block.id, required_difficulty, block.difficulty
             );
-            let mut msg = String::with_capacity(64);
-            msg.push_str("Difficulty mismatch. Claimed: ");
-            msg.push_str(&block.difficulty.to_string());
-            msg.push_str(", Required by PoSe: ");
-            msg.push_str(&effective_difficulty.to_string());
-            return Err(ConsensusError::ProofOfWorkFailed(msg));
+            return Err(ConsensusError::ProofOfWorkFailed(format!(
+                "Difficulty mismatch. Expected: {}, Received: {}",
+                required_difficulty, block.difficulty
+            )));
         }
 
         // Use the canonical PoW validation function (using nonce-including PoW hash)
         let block_pow_hash = block.hash_for_pow();
-        if !Self::is_pow_valid(block_pow_hash.as_bytes(), effective_difficulty) {
+        if !Self::is_pow_valid(block_pow_hash.as_bytes(), required_difficulty) {
             return Err(ConsensusError::ProofOfWorkFailed(
-                "Block PoW hash does not meet PoSe difficulty target.".to_string(),
+                "Block PoW hash does not meet difficulty target.".to_string(),
             ));
         }
 
         debug!(
-            "PoW validation passed for miner {}. Effective PoSe difficulty: {}",
-            block.miner, effective_difficulty
+            "PoW validation passed for block {}. Required difficulty: {}",
+            block.id, required_difficulty
         );
         Ok(())
     }
 
-    /// Retrieves the effective PoW difficulty for a given miner.
-    /// This is the core of PoSe, where SAGA's intelligence modifies the base PoW.
-    pub async fn get_effective_difficulty(&self, miner_address: &str) -> f64 {
-        let rules = self.saga.economy.epoch_rules.read().await;
-
-        // Debug logging to see what's in the rules HashMap
-        debug!("Available rules: {:?}", rules.keys().collect::<Vec<_>>());
-
-        let base_difficulty = rules.get("base_difficulty").map_or(10.0, |r| {
-            debug!(
-                "Found base_difficulty rule with value: {value}",
-                value = r.value
-            );
-            r.value
-        });
-
-        if !rules.contains_key("base_difficulty") {
-            debug!("base_difficulty rule not found, using fallback value of 10.0");
-        }
-
-        let scs = self
-            .saga
-            .reputation
-            .credit_scores
-            .read()
-            .await
-            .get(miner_address)
-            .map_or(0.5, |s| s.score);
-
-        let difficulty_modifier = 1.0 - (scs - 0.5);
-        let effective_difficulty = base_difficulty * difficulty_modifier;
-
-        debug!(
-            "Calculated effective difficulty: {} (base: {}, modifier: {})",
-            effective_difficulty, base_difficulty, difficulty_modifier
-        );
-
-        // Clamp the difficulty within a reasonable range (e.g., 50% to 200% of base).
-        effective_difficulty.clamp(base_difficulty / 2.0, base_difficulty * 2.0)
+    /// Retrieves the required PoW difficulty for a given height.
+    /// PHASE 2: SAGA ISOLATION - Consensus no longer depends on SAGA/Reputation for difficulty.
+    pub async fn get_required_difficulty(&self, _height: u64) -> crate::QDifficulty {
+        // For development/testnet, we use a constant difficulty or a deterministic adjustment.
+        // We retrieve the initial difficulty from the network config (via crate::QANTO_SCALE).
+        crate::QANTO_SCALE as u64 // Initial difficulty: 1.0 represented as 1e9
     }
 }

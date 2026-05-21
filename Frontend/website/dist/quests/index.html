@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pioneer Quests | Qanto Layer-0</title>
+    
+    <!-- Primary Meta Tags -->
+    <meta name="title" content="Pioneer Quests | Qanto Layer-0">
+    <meta name="description" content="Verify your on-chain status and mint your exclusive Qanto Pioneer Certificate. Join the first 10,000 pioneers.">
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://qanto.org/quests/">
+    <meta property="og:title" content="Pioneer Quests | Qanto Layer-0">
+    <meta property="og:description" content="Complete the Qanto Pioneer Quests to verify your on-chain status and claim your exclusive NFT.">
+    <meta property="og:image" content="https://qanto.org/assets/images/og-pioneer.png">
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://qanto.org/quests/">
+    <meta property="twitter:title" content="Pioneer Quests | Qanto Layer-0">
+    <meta property="twitter:description" content="Verify your status and claim your Pioneer Certificate on Qanto Layer-0.">
+    <meta property="twitter:image" content="https://qanto.org/assets/images/og-pioneer.png">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="../../assets/css/main.css">
+    <style>
+        body {
+            background: radial-gradient(circle at top right, #1a1a3a, #0a0a1a);
+            color: #fff;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .quest-hero {
+            padding: 80px 20px 40px;
+            text-align: center;
+        }
+
+        .quest-hero h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 3rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #fff 0%, #a5a5ff 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+
+        .quest-hero p {
+            font-size: 1.1rem;
+            color: rgba(255, 255, 255, 0.6);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .quest-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            display: grid;
+            gap: 20px;
+        }
+
+        .quest-card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 24px;
+            padding: 30px;
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .quest-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(45deg, transparent, rgba(255, 255, 255, 0.03), transparent);
+            transform: translateX(-100%);
+            transition: 0.6s;
+        }
+
+        .quest-card:hover::before {
+            transform: translateX(100%);
+        }
+
+        .quest-card.completed {
+            border-color: rgba(67, 233, 123, 0.3);
+            background: rgba(67, 233, 123, 0.02);
+        }
+
+        .quest-info {
+            flex-grow: 1;
+        }
+
+        .quest-number {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: #a5a5ff;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        .quest-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .quest-desc {
+            font-size: 0.95rem;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .quest-status {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .completed .quest-status {
+            background: #43e97b;
+            border-color: #43e97b;
+            box-shadow: 0 0 20px rgba(67, 233, 123, 0.4);
+        }
+
+        .quest-action {
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: none;
+            font-size: 0.9rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(118, 75, 162, 0.3);
+        }
+
+        .btn-primary:disabled {
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.2);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .btn-success {
+            background: #43e97b;
+            color: #0a0a1a;
+        }
+
+        /* Glass Progress Bar */
+        .progress-track {
+            max-width: 900px;
+            margin: 40px auto 10px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+            overflow: hidden;
+            padding: 0 20px;
+        }
+
+        #quest-progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #667eea, #43e97b);
+            transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 10px rgba(67, 233, 123, 0.5);
+        }
+
+        .progress-stats {
+            max-width: 900px;
+            margin: 0 auto 40px;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        @media (max-width: 768px) {
+            .quest-card {
+                flex-direction: column;
+                text-align: center;
+                gap: 16px;
+            }
+            .quest-hero h1 { font-size: 2.2rem; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Network Status Bar -->
+    <div id="network-status-root"></div>
+
+    <section class="quest-hero">
+        <h1>Pioneer Program</h1>
+        <p>Verify your on-chain activity, contribute to the network security, and claim your exclusive Qanto Pioneer Certificate.</p>
+    </section>
+
+    <!-- Progress Tracker -->
+    <div class="progress-track">
+        <div id="quest-progress-bar"></div>
+    </div>
+    <div class="progress-stats">
+        <span id="completion-text">0% COMPLETE</span>
+        <span id="rank-text">RANK: ASPIRANT</span>
+    </div>
+
+    <div class="quest-container">
+        <!-- Quest 1 -->
+        <div class="quest-card" id="quest-1">
+            <div class="quest-status">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="check-icon" style="display:none;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <div class="lock-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+            </div>
+            <div class="quest-info">
+              <span class="quest-number">Quest 01</span>
+              <h3 class="quest-title">Neural Uplink</h3>
+              <p class="quest-desc">Connect your Web3 wallet to initialize the Pioneer handshake.</p>
+            </div>
+            <button class="quest-action btn-primary" id="btn-connect">Connect Wallet</button>
+        </div>
+
+        <!-- Quest 2 -->
+        <div class="quest-card" id="quest-2">
+            <div class="quest-status">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="check-icon" style="display:none;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <div class="lock-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+            </div>
+            <div class="quest-info">
+              <span class="quest-number">Quest 02</span>
+              <h3 class="quest-title">Gas Integrity Audit</h3>
+              <p class="quest-desc">Maintain a minimum balance of 0.05 ETH to prove gas self-sufficiency.</p>
+            </div>
+            <button class="quest-action btn-primary" id="btn-verify-balance" disabled>Verify Balance</button>
+        </div>
+
+        <!-- Quest 3 -->
+        <div class="quest-card" id="quest-3">
+            <div class="quest-status">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="check-icon" style="display:none;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <div class="lock-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
+            </div>
+            <div class="quest-info">
+              <span class="quest-number">Quest 03</span>
+              <h3 class="quest-title">Protocol Genesis</h3>
+              <p class="quest-desc">Mint your Pioneer Certificate to lock your status in the Qanto Genesis Block.</p>
+            </div>
+            <button class="quest-action btn-primary" id="btn-mint" disabled>Mint NFT</button>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.11.1/dist/ethers.umd.min.js"></script>
+    <script src="../../assets/js/main.js"></script>
+    <script src="../../assets/js/quests.js"></script>
+</body>
+</html>

@@ -85,7 +85,7 @@ pub struct CarbonOffsetCredential {
     pub id: String,
     pub issuer_id: String,
     pub beneficiary_node: String,
-    pub tonnes_co2_sequestered: f64,
+    pub tonnes_co2_sequestered: u64,
     pub project_id: String,
     pub vintage_year: u32,
     pub verification_signature: String,
@@ -93,9 +93,9 @@ pub struct CarbonOffsetCredential {
     /// A cryptographic hash of the full project documentation for data integrity checks.
     pub additionality_proof_hash: String,
     /// A score from a trusted third-party representing the quality and reputation of the issuer.
-    pub issuer_reputation_score: f64,
+    pub issuer_reputation_score: u64,
     /// A score representing how well the project's claimed location matches satellite imagery analysis.
-    pub geospatial_consistency_score: f64,
+    pub geospatial_consistency_score: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq)]
@@ -348,36 +348,36 @@ pub struct AnalyticsDashboardData {
     pub security_insights: SecurityInsights,
     pub economic_indicators: EconomicIndicators,
     pub environmental_metrics: EnvironmentalDashboardMetrics,
-    pub total_transactions: u64,
-    pub active_addresses: u64,
-    pub mempool_size: u64,
-    pub block_height: u64,
-    pub tps_current: f64,
-    pub tps_peak: f64,
+    pub total_transactions: u128,
+    pub active_addresses: u128,
+    pub mempool_size: u128,
+    pub block_height: u128,
+    pub tps_current: i128,
+    pub tps_peak: i128,
 }
 
 pub use crate::metrics::QantoMetrics as NetworkHealthMetrics;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIModelPerformance {
-    pub neural_network_accuracy: f64,
-    pub prediction_confidence: f64,
-    pub training_loss: f64,
-    pub validation_loss: f64,
-    pub model_drift_score: f64,
-    pub inference_latency_ms: f64,
+    pub neural_network_accuracy: i128,
+    pub prediction_confidence: i128,
+    pub training_loss: i128,
+    pub validation_loss: i128,
+    pub model_drift_score: i128,
+    pub inference_latency_ms: i128,
     pub last_retrain_epoch: u64,
-    pub feature_importance: HashMap<String, f64>,
+    pub feature_importance: HashMap<String, i128>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityInsights {
     pub threat_level: ThreatLevel,
-    pub anomaly_score: f64,
+    pub anomaly_score: i128,
     pub attack_attempts_24h: u64,
     pub blocked_transactions: u64,
     pub suspicious_patterns: Vec<String>,
-    pub security_confidence: f64,
+    pub security_confidence: i128,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -390,21 +390,21 @@ pub enum ThreatLevel {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EconomicIndicators {
-    pub total_value_locked: f64,
-    pub transaction_fees_24h: f64,
-    pub validator_rewards_24h: f64,
-    pub network_utilization: f64,
-    pub economic_security: f64,
-    pub fee_market_efficiency: f64,
+    pub total_value_locked: i128,
+    pub transaction_fees_24h: i128,
+    pub validator_rewards_24h: i128,
+    pub network_utilization: i128,
+    pub economic_security: i128,
+    pub fee_market_efficiency: i128,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnvironmentalDashboardMetrics {
-    pub carbon_footprint_kg: f64,
-    pub energy_efficiency_score: f64,
-    pub renewable_energy_percentage: f64,
-    pub carbon_offset_credits: f64,
-    pub green_validator_ratio: f64,
+    pub carbon_footprint_kg: i128,
+    pub energy_efficiency_score: i128,
+    pub renewable_energy_percentage: i128,
+    pub carbon_offset_credits: i128,
+    pub green_validator_ratio: i128,
 }
 
 /// Advanced Cognitive Analytics Engine with Deep Learning
@@ -1400,7 +1400,7 @@ impl CognitiveAnalyticsEngine {
 
     async fn analyze_environmental_contribution(&self, block: &QantoBlock, dag: &QantoDAG) -> f64 {
         let network_congestion =
-            dag.get_average_tx_per_block().await / MAX_TRANSACTIONS_PER_BLOCK as f64;
+            dag.get_average_tx_per_block().await as f64 / MAX_TRANSACTIONS_PER_BLOCK as f64;
 
         let block_footprint_grams: f64 = block
             .transactions
@@ -1415,7 +1415,7 @@ impl CognitiveAnalyticsEngine {
         let total_offset_tonnes: f64 = block
             .carbon_credentials
             .iter()
-            .map(|c| c.tonnes_co2_sequestered)
+            .map(|c| c.tonnes_co2_sequestered as f64)
             .sum();
 
         let net_impact = total_offset_tonnes - block_footprint_tonnes;
@@ -1437,7 +1437,7 @@ impl CognitiveAnalyticsEngine {
     }
 
     async fn analyze_network_contribution(&self, block: &QantoBlock, dag: &QantoDAG) -> f64 {
-        let avg_tx_per_block = dag.get_average_tx_per_block().await;
+        let avg_tx_per_block = dag.get_average_tx_per_block().await as f64;
         let block_tx_count = block.transactions.len() as f64;
         let deviation = (block_tx_count - (avg_tx_per_block * 1.1)) / avg_tx_per_block.max(1.0);
         (-deviation.powi(2)).exp()
@@ -1459,7 +1459,7 @@ impl CognitiveAnalyticsEngine {
         if tx_count <= 1 {
             return 1.0;
         }
-        let total_fee: u64 = block.transactions.iter().map(|tx| tx.fee).sum();
+        let total_fee: u64 = block.transactions.iter().map(|tx| tx.fee).sum::<u128>() as u64;
         let avg_fee = total_fee as f64 / tx_count as f64;
         let tx_ratio = tx_count as f64 / MAX_TRANSACTIONS_PER_BLOCK as f64;
 
@@ -2179,7 +2179,7 @@ impl PredictiveEconomicModel {
         let green_premium = 1.0 + (green_score * 0.15);
 
         let base_premium = 1.0;
-        let demand_factor = (avg_tx_per_block / MAX_TRANSACTIONS_PER_BLOCK as f64)
+        let demand_factor = (avg_tx_per_block as f64 / MAX_TRANSACTIONS_PER_BLOCK as f64)
             * (1.0 + (fee_velocity / 100.0).min(1.0));
         let security_factor = (1.0 - (10.0 / validator_count).min(1.0)).max(0.5);
         // FIX: Explicitly type the float literal to resolve ambiguity
@@ -2245,7 +2245,7 @@ impl SecurityMonitor {
             };
         }
 
-        let total_stake: u64 = validators.iter().map(|entry| *entry.value()).sum();
+        let total_stake: u64 = validators.iter().map(|entry| *entry.value() as u64).sum();
         if total_stake == 0 {
             return SecurityFinding {
                 risk_score: 0.0,
@@ -2255,7 +2255,7 @@ impl SecurityMonitor {
             };
         }
 
-        let mut stakes: Vec<u64> = validators.iter().map(|entry| *entry.value()).collect();
+        let mut stakes: Vec<u64> = validators.iter().map(|entry| *entry.value() as u64).collect();
         stakes.sort_unstable();
 
         let n = stakes.len() as f64;
@@ -3010,7 +3010,7 @@ impl SecurityMonitor {
             .iter()
             .flat_map(|b| &b.transactions)
             .map(|tx| tx.fee)
-            .sum();
+            .sum::<u128>() as u64;
         let avg_tx_per_block = total_txs as f64 / latest_blocks.len() as f64;
         let avg_fee_per_tx = total_fees as f64 / total_txs.max(1) as f64;
         let congestion_level = avg_tx_per_block / MAX_TRANSACTIONS_PER_BLOCK as f64;
@@ -3626,7 +3626,7 @@ impl PalletSaga {
                 Err(err)
             };
 
-        if cred.tonnes_co2_sequestered <= 0.0 {
+        if cred.tonnes_co2_sequestered == 0 {
             return fail_and_count(
                 metrics_write,
                 SagaError::InvalidCredential("CO2 amount must be positive.".to_string()),
@@ -3744,8 +3744,8 @@ impl PalletSaga {
         &self,
         block: &QantoBlock,
         dag_arc: &Arc<QantoDAG>,
-        total_fees: u64,
-    ) -> Result<u64> {
+        total_fees: u128,
+    ) -> Result<u128> {
         let rules = self.economy.epoch_rules.read().await;
         let base_reward = rules
             .get("base_reward")
@@ -3814,14 +3814,14 @@ impl PalletSaga {
         let scs_multiplier =
             scs * omega_penalty * market_premium * edict_multiplier * isnm_multiplier;
         let subtotal = final_reward_float; // dynamic reward before fees
-        let block_reward_total_u64 = subtotal as u64 + total_fees;
+        let block_reward_total_u128 = subtotal as u128 + total_fees;
         let dev_fee_rate = dag_arc.dev_fee_rate;
-        let dev_fee_u64 = ((block_reward_total_u64 as f64) * dev_fee_rate).floor() as u64;
-        let miner_reward_u64 = block_reward_total_u64.saturating_sub(dev_fee_u64);
+        let dev_fee_u128 = block_reward_total_u128.saturating_mul(dev_fee_rate) / crate::QANTO_SCALE;
+        let miner_reward_u128 = block_reward_total_u128.saturating_sub(dev_fee_u128);
         let subtotal_qan = subtotal / crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
-        let dev_fee_qan = dev_fee_u64 as f64 / crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
+        let dev_fee_qan = dev_fee_u128 as f64 / crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
         let final_miner_reward_qan =
-            miner_reward_u64 as f64 / crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
+            miner_reward_u128 as f64 / crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
 
         debug!(
             base_reward,
@@ -3830,16 +3830,16 @@ impl PalletSaga {
             subtotal_qan,
             total_fees,
             dev_fee_rate,
-            dev_fee = dev_fee_u64,
+            dev_fee = dev_fee_u128,
             dev_fee_qan,
-            final_miner_reward = miner_reward_u64,
+            final_miner_reward = miner_reward_u128,
             final_miner_reward_qan,
             miner = %block.miner,
             "SAGA reward breakdown: base, multiplier, subtotal, dev fee, miner payout"
         );
 
         // Return base reward without fees - QantoDAG will add fees and handle dev_fee calculation
-        let final_reward = final_reward_float as u64;
+        let final_reward = final_reward_float as u128;
         Ok(final_reward)
     }
 
@@ -3930,7 +3930,7 @@ impl PalletSaga {
                 NetworkState::UnderAttack(*attack_type)
             } else if validator_count < 10 {
                 NetworkState::Degraded
-            } else if avg_tx_per_block > (MAX_TRANSACTIONS_PER_BLOCK as f64 * 0.8) {
+            } else if avg_tx_per_block as f64 > (MAX_TRANSACTIONS_PER_BLOCK as f64 * 0.8) {
                 NetworkState::Congested
             } else {
                 NetworkState::Nominal
@@ -3951,7 +3951,7 @@ impl PalletSaga {
 
     async fn run_predictive_models(&self, _current_epoch: u64, dag: &QantoDAG) {
         let avg_tx_per_block = dag.get_average_tx_per_block().await;
-        let congestion_metric = avg_tx_per_block / MAX_TRANSACTIONS_PER_BLOCK as f64;
+        let congestion_metric = avg_tx_per_block as f64 / MAX_TRANSACTIONS_PER_BLOCK as f64;
 
         let mut history = self.economy.congestion_history.write().await;
         history.push_back(congestion_metric.clamp(0.0, 1.0));
@@ -4022,7 +4022,7 @@ impl PalletSaga {
         let stake_amount = dag_arc
             .validators
             .get(miner_address)
-            .map_or(0u64, |entry| *entry.value());
+            .map_or(0u64, |entry| *entry.value() as u64);
 
         let metrics = ValidatorMetrics {
             historical_performance,
@@ -4394,7 +4394,7 @@ impl PalletSaga {
                     .get(&c.project_id)
                     .cloned()
                     .unwrap_or(0.5);
-                c.tonnes_co2_sequestered * quality_multiplier
+                c.tonnes_co2_sequestered as f64 * quality_multiplier
             })
             .sum();
         metrics.total_co2_offset_epoch = total_offset;
@@ -4707,20 +4707,18 @@ impl PalletSaga {
             environmental_metrics,
             total_transactions: network_health
                 .transactions_processed
-                .load(std::sync::atomic::Ordering::Relaxed),
+                .load(std::sync::atomic::Ordering::Relaxed) as u128,
             active_addresses: 0,
             mempool_size: network_health
                 .mempool_size
-                .load(std::sync::atomic::Ordering::Relaxed),
+                .load(std::sync::atomic::Ordering::Relaxed) as u128,
             block_height: 0,
-            tps_current: network_health
+            tps_current: (network_health
                 .tps_current
-                .load(std::sync::atomic::Ordering::Relaxed) as f64
-                / 1000.0,
-            tps_peak: network_health
+                .load(std::sync::atomic::Ordering::Relaxed) as i128 * 1_000_000),
+            tps_peak: (network_health
                 .tps_peak_24h
-                .load(std::sync::atomic::Ordering::Relaxed) as f64
-                / 1000.0,
+                .load(std::sync::atomic::Ordering::Relaxed) as i128 * 1_000_000),
         }
     }
 
@@ -4737,12 +4735,12 @@ impl PalletSaga {
         let latest_metrics = deep_network.training_history.last();
 
         let ai_performance = AIModelPerformance {
-            neural_network_accuracy: latest_metrics.map(|m| m.accuracy).unwrap_or(0.85),
-            prediction_confidence: 0.92,
-            training_loss: latest_metrics.map(|m| m.loss).unwrap_or(0.1),
-            validation_loss: latest_metrics.map(|m| m.validation_loss).unwrap_or(0.12),
-            model_drift_score: 0.05,
-            inference_latency_ms: 50.0,
+            neural_network_accuracy: (latest_metrics.map(|m| m.accuracy).unwrap_or(0.85) * crate::SCORE_SCALE as f64) as i128,
+            prediction_confidence: (0.92 * crate::SCORE_SCALE as f64) as i128,
+            training_loss: (latest_metrics.map(|m| m.loss).unwrap_or(0.1) * crate::SCORE_SCALE as f64) as i128,
+            validation_loss: (latest_metrics.map(|m| m.validation_loss).unwrap_or(0.12) * crate::SCORE_SCALE as f64) as i128,
+            model_drift_score: (0.05 * crate::SCORE_SCALE as f64) as i128,
+            inference_latency_ms: (50.0 * crate::SCORE_SCALE as f64) as i128,
             last_retrain_epoch: latest_metrics.map(|m| m.epoch).unwrap_or(0),
             feature_importance: HashMap::new(),
         };
@@ -4755,23 +4753,23 @@ impl PalletSaga {
     async fn collect_security_insights(&self) -> SecurityInsights {
         SecurityInsights {
             threat_level: ThreatLevel::Low,
-            anomaly_score: 0.1,
+            anomaly_score: (0.1 * crate::SCORE_SCALE as f64) as i128,
             attack_attempts_24h: 0,
             blocked_transactions: 0,
             suspicious_patterns: vec![],
-            security_confidence: 0.95,
+            security_confidence: (0.95 * crate::SCORE_SCALE as f64) as i128,
         }
     }
 
     /// Collect economic indicators for dashboard
     async fn collect_economic_indicators(&self) -> EconomicIndicators {
         EconomicIndicators {
-            total_value_locked: 1000000.0,
-            transaction_fees_24h: 500.0,
-            validator_rewards_24h: 1000.0,
-            network_utilization: 0.3,
-            economic_security: 0.9,
-            fee_market_efficiency: 0.85,
+            total_value_locked: (1000000.0 * crate::SCORE_SCALE as f64) as i128,
+            transaction_fees_24h: (500.0 * crate::SCORE_SCALE as f64) as i128,
+            validator_rewards_24h: (1000.0 * crate::SCORE_SCALE as f64) as i128,
+            network_utilization: (0.3 * crate::SCORE_SCALE as f64) as i128,
+            economic_security: (0.9 * crate::SCORE_SCALE as f64) as i128,
+            fee_market_efficiency: (0.85 * crate::SCORE_SCALE as f64) as i128,
         }
     }
 
@@ -4779,11 +4777,11 @@ impl PalletSaga {
     async fn collect_environmental_metrics(&self) -> EnvironmentalDashboardMetrics {
         let env_metrics = self.economy.environmental_metrics.read().await;
         let environmental_metrics = EnvironmentalDashboardMetrics {
-            carbon_footprint_kg: 100.0,
-            energy_efficiency_score: env_metrics.network_green_score,
-            renewable_energy_percentage: 75.0,
-            carbon_offset_credits: env_metrics.total_co2_offset_epoch,
-            green_validator_ratio: 0.8,
+            carbon_footprint_kg: (100.0 * crate::SCORE_SCALE as f64) as i128,
+            energy_efficiency_score: (env_metrics.network_green_score * crate::SCORE_SCALE as f64) as i128,
+            renewable_energy_percentage: (75.0 * crate::SCORE_SCALE as f64) as i128,
+            carbon_offset_credits: (env_metrics.total_co2_offset_epoch * crate::SCORE_SCALE as f64) as i128,
+            green_validator_ratio: (0.8 * crate::SCORE_SCALE as f64) as i128,
         };
         drop(env_metrics);
         environmental_metrics

@@ -98,6 +98,8 @@ message QantoBlock {
   repeated SmartContract smart_contracts = 18;
   repeated CarbonOffsetCredential carbon_credentials = 19;
   uint64 epoch = 20;
+  optional string finality_proof = 21;
+  optional string reservation_miner_id = 22;
 }
 
 message CrossChainReference {

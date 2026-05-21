@@ -1,0 +1,19 @@
+{
+  "name": "Qanto Layer-0",
+  "symbol": "QNTO",
+  "decimals": 6,
+  "description": "Native token of the Qanto Agentic Mesh Ecosystem",
+  "isNative": true,
+  "chainID": "0x1234",
+  "circulatingSupply": "DYNAMIC",
+  "totalSupply": "21000000000",
+  "emissionStrategy": {
+    "initialBlockReward": "2.5 QNTO",
+    "halvingPeriodSeconds": 8400000,
+    "halvingFactor": "0.999",
+    "targetBlockTimeSeconds": 1.0
+  },
+  "rpcEndpoints": [
+    "https://trvorth-qanto-testnet.hf.space/rpc"
+  ]
+}

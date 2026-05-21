@@ -7,23 +7,23 @@ use serde::{Serialize, Deserialize};
  */
 pub struct NeuralMirror {
     pub agent_pulses: HashMap<String, AgentPulse>,
-    pub global_sentiment_history: Vec<f64>,
+    pub global_sentiment_history: Vec<i128>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentPulse {
     pub agent_id: String,
-    pub veracity_score: f64,
-    pub puai_yield: f64,
+    pub veracity_score: u128, // Scaled by QANTO_SCALE
+    pub puai_yield: u128,    // Scaled by QANTO_SCALE
     pub uptime: u64,
     pub last_action_timestamp: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SentimentMatrix {
-    pub global_score: f64, // -1.0 to 1.0 (Extreme Fear to Extreme Euphoria)
+    pub global_score: i128, // -Q_SCALE to Q_SCALE (Extreme Fear to Extreme Euphoria)
     pub anomaly_detection: String,
-    pub market_influence: f64,
+    pub market_influence: i128,
 }
 
 impl NeuralMirror {
@@ -49,7 +49,7 @@ impl NeuralMirror {
     pub fn calculate_global_sentiment(&mut self) -> SentimentMatrix {
         println!("GNM: Calculating Global Neural Sentiment across {} indexed agents...", self.agent_pulses.len());
         
-        let mut total_score = 0.0;
+        let mut total_score = 0u128;
         let mut count = 0;
 
         for pulse in self.agent_pulses.values() {
@@ -57,13 +57,15 @@ impl NeuralMirror {
             count += 1;
         }
 
-        let global_score = if count > 0 { (total_score / count as f64) - 0.5 } else { 0.5 }; // Scaled to -0.5..0.5 for mock
-        self.global_sentiment_history.push(global_score);
+        let global_score_raw = if count > 0 { (total_score / count as u128) as i128 } else { (crate::QANTO_SCALE / 2) as i128 };
+        let shifted_score = global_score_raw - (crate::QANTO_SCALE as i128 / 2); // Scale to -0.5..0.5
+        
+        self.global_sentiment_history.push(shifted_score);
 
         SentimentMatrix {
-            global_score: global_score * 2.0, // Scale to -1.0..1.0
+            global_score: shifted_score * 2, // Scale to -QANTO_SCALE..QANTO_SCALE
             anomaly_detection: "NOMINAL".to_string(),
-            market_influence: global_score * 0.1, // Sentiment influences Futarchy pricing
+            market_influence: shifted_score / 10, // Sentiment influences Futarchy pricing
         }
     }
 }
@@ -78,14 +80,14 @@ mod tests {
         let mut mirror = NeuralMirror::new();
         mirror.reflect_agent_pulse(AgentPulse {
             agent_id: "SENTINEL_A1".to_string(),
-            veracity_score: 0.98,
-            puai_yield: 42.0,
+            veracity_score: (98 * crate::QANTO_SCALE) / 100, // 0.98
+            puai_yield: 42 * crate::QANTO_SCALE,
             uptime: 9999,
             last_action_timestamp: 1775492930,
         });
 
         let sentiment = mirror.calculate_global_sentiment();
-        assert!(sentiment.global_score > 0.0);
+        assert!(sentiment.global_score > 0);
         assert_eq!(sentiment.anomaly_detection, "NOMINAL");
     }
 }

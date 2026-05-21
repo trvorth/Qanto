@@ -44,15 +44,15 @@ use uuid::Uuid;
 // --- Decentralization Constants ---
 const MIN_VALIDATOR_COUNT: usize = 21;
 const VALIDATOR_ROTATION_EPOCHS: u64 = 100;
-const BYZANTINE_FAULT_TOLERANCE: f64 = 0.33; // Up to 33% Byzantine nodes
+const BYZANTINE_FAULT_TOLERANCE: u128 = 333_333_333; // 33.3% as 0.333333333 * 1e9
 const CONSENSUS_TIMEOUT_MS: u64 = 30000;
 const SHARD_COUNT: usize = 64;
 
 // Diversity and selection constants
-const MAX_STAKE_CONCENTRATION: f64 = 0.4; // Maximum stake concentration for top validators
-const PERFORMANCE_WEIGHT: f64 = 0.4; // Weight for performance in selection
-const DIVERSITY_WEIGHT: f64 = 0.3; // Weight for diversity in selection
-const STAKE_WEIGHT: f64 = 0.3; // Weight for stake in selection
+const MAX_STAKE_CONCENTRATION: u128 = 400_000_000;
+const PERFORMANCE_WEIGHT: u128 = 400_000_000;
+const DIVERSITY_WEIGHT: u128 = 300_000_000;
+const STAKE_WEIGHT: u128 = 300_000_000;
 
 #[derive(Error, Debug)]
 pub enum DecentralizationError {
@@ -67,7 +67,7 @@ pub enum DecentralizationError {
     #[error("Governance proposal not found: {0}")]
     ProposalNotFound(String),
     #[error("Insufficient voting power: {0} < {1}")]
-    InsufficientVotingPower(f64, f64),
+    InsufficientVotingPower(u128, u128),
     #[error("Shard coordination failed: {0}")]
     ShardCoordinationFailed(String),
     #[error("Network partition detected")]
@@ -83,8 +83,8 @@ pub enum DecentralizationError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidatorInfo {
     pub peer_id: PeerId,
-    pub stake: u64,
-    pub reputation_score: f64,
+    pub stake: u128,
+    pub reputation_score: u128,
     pub last_active_epoch: u64,
     pub performance_metrics: ValidatorMetrics,
     pub public_key: Vec<u8>,
@@ -183,7 +183,7 @@ pub struct NodeInfo {
     pub capabilities: NodeCapabilities,
     pub network_metrics: NetworkMetrics,
     pub last_seen: u64,
-    pub trust_score: f64,
+    pub trust_score: u128,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,7 +202,7 @@ pub struct NodeCapabilities {
     pub can_bridge_shards: bool,
     pub supports_zkp: bool,
     pub max_connections: usize,
-    pub bandwidth_mbps: f64,
+    pub bandwidth_mbps: u128, // Scaled by 1e9
 }
 
 // Use unified metrics system
@@ -211,7 +211,7 @@ pub type NetworkMetrics = QantoMetrics;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PartitionDetector {
     pub suspected_partitions: Vec<NetworkPartition>,
-    pub detection_threshold: f64,
+    pub detection_threshold: u128, // Scaled by 1e9
     pub recovery_strategies: Vec<RecoveryStrategy>,
 }
 
@@ -243,8 +243,8 @@ pub enum RecoveryStatus {
 pub struct RecoveryStrategy {
     pub strategy_id: String,
     pub strategy_type: RecoveryStrategyType,
-    pub success_rate: f64,
-    pub estimated_recovery_time: u64,
+    pub success_rate: u128,          // Scaled by 1e9
+    pub estimated_recovery_time: u64, // ms
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -257,10 +257,10 @@ pub enum RecoveryStrategyType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoadBalancer {
-    pub load_distribution: HashMap<PeerId, f64>,
+    pub load_distribution: HashMap<PeerId, u128>,
     pub balancing_strategy: BalancingStrategy,
-    pub rebalancing_threshold: f64,
-    pub performance_weights: HashMap<String, f64>,
+    pub rebalancing_threshold: u128,
+    pub performance_weights: HashMap<String, u128>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -302,7 +302,7 @@ pub struct VotingRecord {
     pub proposal_id: String,
     pub voter_id: PeerId,
     pub vote: VoteChoice,
-    pub voting_power: f64,
+    pub voting_power: u128,
     pub timestamp: u64,
     #[cfg(feature = "zk")]
     pub zk_proof: Option<ZKProof>,
@@ -318,7 +318,7 @@ pub enum VoteChoice {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DelegationSystem {
     pub delegations: HashMap<PeerId, PeerId>, // delegator -> delegate
-    pub delegation_weights: HashMap<PeerId, f64>,
+    pub delegation_weights: HashMap<PeerId, u128>,
     pub delegation_history: Vec<DelegationEvent>,
 }
 
@@ -343,9 +343,9 @@ pub struct GovernanceMetrics {
     pub active_proposals: u64,
     pub passed_proposals: u64,
     pub rejected_proposals: u64,
-    pub average_participation_rate: f64,
-    pub delegation_rate: f64,
-    pub governance_health_score: f64,
+    pub average_participation_rate: u128,
+    pub delegation_rate: u128,
+    pub governance_health_score: u128,
 }
 
 #[derive(Debug)]
@@ -378,8 +378,8 @@ pub struct DiscoveryMetrics {
     pub peers_discovered: u64,
     pub successful_connections: u64,
     pub failed_connections: u64,
-    pub average_discovery_time: f64,
-    pub network_coverage: f64,
+    pub average_discovery_time: u128, // Scaled by 1e9
+    pub network_coverage: u128,       // Scaled by 1e9
 }
 
 impl DecentralizationEngine {
@@ -701,8 +701,11 @@ impl DecentralizationEngine {
             let votes_received = round.validator_votes.len();
 
             // Check if we have enough votes (Byzantine fault tolerance)
+            // (total_validators * (1.0 - BYZANTINE_FAULT_TOLERANCE)) ceil
+            let bft_factor = crate::QANTO_SCALE - BYZANTINE_FAULT_TOLERANCE;
             let required_votes =
-                ((total_validators as f64) * (1.0 - BYZANTINE_FAULT_TOLERANCE)).ceil() as usize;
+                ((total_validators as u128 * bft_factor + crate::QANTO_SCALE - 1)
+                    / crate::QANTO_SCALE) as usize;
 
             Ok(votes_received >= required_votes)
         } else {
@@ -858,13 +861,17 @@ impl DecentralizationEngine {
         all_validators: &[ValidatorInfo],
         epoch: u64,
         shard_id: usize,
-    ) -> Result<Vec<(ValidatorInfo, f64)>, DecentralizationError> {
+    ) -> Result<Vec<(ValidatorInfo, u128)>, DecentralizationError> {
         let mut scored_validators = Vec::new();
 
         for validator in all_validators {
             let performance_score =
                 self.calculate_individual_performance_score(&validator.performance_metrics);
-            let stake_score = (validator.stake as f64).ln() / 20.0; // Logarithmic stake scoring
+            
+            // Deterministic logarithmic stake scoring: (log2(stake) * SCALE) / 30
+            // Approximates ln(stake) / 20.0
+            let stake_bits = 128 - validator.stake.leading_zeros() as u128;
+            let stake_score = (stake_bits * crate::QANTO_SCALE) / 30;
 
             // Extract geographic info for diversity calculation
             let (country, region, _) = self
@@ -876,23 +883,24 @@ impl DecentralizationEngine {
                 .calculate_diversity_bonus(&country, &region, all_validators)
                 .await;
 
-            // Combine scores with weights
-            let total_score = (performance_score * PERFORMANCE_WEIGHT)
-                + (stake_score * STAKE_WEIGHT)
-                + (diversity_bonus * DIVERSITY_WEIGHT);
+            // Combine scores with weights using mul_scale_u128
+            let total_score = crate::math::mul_scale_u128(performance_score, PERFORMANCE_WEIGHT)
+                + crate::math::mul_scale_u128(stake_score, STAKE_WEIGHT)
+                + crate::math::mul_scale_u128(diversity_bonus, DIVERSITY_WEIGHT);
 
             // Add epoch-based rotation factor to ensure fairness over time
-            let rotation_factor =
-                ((epoch + shard_id as u64) * validator.peer_id.to_string().len() as u64) as f64
-                    * 0.001;
+            // rotation_factor = ((epoch + shard_id) * name_len) * SCALE / 1000
+            let rotation_factor = (((epoch + shard_id as u64) as u128)
+                * (validator.peer_id.to_string().len() as u128)
+                * crate::QANTO_SCALE)
+                / 1000;
             let final_score = total_score + rotation_factor;
 
             scored_validators.push((validator.clone(), final_score));
         }
 
         // Sort by score (descending)
-        scored_validators
-            .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored_validators.sort_by(|a, b| b.1.cmp(&a.1));
 
         Ok(scored_validators)
     }
@@ -900,7 +908,7 @@ impl DecentralizationEngine {
     /// Apply diversity and stake concentration constraints to validator selection
     async fn apply_diversity_constraints(
         &self,
-        scored_validators: Vec<(ValidatorInfo, f64)>,
+        scored_validators: Vec<(ValidatorInfo, u128)>,
         target_count: usize,
     ) -> Result<Vec<ValidatorInfo>, DecentralizationError> {
         let mut selected = Vec::new();
@@ -960,8 +968,8 @@ impl DecentralizationEngine {
         // Check stake concentration constraint
         if selected.len() > 1 {
             let total_selected_stake =
-                selected.iter().map(|v| v.stake).sum::<u64>() + validator.stake;
-            let stake_concentration = validator.stake as f64 / total_selected_stake as f64;
+                selected.iter().map(|v| v.stake).sum::<u128>() + validator.stake;
+            let stake_concentration = crate::math::div_scale_u128(validator.stake, total_selected_stake);
 
             if stake_concentration > MAX_STAKE_CONCENTRATION {
                 return Ok(false);
@@ -974,7 +982,7 @@ impl DecentralizationEngine {
     /// Fill remaining validator slots with best available validators
     fn fill_remaining_slots(
         &self,
-        scored_validators: &[(ValidatorInfo, f64)],
+        scored_validators: &[(ValidatorInfo, u128)],
         selected: &mut Vec<ValidatorInfo>,
         used_validators: &HashSet<PeerId>,
         target_count: usize,
@@ -996,7 +1004,7 @@ impl DecentralizationEngine {
         country: &str,
         region: &str,
         all_validators: &[ValidatorInfo],
-    ) -> f64 {
+    ) -> u128 {
         let mut country_counts: HashMap<String, usize> = HashMap::new();
         let mut region_counts: HashMap<String, usize> = HashMap::new();
 
@@ -1009,25 +1017,26 @@ impl DecentralizationEngine {
             *region_counts.entry(val_region).or_insert(0) += 1;
         }
 
-        let total_validators = all_validators.len() as f64;
-        let country_frequency =
-            *country_counts.get(country).unwrap_or(&0) as f64 / total_validators;
-        let region_frequency = *region_counts.get(region).unwrap_or(&0) as f64 / total_validators;
+        let total_count = all_validators.len() as u128;
+        if total_count == 0 {
+            return 0;
+        }
 
         // Higher bonus for less represented regions (inverse frequency)
-        let country_bonus = if country_frequency > 0.0 {
-            1.0 / country_frequency
+        let country_bonus = if let Some(&count) = country_counts.get(country) {
+            (total_count * crate::QANTO_SCALE) / count as u128
         } else {
-            2.0
+            2 * crate::QANTO_SCALE
         };
-        let region_bonus = if region_frequency > 0.0 {
-            1.0 / region_frequency
+
+        let region_bonus = if let Some(&count) = region_counts.get(region) {
+            (total_count * crate::QANTO_SCALE) / count as u128
         } else {
-            1.5
+            (3 * crate::QANTO_SCALE) / 2
         };
 
         // Normalize and combine bonuses
-        ((country_bonus + region_bonus) / 2.0).min(3.0) // Cap at 3.0 to prevent extreme values
+        ((country_bonus + region_bonus) / 2).min(3 * crate::QANTO_SCALE) // Cap at 3.0 to prevent extreme values
     }
 
     /// Select validators for a specific epoch using comprehensive selection criteria
@@ -1072,8 +1081,8 @@ impl DecentralizationEngine {
             if validator.stake < 100 {
                 // Minimum stake requirement
                 return Err(DecentralizationError::InsufficientVotingPower(
-                    validator.stake as f64,
-                    100.0,
+                    validator.stake,
+                    100,
                 ));
             }
         } else {
@@ -1157,15 +1166,16 @@ impl DecentralizationEngine {
     async fn calculate_voting_power(
         &self,
         validator_id: &PeerId,
-    ) -> Result<f64, DecentralizationError> {
+    ) -> Result<u128, DecentralizationError> {
         let validators = self.validators.read().await;
 
         if let Some(validator) = validators.get(validator_id) {
             // Voting power based on stake and reputation
-            let stake_weight = (validator.stake as f64).sqrt();
+            // sqrt(stake) * reputation
+            let stake_weight = crate::math::integer_sqrt(validator.stake * crate::QANTO_SCALE);
             let reputation_weight = validator.reputation_score;
 
-            Ok(stake_weight * reputation_weight)
+            Ok((stake_weight * reputation_weight) / crate::math::integer_sqrt(crate::QANTO_SCALE))
         } else {
             Err(DecentralizationError::InvalidValidatorSignature(format!(
                 "Validator not found: {validator_id}"
@@ -1301,16 +1311,17 @@ impl DecentralizationEngine {
 
         let active_validators = validators.len() as u64;
         let total_connections: usize = _topology.connections.values().map(|v| v.len()).sum();
-        let average_latency = _topology
-            .nodes
-            .values()
-            .map(|n| {
-                n.network_metrics
-                    .latency_ms
-                    .load(std::sync::atomic::Ordering::Relaxed) as f64
-            })
-            .sum::<f64>()
-            / _topology.nodes.len() as f64;
+        let node_count = _topology.nodes.len() as u128;
+        let average_latency = if node_count > 0 {
+            let total_latency: u128 = _topology
+                .nodes
+                .values()
+                .map(|n| n.network_metrics.latency_ms.load(Ordering::Relaxed) as u128)
+                .sum();
+            (total_latency * crate::QANTO_SCALE) / node_count
+        } else {
+            0
+        };
 
         Ok(NetworkHealthMetrics {
             validator_count: active_validators,
@@ -1322,76 +1333,96 @@ impl DecentralizationEngine {
     }
 
     /// Calculate network coverage percentage
-    async fn calculate_network_coverage(&self) -> f64 {
+    async fn calculate_network_coverage(&self) -> u128 {
         let topology = self.network_topology.read().await;
-        let total_nodes = topology.nodes.len();
+        let total_nodes = topology.nodes.len() as u128;
 
         if total_nodes == 0 {
-            return 0.0;
+            return 0;
         }
 
         // Calculate connectivity ratio
         let total_connections: usize = topology.connections.values().map(|v| v.len()).sum();
         let max_possible_connections = total_nodes * (total_nodes - 1);
         let connectivity_ratio = if max_possible_connections > 0 {
-            total_connections as f64 / max_possible_connections as f64
+            (total_connections as u128 * crate::QANTO_SCALE) / max_possible_connections
         } else {
-            0.0
+            0
         };
 
         // Calculate geographic distribution
         let mut geographic_regions = HashSet::new();
         for node in topology.nodes.values() {
-            // Extract region from network address (simplified)
-            // Extract region from peer_id (simplified approach since network_address is not available)
-            let region = format!("{:02x}", node.peer_id.id[0] % 10); // Use first byte of peer_id for region
+            // Extract region from peer_id (simplified approach)
+            let region = format!("{:02x}", node.peer_id.id[0] % 10);
             geographic_regions.insert(region);
         }
-        let geographic_diversity = geographic_regions.len() as f64 / 10.0; // Assume 10 major regions
+        let geographic_diversity = (geographic_regions.len() as u128 * crate::QANTO_SCALE) / 10;
 
         // Calculate validator distribution across shards
+        // Calculate validator distribution across shards
         let validators = self.validators.read().await;
-        let mut shard_validator_count = HashMap::new();
+        let mut shard_validator_counts = Vec::new();
+        let mut shard_map = HashMap::new();
         for validator in validators.values() {
             for &shard_id in &validator.shard_assignments {
-                *shard_validator_count.entry(shard_id).or_insert(0) += 1;
+                *shard_map.entry(shard_id).or_insert(0) += 1;
             }
         }
+        for count in shard_map.values() {
+            shard_validator_counts.push((*count as u128) * crate::QANTO_SCALE);
+        }
 
-        let shard_balance = if !shard_validator_count.is_empty() {
-            let avg_validators_per_shard = validators.len() as f64 / SHARD_COUNT as f64;
-            let variance: f64 = shard_validator_count
-                .values()
-                .map(|&count| (count as f64 - avg_validators_per_shard).powi(2))
-                .sum::<f64>()
-                / shard_validator_count.len() as f64;
-            1.0 - (variance.sqrt() / avg_validators_per_shard).min(1.0)
+        let shard_balance = if !shard_validator_counts.is_empty() {
+            let avg_validators_per_shard = (validators.len() as u128 * crate::QANTO_SCALE) / SHARD_COUNT as u128;
+            let variance = self.calculate_variance(&shard_validator_counts);
+            let std_dev = crate::math::integer_sqrt(variance * crate::QANTO_SCALE);
+            
+            let dev_ratio = if avg_validators_per_shard > 0 {
+                (std_dev * crate::QANTO_SCALE) / avg_validators_per_shard
+            } else {
+                crate::QANTO_SCALE
+            };
+            
+            crate::QANTO_SCALE.saturating_sub(dev_ratio.min(crate::QANTO_SCALE))
         } else {
-            0.0
+            0
         };
 
         // Weighted average of coverage metrics
-        connectivity_ratio * 0.4 + geographic_diversity.min(1.0) * 0.3 + shard_balance * 0.3
+        (connectivity_ratio * 40 / 100)
+            + (geographic_diversity.min(crate::QANTO_SCALE) * 30 / 100)
+            + (shard_balance * 30 / 100)
     }
 
     /// Calculate partition risk score
-    async fn calculate_partition_risk(&self) -> f64 {
+    async fn calculate_partition_risk(&self) -> u128 {
         let topology = self.network_topology.read().await;
         let validators = self.validators.read().await;
 
         if topology.nodes.is_empty() || validators.is_empty() {
-            return 1.0; // Maximum risk if no nodes or validators
+            return crate::QANTO_SCALE; // Maximum risk if no nodes or validators
         }
 
         // Calculate network fragmentation risk
-        let mut risk_factors: Vec<f64> = Vec::new();
+        let mut risk_factors: Vec<u128> = Vec::new();
 
         // 1. Connection density risk
-        let total_nodes = topology.nodes.len();
+        let total_nodes = topology.nodes.len() as u128;
         let total_connections: usize = topology.connections.values().map(|v| v.len()).sum();
-        let connection_density = total_connections as f64 / (total_nodes * total_nodes) as f64;
-        let connection_risk = (0.1f64 - connection_density).max(0.0) / 0.1; // Risk increases as density drops below 10%
-        risk_factors.push(connection_risk);
+        let connection_density = if total_nodes > 0 {
+            (total_connections as u128 * crate::QANTO_SCALE) / (total_nodes * total_nodes)
+        } else {
+            0
+        };
+        
+        let density_threshold = crate::QANTO_SCALE / 10;
+        let connection_risk = if connection_density < density_threshold {
+            (density_threshold - connection_density) * 10
+        } else {
+            0
+        };
+        risk_factors.push(connection_risk.min(crate::QANTO_SCALE));
 
         // 2. Validator concentration risk
         let mut validator_regions = HashMap::new();
@@ -1404,57 +1435,76 @@ impl DecentralizationEngine {
             *validator_regions.entry(region).or_insert(0) += 1;
         }
 
-        let max_validators_in_region = *validator_regions.values().max().unwrap_or(&0);
-        let concentration_risk =
-            (max_validators_in_region as f64 / validators.len() as f64 - 0.33).max(0.0) / 0.67;
-        risk_factors.push(concentration_risk);
+        let max_validators_in_region = *validator_regions.values().max().unwrap_or(&0) as u128;
+        let val_len = validators.len() as u128;
+        let concentration_risk = if val_len > 0 {
+            let ratio = (max_validators_in_region * crate::QANTO_SCALE) / val_len;
+            let threshold = (33 * crate::QANTO_SCALE) / 100;
+            if ratio > threshold {
+                ((ratio - threshold) * 100) / 67
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        risk_factors.push(concentration_risk.min(crate::QANTO_SCALE));
 
         // 3. Network latency risk
-        let avg_latency = topology
-            .nodes
-            .values()
-            .map(|n| {
-                n.network_metrics
-                    .latency_ms
-                    .load(std::sync::atomic::Ordering::Relaxed) as f64
-            })
-            .sum::<f64>()
-            / topology.nodes.len() as f64;
-        let latency_risk = (avg_latency - 100.0).max(0.0) / 1000.0; // Risk increases above 100ms
-        risk_factors.push(latency_risk);
+        let avg_latency = if total_nodes > 0 {
+            let total_latency: u128 = topology
+                .nodes
+                .values()
+                .map(|n| n.network_metrics.latency_ms.load(Ordering::Relaxed) as u128)
+                .sum();
+            (total_latency * crate::QANTO_SCALE) / total_nodes
+        } else {
+            0
+        };
+        // Risk increases above 100ms
+        let latency_risk = if avg_latency > (100 * crate::QANTO_SCALE) {
+            (avg_latency - 100 * crate::QANTO_SCALE) / 1000
+        } else {
+            0
+        };
+        risk_factors.push(latency_risk.min(crate::QANTO_SCALE));
 
         // 4. Packet loss risk
-        let avg_packet_loss = topology
-            .nodes
-            .values()
-            .map(|n| {
-                n.network_metrics
-                    .packet_loss_rate
-                    .load(std::sync::atomic::Ordering::Relaxed) as f64
-            })
-            .sum::<f64>()
-            / topology.nodes.len() as f64;
-        let packet_loss_risk = (avg_packet_loss - 0.01).max(0.0) / 0.1; // Risk increases above 1%
-        risk_factors.push(packet_loss_risk);
+        let avg_packet_loss = if total_nodes > 0 {
+            let total_loss: u128 = topology
+                .nodes
+                .values()
+                .map(|n| n.network_metrics.packet_loss_rate.load(Ordering::Relaxed) as u128)
+                .sum();
+            (total_loss * crate::QANTO_SCALE) / total_nodes
+        } else {
+            0
+        };
+        // Risk increases above 1% (0.01)
+        let loss_threshold = crate::QANTO_SCALE / 100;
+        let packet_loss_risk = if avg_packet_loss > loss_threshold {
+            (avg_packet_loss - loss_threshold) * 10
+        } else {
+            0
+        };
+        risk_factors.push(packet_loss_risk.min(crate::QANTO_SCALE));
 
         // 5. Byzantine fault risk
         let byzantine_validators = validators
             .values()
-            .filter(|v| {
-                v.performance_metrics
-                    .byzantine_faults
-                    .load(std::sync::atomic::Ordering::Relaxed)
-                    > 0
-            })
-            .count();
-        let byzantine_risk =
-            (byzantine_validators as f64 / validators.len() as f64 / BYZANTINE_FAULT_TOLERANCE)
-                .min(1.0);
-        risk_factors.push(byzantine_risk);
+            .filter(|v| v.performance_metrics.byzantine_faults.load(Ordering::Relaxed) > 0)
+            .count() as u128;
+        
+        let byzantine_risk = if val_len > 0 {
+            (byzantine_validators * crate::QANTO_SCALE * 3) / val_len // Assuming 1/3 limit
+        } else {
+            0
+        };
+        risk_factors.push(byzantine_risk.min(crate::QANTO_SCALE));
 
         // Calculate weighted average risk
-        let total_risk = risk_factors.iter().sum::<f64>() / risk_factors.len() as f64;
-        total_risk.min(1.0)
+        let total_risk_sum: u128 = risk_factors.iter().sum();
+        total_risk_sum / risk_factors.len() as u128
     }
 
     /// Get comprehensive decentralization metrics
@@ -1510,7 +1560,7 @@ impl DecentralizationEngine {
     }
 
     /// Calculate the final decentralization score
-    async fn calculate_final_score(&self, components: &MetricsComponents) -> f64 {
+    async fn calculate_final_score(&self, components: &MetricsComponents) -> u128 {
         self.calculate_overall_decentralization_score(
             &components.geographic_distribution,
             &components.stake_distribution,
@@ -1524,7 +1574,7 @@ impl DecentralizationEngine {
     fn build_decentralization_metrics(
         &self,
         components: MetricsComponents,
-        decentralization_score: f64,
+        decentralization_score: u128,
     ) -> DecentralizationMetrics {
         DecentralizationMetrics {
             validator_count: components
@@ -1567,7 +1617,7 @@ impl DecentralizationEngine {
             *continent_counts.entry(continent).or_insert(0) += 1;
         }
 
-        let total_validators = validators.len() as f64;
+        let total_validators = validators.len() as u128;
         let country_diversity = self.calculate_diversity_index(&country_counts, total_validators);
         let region_diversity = self.calculate_diversity_index(&region_counts, total_validators);
         let continent_diversity =
@@ -1588,8 +1638,8 @@ impl DecentralizationEngine {
         &self,
         validators: &HashMap<PeerId, ValidatorInfo>,
     ) -> StakeDistribution {
-        let stakes: Vec<u64> = validators.values().map(|v| v.stake).collect();
-        let total_stake: u64 = stakes.iter().sum();
+        let stakes: Vec<u128> = validators.values().map(|v| v.stake).collect();
+        let total_stake: u128 = stakes.iter().sum::<u128>();
 
         if stakes.is_empty() {
             return StakeDistribution::default();
@@ -1606,7 +1656,7 @@ impl DecentralizationEngine {
 
         StakeDistribution {
             total_stake,
-            average_stake: total_stake / validators.len() as u64,
+            average_stake: total_stake / validators.len() as u128,
             median_stake: sorted_stakes[sorted_stakes.len() / 2],
             top_10_percent_concentration,
             top_33_percent_concentration,
@@ -1618,17 +1668,21 @@ impl DecentralizationEngine {
     /// Calculate stake concentration metrics for top percentiles
     fn calculate_concentration_metrics(
         &self,
-        sorted_stakes: &[u64],
-        total_stake: u64,
+        sorted_stakes: &[u128],
+        total_stake: u128,
         validator_count: usize,
-    ) -> (f64, f64) {
-        let top_10_percent_count = (validator_count as f64 * 0.1).ceil() as usize;
-        let top_10_percent_stake: u64 = sorted_stakes.iter().take(top_10_percent_count).sum();
-        let top_10_percent_concentration = top_10_percent_stake as f64 / total_stake as f64;
+    ) -> (u128, u128) {
+        if total_stake == 0 {
+            return (0, 0);
+        }
 
-        let top_33_percent_count = (validator_count as f64 * 0.33).ceil() as usize;
-        let top_33_percent_stake: u64 = sorted_stakes.iter().take(top_33_percent_count).sum();
-        let top_33_percent_concentration = top_33_percent_stake as f64 / total_stake as f64;
+        let top_10_percent_count = (validator_count + 9) / 10;
+        let top_10_percent_stake: u128 = sorted_stakes.iter().take(top_10_percent_count).sum();
+        let top_10_percent_concentration = (top_10_percent_stake * crate::QANTO_SCALE) / total_stake;
+
+        let top_33_percent_count = (validator_count * 33 + 99) / 100;
+        let top_33_percent_stake: u128 = sorted_stakes.iter().take(top_33_percent_count).sum();
+        let top_33_percent_concentration = (top_33_percent_stake * crate::QANTO_SCALE) / total_stake;
 
         (top_10_percent_concentration, top_33_percent_concentration)
     }
@@ -1640,7 +1694,18 @@ impl DecentralizationEngine {
     ) -> ValidatorPerformanceMetrics {
         let (aggregated_metrics, performance_scores) = self.aggregate_validator_metrics(validators);
 
-        let validator_count = validators.len() as f64;
+        let validator_count = validators.len() as u128;
+        if validator_count == 0 {
+            return ValidatorPerformanceMetrics {
+                average_uptime: 0,
+                average_response_time: 0,
+                total_blocks_produced: 0,
+                total_byzantine_faults: 0,
+                performance_variance: 0,
+                underperforming_validators: 0,
+            };
+        }
+        
         let underperforming_count = self.count_underperforming_validators(&performance_scores);
 
         ValidatorPerformanceMetrics {
@@ -1657,7 +1722,7 @@ impl DecentralizationEngine {
     fn aggregate_validator_metrics(
         &self,
         validators: &HashMap<PeerId, ValidatorInfo>,
-    ) -> (AggregatedMetrics, Vec<f64>) {
+    ) -> (AggregatedMetrics, Vec<u128>) {
         let mut aggregated = AggregatedMetrics::default();
         let mut performance_scores = Vec::new();
 
@@ -1665,11 +1730,11 @@ impl DecentralizationEngine {
             aggregated.total_uptime += validator
                 .performance_metrics
                 .uptime_percentage
-                .load(Ordering::Relaxed) as f64;
+                .load(Ordering::Relaxed) as u128;
             aggregated.total_response_time += validator
                 .performance_metrics
                 .response_time_ms
-                .load(Ordering::Relaxed) as f64;
+                .load(Ordering::Relaxed) as u128;
             aggregated.total_blocks_produced += validator
                 .performance_metrics
                 .blocks_produced
@@ -1688,10 +1753,10 @@ impl DecentralizationEngine {
     }
 
     /// Count validators with performance below threshold
-    fn count_underperforming_validators(&self, performance_scores: &[f64]) -> usize {
+    fn count_underperforming_validators(&self, performance_scores: &[u128]) -> usize {
         performance_scores
             .iter()
-            .filter(|&&score| score < 0.7)
+            .filter(|&&score| score < (70 * crate::QANTO_SCALE / 100))
             .count()
     }
 
@@ -1700,7 +1765,7 @@ impl DecentralizationEngine {
         &self,
         topology: &NetworkTopology,
     ) -> NetworkDecentralization {
-        let node_count = topology.nodes.len();
+        let node_count = topology.nodes.len() as u128;
         let connection_count: usize = topology.connections.values().map(|conns| conns.len()).sum();
 
         // Calculate network density
@@ -1710,9 +1775,9 @@ impl DecentralizationEngine {
             node_count * (node_count - 1)
         };
         let network_density = if max_possible_connections > 0 {
-            connection_count as f64 / max_possible_connections as f64
+            (connection_count as u128 * crate::QANTO_SCALE) / max_possible_connections
         } else {
-            0.0
+            0
         };
 
         // Calculate clustering coefficient
@@ -1725,7 +1790,7 @@ impl DecentralizationEngine {
         let network_resilience = self.calculate_network_resilience(topology).await;
 
         NetworkDecentralization {
-            node_count,
+            node_count: node_count as usize,
             connection_count,
             network_density,
             clustering_coefficient,
@@ -1743,7 +1808,7 @@ impl DecentralizationEngine {
             return ShardBalance::default();
         }
 
-        let average_shard_size = total_validators as f64 / shard_sizes.len() as f64;
+        let average_shard_size = (total_validators as u128 * crate::QANTO_SCALE) / shard_sizes.len() as u128;
         let shard_size_variance = self.calculate_shard_size_variance(&shard_sizes);
         let load_balance_coefficient = self.calculate_load_balance_coefficient(shards);
 
@@ -1757,27 +1822,27 @@ impl DecentralizationEngine {
     }
 
     /// Calculate variance in shard sizes
-    fn calculate_shard_size_variance(&self, shard_sizes: &[usize]) -> f64 {
-        let shard_sizes_f64: Vec<f64> = shard_sizes.iter().map(|&s| s as f64).collect();
-        self.calculate_variance(&shard_sizes_f64)
+    fn calculate_shard_size_variance(&self, shard_sizes: &[usize]) -> u128 {
+        let shard_sizes_u128: Vec<u128> = shard_sizes.iter().map(|&s| s as u128 * crate::QANTO_SCALE).collect();
+        self.calculate_variance(&shard_sizes_u128)
     }
 
     /// Calculate load balance coefficient across shards
-    fn calculate_load_balance_coefficient(&self, shards: &HashMap<usize, ShardInfo>) -> f64 {
+    fn calculate_load_balance_coefficient(&self, shards: &HashMap<usize, ShardInfo>) -> u128 {
         let transaction_loads: Vec<usize> =
             shards.values().map(|s| s.transaction_pool.len()).collect();
 
         if transaction_loads.is_empty() {
-            return 1.0;
+            return crate::QANTO_SCALE;
         }
 
-        let max_load = *transaction_loads.iter().max().unwrap_or(&0usize) as f64;
-        let min_load = *transaction_loads.iter().min().unwrap_or(&0usize) as f64;
+        let max_load = *transaction_loads.iter().max().unwrap_or(&0usize) as u128;
+        let min_load = *transaction_loads.iter().min().unwrap_or(&0usize) as u128;
 
-        if max_load > 0.0 {
-            min_load / max_load
+        if max_load > 0 {
+            (min_load * crate::QANTO_SCALE) / max_load
         } else {
-            1.0
+            crate::QANTO_SCALE
         }
     }
 
@@ -1787,29 +1852,20 @@ impl DecentralizationEngine {
         geographic: &GeographicDistribution,
         stake: &StakeDistribution,
         network: &NetworkDecentralization,
-        governance_participation: f64,
-    ) -> f64 {
+        governance_participation: u128,
+    ) -> u128 {
         // Weighted scoring of different decentralization aspects
         let geographic_score =
-            (geographic.country_diversity_index + geographic.region_diversity_index) / 2.0;
-        let stake_score = 1.0 - stake.gini_coefficient; // Lower Gini = better distribution
-        let network_score = (network.network_density + network.network_resilience) / 2.0;
+            (geographic.country_diversity_index + geographic.region_diversity_index) / 2;
+        let stake_score = crate::QANTO_SCALE.saturating_sub(stake.gini_coefficient); // Lower Gini = better distribution
+        let network_score = (network.network_density + network.network_resilience) / 2;
         let governance_score = governance_participation;
 
-        // Weighted average (can be adjusted based on priorities)
-        let weights = [0.25, 0.30, 0.25, 0.20]; // geographic, stake, network, governance
-        let scores = [
-            geographic_score,
-            stake_score,
-            network_score,
-            governance_score,
-        ];
-
-        scores
-            .iter()
-            .zip(weights.iter())
-            .map(|(score, weight)| score * weight)
-            .sum()
+        // Weighted average (geographic 25%, stake 30%, network 25%, governance 20%)
+        (geographic_score * 25 / 100)
+            + (stake_score * 30 / 100)
+            + (network_score * 25 / 100)
+            + (governance_score * 20 / 100)
     }
 
     /// Helper function to extract geographic information from network address
@@ -1844,47 +1900,66 @@ impl DecentralizationEngine {
     }
 
     /// Calculate Shannon diversity index for geographic distribution
-    fn calculate_diversity_index(&self, counts: &HashMap<String, usize>, total: f64) -> f64 {
-        if total == 0.0 {
-            return 0.0;
+    fn calculate_diversity_index(&self, counts: &HashMap<String, usize>, total: u128) -> u128 {
+        if total == 0 {
+            return 0;
         }
 
-        let mut diversity = 0.0;
+        let mut diversity = 0;
         for &count in counts.values() {
             if count > 0 {
-                let proportion = count as f64 / total;
-                diversity -= proportion * proportion.ln();
+                let c = count as u128;
+                // proportion = c / total
+                // diversity -= (c/total) * ln(c/total)
+                // diversity -= (c/total) * (ln(c) - ln(total))
+                
+                let ln_c = ((128 - c.leading_zeros() as u128) * crate::QANTO_SCALE) / 30;
+                let ln_total = ((128 - total.leading_zeros() as u128) * crate::QANTO_SCALE) / 30;
+                
+                // term = (c * (ln_c - ln_total)) / total
+                // Note: ln_c - ln_total will be negative or zero.
+                if ln_total > ln_c {
+                    let diff = ln_total - ln_c;
+                    diversity += (c * diff) / total;
+                }
             }
         }
         diversity
     }
 
     /// Calculate Gini coefficient for stake distribution
-    fn calculate_gini_coefficient(&self, stakes: &[u64]) -> f64 {
+    fn calculate_gini_coefficient(&self, stakes: &[u128]) -> u128 {
         if stakes.len() <= 1 {
-            return 0.0;
+            return 0;
         }
 
         let mut sorted_stakes = stakes.to_vec();
         sorted_stakes.sort_unstable();
 
-        let n = sorted_stakes.len() as f64;
-        let mean = sorted_stakes.iter().sum::<u64>() as f64 / n;
+        let n = sorted_stakes.len() as u128;
+        let total_sum: u128 = sorted_stakes.iter().map(|&s| s as u128).sum();
 
-        if mean == 0.0 {
-            return 0.0;
+        if total_sum == 0 {
+            return 0;
         }
 
-        let mut gini_sum = 0.0;
+        let mut gini_sum: i128 = 0;
         for (i, &stake) in sorted_stakes.iter().enumerate() {
-            gini_sum += (2.0 * (i as f64 + 1.0) - n - 1.0) * stake as f64;
+            // (2 * (i + 1) - n - 1) * stake
+            let factor = 2 * (i as i128 + 1) - n as i128 - 1;
+            gini_sum += factor * stake as i128;
         }
 
-        gini_sum / (n * n * mean)
+        if gini_sum < 0 {
+            0
+        } else {
+            // gini = gini_sum / (n * n * mean) = gini_sum / (n * sum)
+            (gini_sum as u128 * crate::QANTO_SCALE) / (n * total_sum)
+        }
     }
 
     /// Calculate Nakamoto coefficient
-    fn calculate_nakamoto_coefficient(&self, sorted_stakes: &[u64], total_stake: u64) -> usize {
+    fn calculate_nakamoto_coefficient(&self, sorted_stakes: &[u128], total_stake: u128) -> usize {
         let threshold = total_stake / 2;
         let mut cumulative_stake = 0;
 
@@ -1899,64 +1974,76 @@ impl DecentralizationEngine {
     }
 
     /// Calculate individual validator performance score
-    fn calculate_individual_performance_score(&self, metrics: &ValidatorMetrics) -> f64 {
+    fn calculate_individual_performance_score(&self, metrics: &ValidatorMetrics) -> u128 {
         let uptime_score =
-            self.calculate_uptime_score(metrics.uptime_percentage.load(Ordering::Relaxed) as f64);
+            self.calculate_uptime_score(metrics.uptime_percentage.load(Ordering::Relaxed));
         let response_score =
-            self.calculate_response_score(metrics.response_time_ms.load(Ordering::Relaxed) as f64);
+            self.calculate_response_score(metrics.response_time_ms.load(Ordering::Relaxed));
         let reliability_score =
             self.calculate_reliability_score(metrics.byzantine_faults.load(Ordering::Relaxed));
-        let participation_score = metrics.governance_participation.load(Ordering::Relaxed) as f64;
+        let participation_score = (metrics.governance_participation.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE) / 10000; // Assuming 100.00% is 10000
 
         // Weighted average of performance factors
-        (uptime_score * 0.3)
-            + (response_score * 0.3)
-            + (reliability_score * 0.2)
-            + (participation_score * 0.2)
+        // 0.3 * U + 0.3 * R + 0.2 * B + 0.2 * P
+        crate::math::mul_scale_u128(uptime_score, 300_000_000)
+            + crate::math::mul_scale_u128(response_score, 300_000_000)
+            + crate::math::mul_scale_u128(reliability_score, 200_000_000)
+            + crate::math::mul_scale_u128(participation_score, 200_000_000)
     }
 
     /// Calculate uptime score from uptime percentage
-    fn calculate_uptime_score(&self, uptime_percentage: f64) -> f64 {
-        uptime_percentage / 100.0
+    fn calculate_uptime_score(&self, uptime_percentage: u64) -> u128 {
+        // uptime_percentage is scaled by 1000 (99900 = 99.9%)
+        (uptime_percentage as u128 * crate::QANTO_SCALE) / 100000
     }
 
     /// Calculate response score from response time
-    fn calculate_response_score(&self, response_time_ms: f64) -> f64 {
-        if response_time_ms > 0.0 {
-            (1000.0 / response_time_ms).min(1.0)
+    fn calculate_response_score(&self, response_time_ms: u64) -> u128 {
+        if response_time_ms > 0 {
+            // (1000 / response_time_ms).min(1.0)
+            let score = (1000 * crate::QANTO_SCALE) / response_time_ms as u128;
+            score.min(crate::QANTO_SCALE)
         } else {
-            0.0
+            0
         }
     }
 
     /// Calculate reliability score from byzantine faults
-    fn calculate_reliability_score(&self, byzantine_faults: u64) -> f64 {
+    fn calculate_reliability_score(&self, byzantine_faults: u64) -> u128 {
         if byzantine_faults == 0 {
-            1.0
+            crate::QANTO_SCALE
         } else {
-            0.5
+            crate::QANTO_SCALE / 2
         }
     }
 
     /// Calculate variance of a dataset
-    fn calculate_variance(&self, values: &[f64]) -> f64 {
+    fn calculate_variance(&self, values: &[u128]) -> u128 {
         if values.len() <= 1 {
-            return 0.0;
+            return 0;
         }
 
-        let mean = values.iter().sum::<f64>() / values.len() as f64;
-        let variance = values
-            .iter()
-            .map(|value| (value - mean).powi(2))
-            .sum::<f64>()
-            / values.len() as f64;
+        let n = values.len() as u128;
+        let sum: u128 = values.iter().sum();
+        let mean = sum / n;
+        
+        let mut variance_sum = 0;
+        for &value in values {
+            let diff = if value > mean {
+                value - mean
+            } else {
+                mean - value
+            };
+            // Square the diff and rescale: (diff * diff) / SCALE
+            variance_sum += crate::math::mul_scale_u128(diff, diff);
+        }
 
-        variance
+        variance_sum / n
     }
 
     /// Calculate clustering coefficient for network topology
-    async fn calculate_clustering_coefficient(&self, topology: &NetworkTopology) -> f64 {
-        let mut total_clustering = 0.0;
+    async fn calculate_clustering_coefficient(&self, topology: &NetworkTopology) -> u128 {
+        let mut total_clustering = 0;
         let mut node_count = 0;
 
         for connections in topology.connections.values() {
@@ -1979,42 +2066,49 @@ impl DecentralizationEngine {
             }
 
             if possible_triangles > 0 {
-                total_clustering += triangles as f64 / possible_triangles as f64;
+                total_clustering += (triangles as u128 * crate::QANTO_SCALE) / possible_triangles as u128;
                 node_count += 1;
             }
         }
 
         if node_count > 0 {
-            total_clustering / node_count as f64
+            total_clustering / node_count as u128
         } else {
-            0.0
+            0
         }
     }
 
     /// Calculate average path length in network
-    async fn calculate_average_path_length(&self, topology: &NetworkTopology) -> f64 {
+    async fn calculate_average_path_length(&self, topology: &NetworkTopology) -> u128 {
         // Simplified calculation - in practice would use BFS/Dijkstra
-        let node_count = topology.nodes.len();
+        let node_count = topology.nodes.len() as u128;
         if node_count <= 1 {
-            return 0.0;
+            return 0;
         }
 
         let total_connections: usize = topology.connections.values().map(|conns| conns.len()).sum();
-        let average_degree = total_connections as f64 / node_count as f64;
-
-        // Estimate based on small-world network properties
-        if average_degree > 0.0 {
-            (node_count as f64).ln() / average_degree.ln()
+        // average_degree = total_connections / node_count
+        
+        if total_connections > 0 {
+            // L ~ ln(N) / ln(k)
+            let ln_n = ((128 - node_count.leading_zeros() as u128) * crate::QANTO_SCALE) / 30;
+            let k = total_connections as u128 / node_count;
+            if k > 1 {
+                let ln_k = ((128 - k.leading_zeros() as u128) * crate::QANTO_SCALE) / 30;
+                (ln_n * crate::QANTO_SCALE) / ln_k
+            } else {
+                crate::QANTO_SCALE * 10 // Mock high value for low connectivity
+            }
         } else {
-            f64::INFINITY
+            u128::MAX // Infinity replacement
         }
     }
 
     /// Calculate network resilience to node failures
-    async fn calculate_network_resilience(&self, topology: &NetworkTopology) -> f64 {
-        let node_count = topology.nodes.len();
+    async fn calculate_network_resilience(&self, topology: &NetworkTopology) -> u128 {
+        let node_count = topology.nodes.len() as u128;
         if node_count == 0 {
-            return 0.0;
+            return 0;
         }
 
         // Calculate minimum cut size (simplified)
@@ -2030,19 +2124,19 @@ impl DecentralizationEngine {
         }
 
         // Resilience based on minimum connectivity
-        (min_connections as f64 / node_count as f64).min(1.0)
+        (min_connections as u128 * crate::QANTO_SCALE / node_count).min(crate::QANTO_SCALE)
     }
 
     /// Calculate cross-shard communication ratio
-    async fn calculate_cross_shard_ratio(&self, shards: &HashMap<usize, ShardInfo>) -> f64 {
+    async fn calculate_cross_shard_ratio(&self, shards: &HashMap<usize, ShardInfo>) -> u128 {
         let total_transactions: usize = shards.values().map(|s| s.transaction_pool.len()).sum();
         if total_transactions == 0 {
-            return 0.0;
+            return 0;
         }
 
         // Estimate cross-shard transactions (simplified)
         let cross_shard_links: usize = shards.values().map(|s| s.cross_shard_links.len()).sum();
-        cross_shard_links as f64 / total_transactions as f64
+        (cross_shard_links as u128 * crate::QANTO_SCALE) / total_transactions as u128
     }
 }
 
@@ -2050,9 +2144,9 @@ impl DecentralizationEngine {
 pub struct NetworkHealthMetrics {
     pub validator_count: u64,
     pub total_connections: u64,
-    pub average_latency: f64,
-    pub network_coverage: f64,
-    pub partition_risk: f64,
+    pub average_latency: u128, // Scaled by 1e9
+    pub network_coverage: u128, // Scaled by 1e9
+    pub partition_risk: u128,   // Scaled by 1e9
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2063,9 +2157,9 @@ pub struct DecentralizationMetrics {
     pub validator_performance: ValidatorPerformanceMetrics,
     pub network_decentralization: NetworkDecentralization,
     pub shard_balance: ShardBalance,
-    pub governance_participation: f64,
-    pub delegation_ratio: f64,
-    pub decentralization_score: f64,
+    pub governance_participation: u128, // Scaled by 1e9
+    pub delegation_ratio: u128,          // Scaled by 1e9
+    pub decentralization_score: u128,    // Scaled by 1e9
     pub timestamp: u64,
 }
 
@@ -2074,8 +2168,8 @@ pub struct DecentralizationMetrics {
 struct SystemState {
     validators: HashMap<PeerId, ValidatorInfo>,
     topology: NetworkTopology,
-    governance_participation: f64,
-    delegation_ratio: f64,
+    governance_participation: u128, // Scaled by 1e9
+    delegation_ratio: u128,          // Scaled by 1e9
     shards: HashMap<usize, ShardInfo>,
 }
 
@@ -2087,8 +2181,8 @@ struct MetricsComponents {
     validator_performance: ValidatorPerformanceMetrics,
     network_decentralization: NetworkDecentralization,
     shard_balance: ShardBalance,
-    governance_participation: f64,
-    delegation_ratio: f64,
+    governance_participation: u128, // Scaled by 1e9
+    delegation_ratio: u128,          // Scaled by 1e9
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2096,29 +2190,29 @@ pub struct GeographicDistribution {
     pub country_counts: HashMap<String, usize>,
     pub region_counts: HashMap<String, usize>,
     pub continent_counts: HashMap<String, usize>,
-    pub country_diversity_index: f64,
-    pub region_diversity_index: f64,
-    pub continent_diversity_index: f64,
+    pub country_diversity_index: u128, // Scaled by 1e9
+    pub region_diversity_index: u128,  // Scaled by 1e9
+    pub continent_diversity_index: u128, // Scaled by 1e9
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StakeDistribution {
-    pub total_stake: u64,
-    pub average_stake: u64,
-    pub median_stake: u64,
-    pub top_10_percent_concentration: f64,
-    pub top_33_percent_concentration: f64,
-    pub gini_coefficient: f64,
+    pub total_stake: u128,
+    pub average_stake: u128,
+    pub median_stake: u128,
+    pub top_10_percent_concentration: u128, // Scaled by 1e9
+    pub top_33_percent_concentration: u128, // Scaled by 1e9
+    pub gini_coefficient: u128,              // Scaled by 1e9
     pub nakamoto_coefficient: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidatorPerformanceMetrics {
-    pub average_uptime: f64,
-    pub average_response_time: f64,
+    pub average_uptime: u128, // Scaled by 1e9
+    pub average_response_time: u128, // Scaled by 1e9
     pub total_blocks_produced: u64,
     pub total_byzantine_faults: u64,
-    pub performance_variance: f64,
+    pub performance_variance: u128, // Scaled by 1e9
     pub underperforming_validators: usize,
 }
 
@@ -2126,25 +2220,25 @@ pub struct ValidatorPerformanceMetrics {
 pub struct NetworkDecentralization {
     pub node_count: usize,
     pub connection_count: usize,
-    pub network_density: f64,
-    pub clustering_coefficient: f64,
-    pub average_path_length: f64,
-    pub network_resilience: f64,
+    pub network_density: u128,        // Scaled by 1e9
+    pub clustering_coefficient: u128, // Scaled by 1e9
+    pub average_path_length: u128,    // Scaled by 1e9
+    pub network_resilience: u128,     // Scaled by 1e9
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ShardBalance {
     pub shard_count: usize,
-    pub average_shard_size: f64,
-    pub shard_size_variance: f64,
-    pub load_balance_coefficient: f64,
-    pub cross_shard_communication_ratio: f64,
+    pub average_shard_size: u128,         // Scaled by 1e9
+    pub shard_size_variance: u128,        // Scaled by 1e9
+    pub load_balance_coefficient: u128,   // Scaled by 1e9
+    pub cross_shard_communication_ratio: u128, // Scaled by 1e9
 }
 
 #[derive(Debug, Default)]
 struct AggregatedMetrics {
-    total_uptime: f64,
-    total_response_time: f64,
+    total_uptime: u128,         // Scaled by 1e9
+    total_response_time: u128, // Scaled by 1e9
     total_blocks_produced: u64,
     total_byzantine_faults: u64,
 }
@@ -2165,13 +2259,13 @@ impl NetworkTopology {
             shards: HashMap::new(),
             partition_detection: PartitionDetector {
                 suspected_partitions: Vec::new(),
-                detection_threshold: 0.1,
+                detection_threshold: crate::QANTO_SCALE / 10,
                 recovery_strategies: Vec::new(),
             },
             load_balancer: LoadBalancer {
                 load_distribution: HashMap::new(),
                 balancing_strategy: BalancingStrategy::PerformanceBased,
-                rebalancing_threshold: 0.8,
+                rebalancing_threshold: (8 * crate::QANTO_SCALE) / 10,
                 performance_weights: HashMap::new(),
             },
         }
@@ -2215,7 +2309,7 @@ impl ShardCoordinator {
             load_balancer: Arc::new(RwLock::new(LoadBalancer {
                 load_distribution: HashMap::new(),
                 balancing_strategy: BalancingStrategy::PerformanceBased,
-                rebalancing_threshold: 0.8,
+                rebalancing_threshold: (8 * crate::QANTO_SCALE) / 10,
                 performance_weights: HashMap::new(),
             })),
         }

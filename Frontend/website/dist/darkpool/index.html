@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dark Pool | QANTO Layer-0</title>
+    <link rel="stylesheet" href="../../assets/css/main.css">
+    <link rel="stylesheet" href="../../assets/css/animations.css">
+    <style>
+        :root {
+            --terminal-green: #00ffcc;
+            --stealth-dark: #050505;
+            --glass-border: rgba(0, 255, 204, 0.1);
+        }
+
+        body {
+            background: var(--stealth-dark);
+            color: #ccc;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 30px;
+        }
+
+        .terminal-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 20px;
+        }
+
+        .main-terminal {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 40px;
+            backdrop-filter: blur(40px);
+        }
+
+        .shadow-ticker {
+            display: flex;
+            gap: 30px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 40px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .ticker-item {
+            white-space: nowrap;
+            font-size: 0.85rem;
+        }
+
+        .ticker-val {
+            color: var(--terminal-green);
+            font-weight: bold;
+        }
+
+        .stealth-form {
+            background: rgba(255, 255, 255, 0.02);
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        input {
+            width: 100%;
+            background: #000;
+            border: 1px solid #333;
+            color: #fff;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: inherit;
+        }
+
+        .match-log {
+            font-size: 0.8rem;
+            line-height: 1.6;
+        }
+
+        .log-entry {
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .btn-stealth {
+            width: 100%;
+            background: var(--terminal-green);
+            color: #000;
+            padding: 15px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 900;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .jit-badge {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            color: #0099ff;
+        }
+
+        .status-pulse {
+            width: 8px;
+            height: 8px;
+            background: var(--terminal-green);
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 10px;
+            box-shadow: 0 0 10px var(--terminal-green);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+
+        /* Gating Styles */
+        .gated-content {
+            position: relative;
+        }
+
+        .blur-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(20px);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.5s ease;
+        }
+
+        .gated-locked .main-terminal {
+            filter: grayscale(1) opacity(0.5);
+        }
+
+        .access-card {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 40px;
+            border-radius: 16px;
+            border: 1px solid var(--terminal-green);
+            text-align: center;
+            box-shadow: 0 0 50px rgba(0, 255, 204, 0.2);
+            max-width: 400px;
+        }
+
+        .hidden {
+            display: none !important;
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Access Gating Overlay -->
+    <div id="gatingOverlay" class="blur-overlay">
+        <div class="access-card">
+            <h2 style="color: var(--terminal-green); margin-top: 0;">ACCESS RESTRICTED</h2>
+            <p style="font-size: 0.9rem; margin-bottom: 30px; line-height: 1.5;">
+                The Stealth Terminal requires <strong>ORACLE STATUS</strong>. <br>
+                Please connect a wallet containing a <strong>PioneerNFT</strong> or an active <strong>Sentinel Node</strong> identity.
+            </p>
+            <button onclick="verifyAccess()" class="btn-stealth" style="background: transparent; color: var(--terminal-green); border: 1px solid var(--terminal-green);">Verify Credentials</button>
+            <div id="verifyStatus" style="margin-top: 15px; font-size: 0.7rem; opacity: 0.6;"></div>
+        </div>
+    </div>
+
+    <div class="terminal-container gated-locked" id="terminalGrid">
+        <div class="main-terminal">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 30px;">
+                <div>
+                    <h1 style="color: #fff; margin: 0; font-size: 1.8rem;">QANTO_SHADOW_TERM [v38.0]</h1>
+                    <p style="font-size: 0.8rem; opacity: 0.5;">Stealth Institutional Liquidity Matching Node</p>
+                </div>
+                <div style="text-align: right;">
+                    <div class="status-pulse"></div>
+                    <span style="font-size: 0.8rem; color: var(--terminal-green);">ZK_ENGINE: ACTIVE</span>
+                </div>
+            </div>
+
+            <div class="shadow-ticker">
+                <div class="ticker-item">TVL_SHADOW: <span class="ticker-val">$14,290,123</span></div>
+                <div class="ticker-item">MATCH_24H: <span class="ticker-val">1,204 QNTO</span></div>
+                <div class="ticker-item">SLOT_AVAIL: <span class="ticker-val">99.2%</span></div>
+                <div class="ticker-item">JIT_RESERVE: <span class="ticker-val">420.5 ETH</span></div>
+            </div>
+
+            <div class="stealth-form">
+                <h3 style="color: #fff; margin-top: 0;">SUBMIT HIDDEN COMMITMENT</h3>
+                <div class="input-group">
+                    <label style="font-size: 0.7rem; display: block; margin-bottom: 5px;">ASSET_PAIR</label>
+                    <input type="text" value="QNTO / USDT" disabled>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="input-group">
+                        <label style="font-size: 0.7rem; display: block; margin-bottom: 5px;">SIDE</label>
+                        <select style="width: 100%; background: #000; color: #fff; padding: 12px; border: 1px solid #333;">
+                            <option>BUY (HIDDEN)</option>
+                            <option>SELL (HIDDEN)</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label style="font-size: 0.7rem; display: block; margin-bottom: 5px;">AMOUNT</label>
+                        <input type="number" placeholder="0.00">
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label style="font-size: 0.7rem; display: block; margin-bottom: 5px;">PRICE_COMMITMENT (LIMIT)</label>
+                    <input type="password" placeholder="••••••••">
+                </div>
+                <button class="btn-stealth">Generate & Commit Stealth Order</button>
+                <p style="font-size: 0.65rem; opacity: 0.3; text-align: center; margin-top: 15px;">
+                    Execution requires a valid ZK-Funds proof. SAGA-Agent will provide JIT liquidity if no peer match is found.
+                </p>
+            </div>
+        </div>
+
+        <div class="main-terminal" style="padding: 25px;">
+            <h3 style="color: #fff; margin-top: 0; font-size: 0.9rem;">SHADOW_MATCH_LOG</h3>
+            <div class="match-log">
+                <div class="log-entry">
+                    <span>#MATCH_A821</span>
+                    <span style="color: #fff;">1,402 QNTO</span>
+                    <span class="jit-badge">JIT_FILL</span>
+                </div>
+                <div class="log-entry">
+                    <span>#MATCH_B004</span>
+                    <span style="color: #fff;">10,000 QNTO</span>
+                    <span style="color: var(--terminal-green);">PEER</span>
+                </div>
+                <div class="log-entry">
+                    <span>#MATCH_C992</span>
+                    <span style="color: #fff;">500 QNTO</span>
+                    <span class="jit-badge">JIT_FILL</span>
+                </div>
+                <div class="log-entry" style="opacity: 0.3;">
+                    <span>#PENDING_92</span>
+                    <span>••••••</span>
+                    <span>WAITING...</span>
+                </div>
+            </div>
+
+            <div style="margin-top: 100px; font-size: 0.7rem; line-height: 1.4; opacity: 0.4;">
+                CRITICAL: DARK POOL ORDERS ARE NEVER BROADCAST. ONLY SALT-HASHED COMMITMENTS ARE STORED ON-CHAIN.
+                SETTLEMENT IS HANDLED BY THE SAGA-AI ZK-MATCHING ENGINE.
+            </div>
+            
+            <div style="margin-top: 30px; text-align: center;">
+                <a href="../treasury/index.html" style="color: inherit; font-size: 0.75rem; text-decoration: none;">← Protocol Treasury</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+    <script>
+        const PIONEER_NFT_ADDRESS = "0x0165878A594ca255338adfa4d48449f69242Eb8F";
+        
+        async function verifyAccess() {
+            const statusEl = document.getElementById('verifyStatus');
+            statusEl.innerText = "AUTHENTICATING...";
+
+            try {
+                if (window.ethereum) {
+                    const provider = new ethers.BrowserProvider(window.ethereum);
+                    const accounts = await provider.send("eth_requestAccounts", []);
+                    const userAddress = accounts[0];
+
+                    // Mock Check for Phase 39 Demonstration
+                    // In production: const contract = new ethers.Contract(PIONEER_NFT_ADDRESS, ["function balanceOf(address) view returns (uint256)"], provider);
+                    // const balance = await contract.balanceOf(userAddress);
+                    
+                    // Simulate verification success for local testing/auth
+                    setTimeout(() => {
+                        unlockTerminal();
+                    }, 1500);
+                } else {
+                    statusEl.innerText = "WEB3_PROVIDER_NOT_FOUND";
+                    statusEl.style.color = "#ff4444";
+                }
+            } catch (err) {
+                console.error(err);
+                statusEl.innerText = "ERROR: " + err.message;
+            }
+        }
+
+        function unlockTerminal() {
+            document.getElementById('gatingOverlay').classList.add('hidden');
+            document.getElementById('terminalGrid').classList.remove('gated-locked');
+            console.log("QANTO_CORE: ACCESS_GRANTED");
+        }
+    </script>
+</body>
+</html>

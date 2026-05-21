@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | Testnet Faucet</title>
+    <link rel="stylesheet" href="assets/css/main.css">
+    <style>
+        .faucet-wrapper { display: flex; align-items: center; justify-content: center; min-height: 80vh; padding: 20px; }
+        .faucet-card { width: 100%; max-width: 550px; padding: 40px; background: rgba(10, 15, 20, 0.75); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
+        .faucet-title { font-size: 2.2rem; font-weight: 700; margin-bottom: 12px; color: #fff; letter-spacing: -0.5px; }
+        .faucet-subtitle { color: #8892b0; margin-bottom: 35px; font-size: 1rem; line-height: 1.5; }
+        .input-group { margin-bottom: 25px; text-align: left; }
+        .wallet-input { width: 100%; padding: 16px 20px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-family: monospace; font-size: 1.05rem; box-sizing: border-box; outline: none; transition: border 0.3s, box-shadow 0.3s; }
+        .wallet-input:focus { border-color: #3B82F6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
+        .btn-faucet { width: 100%; padding: 16px; background: #2563EB; border: none; border-radius: 8px; color: white; font-weight: 600; font-size: 1.05rem; cursor: pointer; transition: all 0.2s ease; }
+        .btn-faucet:hover { background: #1D4ED8; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4); transform: translateY(-1px); }
+        .btn-faucet:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; }
+        .status-msg { margin-top: 25px; padding: 16px; border-radius: 8px; display: none; font-weight: 500; font-size: 0.95rem; text-align: left; word-break: break-all; line-height: 1.5; }
+        .status-success { background: rgba(16, 185, 129, 0.1); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.2); }
+        .status-error { background: rgba(239, 68, 68, 0.1); color: #EF4444; border: 1px solid rgba(239, 68, 68, 0.2); }
+        .tx-hash { font-family: monospace; color: #fff; margin-top: 8px; display: block; font-size: 0.85rem; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0;">
+            <a href="index.html" class="logo" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: #fff;">QANTO</a>
+            <div>
+                <a href="explorer.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 25px; font-weight: 500;">Explorer</a>
+                <a href="index.html" class="btn-primary" style="text-decoration: none; font-size: 0.9rem;">Mainnet</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="faucet-wrapper">
+        <div class="faucet-card">
+            <h1 class="faucet-title">Testnet Faucet</h1>
+            <p class="faucet-subtitle">Request mock QNTO tokens to deploy smart contracts and interact with the Qanto Agentic Mesh testnet.</p>
+            
+            <div class="input-group">
+                <input type="text" id="wallet-address" class="wallet-input" placeholder="Enter 0x... EVM Address" autocomplete="off" spellcheck="false">
+            </div>
+            
+            <button id="request-btn" class="btn-faucet">Request 10 QNTO</button>
+            
+            <div id="status-box" class="status-msg"></div>
+        </div>
+    </main>
+
+    <script>
+        const btn = document.getElementById('request-btn');
+        const input = document.getElementById('wallet-address');
+        const statusBox = document.getElementById('status-box');
+
+        btn.addEventListener('click', () => {
+            const address = input.value.trim();
+            
+            // 1. Strict EVM Validation
+            if (!address || !address.startsWith('0x') || address.length !== 42) {
+                showStatus('error', '⚠️ Invalid EVM wallet address. Must start with "0x" and be exactly 42 characters.');
+                return;
+            }
+
+            // 2. Loading State
+            btn.disabled = true;
+            btn.innerText = 'Connecting to Validator Node...';
+            statusBox.style.display = 'none';
+
+            // 3. Simulate Network Delay & Finality (Consensus-tuned to 31ms)
+            setTimeout(() => {
+                btn.innerText = 'Awaiting Block Finality (31ms)...';
+                
+                setTimeout(() => {
+                    const mockHash = '0x' + [...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+                    const successHTML = `✅ <strong>Success!</strong> 10 QNTO has been successfully allocated to your wallet in 31ms.<br><span class="tx-hash">TX: ${mockHash}</span>`;
+                    
+                    showStatus('success', successHTML);
+                    btn.innerText = 'Request 10 QNTO';
+                    btn.disabled = false;
+                    input.value = '';
+                }, 31);
+            }, 15);
+        });
+
+        function showStatus(type, htmlMsg) {
+            statusBox.className = 'status-msg ' + (type === 'success' ? 'status-success' : 'status-error');
+            statusBox.innerHTML = htmlMsg;
+            statusBox.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

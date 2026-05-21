@@ -1,0 +1,64 @@
+{
+  "network": "qanto-testnet-1",
+  "totalSupply": "21000000000",
+  "blockTime": "1.0s",
+  "blockReward": "2.5",
+  "unit": "QNTO",
+  "latestBlocks": [
+    {
+      "blockHeight": 1847293,
+      "hash": "0x9f3a7c2d1e8b4f6a0d5c9e7b3f1a8d4c6e2b0f7a9d3c5e1b8f4a6d2c0e7b3f",
+      "parentHash": "0x7b2d4a6e8c0f1d3b5a9e7c2f4d6b8a0e3c5f1d9b7a4e6c2d8f0b3a5c7e1d9f",
+      "timestamp": "2026-04-19T07:30:00Z",
+      "txCount": 42,
+      "minerAddress": "0x0000000000000000000000000000000000000001",
+      "reward": "2.5 QNTO",
+      "size": 12480,
+      "gasUsed": 2847593
+    },
+    {
+      "blockHeight": 1847292,
+      "hash": "0x7b2d4a6e8c0f1d3b5a9e7c2f4d6b8a0e3c5f1d9b7a4e6c2d8f0b3a5c7e1d9f",
+      "parentHash": "0x3e5a1c7d9b0f2e4a6c8d1b3f5a7e9c2d4b6f8a0e3c5d1b9f7a4e6c2d8b0f3a",
+      "timestamp": "2026-04-19T07:29:59Z",
+      "txCount": 38,
+      "minerAddress": "0x0000000000000000000000000000000000000001",
+      "reward": "2.5 QNTO",
+      "size": 11260,
+      "gasUsed": 2503841
+    },
+    {
+      "blockHeight": 1847291,
+      "hash": "0x3e5a1c7d9b0f2e4a6c8d1b3f5a7e9c2d4b6f8a0e3c5d1b9f7a4e6c2d8b0f3a",
+      "parentHash": "0x1d4b6a8c0e2f3d5b7a9c1e3f5d7b9a0c2e4f6d8b0a3c5e7f1d9b4a6c8e0f2d",
+      "timestamp": "2026-04-19T07:29:58Z",
+      "txCount": 55,
+      "minerAddress": "0x0000000000000000000000000000000000000001",
+      "reward": "2.5 QNTO",
+      "size": 14720,
+      "gasUsed": 3291045
+    },
+    {
+      "blockHeight": 1847290,
+      "hash": "0x1d4b6a8c0e2f3d5b7a9c1e3f5d7b9a0c2e4f6d8b0a3c5e7f1d9b4a6c8e0f2d",
+      "parentHash": "0x8f0a2c4e6d1b3f5a7c9e2d4b6f8a0c3e5d1b9f7a4c6e8d2b0f3a5c7e1d9b4a",
+      "timestamp": "2026-04-19T07:29:57Z",
+      "txCount": 27,
+      "minerAddress": "0x0000000000000000000000000000000000000001",
+      "reward": "2.5 QNTO",
+      "size": 9840,
+      "gasUsed": 1847293
+    },
+    {
+      "blockHeight": 1847289,
+      "hash": "0x8f0a2c4e6d1b3f5a7c9e2d4b6f8a0c3e5d1b9f7a4c6e8d2b0f3a5c7e1d9b4a",
+      "parentHash": "0x5c7e1d3b9f4a6c8e0d2f5b7a9c1e3d4b6f8a0c2e5d1b3f7a9c4e6d8b0a2f5c",
+      "timestamp": "2026-04-19T07:29:56Z",
+      "txCount": 31,
+      "minerAddress": "0x0000000000000000000000000000000000000001",
+      "reward": "2.5 QNTO",
+      "size": 10560,
+      "gasUsed": 2104872
+    }
+  ]
+}

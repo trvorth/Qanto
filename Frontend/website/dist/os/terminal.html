@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SENTINEL HEARTBEAT</title>
+    <style>
+        body {
+            background: #000;
+            color: #00ffaa;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        .heartbeat-container {
+            position: relative;
+            width: 300px;
+            height: 300px;
+        }
+
+        .pulse-ring {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 10px; height: 10px;
+            border: 2px solid #00ffaa;
+            border-radius: 50%;
+            opacity: 0;
+            animation: ring_pulse 4s cubic-bezier(0.21, 0.6, 0.35, 1) infinite;
+        }
+
+        @keyframes ring_pulse {
+            0% { width: 10px; height: 10px; opacity: 1; }
+            100% { width: 400px; height: 400px; opacity: 0; border-width: 0.5px; }
+        }
+
+        .pulse-ring:nth-child(2) { animation-delay: 1s; }
+        .pulse-ring:nth-child(3) { animation-delay: 2s; }
+        .pulse-ring:nth-child(4) { animation-delay: 3s; }
+
+        .nexus-core {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 40px; height: 40px;
+            background: #00ffaa;
+            border-radius: 50%;
+            box-shadow: 0 0 50px #00ffaa, 0 0 100px rgba(0, 255, 170, 0.5);
+            animation: core_throb 2s ease-in-out infinite;
+        }
+
+        @keyframes core_throb {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); filter: brightness(1); }
+            50% { transform: translate(-50%, -50%) scale(1.1); filter: brightness(1.5); }
+        }
+
+        .status-text {
+            position: absolute;
+            bottom: -50px;
+            width: 100%;
+            text-align: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            letter-spacing: 5px;
+            color: rgba(0, 255, 170, 0.6);
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div class="heartbeat-container">
+        <div class="nexus-core"></div>
+        <div class="pulse-ring"></div>
+        <div class="pulse-ring"></div>
+        <div class="pulse-ring"></div>
+        <div class="pulse-ring"></div>
+        <div class="status-text">SENTINEL HEARTBEAT: ACTIVE</div>
+    </div>
+
+    <script>
+        console.log("%c🫀 OMNIPRESENCE: Architect handoff complete. Sentinel state is absolute.", "color: #00ffaa; font-weight: 900;");
+    </script>
+</body>
+</html>

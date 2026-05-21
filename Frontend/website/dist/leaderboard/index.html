@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pioneer Leaderboard | QANTO Layer-0</title>
+    
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="View the top-performing Pioneers in the QANTO Layer-0 ecosystem. Track ranks, points, and social status.">
+    <meta property="og:title" content="QANTO Pioneer Leaderboard">
+    <meta property="og:description" content="The official ranking of the most active QANTO protocol contributors and referrers.">
+    <meta property="og:image" content="https://qanto.org/assets/img/og-pioneer.png">
+    
+    <link rel="stylesheet" href="../../assets/css/main.css">
+    <link rel="stylesheet" href="../../assets/css/animations.css">
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.11.1/dist/ethers.umd.min.js"></script>
+    
+    <style>
+        .leaderboard-container {
+            max-width: 1000px;
+            margin: 100px auto;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .leaderboard-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .leaderboard-header h1 {
+            font-size: 3rem;
+            background: linear-gradient(135deg, #fff 0%, #a5a5a5 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 10px;
+        }
+
+        .leaderboard-table th {
+            text-align: left;
+            padding: 1rem;
+            color: rgba(255, 255, 255, 0.5);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-size: 0.8rem;
+        }
+
+        .leaderboard-row {
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+        }
+
+        .leaderboard-row:hover {
+            transform: scale(1.02);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .leaderboard-row td {
+            padding: 1.2rem;
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(5px);
+        }
+
+        .leaderboard-row td:first-child {
+            border-top-left-radius: 12px;
+            border-bottom-left-radius: 12px;
+            font-weight: bold;
+            color: #00ffaa;
+            width: 80px;
+        }
+
+        .leaderboard-row td:last-child {
+            border-top-right-radius: 12px;
+            border-bottom-right-radius: 12px;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+
+        .status-oracle { background: rgba(255, 215, 0, 0.1); color: #ffd700; border: 1px solid rgba(255, 215, 0, 0.3); }
+        .status-elite { background: rgba(0, 255, 255, 0.1); color: #00ffff; border: 1px solid rgba(0, 255, 255, 0.3); }
+        .status-pioneer { background: rgba(165, 165, 165, 0.1); color: #a5a5a5; border: 1px solid rgba(165, 165, 165, 0.3); }
+
+        .loading-skeleton {
+            height: 50px;
+            background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+            background-size: 200% 100%;
+            animation: shimmer 2s infinite;
+            border-radius: 12px;
+            margin-bottom: 10px;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* Top 3 Special Styles */
+        .rank-1 { background: linear-gradient(90deg, rgba(255, 215, 0, 0.1), transparent) !important; border: 1px solid rgba(255, 215, 0, 0.2) !important; }
+        .rank-2 { background: linear-gradient(90deg, rgba(192, 192, 192, 0.1), transparent) !important; }
+        .rank-3 { background: linear-gradient(90deg, rgba(205, 127, 50, 0.1), transparent) !important; }
+    </style>
+</head>
+<body class="bg-dark">
+    
+    <div class="leaderboard-container fade-in">
+        <div class="leaderboard-header">
+            <h1>Pioneer Leaderboard</h1>
+            <p class="text-secondary">The top contributing architects of the QANTO Layer-0 Protocol.</p>
+        </div>
+
+        <table class="leaderboard-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Address</th>
+                    <th>Points</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="leaderboard-body">
+                <!-- Skeletons while loading -->
+                <tr class="leaderboard-skeleton"><td colspan="4"><div class="loading-skeleton"></div></td></tr>
+                <tr class="leaderboard-skeleton"><td colspan="4"><div class="loading-skeleton"></div></td></tr>
+                <tr class="leaderboard-skeleton"><td colspan="4"><div class="loading-skeleton"></div></td></tr>
+                <tr class="leaderboard-skeleton"><td colspan="4"><div class="loading-skeleton"></div></td></tr>
+                <tr class="leaderboard-skeleton"><td colspan="4"><div class="loading-skeleton"></div></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const REFERRAL_CONTRACT_ADDR = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Placeholder
+        
+        async function fetchLeaderboard() {
+            const body = document.getElementById('leaderboard-body');
+            
+            try {
+                // In a production app, we would use Ethers.js here
+                // For this demo, we'll simulate the top 10 results
+                const mockData = [
+                    { addr: "0xf39F...2266", points: 1250, status: "Oracle" },
+                    { addr: "0x7099...8944", points: 840, status: "Oracle" },
+                    { addr: "0x3C44...12ed", points: 510, status: "Oracle" },
+                    { addr: "0x90F7...43e7", points: 300, status: "Elite" },
+                    { addr: "0x15d3...6a51", points: 280, status: "Elite" },
+                    { addr: "0x9965...17a2", points: 150, status: "Elite" },
+                    { addr: "0x976E...8b9c", points: 90, status: "Pioneer" },
+                    { addr: "0xbDA5...6493", points: 40, status: "Pioneer" },
+                    { addr: "0x8626...f995", points: 20, status: "Pioneer" },
+                    { addr: "0xdD24...4391", points: 10, status: "Pioneer" }
+                ];
+
+                body.innerHTML = '';
+                mockData.forEach((user, index) => {
+                    const row = document.createElement('tr');
+                    row.className = `leaderboard-row rank-${index + 1}`;
+                    row.innerHTML = `
+                        <td>#${index + 1}</td>
+                        <td><code>${user.addr}</code></td>
+                        <td>${user.points}</td>
+                        <td><span class="status-badge status-${user.status.toLowerCase()}">${user.status}</span></td>
+                    `;
+                    body.appendChild(row);
+                });
+                
+            } catch (error) {
+                console.error("Error fetching leaderboard:", error);
+                body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:red;">Failed to connect to contract.</td></tr>';
+            }
+        }
+
+        window.onload = () => {
+            setTimeout(fetchLeaderboard, 1000); // Simulate network delay
+        };
+    </script>
+</body>
+</html>

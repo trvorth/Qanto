@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SAGA Mobile Link</title>
+    <style>
+        body {
+            background: #050608;
+            color: #fff;
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+
+        .qr-container {
+            background: #fff;
+            padding: 20px;
+            border-radius: 16px;
+            margin-bottom: 25px;
+            box-shadow: 0 0 30px rgba(0, 255, 170, 0.2);
+        }
+
+        .qr-placeholder {
+            width: 200px;
+            height: 200px;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #00ffaa;
+            text-align: center;
+            padding: 10px;
+        }
+
+        .status-msg {
+            font-size: 14px;
+            color: #888;
+            text-align: center;
+            max-width: 300px;
+            margin-bottom: 30px;
+        }
+
+        .action-button {
+            background: linear-gradient(135deg, #00ffaa, #0066ff);
+            border: none;
+            color: #fff;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            letter-spacing: 1px;
+            transition: transform 0.2s;
+        }
+
+        .action-button:hover { transform: scale(1.05); }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .feature-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 12px;
+        }
+
+        .feature-item i { color: #00ffaa; margin-bottom: 8px; display: block; font-size: 18px; }
+    </style>
+</head>
+<body>
+    <h2 style="margin-top: 0; letter-spacing: 2px; color: #00ffaa;">SAGA MOBILE LINK</h2>
+    
+    <div class="qr-container">
+        <!-- Mock QR for pairing -->
+        <div class="qr-placeholder">
+            SCAN TO PAIR mSAGA LITE-NODE
+        </div>
+    </div>
+
+    <div class="status-msg">
+        Syncing with <strong>PIONEER_ALPHA_01</strong>. Once paired, use your mobile device for biometric <strong>Tap-to-Sign</strong>.
+    </div>
+
+    <div class="feature-grid">
+        <div class="feature-item">
+            <i>📱</i>
+            <strong>Session Handover</strong>
+            <p>Move active windows to mobile.</p>
+        </div>
+        <div class="feature-item">
+            <i>🛡️</i>
+            <strong>Biometric Auth</strong>
+            <p>Authorize 0x-claims via FaceID.</p>
+        </div>
+        <div class="feature-item" style="grid-column: span 2; background: rgba(0, 255, 170, 0.1); border-color: #00ffaa;">
+            <i>🧬</i>
+            <strong>SWIGE Interface</strong>
+            <p>Physical Intent Fusion: <strong>10.3 kΩ</strong> (Target Impedance)</p>
+            <button class="action-button" style="width: 100%; margin-top: 10px; font-size: 10px; padding: 8px;" onclick="signPhysicalIntent()">TAP-TO-MANIFEST</button>
+        </div>
+    </div>
+
+    <script>
+        function signPhysicalIntent() {
+            alert("🧬 SWIGE: Biometric Attestation Confirmed. Physical intent fused with Agentic Swarm.");
+        }
+    </script>
+
+    <button class="action-button" style="margin-top: 30px;" onclick="window.close()">CANCEL PAIRING</button>
+</body>
+</html>

@@ -15,7 +15,7 @@ pub struct ShardHealth {
     pub shard_id: u32,
     pub latency_ms: u32,
     pub tps: u64,
-    pub puai_yield: f64,
+    pub puai_yield: u128,
     pub sentinel_count: u32,
 }
 
@@ -85,7 +85,7 @@ mod tests {
             shard_id: 0,
             latency_ms: 180, // Over Threshold
             tps: 52000, // Over Threshold
-            puai_yield: 92.5,
+            puai_yield: 92_500_000_000u128, // 92.5 * 1e9
             sentinel_count: 5,
         });
 

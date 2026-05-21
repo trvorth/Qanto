@@ -1038,6 +1038,7 @@ impl OptimizedDecoupledProducer {
                 miner,
                 None, // homomorphic_public_key
                 None, // parents_override
+                None, // difficulty_override
             )
             .await?;
 
@@ -1047,7 +1048,7 @@ impl OptimizedDecoupledProducer {
     /// Calculate block priority score
     fn calculate_block_priority(block: &QantoBlock) -> f64 {
         let tx_count = block.transactions.len() as f64;
-        let total_fees: u64 = block.transactions.iter().map(|tx| tx.fee).sum();
+        let total_fees: u128 = block.transactions.iter().map(|tx| tx.fee).sum();
         let fee_density = if tx_count > 0.0 {
             total_fees as f64 / tx_count
         } else {

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO VERACITY | Infinite Truth</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background: rgba(5, 5, 20, 0.98); color: white; padding: 30px; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        .v-header { border-bottom: 2px solid #ff004a; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .depth-card { background: linear-gradient(135deg, rgba(255, 0, 74, 0.1), rgba(0, 102, 255, 0.1)); border: 1px solid rgba(255, 0, 74, 0.3); padding: 25px; border-radius: 16px; margin-bottom: 30px; position: relative; overflow: hidden; }
+        .depth-bar { height: 12px; background: #222; border-radius: 6px; position: relative; margin-top: 20px; overflow: hidden; }
+        .depth-progress { height: 100%; background: #ff004a; box-shadow: 0 0 15px #ff004a; width: 85%; }
+        
+        .stability-stats { display: flex; justify-content: space-between; margin-top: 20px; }
+        .stat-box { background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); text-align: center; flex: 1; margin: 0 5px; }
+    </style>
+</head>
+<body>
+    <div class="v-header">
+        <div>
+            <h1 style="margin:0; letter-spacing: 6px;">RECURSIVE VERACITY</h1>
+            <div style="font-size: 11px; color: #888;">ZK-History Compression & Infinite Truth</div>
+        </div>
+        <div style="font-size: 11px; color: #ff004a; font-weight: 900;"><i class="fas fa-history"></i> DEPTH: 1,256</div>
+    </div>
+
+    <div class="depth-card">
+        <div style="display: flex; justify-content: space-between;">
+            <span style="font-weight: 900; letter-spacing: 1px;">PROOF_DEPTH: 850 / 1000</span>
+            <span style="color: #ff004a;">SCALING...</span>
+        </div>
+        <div class="depth-bar"><div class="depth-progress"></div></div>
+        <div class="stability-stats">
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">VERIFY TIME</div><div style="font-size: 18px; font-weight: 900;">14ms</div></div>
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">HISTORY_ROOT</div><div style="font-size: 18px; font-weight: 900; color: #ff004a;">0xAA...9B</div></div>
+            <div class="stat-box"><div style="font-size: 9px; color: #888;">COMPRESSION</div><div style="font-size: 18px; font-weight: 900;">99.8%</div></div>
+        </div>
+    </div>
+
+    <h3 style="letter-spacing: 2px;">PROOF LOG (RVP)</h3>
+    <div style="background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); font-family: 'Space Mono', monospace; font-size: 11px;">
+        <div style="margin-bottom: 5px; color: #ff004a;">[21:40] RVP: CYCLE_START: DEPTH_850. STATUS: OK.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[21:42] RVP: AGGREGATING TRUTH_HISTORY: 10,000 CLAIMS.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[21:44] RVP: VERACITY settled. O(1) PROOF GENERATED.</div>
+        <div style="margin-bottom: 5px; color: #aaa;">[21:46] RVP: GLOBAL_ROOT: UPDATED.</div>
+    </div>
+</body>
+</html>

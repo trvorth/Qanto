@@ -41,16 +41,16 @@ const MAX_MEMPOOL_MAX_SIZE: usize = 16 * 1024 * 1024 * 1024; // Maximum 16GB mem
 // --- Mempool batch processing constants ---
 const MIN_MEMPOOL_BATCH_SIZE: usize = 10; // Minimum 10 transactions per batch
 const MAX_MEMPOOL_BATCH_SIZE: usize = 1000000; // Maximum 1M transactions per batch (increased for 10M TPS)
-const MIN_MEMPOOL_BACKPRESSURE_THRESHOLD: f64 = 0.5; // Minimum 50% utilization
-const MAX_MEMPOOL_BACKPRESSURE_THRESHOLD: f64 = 0.95; // Maximum 95% utilization
+const MIN_MEMPOOL_BACKPRESSURE_THRESHOLD: u128 = 500_000_000; // Minimum 50% utilization
+const MAX_MEMPOOL_BACKPRESSURE_THRESHOLD: u128 = 950_000_000; // Maximum 95% utilization
 
 // --- Memory limit constants for TX generator backpressure ---
 const SOFT_MEMORY_LIMIT: usize = 8 * 1024 * 1024; // 8MB soft limit for backpressure // 8MB soft limit
 const HARD_MEMORY_LIMIT: usize = 10 * 1024 * 1024; // 10MB hard limit
 const MIN_TX_BATCH_SIZE: usize = 1; // Minimum 1 transaction per batch
 const MAX_TX_BATCH_SIZE: usize = 200000; // Maximum 200K transactions per batch (increased for high performance)
-const MIN_ADAPTIVE_BATCH_THRESHOLD: f64 = 0.6; // Minimum 60% memory utilization for adaptive batching
-const MAX_ADAPTIVE_BATCH_THRESHOLD: f64 = 0.9; // Maximum 90% memory utilization for adaptive batching
+const MIN_ADAPTIVE_BATCH_THRESHOLD: u128 = 600_000_000; // Minimum 60% memory utilization for adaptive batching
+const MAX_ADAPTIVE_BATCH_THRESHOLD: u128 = 900_000_000; // Maximum 90% memory utilization for adaptive batching
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -109,8 +109,8 @@ pub struct Config {
     // --- Adaptive Difficulty Configuration ---
     pub block_target_ms: Option<u64>, // Target block time in milliseconds
     pub solve_timeout_ms: Option<u64>, // Mining timeout in milliseconds
-    pub difficulty_max_adjust_pct: Option<f64>, // Maximum difficulty adjustment percentage
-    pub difficulty_smoothing_factor: Option<f64>, // Smoothing factor for difficulty adjustments
+    pub difficulty_max_adjust_pct: Option<u128>, // Maximum difficulty adjustment percentage
+    pub difficulty_smoothing_factor: Option<u128>, // Smoothing factor for difficulty adjustments
     pub difficulty_min: Option<u64>,  // Minimum difficulty value
 
     // --- Memory & Profiling Configuration ---
@@ -133,15 +133,15 @@ pub struct Config {
     pub mempool_max_size_bytes: Option<usize>,
     pub mempool_max_size: Option<usize>, // Number of transactions (default: 1000)
     pub mempool_batch_size: Option<usize>,
-    pub mempool_backpressure_threshold: Option<f64>,
+    pub mempool_backpressure_threshold: Option<u128>,
 
     // --- TX Generator Backpressure Configuration ---
     pub tx_batch_size: Option<usize>,
-    pub adaptive_batch_threshold: Option<f64>,
+    pub adaptive_batch_threshold: Option<u128>,
     pub memory_soft_limit: Option<usize>,
     pub memory_hard_limit: Option<usize>,
     /// Optional developer fee rate applied to coinbase rewards (0.10 = 10%)
-    pub dev_fee_rate: Option<f64>,
+    pub dev_fee_rate: Option<u128>,
 
     // --- File & Database Paths ---
     pub data_dir: String,
@@ -228,8 +228,8 @@ impl Default for Config {
             // --- Adaptive Difficulty Configuration ---
             block_target_ms: Some(1000),            // Default to 1 second
             solve_timeout_ms: Some(30000),          // Default to 30 seconds
-            difficulty_max_adjust_pct: Some(25.0),  // Max 25% adjustment
-            difficulty_smoothing_factor: Some(0.1), // 10% smoothing
+            difficulty_max_adjust_pct: Some(250_000_000),  // Max 25% adjustment (scaled 1e9)
+            difficulty_smoothing_factor: Some(100_000_000), // 10% smoothing (scaled 1e9)
             difficulty_min: Some(1),
 
             // --- Memory & Profiling Configuration ---
@@ -257,7 +257,7 @@ impl Default for Config {
             adaptive_batch_threshold: None,
             memory_soft_limit: None,
             memory_hard_limit: None,
-            dev_fee_rate: Some(0.10),
+            dev_fee_rate: Some(100_000_000), // 10% dev fee (scaled 1e9)
 
             // --- File & Database Paths ---
             data_dir: "./data".to_string(),
@@ -296,6 +296,10 @@ impl Config {
         tls_cert_path: Option<String>,
         tls_key_path: Option<String>,
         adaptive_mining_enabled: Option<bool>,
+        rpc_port: Option<u16>,
+        p2p_port: Option<u16>,
+        listen: Option<String>,
+        bootnodes: Option<Vec<String>>,
     ) {
         if let Some(wallet) = wallet_path {
             self.wallet_path = wallet;
@@ -330,6 +334,36 @@ impl Config {
 
         if let Some(adaptive_mining) = adaptive_mining_enabled {
             self.adaptive_mining_enabled = adaptive_mining;
+        }
+
+        if let Some(port) = rpc_port {
+            if let Ok(mut addr) = self.api_address.parse::<SocketAddr>() {
+                addr.set_port(port);
+                self.api_address = addr.to_string();
+            } else if let Some(pos) = self.api_address.rfind(':') {
+                self.api_address = format!("{}:{}", &self.api_address[..pos], port);
+            } else {
+                self.api_address = format!("0.0.0.0:{}", port);
+            }
+        }
+
+        if let Some(port) = p2p_port {
+            if let Some(tcp_pos) = self.p2p_address.find("/tcp/") {
+                let start = tcp_pos + 5;
+                let mut end = start;
+                while end < self.p2p_address.len() && self.p2p_address.as_bytes()[end].is_ascii_digit() {
+                    end += 1;
+                }
+                self.p2p_address = format!("{}{}{}", &self.p2p_address[..start], port, &self.p2p_address[end..]);
+            }
+        }
+
+        if let Some(listen_addr) = listen {
+            self.p2p_address = listen_addr;
+        }
+
+        if let Some(nodes) = bootnodes {
+            self.peers = nodes;
         }
     }
 
@@ -415,8 +449,8 @@ impl Config {
             // --- Adaptive Difficulty Configuration ---
             block_target_ms: Some(2000), // 2 seconds for free-tier stability
             solve_timeout_ms: Some(60000), // 1 minute timeout for free-tier
-            difficulty_max_adjust_pct: Some(10.0), // Conservative 10% adjustment
-            difficulty_smoothing_factor: Some(0.2), // More smoothing for stability
+            difficulty_max_adjust_pct: Some(100_000_000), // Conservative 10% adjustment (scaled 1e9)
+            difficulty_smoothing_factor: Some(200_000_000), // More smoothing (20%) for stability (scaled 1e9)
             difficulty_min: Some(1),
 
             // --- Memory & Profiling Configuration ---
@@ -436,14 +470,14 @@ impl Config {
             mempool_max_size_bytes: Some(1024 * 1024), // 1MB mempool for free-tier
             mempool_max_size: Some(500),     // 500 transactions for free-tier
             mempool_batch_size: Some(100),   // Conservative batch size for free-tier
-            mempool_backpressure_threshold: Some(0.8), // 80% threshold for free-tier
+            mempool_backpressure_threshold: Some(800_000_000), // 80% threshold for free-tier
 
             // --- TX Generator Backpressure Configuration ---
             tx_batch_size: Some(50), // Conservative TX batch size for free-tier
-            adaptive_batch_threshold: Some(0.7), // 70% memory threshold for free-tier
+            adaptive_batch_threshold: Some(700_000_000), // 70% memory threshold for free-tier
             memory_soft_limit: Some(SOFT_MEMORY_LIMIT), // 8MB soft limit
             memory_hard_limit: Some(HARD_MEMORY_LIMIT), // 10MB hard limit
-            dev_fee_rate: Some(0.10),
+            dev_fee_rate: Some(100_000_000), // 10% dev fee (scaled 1e9)
 
             // --- File & Database Paths ---
             data_dir: "./data".to_string(),
@@ -513,8 +547,8 @@ impl Config {
             // --- Adaptive Difficulty Configuration ---
             block_target_ms: Some(31),               // 31ms for 32+ BPS
             solve_timeout_ms: Some(10000),           // 10 second timeout for high performance
-            difficulty_max_adjust_pct: Some(50.0),   // Aggressive 50% adjustment
-            difficulty_smoothing_factor: Some(0.05), // Minimal smoothing for responsiveness
+            difficulty_max_adjust_pct: Some(500_000_000),   // Aggressive 50% adjustment (scaled 1e9)
+            difficulty_smoothing_factor: Some(50_000_000), // Minimal smoothing (5%) for responsiveness (scaled 1e9)
             difficulty_min: Some(1000),
 
             // --- Memory & Profiling Configuration ---
@@ -534,14 +568,14 @@ impl Config {
             mempool_max_size_bytes: Some(mempool_size), // Dynamic mempool size based on available memory
             mempool_max_size: Some(10000),              // 10,000 transactions for high performance
             mempool_batch_size: Some(500000), // Large batch size for 10M TPS (312,500 tx/block * 1.6 buffer)
-            mempool_backpressure_threshold: Some(0.75), // 75% threshold for high performance
+            mempool_backpressure_threshold: Some(750_000_000), // 75% threshold for high performance
 
             // --- TX Generator Backpressure Configuration ---
             tx_batch_size: Some(100000), // Large TX batch size for high throughput
-            adaptive_batch_threshold: Some(0.8), // 80% memory threshold for adaptive batching
+            adaptive_batch_threshold: Some(800_000_000), // 80% memory threshold for adaptive batching
             memory_soft_limit: Some(memory_soft_limit),
             memory_hard_limit: Some(memory_hard_limit),
-            dev_fee_rate: Some(0.10),
+            dev_fee_rate: Some(100_000_000), // 10% dev fee (scaled 1e9)
 
             // --- File & Database Paths ---
             data_dir: "./data".to_string(),
@@ -781,9 +815,9 @@ impl Config {
         }
 
         if let Some(dev_fee_rate) = self.dev_fee_rate {
-            if !(0.0..=1.0).contains(&dev_fee_rate) {
+            if dev_fee_rate > crate::QANTO_SCALE {
                 return Err(ConfigError::Validation(
-                    "dev_fee_rate must be between 0.0 and 1.0".to_string(),
+                    "dev_fee_rate must be between 0 and 1.0 (scaled)".to_string(),
                 ));
             }
         }
@@ -866,85 +900,69 @@ impl Config {
 
     /// Validate consistency between target_block_time and derived values
     fn validate_target_block_time_consistency(&self) -> Result<(), ConfigError> {
-        let target_block_time_secs = self.target_block_time as f64 / 1000.0; // Convert ms to seconds
-
         // Validate mining_interval_ms consistency
         if let Some(mining_interval) = self.mining_interval_ms {
-            let mining_interval_f64 = mining_interval as f64 / 1000.0; // Convert ms to seconds
-
-            // Mining interval should be reasonable relative to target block time
-            // It shouldn't be much smaller than block time (causes unnecessary work)
-            // It shouldn't be much larger than block time (causes delays)
-            if mining_interval_f64 < target_block_time_secs * 0.1 {
+            // Mining interval should be at least 10% of target block time
+            if mining_interval < self.target_block_time / 10 {
                 return Err(ConfigError::Validation(format!(
                     "mining_interval_ms ({}) is too small relative to target_block_time ({}ms). \
-                     Mining interval should be at least 10% of target block time ({:.1}s)",
+                     Mining interval should be at least 10% of target block time ({}ms)",
                     mining_interval,
                     self.target_block_time,
-                    target_block_time_secs * 0.1
+                    self.target_block_time / 10
                 )));
             }
 
-            if mining_interval_f64 > target_block_time_secs * 10.0 {
+            // Mining interval should be at most 10x target block time
+            if mining_interval > self.target_block_time * 10 {
                 return Err(ConfigError::Validation(format!(
                     "mining_interval_ms ({}) is too large relative to target_block_time ({}ms). \
-                     Mining interval should be at most 10x target block time ({:.1}s)",
+                     Mining interval should be at most 10x target block time ({}ms)",
                     mining_interval,
                     self.target_block_time,
-                    target_block_time_secs * 10.0
+                    self.target_block_time * 10
                 )));
             }
         }
 
         // Validate dummy_tx_interval_ms consistency
         if let Some(dummy_tx_interval) = self.dummy_tx_interval_ms {
-            let dummy_tx_interval_f64 = dummy_tx_interval as f64 / 1000.0; // Convert ms to seconds
-
-            // Dummy TX interval should allow for reasonable transaction generation
-            // relative to block time
-            if dummy_tx_interval_f64 > target_block_time_secs * 5.0 {
+            // Dummy TX interval should be at most 5x target block time
+            if dummy_tx_interval > self.target_block_time * 5 {
                 return Err(ConfigError::Validation(format!(
                     "dummy_tx_interval_ms ({}) is too large relative to target_block_time ({}ms). \
-                     Dummy TX interval should be at most 5x target block time ({:.1}s) to ensure \
-                     adequate transaction generation",
+                     Dummy TX interval should be at most 5x target block time ({}ms)",
                     dummy_tx_interval,
                     self.target_block_time,
-                    target_block_time_secs * 5.0
+                    self.target_block_time * 5
                 )));
             }
         }
 
         // Validate mempool_max_age_secs consistency
-        if let Some(mempool_max_age) = self.mempool_max_age_secs {
-            let mempool_max_age_f64 = mempool_max_age as f64;
-
-            // Mempool max age should be reasonable relative to block time
-            // Too short: transactions expire before they can be included
-            // Should be at least 10x block time to allow for network delays and mining
-            if mempool_max_age_f64 < target_block_time_secs * 10.0 {
+        if let Some(mempool_max_age_secs) = self.mempool_max_age_secs {
+            let mempool_max_age_ms = mempool_max_age_secs * 1000;
+            // Should be at least 10x block time
+            if mempool_max_age_ms < self.target_block_time * 10 {
                 return Err(ConfigError::Validation(format!(
-                    "mempool_max_age_secs ({}) is too small relative to target_block_time ({}ms). \
-                     Mempool max age should be at least 10x target block time ({:.1}s) to allow \
-                     transactions time to be included in blocks",
-                    mempool_max_age,
+                    "mempool_max_age_secs ({}s) is too small relative to target_block_time ({}ms). \
+                     Mempool max age should be at least 10x target block time ({}ms)",
+                    mempool_max_age_secs,
                     self.target_block_time,
-                    target_block_time_secs * 10.0
+                    self.target_block_time * 10
                 )));
             }
         }
 
         // Validate P2P heartbeat interval consistency
-        let heartbeat_interval_secs = self.p2p.heartbeat_interval as f64 / 1000.0; // Convert ms to seconds
-
-        // Heartbeat should be frequent enough relative to block time for network health
-        if heartbeat_interval_secs > target_block_time_secs * 2.0 {
+        // Heartbeat should be at most 2x target block time
+        if self.p2p.heartbeat_interval as u64 > self.target_block_time * 2 {
             return Err(ConfigError::Validation(format!(
                 "p2p.heartbeat_interval ({}ms) is too large relative to target_block_time ({}ms). \
-                 Heartbeat interval should be at most 2x target block time ({:.0}ms) to maintain \
-                 network connectivity",
+                 Heartbeat interval should be at most 2x target block time ({}ms)",
                 self.p2p.heartbeat_interval,
                 self.target_block_time,
-                target_block_time_secs * 2.0 * 1000.0
+                self.target_block_time * 2
             )));
         }
 

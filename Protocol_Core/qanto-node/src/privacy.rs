@@ -1299,7 +1299,7 @@ impl PrivacyEngine {
     }
 
     /// Generate Pedersen commitment for amount hiding
-    async fn generate_pedersen_commitment(&self, amount: u64) -> Result<Vec<u8>, PrivacyError> {
+    async fn generate_pedersen_commitment(&self, amount: u128) -> Result<Vec<u8>, PrivacyError> {
         let mut rng = thread_rng();
         let blinding_factor: Vec<u8> = (0..32).map(|_| rng.gen()).collect();
 
@@ -1320,7 +1320,7 @@ impl PrivacyEngine {
     }
 
     /// Encrypt amount using homomorphic encryption
-    async fn encrypt_amount(&self, amount: u64) -> Result<Vec<u8>, PrivacyError> {
+    async fn encrypt_amount(&self, amount: u128) -> Result<Vec<u8>, PrivacyError> {
         let mut rng = thread_rng();
         let key: Vec<u8> = (0..32).map(|_| rng.gen()).collect();
 
@@ -1362,7 +1362,7 @@ impl PrivacyEngine {
     }
 
     /// Generate range proof for output amount
-    async fn generate_range_proof(&self, amount: u64) -> Result<ZKProof, PrivacyError> {
+    async fn generate_range_proof(&self, amount: u128) -> Result<ZKProof, PrivacyError> {
         // Generate ZK proof that amount is in valid range without revealing the amount
         self.zkp_system
             .generate_proof(ZKProofType::RangeProof, &amount.to_le_bytes())
@@ -1422,12 +1422,12 @@ impl PrivacyEngine {
                 utxo_id.push_str(&input.output_index.to_string());
                 utxos_local
                     .get(&utxo_id)
-                    .map(|utxo| utxo.amount)
+                    .map(|utxo| utxo.amount as u64)
                     .unwrap_or(0)
             })
             .collect();
 
-        let output_amounts: Vec<u64> = outputs.iter().map(|o| o.amount).collect();
+        let output_amounts: Vec<u64> = outputs.iter().map(|o| o.amount as u64).collect();
 
         // Generate ZK proof that sum(inputs) = sum(outputs) without revealing amounts
         self.zkp_system

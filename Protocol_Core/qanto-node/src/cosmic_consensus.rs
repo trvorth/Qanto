@@ -26,7 +26,7 @@ pub struct LagrangeSentinel {
 /// High-Latency Sharding (HLS) Configuration
 pub struct HLSConfig {
     pub heartbeat_window_ms: u64, // Default 3000ms for Deep Space
-    pub quorum_threshold: f64,    // Percentage of L-nodes required for cosmic finality
+    pub quorum_threshold: u64,    // Percentage of L-nodes required for cosmic finality (scale Q_SCALE)
 }
 
 /// The Cosmic Consensus Engine
@@ -41,7 +41,7 @@ impl CosmicConsensus {
             sentinels: HashMap::new(),
             hls_config: HLSConfig {
                 heartbeat_window_ms: 3000,
-                quorum_threshold: 0.66,
+                quorum_threshold: 660_000_000, // 0.66 represented as u64 (scale 1e9)
             },
         }
     }
@@ -65,18 +65,23 @@ impl CosmicConsensus {
         let active_sentinels = self.sentinels.values()
             .filter(|s| s.last_heartbeat > (std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() * 1000 - self.hls_config.heartbeat_window_ms))
-            .count();
+            .count() as u64;
 
-        let total_sentinels = self.sentinels.len();
+        let total_sentinels = self.sentinels.len() as u64;
         if total_sentinels == 0 { return true; } // No L-nodes, skip cosmic check
 
-        let quorum = active_sentinels as f64 / total_sentinels as f64;
-        let is_final = quorum >= self.hls_config.quorum_threshold;
+        // Use integer math: (active * SCALE) / total >= threshold
+        let quorum_scaled = active_sentinels
+            .checked_mul(crate::Q_SCALE)
+            .and_then(|a| a.checked_div(total_sentinels))
+            .unwrap_or(0);
+            
+        let is_final = quorum_scaled >= self.hls_config.quorum_threshold;
 
         if is_final {
             debug!("✨ DEEP SPACE FINALITY ACHIEVED: Shard {} Height {}", shard_id, block_height);
         } else {
-            debug!("⚠️ COSMIC CONSENSUS LAG: Quorum at {:.2}%", quorum * 100.0);
+            debug!("⚠️ COSMIC CONSENSUS LAG: Quorum at {} units", quorum_scaled);
         }
 
         is_final

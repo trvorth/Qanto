@@ -400,6 +400,7 @@ async fn test_decoupled_producer_throughput_32_bps() {
         256,                      // Larger candidate buffer for better throughput
         256,                      // Larger mined buffer for better throughput
         LoggingConfig::default(), // Use default logging config for tests
+        None,
         shutdown_token.clone(),
     );
 
@@ -572,6 +573,7 @@ async fn test_decoupled_producer_throughput_enhanced() {
         300,                      // Even larger candidate buffer
         150,                      // Even larger mined buffer
         LoggingConfig::default(), // Use default logging config for tests
+        None,
         shutdown_token.clone(),
     );
 

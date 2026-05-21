@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::RwLock;
 use sysinfo::System;
 
 /// Comprehensive performance metrics for the entire Qanto system
@@ -115,9 +116,12 @@ pub struct QantoMetrics {
     pub network_congestion: AtomicU64, // stored as percentage * 10000
     pub block_propagation_time: AtomicU64, // stored as integer * 1000
     pub mempool_size: AtomicU64,
-    pub total_value_locked: AtomicU64,
-    pub validator_rewards_24h: AtomicU64,
-    pub transaction_fees_24h: AtomicU64,
+    #[serde(with = "rwlock_u128_serde")]
+    pub total_value_locked: Arc<RwLock<u128>>,
+    #[serde(with = "rwlock_u128_serde")]
+    pub validator_rewards_24h: Arc<RwLock<u128>>,
+    #[serde(with = "rwlock_u128_serde")]
+    pub transaction_fees_24h: Arc<RwLock<u128>>,
 
     // Relayer metrics
     pub relayer_success_rate: AtomicU64, // Stored as percentage * 100
@@ -248,9 +252,9 @@ impl Default for QantoMetrics {
             network_congestion: AtomicU64::new(0),
             block_propagation_time: AtomicU64::new(0),
             mempool_size: AtomicU64::new(0),
-            total_value_locked: AtomicU64::new(0),
-            validator_rewards_24h: AtomicU64::new(0),
-            transaction_fees_24h: AtomicU64::new(0),
+            total_value_locked: Arc::new(RwLock::new(0)),
+            validator_rewards_24h: Arc::new(RwLock::new(0)),
+            transaction_fees_24h: Arc::new(RwLock::new(0)),
 
             // Relayer metrics
             relayer_success_rate: AtomicU64::new(0),
@@ -397,11 +401,9 @@ impl Clone for QantoMetrics {
                 self.block_propagation_time.load(Ordering::Relaxed),
             ),
             mempool_size: AtomicU64::new(self.mempool_size.load(Ordering::Relaxed)),
-            total_value_locked: AtomicU64::new(self.total_value_locked.load(Ordering::Relaxed)),
-            validator_rewards_24h: AtomicU64::new(
-                self.validator_rewards_24h.load(Ordering::Relaxed),
-            ),
-            transaction_fees_24h: AtomicU64::new(self.transaction_fees_24h.load(Ordering::Relaxed)),
+            total_value_locked: Arc::clone(&self.total_value_locked),
+            validator_rewards_24h: Arc::clone(&self.validator_rewards_24h),
+            transaction_fees_24h: Arc::clone(&self.transaction_fees_24h),
             relayer_success_rate: AtomicU64::new(self.relayer_success_rate.load(Ordering::Relaxed)),
             relayer_average_latency: AtomicU64::new(
                 self.relayer_average_latency.load(Ordering::Relaxed),
@@ -477,20 +479,20 @@ impl QantoMetrics {
         self.last_updated.store(now, Ordering::Relaxed);
     }
 
-    /// Get current TPS (Transactions Per Second)
-    pub fn get_tps(&self) -> f64 {
-        self.tps.load(Ordering::Relaxed) as f64 / 1000.0
+    /// Get current TPS (Transactions Per Second) - Scaled by 1e9
+    pub fn get_tps(&self) -> u128 {
+        self.tps.load(Ordering::Relaxed) as u128 * (crate::QANTO_SCALE / 1000)
     }
 
-    /// Set TPS value
-    pub fn set_tps(&self, value: f64) {
-        self.tps.store((value * 1000.0) as u64, Ordering::Relaxed);
+    /// Set TPS value (input value is scaled by 1e9)
+    pub fn set_tps(&self, value_scaled: u128) {
+        self.tps.store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
         self.touch();
     }
 
-    /// Get current BPS (Blocks Per Second)
-    pub fn get_bps(&self) -> f64 {
-        let blocks = self.blocks_processed.load(Ordering::Relaxed);
+    /// Get current BPS (Blocks Per Second) - Scaled by 1e9
+    pub fn get_bps(&self) -> u128 {
+        let blocks = self.blocks_processed.load(Ordering::Relaxed) as u128;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -498,15 +500,15 @@ impl QantoMetrics {
         let start_time = self.last_updated.load(Ordering::Relaxed);
 
         if now > start_time && start_time > 0 {
-            blocks as f64 / (now - start_time) as f64
+            (blocks * crate::QANTO_SCALE) / (now - start_time) as u128
         } else {
-            0.0
+            0
         }
     }
 
-    /// Calculate real-time TPS based on recent transactions
-    pub fn calculate_real_time_tps(&self) -> f64 {
-        let transactions = self.transactions_processed.load(Ordering::Relaxed);
+    /// Calculate real-time TPS based on recent transactions - Scaled by 1e9
+    pub fn calculate_real_time_tps(&self) -> u128 {
+        let transactions = self.transactions_processed.load(Ordering::Relaxed) as u128;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -514,43 +516,47 @@ impl QantoMetrics {
         let start_time = self.last_updated.load(Ordering::Relaxed);
 
         if now > start_time && start_time > 0 {
-            transactions as f64 / (now - start_time) as f64
+            (transactions * crate::QANTO_SCALE) / (now - start_time) as u128
         } else {
-            0.0
+            0
         }
     }
 
-    /// Get average latency in milliseconds
-    pub fn get_average_latency(&self) -> f64 {
-        let total_validation_time = self.validation_time_ms.load(Ordering::Relaxed);
-        let total_blocks = self.blocks_processed.load(Ordering::Relaxed);
+    /// Get average latency in milliseconds - Scaled by 1e9
+    pub fn get_average_latency(&self) -> u128 {
+        let total_validation_time = self.validation_time_ms.load(Ordering::Relaxed) as u128;
+        let total_blocks = self.blocks_processed.load(Ordering::Relaxed) as u128;
 
         if total_blocks > 0 {
-            total_validation_time as f64 / total_blocks as f64
+            (total_validation_time * crate::QANTO_SCALE) / total_blocks
         } else {
-            0.0
+            0
         }
     }
 
-    /// Get memory utilization percentage
-    pub fn get_memory_utilization(&self) -> f64 {
-        let used_mb = self.memory_usage_mb.load(Ordering::Relaxed);
+    /// Get memory utilization percentage - Scaled by 1e9 (e.g. 100% = 1e9)
+    pub fn get_memory_utilization(&self) -> u128 {
+        let used_mb = self.memory_usage_mb.load(Ordering::Relaxed) as u128;
         // Get actual system memory instead of hardcoded 16GB
         let mut sys = System::new_all();
         sys.refresh_memory();
-        let total_mb = (sys.total_memory() / (1024 * 1024)) as f64; // Convert from bytes to MB
-        (used_mb as f64 / total_mb) * 100.0
+        let total_mb = (sys.total_memory() / (1024 * 1024)) as u128; // Convert from bytes to MB
+        if total_mb > 0 {
+            (used_mb * crate::QANTO_SCALE * 100) / total_mb
+        } else {
+            0
+        }
     }
 
-    /// Get CPU utilization percentage
-    pub fn get_cpu_utilization(&self) -> f64 {
-        self.cpu_utilization.load(Ordering::Relaxed) as f64 / 100.0
+    /// Get CPU utilization percentage - Scaled by 1e9 (e.g. 100% = 1e9)
+    pub fn get_cpu_utilization(&self) -> u128 {
+        self.cpu_utilization.load(Ordering::Relaxed) as u128 * (crate::QANTO_SCALE / 100)
     }
 
-    /// Get network throughput in MB/s
-    pub fn get_network_throughput(&self) -> f64 {
-        let bytes_sent = self.network_bytes_sent.load(Ordering::Relaxed);
-        let bytes_received = self.network_bytes_received.load(Ordering::Relaxed);
+    /// Get network throughput in MB/s - Scaled by 1e9
+    pub fn get_network_throughput(&self) -> u128 {
+        let bytes_sent = self.network_bytes_sent.load(Ordering::Relaxed) as u128;
+        let bytes_received = self.network_bytes_received.load(Ordering::Relaxed) as u128;
         let total_bytes = bytes_sent + bytes_received;
 
         let now = SystemTime::now()
@@ -560,9 +566,10 @@ impl QantoMetrics {
         let start_time = self.last_updated.load(Ordering::Relaxed);
 
         if now > start_time && start_time > 0 {
-            (total_bytes as f64 / (1024.0 * 1024.0)) / (now - start_time) as f64
+            let total_mb_scaled = (total_bytes * crate::QANTO_SCALE) / (1024 * 1024);
+            total_mb_scaled / (now - start_time) as u128
         } else {
-            0.0
+            0
         }
     }
 
@@ -578,7 +585,7 @@ impl QantoMetrics {
     }
 
     /// Get comprehensive performance summary
-    pub fn get_performance_summary(&self) -> HashMap<String, f64> {
+    pub fn get_performance_summary(&self) -> HashMap<String, u128> {
         let mut summary = HashMap::new();
 
         summary.insert("bps".to_string(), self.get_bps());
@@ -587,7 +594,7 @@ impl QantoMetrics {
         summary.insert("average_latency_ms".to_string(), self.get_average_latency());
         summary.insert(
             "memory_utilization_percent".to_string(),
-            self.get_memory_utilization(),
+            self.get_memory_utilization() as u128,
         );
         summary.insert(
             "cpu_utilization_percent".to_string(),
@@ -598,36 +605,36 @@ impl QantoMetrics {
             self.get_network_throughput(),
         );
         summary.insert("cache_hit_ratio".to_string(), self.get_cache_hit_ratio());
-        summary.insert("finality_ms".to_string(), self.get_finality_ms() as f64);
+        summary.insert("finality_ms".to_string(), self.get_finality_ms() as u128);
         summary.insert(
             "validator_count".to_string(),
-            self.validator_count.load(Ordering::Relaxed) as f64,
+            self.validator_count.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
         );
         summary.insert(
             "queue_depth".to_string(),
-            self.queue_depth.load(Ordering::Relaxed) as f64,
+            self.queue_depth.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
         );
         summary.insert(
             "concurrent_validations".to_string(),
-            self.concurrent_validations.load(Ordering::Relaxed) as f64,
+            self.concurrent_validations.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
         );
 
         // Performance optimization metrics
         summary.insert(
             "simd_operations".to_string(),
-            self.simd_operations.load(Ordering::Relaxed) as f64,
+            self.simd_operations.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
         );
         summary.insert(
             "lock_free_operations".to_string(),
-            self.lock_free_operations.load(Ordering::Relaxed) as f64,
+            self.lock_free_operations.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
         );
         summary.insert(
             "zero_copy_operations".to_string(),
-            self.zero_copy_operations.load(Ordering::Relaxed) as f64,
+            self.zero_copy_operations.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
         );
         summary.insert(
             "parallel_validations".to_string(),
-            self.parallel_validations.load(Ordering::Relaxed) as f64,
+            self.parallel_validations.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
         );
 
         // Resource efficiency metrics
@@ -696,14 +703,14 @@ impl QantoMetrics {
             "qanto_transactions_processed_total {}\n",
             self.transactions_processed.load(Ordering::Relaxed)
         ));
-        output.push_str(&format!("qanto_bps {:.2}\n", self.get_bps()));
+        output.push_str(&format!("qanto_bps {:.2}\n", self.get_bps() as f64 / crate::QANTO_SCALE as f64));
         output.push_str(&format!(
             "qanto_tps {:.2}\n",
-            self.calculate_real_time_tps()
+            self.calculate_real_time_tps() as f64 / crate::QANTO_SCALE as f64
         ));
         output.push_str(&format!(
             "qanto_average_latency_ms {:.2}\n",
-            self.get_average_latency()
+            self.get_average_latency() as f64 / crate::QANTO_SCALE as f64
         ));
 
         // Mining metrics
@@ -713,13 +720,13 @@ impl QantoMetrics {
         ));
         output.push_str(&format!(
             "qanto_hash_rate_hps {:.2}\n",
-            self.get_hash_rate_hps()
+            self.get_hash_rate_hps() as f64 / crate::QANTO_SCALE as f64
         ));
 
         // Resource utilization
         output.push_str(&format!(
             "qanto_memory_utilization_percent {:.2}\n",
-            self.get_memory_utilization()
+            self.get_memory_utilization() as f64 / (crate::QANTO_SCALE as f64 / 100.0)
         ));
         output.push_str(&format!(
             "qanto_rss_bytes {}\n",
@@ -727,17 +734,17 @@ impl QantoMetrics {
         ));
         output.push_str(&format!(
             "qanto_cpu_utilization_percent {:.2}\n",
-            self.get_cpu_utilization()
+            self.get_cpu_utilization() as f64 / (crate::QANTO_SCALE as f64 / 100.0)
         ));
         output.push_str(&format!(
             "qanto_network_throughput_mbps {:.2}\n",
-            self.get_network_throughput()
+            self.get_network_throughput() as f64 / crate::QANTO_SCALE as f64
         ));
 
         // Performance metrics
         output.push_str(&format!(
             "qanto_cache_hit_ratio {:.4}\n",
-            self.get_cache_hit_ratio()
+            self.get_cache_hit_ratio() as f64 / crate::QANTO_SCALE as f64
         ));
         output.push_str(&format!("qanto_finality_ms {}\n", self.get_finality_ms()));
         output.push_str(&format!(
@@ -754,15 +761,15 @@ impl QantoMetrics {
         ));
         output.push_str(&format!(
             "qanto_total_value_locked {}\n",
-            self.total_value_locked.load(Ordering::Relaxed)
+            *self.total_value_locked.blocking_read()
         ));
         output.push_str(&format!(
             "qanto_validator_rewards_24h {}\n",
-            self.validator_rewards_24h.load(Ordering::Relaxed)
+            *self.validator_rewards_24h.blocking_read()
         ));
         output.push_str(&format!(
             "qanto_transaction_fees_24h {}\n",
-            self.transaction_fees_24h.load(Ordering::Relaxed)
+            *self.transaction_fees_24h.blocking_read()
         ));
 
         // Optimization metrics
@@ -802,38 +809,37 @@ impl QantoMetrics {
 
     /// Add hash rate getter/setter and computation helpers
     /// Compute hash rate in H/s given the number of attempts over an interval in milliseconds
-    pub fn compute_hash_rate(attempts_delta: u64, interval_ms: u64) -> f64 {
+    /// Compute hash rate from attempts and interval - Scaled by 1e9
+    pub fn compute_hash_rate(attempts_delta: u64, interval_ms: u64) -> u128 {
         if interval_ms == 0 {
-            return 0.0;
+            return 0;
         }
-        let interval_seconds = interval_ms as f64 / 1000.0;
-        attempts_delta as f64 / interval_seconds
+        (attempts_delta as u128 * crate::QANTO_SCALE * 1000) / interval_ms as u128
     }
 
-    /// Format hash rate into human-friendly units (H/s, kH/s, MH/s, GH/s, TH/s, PH/s)
-    pub fn format_hash_rate(hps: f64) -> String {
-        let mut value = hps;
-        if !value.is_finite() || value < 0.0 {
-            value = 0.0;
-        }
+    /// Format hash rate into human-friendly units (H/s, kH/s, MH/s, GH/s, TH/s, PH/s) - Input scaled by 1e9
+    pub fn format_hash_rate(hps_scaled: u128) -> String {
         let units = ["H/s", "kH/s", "MH/s", "GH/s", "TH/s", "PH/s"];
         let mut unit_idx = 0;
-        while value >= 1000.0 && unit_idx < units.len() - 1 {
-            value /= 1000.0;
+        let mut value = hps_scaled;
+        while value >= 1000 * crate::QANTO_SCALE && unit_idx < units.len() - 1 {
+            value /= 1000;
             unit_idx += 1;
         }
-        format!("{:.2} {}", value, units[unit_idx])
+        let whole = value / crate::QANTO_SCALE;
+        let fraction = (value % crate::QANTO_SCALE) / (crate::QANTO_SCALE / 100); // 2 decimals
+        format!("{}.{:02} {}", whole, fraction, units[unit_idx])
     }
 
-    /// Get the current hash rate in H/s
-    pub fn get_hash_rate_hps(&self) -> f64 {
-        self.hash_rate_thousandths.load(Ordering::Relaxed) as f64 / 1000.0
+    /// Get the current hash rate in H/s - Scaled by 1e9
+    pub fn get_hash_rate_hps(&self) -> u128 {
+        self.hash_rate_thousandths.load(Ordering::Relaxed) as u128 * (crate::QANTO_SCALE / 1000)
     }
 
-    /// Set the current hash rate in H/s
-    pub fn set_hash_rate_hps(&self, value: f64) {
+    /// Set the current hash rate in H/s (input value is scaled by 1e9)
+    pub fn set_hash_rate_hps(&self, value_scaled: u128) {
         self.hash_rate_thousandths
-            .store((value * 1000.0) as u64, Ordering::Relaxed);
+            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
         self.touch();
     }
 
@@ -848,132 +854,133 @@ impl QantoMetrics {
         self.touch();
     }
 
-    /// Get storage efficiency as floating point
-    pub fn get_storage_efficiency(&self) -> f64 {
-        self.storage_efficiency.load(Ordering::Relaxed) as f64 / 1000.0
+    /// Get storage efficiency as fixed-point - Scaled by 1e9
+    pub fn get_storage_efficiency(&self) -> u128 {
+        self.storage_efficiency.load(Ordering::Relaxed) as u128 * (crate::QANTO_SCALE / 1000)
     }
 
-    /// Set storage efficiency from floating point
-    pub fn set_storage_efficiency(&self, value: f64) {
+    /// Set storage efficiency from fixed-point (input value is scaled by 1e9)
+    pub fn set_storage_efficiency(&self, value_scaled: u128) {
         self.storage_efficiency
-            .store((value * 1000.0) as u64, Ordering::Relaxed);
+            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
         self.touch();
     }
 
-    /// Get SAGA throughput as floating point
-    pub fn get_saga_throughput(&self) -> f64 {
-        self.throughput.load(Ordering::Relaxed) as f64 / 1000.0
+    /// Get SAGA throughput as fixed-point - Scaled by 1e9
+    pub fn get_saga_throughput(&self) -> u128 {
+        self.throughput.load(Ordering::Relaxed) as u128 * (crate::QANTO_SCALE / 1000)
     }
 
-    /// Set SAGA throughput from floating point
-    pub fn set_saga_throughput(&self, value: f64) {
+    /// Set SAGA throughput from fixed-point (input value is scaled by 1e9)
+    pub fn set_saga_throughput(&self, value_scaled: u128) {
         self.throughput
-            .store((value * 1000.0) as u64, Ordering::Relaxed);
+            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
         self.touch();
     }
 
-    /// Get SAGA latency as floating point
-    pub fn get_saga_latency(&self) -> f64 {
-        self.latency.load(Ordering::Relaxed) as f64 / 1000.0
+    /// Get SAGA latency as fixed-point - Scaled by 1e9
+    pub fn get_saga_latency(&self) -> u128 {
+        self.latency.load(Ordering::Relaxed) as u128 * (crate::QANTO_SCALE / 1000)
     }
 
-    /// Set SAGA latency from floating point
-    pub fn set_saga_latency(&self, value: f64) {
+    /// Set SAGA latency from fixed-point (input value is scaled by 1e9)
+    pub fn set_saga_latency(&self, value_scaled: u128) {
         self.latency
-            .store((value * 1000.0) as u64, Ordering::Relaxed);
+            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
         self.touch();
     }
 
-    /// Get error rate as floating point
-    pub fn get_error_rate(&self) -> f64 {
-        self.error_rate.load(Ordering::Relaxed) as f64 / 1000.0
+    /// Get error rate as fixed-point - Scaled by 1e9
+    pub fn get_error_rate(&self) -> u128 {
+        self.error_rate.load(Ordering::Relaxed) as u128 * (crate::QANTO_SCALE / 1000)
     }
 
-    /// Set error rate from floating point
-    pub fn set_error_rate(&self, value: f64) {
+    /// Set error rate from fixed-point (input value is scaled by 1e9)
+    pub fn set_error_rate(&self, value_scaled: u128) {
         self.error_rate
-            .store((value * 1000.0) as u64, Ordering::Relaxed);
+            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
         self.touch();
     }
 
-    /// Get resource utilization as floating point
-    pub fn get_resource_utilization(&self) -> f64 {
-        self.resource_utilization.load(Ordering::Relaxed) as f64 / 1000.0
+    /// Get resource utilization as fixed-point - Scaled by 1e9
+    pub fn get_resource_utilization(&self) -> u128 {
+        self.resource_utilization.load(Ordering::Relaxed) as u128 * (crate::QANTO_SCALE / 1000)
     }
 
-    /// Set resource utilization from floating point
-    pub fn set_resource_utilization(&self, value: f64) {
+    /// Set resource utilization from fixed-point (input value is scaled by 1e9)
+    pub fn set_resource_utilization(&self, value_scaled: u128) {
         self.resource_utilization
-            .store((value * 1000.0) as u64, Ordering::Relaxed);
+            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
         self.touch();
     }
 
-    /// Get security score as floating point
-    pub fn get_security_score(&self) -> f64 {
-        self.security_score.load(Ordering::Relaxed) as f64 / 1000.0
+    /// Get security score as fixed-point - Scaled by 1e9
+    pub fn get_security_score(&self) -> u128 {
+        self.security_score.load(Ordering::Relaxed) as u128 * (crate::QANTO_SCALE / 1000)
     }
 
-    /// Set security score from floating point
-    pub fn set_security_score(&self, value: f64) {
+    /// Set security score from fixed-point (input value is scaled by 1e9)
+    pub fn set_security_score(&self, value_scaled: u128) {
         self.security_score
-            .store((value * 1000.0) as u64, Ordering::Relaxed);
+            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
         self.touch();
     }
 
-    /// Get stability index as floating point
-    pub fn get_stability_index(&self) -> f64 {
-        self.stability_index.load(Ordering::Relaxed) as f64 / 1000.0
+    /// Get stability index as fixed-point - Scaled by 1e9
+    pub fn get_stability_index(&self) -> u128 {
+        self.stability_index.load(Ordering::Relaxed) as u128 * (crate::QANTO_SCALE / 1000)
     }
 
-    /// Set stability index from floating point
-    pub fn set_stability_index(&self, value: f64) {
+    /// Set stability index from fixed-point (input value is scaled by 1e9)
+    pub fn set_stability_index(&self, value_scaled: u128) {
         self.stability_index
-            .store((value * 1000.0) as u64, Ordering::Relaxed);
+            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
         self.touch();
     }
 
     /// Increment blocks processed counter
-    pub fn get_total_value_locked(&self) -> u64 {
-        self.total_value_locked.load(Ordering::Relaxed)
+    pub async fn get_total_value_locked(&self) -> u128 {
+        *self.total_value_locked.read().await
     }
 
-    pub fn set_total_value_locked(&self, value: u64) {
-        self.total_value_locked.store(value, Ordering::Relaxed);
+    pub async fn set_total_value_locked(&self, value: u128) {
+        *self.total_value_locked.write().await = value;
         self.touch();
     }
 
-    pub fn add_total_value_locked(&self, delta: u64) {
-        self.total_value_locked.fetch_add(delta, Ordering::Relaxed);
+    pub async fn add_total_value_locked(&self, delta: u128) {
+        let mut lock = self.total_value_locked.write().await;
+        *lock = lock.saturating_add(delta);
         self.touch();
     }
 
-    pub fn get_validator_rewards_24h(&self) -> u64 {
-        self.validator_rewards_24h.load(Ordering::Relaxed)
+    pub async fn get_validator_rewards_24h(&self) -> u128 {
+        *self.validator_rewards_24h.read().await
     }
 
-    pub fn set_validator_rewards_24h(&self, value: u64) {
-        self.validator_rewards_24h.store(value, Ordering::Relaxed);
+    pub async fn set_validator_rewards_24h(&self, value: u128) {
+        *self.validator_rewards_24h.write().await = value;
         self.touch();
     }
 
-    pub fn get_transaction_fees_24h(&self) -> u64 {
-        self.transaction_fees_24h.load(Ordering::Relaxed)
+    pub async fn get_transaction_fees_24h(&self) -> u128 {
+        *self.transaction_fees_24h.read().await
     }
 
-    pub fn set_transaction_fees_24h(&self, value: u64) {
-        self.transaction_fees_24h.store(value, Ordering::Relaxed);
+    pub async fn set_transaction_fees_24h(&self, value: u128) {
+        *self.transaction_fees_24h.write().await = value;
         self.touch();
     }
 
-    pub fn add_transaction_fees_24h(&self, delta: u64) {
-        self.transaction_fees_24h
-            .fetch_add(delta, Ordering::Relaxed);
+    pub async fn add_transaction_fees_24h(&self, delta: u128) {
+        let mut lock = self.transaction_fees_24h.write().await;
+        *lock = lock.saturating_add(delta);
         self.touch();
     }
 
-    pub fn add_validator_rewards_24h(&self, delta: u64) {
-        self.validator_rewards_24h
-            .fetch_add(delta, Ordering::Relaxed);
+    pub async fn add_validator_rewards_24h(&self, delta: u128) {
+        let mut lock = self.validator_rewards_24h.write().await;
+        *lock = lock.saturating_add(delta);
         self.touch();
     }
 
@@ -1014,53 +1021,54 @@ impl QantoMetrics {
         self.touch();
     }
 
-    /// Get cache hit ratio
-    pub fn get_cache_hit_ratio(&self) -> f64 {
-        let hits = self.cache_hits.load(Ordering::Relaxed) as f64;
-        let misses = self.cache_misses.load(Ordering::Relaxed) as f64;
+    /// Get cache hit ratio - Scaled by 1e9 (e.g. 1.0 = 1e9)
+    pub fn get_cache_hit_ratio(&self) -> u128 {
+        let hits = self.cache_hits.load(Ordering::Relaxed) as u128;
+        let misses = self.cache_misses.load(Ordering::Relaxed) as u128;
         let total = hits + misses;
-        if total > 0.0 {
-            hits / total
+        if total > 0 {
+            (hits * crate::QANTO_SCALE) / total
         } else {
-            0.0
+            0
         }
     }
 
     /// Export metrics as a HashMap for external systems
-    pub fn export_metrics(&self) -> HashMap<String, f64> {
+    /// Export all metrics as a HashMap - All values scaled by 1e9
+    pub fn export_metrics(&self) -> HashMap<String, u128> {
         let mut metrics = HashMap::new();
 
         metrics.insert(
             "blocks_processed".to_string(),
-            self.blocks_processed.load(Ordering::Relaxed) as f64,
+            self.blocks_processed.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
         );
         metrics.insert(
             "transactions_processed".to_string(),
-            self.transactions_processed.load(Ordering::Relaxed) as f64,
+            self.transactions_processed.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
         );
         metrics.insert(
             "validation_time_ms".to_string(),
-            self.validation_time_ms.load(Ordering::Relaxed) as f64,
+            self.validation_time_ms.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
         );
         metrics.insert(
             "block_creation_time_ms".to_string(),
-            self.block_creation_time_ms.load(Ordering::Relaxed) as f64,
+            self.block_creation_time_ms.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
         );
         metrics.insert(
             "cache_hits".to_string(),
-            self.cache_hits.load(Ordering::Relaxed) as f64,
+            self.cache_hits.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
         );
         metrics.insert(
             "cache_misses".to_string(),
-            self.cache_misses.load(Ordering::Relaxed) as f64,
+            self.cache_misses.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
         );
         metrics.insert("cache_hit_ratio".to_string(), self.get_cache_hit_ratio());
         metrics.insert("tps".to_string(), self.get_tps());
-        metrics.insert("finality_ms".to_string(), self.get_finality_ms() as f64);
-        metrics.insert("rss_bytes".to_string(), self.get_rss_bytes() as f64);
+        metrics.insert("finality_ms".to_string(), self.get_finality_ms() as u128 * crate::QANTO_SCALE);
+        metrics.insert("rss_bytes".to_string(), self.get_rss_bytes() as u128 * crate::QANTO_SCALE);
         metrics.insert(
             "validator_count".to_string(),
-            self.validator_count.load(Ordering::Relaxed) as f64,
+            self.validator_count.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
         );
         metrics.insert(
             "storage_efficiency".to_string(),
@@ -1253,6 +1261,37 @@ macro_rules! set_metric {
             .$metric
             .store($value, std::sync::atomic::Ordering::Relaxed);
     };
+}
+
+
+mod rwlock_u128_serde {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    pub fn serialize<S>(val: &Arc<RwLock<u128>>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // For serialization, we just do a blocking read or 0 if we can't
+        // Since this is async RwLock, blocking read is tricky in sync context.
+        // As a workaround, we'll try_read or default to 0
+        let v = match val.try_read() {
+            Ok(guard) => *guard,
+            Err(_) => 0,
+        };
+        // u128 serialization isn't always supported by all formats, but we'll use it
+        serializer.serialize_str(&v.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Arc<RwLock<u128>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: String = String::deserialize(deserializer)?;
+        let val = s.parse::<u128>().map_err(serde::de::Error::custom)?;
+        Ok(Arc::new(RwLock::new(val)))
+    }
 }
 
 mod atomic_serde {

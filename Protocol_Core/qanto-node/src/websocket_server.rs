@@ -43,7 +43,7 @@ pub struct NetworkHealth {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BalanceEvent {
     pub address: String,
-    pub balance: u64,
+    pub balance: u128,
     pub timestamp: u64,
 }
 
@@ -112,14 +112,14 @@ pub enum WebSocketMessage {
         timestamp: u64,
     },
     EconomicUpdate {
-        total_supply: u64,
+        total_supply: u128,
         market_cap: f64,
         staking_ratio: f64,
         timestamp: u64,
     },
     EconomicIndicators {
-        total_supply: u64,
-        circulating_supply: u64,
+        total_supply: u128,
+        circulating_supply: u128,
         market_metrics: serde_json::Value,
     },
     SecurityAlert {
@@ -129,7 +129,7 @@ pub enum WebSocketMessage {
     },
     BalanceUpdate {
         address: String,
-        balance: u64,
+        balance: u128,
         timestamp: u64,
     },
     Error {
@@ -195,7 +195,7 @@ impl WebSocketServerState {
         }
     }
 
-    pub async fn broadcast_balance_update(&self, address: String, balance: u64) {
+    pub async fn broadcast_balance_update(&self, address: String, balance: u128) {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SAGA Workflow Editor</title>
+    <style>
+        body {
+            background: #0f111a;
+            color: #fff;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        #toolbar {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px 20px;
+            display: flex;
+            gap: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            align-items: center;
+        }
+
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0; left: 0;
+            pointer-events: none;
+        }
+
+        .node {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 15px;
+            width: 180px;
+            cursor: move;
+            user-select: none;
+            z-index: 10;
+        }
+
+        .node h4 { margin: 0 0 10px 0; font-size: 13px; color: #00ffaa; }
+        .node p { margin: 0; font-size: 11px; color: #ccc; }
+
+        .port {
+            width: 10px;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .port::after {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background: #444;
+            border-radius: 50%;
+            border: 1px solid #aaa;
+        }
+
+        .port.in { left: -6px; }
+        .port.out { right: -6px; cursor: crosshair; }
+
+        .btn {
+            background: #00ffaa;
+            color: #000;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <span style="font-size: 14px; font-weight: bold;">NODE FLOW EDITOR</span>
+        <button class="btn" onclick="addNode('Market Sentiment')">+ Add Agent Node</button>
+        <button class="btn" style="background: transparent; color: #00ffaa; border: 1px solid #00ffaa;" onclick="deployWorkflow()">Deploy Workflow</button>
+    </div>
+    
+    <div id="canvas-container" id="canvas-container">
+        <canvas id="link-canvas"></canvas>
+    </div>
+
+    <script>
+        const container = document.getElementById('canvas-container');
+        const canvas = document.getElementById('link-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let nodes = [];
+        let connections = [];
+        let dragNode = null;
+        let offset = { x: 0, y: 0 };
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            draw();
+        }
+
+        function addNode(name, x = 100, y = 100) {
+            const el = document.createElement('div');
+            el.className = 'node';
+            el.style.left = x + 'px';
+            el.style.top = y + 'px';
+            el.innerHTML = `
+                <div class="port in"></div>
+                <h4>${name}</h4>
+                <p>Status: Initialized</p>
+                <div class="port out"></div>
+            `;
+            
+            el.onmousedown = (e) => {
+                dragNode = el;
+                offset.x = e.clientX - el.offsetLeft;
+                offset.y = e.clientY - el.offsetTop;
+            };
+
+            container.appendChild(el);
+            nodes.push(el);
+            draw();
+        }
+
+        document.onmousemove = (e) => {
+            if (dragNode) {
+                dragNode.style.left = (e.clientX - offset.x) + 'px';
+                dragNode.style.top = (e.clientY - offset.y) + 'px';
+                draw();
+            }
+        };
+
+        document.onmouseup = () => { dragNode = null; };
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // In production: draw Bezier curves between nodes
+            // For simulation: simple flow visual
+        }
+
+        function deployWorkflow() {
+            alert("🚀 Workflow Deployed! Agents are now piping data across the Neural Mesh.");
+        }
+
+        window.onresize = resize;
+        resize();
+
+        // Add Initial Nodes
+        addNode('Sentiment Oracle', 100, 150);
+        addNode('Yield Strategist', 400, 150);
+    </script>
+</body>
+</html>

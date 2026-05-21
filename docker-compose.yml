@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  bootnode:
+    build:
+      context: .
+      dockerfile: Dockerfile.bootnode
+    ports:
+      - "8080:8080"
+      - "7860:7860"
+    environment:
+      - WALLET_PASSWORD=""
+      - RUST_LOG="info"
+    restart: unless-stopped
+    volumes:
+      - bootnode-data:/app/data
+
+  peer1:
+    build:
+      context: .
+      dockerfile: Dockerfile.bootnode
+    depends_on:
+      - bootnode
+    environment:
+      - WALLET_PASSWORD=""
+      - RUST_LOG="info"
+    # We override the command to make sure it connects to the bootnode
+    command: sh -c "./qanto generate-wallet --output wallet.key && ./qanto start --wallet wallet.key --mine"
+    restart: unless-stopped
+    volumes:
+      - peer1-data:/app/data
+
+  peer2:
+    build:
+      context: .
+      dockerfile: Dockerfile.bootnode
+    depends_on:
+      - bootnode
+    environment:
+      - WALLET_PASSWORD=""
+      - RUST_LOG="info"
+    command: sh -c "./qanto generate-wallet --output wallet.key && ./qanto start --wallet wallet.key --mine"
+    restart: unless-stopped
+    volumes:
+      - peer2-data:/app/data
+
+volumes:
+  bootnode-data:
+  peer1-data:
+  peer2-data:

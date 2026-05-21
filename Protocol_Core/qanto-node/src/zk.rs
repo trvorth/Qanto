@@ -35,7 +35,7 @@ impl From<io::Error> for ZKError {
 #[cfg(feature = "zk")]
 #[derive(Clone)]
 pub struct UtxoCircuit {
-    pub amount: Option<u64>,
+    pub amount: Option<u128>,
     pub address: Option<[u8; 32]>,
 }
 
@@ -46,13 +46,21 @@ impl Circuit<Scalar> for UtxoCircuit {
             || "amount",
             || {
                 self.amount
-                    .map(Scalar::from)
+                    .map(|a| {
+                        // Scalar::from only supports u64, so we need to handle u128
+                        // Assuming bls12_381 Scalar::from is for u64.
+                        // If it supports u128, use it. Otherwise, use byte array.
+                        let bytes = a.to_le_bytes();
+                        let mut scalar_bytes = [0u8; 32];
+                        scalar_bytes[..16].copy_from_slice(&bytes);
+                        Scalar::from_bytes(&scalar_bytes).unwrap()
+                    })
                     .ok_or(SynthesisError::AssignmentMissing)
             },
         )?;
 
-        let mut amount_bits_vars = Vec::with_capacity(64);
-        for i in 0..64 {
+        let mut amount_bits_vars = Vec::with_capacity(128);
+        for i in 0..128 {
             let bit_val = self.amount.map(|a| (a >> i) & 1);
             let bit_var = cs.alloc(
                 || {
@@ -63,7 +71,7 @@ impl Circuit<Scalar> for UtxoCircuit {
                 },
                 || {
                     bit_val
-                        .map(Scalar::from)
+                        .map(|b| Scalar::from(b as u64))
                         .ok_or(SynthesisError::AssignmentMissing)
                 },
             )?;

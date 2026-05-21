@@ -42,24 +42,24 @@ const MAX_METADATA_VALUE_LEN: usize = 256;
 
 // --- New Dynamic Fee Structure ---
 // Thresholds are defined in the smallest units of QAN for precision.
-/// The number of smallest units in one QAN.
-pub const SMALLEST_UNITS_PER_QAN: u64 = 1_000_000;
 /// The number of decimals per QAN when formatting base units.
-pub const DECIMALS_PER_QAN: usize = 6;
+pub const DECIMALS_PER_QAN: usize = 9;
+/// The smallest unit multiplier (1 QAN = 1,000,000,000 base units)
+pub const SMALLEST_UNITS_PER_QAN: u128 = 1_000_000_000;
 /// The threshold for the first fee tier (under 1,000,000 QAN).
-pub const FEE_TIER1_THRESHOLD: u64 = 1_000_000 * SMALLEST_UNITS_PER_QAN;
+pub const FEE_TIER1_THRESHOLD: u128 = 1_000_000 * crate::Q_SCALE;
 /// The threshold for the second fee tier (1M to 10M QAN).
-pub const FEE_TIER2_THRESHOLD: u64 = 10_000_000 * SMALLEST_UNITS_PER_QAN;
+pub const FEE_TIER2_THRESHOLD: u128 = 10_000_000 * crate::Q_SCALE;
 /// The threshold for the third fee tier (10M to 100M QAN).
-pub const FEE_TIER3_THRESHOLD: u64 = 100_000_000 * SMALLEST_UNITS_PER_QAN;
+pub const FEE_TIER3_THRESHOLD: u128 = 100_000_000 * crate::Q_SCALE;
 /// The fee rate for the first tier (0%).
-pub const FEE_RATE_TIER1: f64 = 0.00;
+pub const FEE_RATE_TIER1_FIXED: u128 = 0;
 /// The fee rate for the second tier (1%).
-pub const FEE_RATE_TIER2: f64 = 0.01;
+pub const FEE_RATE_TIER2_FIXED: u128 = 10_000_000;
 /// The fee rate for the third tier (2%).
-pub const FEE_RATE_TIER3: f64 = 0.02;
+pub const FEE_RATE_TIER3_FIXED: u128 = 20_000_000;
 /// The fee rate for the fourth tier (3%).
-pub const FEE_RATE_TIER4: f64 = 0.03;
+pub const FEE_RATE_TIER4_FIXED: u128 = 30_000_000;
 
 #[derive(Error, Debug)]
 pub enum TransactionError {
@@ -102,18 +102,18 @@ pub struct Input {
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct Output {
     pub address: String,
-    pub amount: u64,
+    pub amount: u128,
     pub homomorphic_encrypted: HomomorphicEncrypted,
 }
 
 pub struct TransactionConfig {
     pub sender: String,
     pub receiver: String,
-    pub amount: u64,
-    pub fee: u64,
-    pub gas_limit: u64,
-    pub gas_price: u64,
-    pub priority_fee: u64,
+    pub amount: u128,
+    pub fee: u128,
+    pub gas_limit: u128,
+    pub gas_price: u128,
+    pub priority_fee: u128,
     pub inputs: Vec<Input>,
     pub outputs: Vec<Output>,
     pub metadata: Option<HashMap<String, String>>,
@@ -121,14 +121,14 @@ pub struct TransactionConfig {
 }
 
 #[derive(Debug)]
-struct TransactionSigningPayload<'a> {
-    sender: &'a str,
-    receiver: &'a str,
-    amount: u64,
-    fee: u64,
-    inputs: &'a [Input],
-    outputs: &'a [Output],
-    metadata: &'a HashMap<String, String>,
+struct TransactionSigningPayload {
+    sender: String,
+    receiver: String,
+    amount: u128,
+    fee: u128,
+    inputs: Vec<Input>,
+    outputs: Vec<Output>,
+    metadata: HashMap<String, String>,
     timestamp: u64,
 }
 
@@ -137,12 +137,12 @@ pub struct Transaction {
     pub id: String,
     pub sender: String,
     pub receiver: String,
-    pub amount: u64,
-    pub fee: u64,
-    pub gas_limit: u64,
-    pub gas_used: u64,
-    pub gas_price: u64,
-    pub priority_fee: u64,
+    pub amount: u128,
+    pub fee: u128,
+    pub gas_limit: u128,
+    pub gas_used: u128,
+    pub gas_price: u128,
+    pub priority_fee: u128,
     pub inputs: Vec<Input>,
     pub outputs: Vec<Output>,
     pub timestamp: u64,
@@ -154,17 +154,20 @@ pub struct Transaction {
 }
 
 /// Calculates the transaction fee based on the new tiered structure.
-pub fn calculate_dynamic_fee(amount: u64) -> u64 {
+pub fn calculate_dynamic_fee(amount: u128) -> u128 {
     let rate = if amount < FEE_TIER1_THRESHOLD {
-        FEE_RATE_TIER1 // 0% fee for amounts under 1,000,000 QAN
+        FEE_RATE_TIER1_FIXED // 0% fee for amounts under 1,000,000 QAN
     } else if amount < FEE_TIER2_THRESHOLD {
-        FEE_RATE_TIER2 // 1% fee for amounts between 1M and 10M QAN
+        FEE_RATE_TIER2_FIXED // 1% fee for amounts between 1M and 10M QAN
     } else if amount < FEE_TIER3_THRESHOLD {
-        FEE_RATE_TIER3 // 2% fee for amounts between 10M and 100M QAN
+        FEE_RATE_TIER3_FIXED // 2% fee for amounts between 10M and 100M QAN
     } else {
-        FEE_RATE_TIER4 // 3% for amounts over 100M QAN
+        FEE_RATE_TIER4_FIXED // 3% for amounts over 100M QAN
     };
-    (amount as f64 * rate).round() as u64
+
+    // Calculate fee using fixed-point integer arithmetic (scale 1e9)
+    // multiplication before division to maintain precision
+    amount.checked_mul(rate).and_then(|r| r.checked_div(crate::QANTO_SCALE)).unwrap_or(0)
 }
 
 impl Transaction {
@@ -227,13 +230,13 @@ impl Transaction {
         let receiver_str = hex::encode(dummy_receiver);
 
         let signing_payload = TransactionSigningPayload {
-            sender: &sender_str,
-            receiver: &receiver_str,
+            sender: sender_str.clone(),
+            receiver: receiver_str.clone(),
             amount: 100,
             fee: 0,
-            inputs: &[],
-            outputs: &[],
-            metadata: &HashMap::new(),
+            inputs: vec![],
+            outputs: vec![],
+            metadata: HashMap::new(),
             timestamp,
         };
 
@@ -274,13 +277,13 @@ impl Transaction {
         _public_key: &crate::qanto_native_crypto::QantoPQPublicKey,
     ) -> Result<(), TransactionError> {
         let signing_payload = TransactionSigningPayload {
-            sender: &self.sender,
-            receiver: &self.receiver,
+            sender: self.sender.clone(),
+            receiver: self.receiver.clone(),
             amount: self.amount,
             fee: self.fee,
-            inputs: &self.inputs,
-            outputs: &self.outputs,
-            metadata: &self.metadata,
+            inputs: self.inputs.clone(),
+            outputs: self.outputs.clone(),
+            metadata: self.metadata.clone(),
             timestamp: self.timestamp,
         };
 
@@ -298,24 +301,24 @@ impl Transaction {
         signing_key: &crate::qanto_native_crypto::QantoPQPrivateKey,
     ) -> Result<Self, TransactionError> {
         Self::validate_structure_pre_creation(
-            &config.sender,
-            &config.receiver,
+            config.sender.clone(),
+            config.receiver.clone(),
             config.amount,
-            &config.inputs,
-            config.metadata.as_ref(),
+            config.inputs.clone(),
+            config.metadata.clone(),
         )?;
         Self::check_rate_limit(&config.tx_timestamps, MAX_TRANSACTIONS_PER_MINUTE).await?;
-        Self::validate_addresses(&config.sender, &config.receiver, &config.outputs)?;
+        Self::validate_addresses(config.sender.clone(), config.receiver.clone(), config.outputs.clone())?;
         let timestamp = Self::get_current_timestamp()?;
         let metadata = config.metadata.unwrap_or_default();
         let signing_payload = TransactionSigningPayload {
-            sender: &config.sender,
-            receiver: &config.receiver,
+            sender: config.sender.clone(),
+            receiver: config.receiver.clone(),
             amount: config.amount,
             fee: config.fee,
-            inputs: &config.inputs,
-            outputs: &config.outputs,
-            metadata: &metadata,
+            inputs: config.inputs.clone(),
+            outputs: config.outputs.clone(),
+            metadata: metadata.clone(),
             timestamp,
         };
         let signature_data = Self::serialize_for_signing(&signing_payload)?;
@@ -368,7 +371,7 @@ impl Transaction {
     /// Creates a new coinbase transaction.
     pub(crate) fn new_coinbase(
         receiver: String,
-        _reward: u64,
+        _reward: u128,
         outputs: Vec<Output>,
     ) -> Result<Self, TransactionError> {
         let sender = "0000000000000000000000000000000000000000000000000000000000000000".to_string();
@@ -376,16 +379,16 @@ impl Transaction {
         let metadata = HashMap::new();
 
         // Calculate the actual amount as sum of outputs
-        let actual_amount = outputs.iter().map(|output| output.amount).sum::<u64>();
+        let actual_amount = outputs.iter().map(|output| output.amount).sum::<u128>();
 
         let signing_payload = TransactionSigningPayload {
-            sender: &sender,
-            receiver: &receiver,
+            sender: sender.clone(),
+            receiver: receiver.clone(),
             amount: actual_amount,
             fee: 0,
-            inputs: &[],
-            outputs: &outputs,
-            metadata: &metadata,
+            inputs: vec![],
+            outputs: outputs.clone(),
+            metadata: metadata.clone(),
             timestamp,
         };
         let signature_data = Self::serialize_for_signing(&signing_payload)?;
@@ -427,11 +430,11 @@ impl Transaction {
 
     /// Validates the basic structure of a transaction before creation.
     fn validate_structure_pre_creation(
-        sender: &str,
-        receiver: &str,
-        amount: u64,
-        inputs: &[Input],
-        metadata: Option<&HashMap<String, String>>,
+        sender: String,
+        receiver: String,
+        amount: u128,
+        inputs: Vec<Input>,
+        metadata: Option<HashMap<String, String>>,
     ) -> Result<(), TransactionError> {
         if sender.is_empty() {
             return Err(TransactionError::InvalidStructure(
@@ -485,13 +488,13 @@ impl Transaction {
 
     /// Validates the format of the sender, receiver, and output addresses.
     fn validate_addresses(
-        sender: &str,
-        receiver: &str,
-        outputs: &[Output],
+        sender: String,
+        receiver: String,
+        outputs: Vec<Output>,
     ) -> Result<(), TransactionError> {
         if !Self::is_valid_address(sender)
             || !Self::is_valid_address(receiver)
-            || outputs.iter().any(|o| !Self::is_valid_address(&o.address))
+            || outputs.iter().any(|o| !Self::is_valid_address(o.address.clone()))
         {
             Err(TransactionError::InvalidAddress)
         } else {
@@ -500,7 +503,7 @@ impl Transaction {
     }
 
     /// Checks if a given address string is valid.
-    fn is_valid_address(address: &str) -> bool {
+    fn is_valid_address(address: String) -> bool {
         address.len() == 64 && hex::decode(address).is_ok()
     }
 
@@ -572,13 +575,13 @@ impl Transaction {
         utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
     ) -> Result<(), TransactionError> {
         let signing_payload = TransactionSigningPayload {
-            sender: &self.sender,
-            receiver: &self.receiver,
+            sender: self.sender.clone(),
+            receiver: self.receiver.clone(),
             amount: self.amount,
             fee: self.fee,
-            inputs: &self.inputs,
-            outputs: &self.outputs,
-            metadata: &self.metadata,
+            inputs: self.inputs.clone(),
+            outputs: self.outputs.clone(),
+            metadata: self.metadata.clone(),
             timestamp: self.timestamp,
         };
         let _data_to_verify = Self::serialize_for_signing(&signing_payload)?;
@@ -589,7 +592,7 @@ impl Transaction {
                     "Coinbase fee must be 0".to_string(),
                 ));
             }
-            let total_output: u64 = self.outputs.iter().map(|o| o.amount).sum();
+            let total_output: u128 = self.outputs.iter().map(|o| o.amount).sum();
             if total_output == 0 {
                 return Err(TransactionError::InvalidStructure(
                     "Coinbase output cannot be zero".to_string(),
@@ -598,7 +601,7 @@ impl Transaction {
         } else {
             // MEMORY OPTIMIZATION: Only read the UTXO set once and validate all inputs.
             let utxos_guard = utxos_arc.read().await;
-            let mut total_input_value = 0;
+            let mut total_input_value = 0u128;
 
             for input in &self.inputs {
                 let mut utxo_id = String::with_capacity(input.tx_id.len() + 10);
@@ -619,7 +622,7 @@ impl Transaction {
                 total_input_value += utxo.amount;
             }
 
-            let total_output_value: u64 = self.outputs.iter().map(|o| o.amount).sum();
+            let total_output_value: u128 = self.outputs.iter().map(|o| o.amount).sum();
             let expected_total = total_output_value + self.fee;
 
             if total_input_value != expected_total {
@@ -639,13 +642,13 @@ impl Transaction {
         utxos: &HashMap<String, UTXO>,
     ) -> Result<(), TransactionError> {
         let signing_payload = TransactionSigningPayload {
-            sender: &self.sender,
-            receiver: &self.receiver,
+            sender: self.sender.clone(),
+            receiver: self.receiver.clone(),
             amount: self.amount,
             fee: self.fee,
-            inputs: &self.inputs,
-            outputs: &self.outputs,
-            metadata: &self.metadata,
+            inputs: self.inputs.clone(),
+            outputs: self.outputs.clone(),
+            metadata: self.metadata.clone(),
             timestamp: self.timestamp,
         };
         let _data_to_verify = Self::serialize_for_signing(&signing_payload)?;
@@ -656,14 +659,14 @@ impl Transaction {
                     "Coinbase fee must be 0".to_string(),
                 ));
             }
-            let total_output: u64 = self.outputs.iter().map(|o| o.amount).sum();
+            let total_output: u128 = self.outputs.iter().map(|o| o.amount).sum();
             if total_output == 0 {
                 return Err(TransactionError::InvalidStructure(
                     "Coinbase output cannot be zero".to_string(),
                 ));
             }
         } else {
-            let mut total_input_value = 0;
+            let mut total_input_value = 0u128;
             for input in &self.inputs {
                 let mut utxo_id = String::with_capacity(input.tx_id.len() + 10);
                 utxo_id.push_str(&input.tx_id);
@@ -686,7 +689,7 @@ impl Transaction {
                 }
                 total_input_value += utxo.amount;
             }
-            let total_output_value: u64 = self.outputs.iter().map(|o| o.amount).sum();
+            let total_output_value: u128 = self.outputs.iter().map(|o| o.amount).sum();
 
             if total_input_value < total_output_value + self.fee {
                 return Err(TransactionError::InsufficientFunds);
@@ -720,13 +723,13 @@ impl Transaction {
         utxos: &HashMap<String, UTXO>,
     ) -> Result<(), TransactionError> {
         let signing_payload = TransactionSigningPayload {
-            sender: &tx.sender,
-            receiver: &tx.receiver,
+            sender: tx.sender.clone(),
+            receiver: tx.receiver.clone(),
             amount: tx.amount,
             fee: tx.fee,
-            inputs: &tx.inputs,
-            outputs: &tx.outputs,
-            metadata: &tx.metadata,
+            inputs: tx.inputs.clone(),
+            outputs: tx.outputs.clone(),
+            metadata: tx.metadata.clone(),
             timestamp: tx.timestamp,
         };
         let _data_to_verify = Self::serialize_for_signing(&signing_payload)?;
@@ -740,14 +743,14 @@ impl Transaction {
                     "Coinbase fee must be 0".to_string(),
                 ));
             }
-            let total_output: u64 = tx.outputs.iter().map(|o| o.amount).sum();
+            let total_output: u128 = tx.outputs.iter().map(|o| o.amount).sum();
             if total_output == 0 {
                 return Err(TransactionError::InvalidStructure(
                     "Coinbase output cannot be zero".to_string(),
                 ));
             }
         } else {
-            let mut total_input_value = 0;
+            let mut total_input_value = 0u128;
             for input in &tx.inputs {
                 let mut utxo_id = String::with_capacity(input.tx_id.len() + 10);
                 utxo_id.push_str(&input.tx_id);
@@ -770,7 +773,7 @@ impl Transaction {
                 }
                 total_input_value += utxo.amount;
             }
-            let total_output_value: u64 = tx.outputs.iter().map(|o| o.amount).sum();
+            let total_output_value: u128 = tx.outputs.iter().map(|o| o.amount).sum();
 
             if total_input_value < total_output_value + tx.fee {
                 return Err(TransactionError::InsufficientFunds);
@@ -894,7 +897,7 @@ impl Transaction {
     }
 
     /// Calculates and sets the fee breakdown using the gas fee model
-    pub fn calculate_gas_fee(
+    pub async fn calculate_gas_fee(
         &mut self,
         gas_fee_model: &GasFeeModel,
     ) -> Result<(), TransactionError> {
@@ -905,7 +908,7 @@ impl Transaction {
             self.gas_limit,
             self.priority_fee,
             storage_duration,
-        )?;
+        ).await?;
 
         self.fee = fee_breakdown.total_fee;
         self.fee_breakdown = Some(fee_breakdown);
@@ -913,7 +916,7 @@ impl Transaction {
     }
 
     /// Updates gas usage after transaction execution
-    pub fn update_gas_usage(&mut self, gas_used: u64) -> Result<(), TransactionError> {
+    pub fn update_gas_usage(&mut self, gas_used: u128) -> Result<(), TransactionError> {
         if gas_used > self.gas_limit {
             return Err(TransactionError::GasFee(
                 crate::gas_fee_model::GasFeeError::GasLimitExceeded {
@@ -944,11 +947,11 @@ impl Transaction {
     }
 
     /// Gets the effective fee rate (fee per gas unit)
-    pub fn get_effective_fee_rate(&self) -> f64 {
+    pub fn get_effective_fee_rate(&self) -> u128 {
         if self.gas_used == 0 {
-            0.0
+            0
         } else {
-            self.fee as f64 / self.gas_used as f64
+            (self.fee * crate::Q_SCALE) / self.gas_used
         }
     }
 }
@@ -980,13 +983,13 @@ impl Transaction {
             .map(|tx| {
                 // Construct signing payload like verify_signature does
                 let signing_payload = TransactionSigningPayload {
-                    sender: &tx.sender,
-                    receiver: &tx.receiver,
+                    sender: tx.sender.clone(),
+                    receiver: tx.receiver.clone(),
                     amount: tx.amount,
                     fee: tx.fee,
-                    inputs: &tx.inputs,
-                    outputs: &tx.outputs,
-                    metadata: &tx.metadata,
+                    inputs: tx.inputs.clone(),
+                    outputs: tx.outputs.clone(),
+                    metadata: tx.metadata.clone(),
                     timestamp: tx.timestamp,
                 };
 

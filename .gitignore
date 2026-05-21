@@ -72,10 +72,12 @@ tests_output/
 
 # [PYTHON]
 __pycache__/
+*.py
 *.py[cod]
 *$py.class
 venv/
 .venv/
+*.txt
 
 # [DOCKER]
 *.docker-compose.local.yml
@@ -86,3 +88,9 @@ qanto_hf_release/
 build_timestamp.txt
 Infrastructure/node-operator/keys/.gitignore
 Infrastructure/node-operator/keys/README.md
+
+# [LOCAL TOOLCHAIN / RUNTIME]
+.npm/
+.rustup/
+peer_cache.json
+
