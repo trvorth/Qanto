@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QantoSwap | Decentralized Exchange</title>
+    <style>
+        .dex-wrapper { display: flex; align-items: center; justify-content: center; min-height: 85vh; padding: 20px; }
+        .dex-card { width: 100%; max-width: 480px; padding: 24px; background: rgba(15, 20, 30, 0.6); backdrop-filter: blur(25px); border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; box-shadow: 0 25px 50px rgba(0,0,0,0.8); }
+        .dex-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; color: #fff; }
+        .dex-title { font-size: 1.4rem; font-weight: 700; }
+        .token-box { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 16px; padding: 16px; margin-bottom: 8px; }
+        .token-box-header { display: flex; justify-content: space-between; font-size: 0.85rem; color: #8892b0; margin-bottom: 12px; }
+        .token-input-row { display: flex; justify-content: space-between; align-items: center; }
+        .token-input { background: transparent; border: none; color: #fff; font-size: 2rem; font-weight: 500; width: 60%; outline: none; font-family: monospace; }
+        .token-selector { display: flex; align-items: center; background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 20px; color: #fff; font-weight: 600; cursor: pointer; }
+        .swap-arrow { display: flex; justify-content: center; align-items: center; width: 40px; height: 40px; background: #070B14; border: 4px solid #0F141E; border-radius: 50%; margin: -20px auto 8px; position: relative; z-index: 2; color: #3B82F6; cursor: pointer; }
+        .dex-details { background: rgba(0,0,0,0.2); border-radius: 12px; padding: 16px; margin: 16px 0; font-size: 0.85rem; color: #8892b0; display: flex; flex-direction: column; gap: 8px; }
+        .detail-row { display: flex; justify-content: space-between; }
+        .btn-swap { width: 100%; padding: 18px; background: #2563EB; border: none; border-radius: 16px; color: white; font-weight: 700; font-size: 1.1rem; cursor: pointer; transition: all 0.2s ease; }
+        .btn-swap:disabled { background: #1E293B; color: #64748B; cursor: not-allowed; }
+        .tx-toast { position: fixed; bottom: 20px; right: 20px; background: rgba(16, 185, 129, 0.9); color: #fff; padding: 16px 24px; border-radius: 12px; font-weight: 500; display: none; }
+    </style>
+  <link rel="stylesheet" crossorigin href="/assets/main-Cd-zpGjP.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0;">
+            <a href="index.html" class="logo" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: #fff;">QANTO</a>
+            <div>
+                <a href="explorer.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px;">Explorer</a>
+                <a href="faucet.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 25px;">Faucet</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="dex-wrapper">
+        <div class="dex-card">
+            <div class="dex-header">
+                <div class="dex-title">Swap</div>
+            </div>
+            
+            <div class="token-box">
+                <div class="token-box-header"><span>You pay</span><span>Balance: 150.00 QNTO</span></div>
+                <div class="token-input-row">
+                    <input type="number" id="pay-input" class="token-input" placeholder="0" autocomplete="off">
+                    <div class="token-selector">QNTO ▼</div>
+                </div>
+            </div>
+            
+            <div class="swap-arrow">↓</div>
+            
+            <div class="token-box">
+                <div class="token-box-header"><span>You receive</span><span>Balance: 0.00 WQNTO</span></div>
+                <div class="token-input-row">
+                    <input type="number" id="receive-input" class="token-input" placeholder="0" readonly>
+                    <div class="token-selector">WQNTO ▼</div>
+                </div>
+            </div>
+            
+            <div class="dex-details">
+                <div class="detail-row"><span>Exchange Rate</span><span style="color: #fff;">1 QNTO = 1 WQNTO</span></div>
+                <div class="detail-row"><span>Network Fee</span><span style="color: #fff;">0.0001 QNTO</span></div>
+            </div>
+            
+            <button id="btn-swap" class="btn-swap" disabled>Enter an amount</button>
+        </div>
+    </main>
+    <div id="tx-toast" class="tx-toast">✅ Swap Successful! TxHash: 0x8f...3c</div>
+
+    <script>
+        const payInput = document.getElementById('pay-input');
+        const receiveInput = document.getElementById('receive-input');
+        const swapBtn = document.getElementById('btn-swap');
+        const toast = document.getElementById('tx-toast');
+        
+        payInput.addEventListener('input', () => {
+            const val = parseFloat(payInput.value);
+            if (val > 0) {
+                receiveInput.value = val.toFixed(2);
+                swapBtn.innerText = 'Swap';
+                swapBtn.disabled = false;
+            } else {
+                receiveInput.value = '';
+                swapBtn.innerText = 'Enter an amount';
+                swapBtn.disabled = true;
+            }
+        });
+        
+        swapBtn.addEventListener('click', () => {
+            swapBtn.disabled = true;
+            swapBtn.innerText = 'Confirming Transaction...';
+            payInput.disabled = true;
+            setTimeout(() => {
+                swapBtn.innerText = 'Swap';
+                payInput.value = ''; receiveInput.value = ''; payInput.disabled = false;
+                toast.style.display = 'block';
+                setTimeout(() => { toast.style.display = 'none'; }, 4000);
+            }, 3000);
+        });
+    </script>
+</body>
+</html>

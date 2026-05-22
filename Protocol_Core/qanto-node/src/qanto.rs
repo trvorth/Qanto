@@ -20,57 +20,60 @@ use tracing_subscriber::{fmt, EnvFilter};
 #[command(author, version, about = "Qanto Node CLI", long_about = None)]
 struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
+
+    #[arg(
+        short,
+        long,
+        default_value = "config.toml",
+        help = "Path to configuration file"
+    )]
+    config: String,
+    #[arg(short, long, help = "Path to wallet key file (overrides config)")]
+    wallet: Option<String>,
+    #[arg(long, help = "Path to P2P identity key file (overrides config)")]
+    p2p_identity: Option<String>,
+    #[arg(long, help = "Path to peer cache file (overrides config)")]
+    peer_cache: Option<String>,
+    #[arg(long, help = "Data directory path (overrides config)")]
+    data_dir: Option<String>,
+    #[arg(long, help = "Database path (overrides config)")]
+    db_path: Option<String>,
+    #[arg(long, help = "Log file path (overrides config)")]
+    log_file: Option<String>,
+    #[arg(long, help = "TLS certificate path (overrides config)")]
+    tls_cert: Option<String>,
+    #[arg(long, help = "TLS private key path (overrides config)")]
+    tls_key: Option<String>,
+    /// Clean database on startup
+    #[arg(long)]
+    clean: bool,
+    /// Enable debug mode with detailed logging
+    #[arg(
+        long,
+        help = "Enable debug mode with detailed mining and strata logging"
+    )]
+    debug_mode: bool,
+    /// Enable public mining mode
+    #[arg(long, help = "Enable mining (overrides config)")]
+    mine: bool,
+    #[arg(long, help = "RPC port to bind to (overrides config)")]
+    rpc_port: Option<u16>,
+    #[arg(long, help = "P2P port to bind to (overrides config)")]
+    p2p_port: Option<u16>,
+    #[arg(long, help = "Listen multiaddress to bind to (overrides config)")]
+    listen: Option<String>,
+    #[arg(long, help = "Bootnode peer multiaddresses to connect to (overrides config)", num_args = 0..)]
+    bootnode: Vec<String>,
+    #[command(flatten)]
+    diagnostics: Box<DiagnosticsArgs>,
 }
 
 #[derive(Subcommand, Debug)]
 #[allow(clippy::large_enum_variant)]
 enum Commands {
     /// Starts the Qanto node
-    Start {
-        #[arg(
-            short,
-            long,
-            default_value = "config.toml",
-            help = "Path to configuration file"
-        )]
-        config: String,
-        #[arg(short, long, help = "Path to wallet key file (overrides config)")]
-        wallet: Option<String>,
-        #[arg(long, help = "Path to P2P identity key file (overrides config)")]
-        p2p_identity: Option<String>,
-        #[arg(long, help = "Path to peer cache file (overrides config)")]
-        peer_cache: Option<String>,
-        #[arg(long, help = "Data directory path (overrides config)")]
-        data_dir: Option<String>,
-        #[arg(long, help = "Database path (overrides config)")]
-        db_path: Option<String>,
-        #[arg(long, help = "Log file path (overrides config)")]
-        log_file: Option<String>,
-        #[arg(long, help = "TLS certificate path (overrides config)")]
-        tls_cert: Option<String>,
-        #[arg(long, help = "TLS private key path (overrides config)")]
-        tls_key: Option<String>,
-        /// Clean database on startup
-        #[arg(long)]
-        clean: bool,
-        /// Enable debug mode with detailed logging
-        #[arg(
-            long,
-            help = "Enable debug mode with detailed mining and strata logging"
-        )]
-        debug_mode: bool,
-        #[arg(long, help = "RPC port to bind to (overrides config)")]
-        rpc_port: Option<u16>,
-        #[arg(long, help = "P2P port to bind to (overrides config)")]
-        p2p_port: Option<u16>,
-        #[arg(long, help = "Listen multiaddress to bind to (overrides config)")]
-        listen: Option<String>,
-        #[arg(long, help = "Bootnode peer multiaddresses to connect to (overrides config)")]
-        bootnode: Vec<String>,
-        #[command(flatten)]
-        diagnostics: Box<DiagnosticsArgs>,
-    },
+    Start,
     /// Generates a new wallet
     GenerateWallet {
         #[arg(
@@ -93,24 +96,39 @@ pub async fn run() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Start {
-            config,
-            wallet,
-            p2p_identity,
-            peer_cache,
-            data_dir,
-            db_path,
-            log_file,
-            tls_cert,
-            tls_key,
-            clean,
-            debug_mode,
-            rpc_port,
-            p2p_port,
-            listen,
-            bootnode,
-            diagnostics,
-        } => {
+        Some(Commands::GenerateWallet { output }) => {
+            println!("Generating new wallet...");
+            let password = prompt_for_password(true, None)
+                .map_err(|e| anyhow::anyhow!("Password error: {e}"))?;
+            let wallet = Wallet::new()?;
+            // Correctly save the wallet with the SecretString.
+            wallet.save_to_file(&output, &password)?;
+            println!(
+                "New wallet saved to {}. Address: {}",
+                output,
+                wallet.address()
+            );
+            println!("IMPORTANT: Please back up this file securely and remember your password.");
+        }
+        None | Some(Commands::Start) => {
+            let config = cli.config;
+            let wallet = cli.wallet;
+            let p2p_identity = cli.p2p_identity;
+            let peer_cache = cli.peer_cache;
+            let data_dir = cli.data_dir;
+            let db_path = cli.db_path;
+            let log_file = cli.log_file;
+            let tls_cert = cli.tls_cert;
+            let tls_key = cli.tls_key;
+            let clean = cli.clean;
+            let debug_mode = cli.debug_mode;
+            let mine = cli.mine;
+            let rpc_port = cli.rpc_port;
+            let p2p_port = cli.p2p_port;
+            let listen = cli.listen;
+            let bootnode = cli.bootnode;
+            let diagnostics = cli.diagnostics;
+
             println!("Qanto node starting...");
             let config_path = Path::new(&config);
             if !config_path.exists() {
@@ -142,6 +160,10 @@ pub async fn run() -> Result<()> {
                 listen,
                 bootnodes_opt,
             );
+
+            if mine {
+                node_config.mining_enabled = true;
+            }
 
             let db_path = node_config.db_path.clone();
 
@@ -357,20 +379,6 @@ pub async fn run() -> Result<()> {
             }
 
             info!("Qanto node has shut down gracefully.");
-        }
-        Commands::GenerateWallet { output } => {
-            println!("Generating new wallet...");
-            let password = prompt_for_password(true, None)
-                .map_err(|e| anyhow::anyhow!("Password error: {e}"))?;
-            let wallet = Wallet::new()?;
-            // Correctly save the wallet with the SecretString.
-            wallet.save_to_file(&output, &password)?;
-            println!(
-                "New wallet saved to {}. Address: {}",
-                output,
-                wallet.address()
-            );
-            println!("IMPORTANT: Please back up this file securely and remember your password.");
         }
     }
 

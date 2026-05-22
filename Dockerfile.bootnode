@@ -1,27 +1,20 @@
+# Build Stage
 FROM rust:1.75 AS builder
-
-# Install build dependencies, including git and ca-certificates for git cargo dependencies
-RUN apt-get update && apt-get install -y pkg-config libssl-dev cmake build-essential clang llvm git ca-certificates
-
 WORKDIR /usr/src/qanto
-# Copy the entire workspace
 COPY . .
+WORKDIR /usr/src/qanto/Protocol_Core/qanto-node
+RUN apt-get update && apt-get install -y protobuf-compiler cmake
+RUN cargo build --release
 
-# Build the qanto bin in release mode
-RUN cargo build --release --bin qanto
-
+# Runtime Stage
 FROM debian:bullseye-slim
 RUN apt-get update && apt-get install -y libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 COPY --from=builder /usr/src/qanto/target/release/qanto /app/qanto-node
-COPY --from=builder /usr/src/qanto/config.toml /app/config.toml
+COPY --from=builder /usr/src/qanto/config.toml /app/
 
-ENV WALLET_PASSWORD=""
-ENV RUST_LOG="info"
+# Expose Hugging Face Proxy Port (7860) and P2P (30303)
+EXPOSE 7860 30303 9090
 
-EXPOSE 7860
-EXPOSE 30303
-
-# Generate a default wallet on first run if none exists, then start node using rpc port 7860
-CMD if [ ! -f wallet.key ]; then ./qanto-node generate-wallet --output wallet.key; fi && ./qanto-node start --config config.toml --wallet wallet.key --rpc-port 7860
+# Start the node, bind RPC to 7860, enable Bootnode, enable public Mining
+CMD ["./qanto-node", "--rpc-port", "7860", "--p2p-port", "30303", "--listen", "0.0.0.0", "--bootnode", "--mine"]
