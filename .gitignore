@@ -22,6 +22,10 @@ contracts/node_modules/
 contracts/artifacts/
 contracts/cache/
 contracts/typechain-types/
+SmartContracts/node_modules/
+SmartContracts/artifacts/
+SmartContracts/cache/
+
 
 # [CLOUDFLARE / WRANGLER]
 .wrangler/

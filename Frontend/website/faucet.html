@@ -160,46 +160,6 @@
         </div>
     </main>
 
-    <script>
-        const btn = document.getElementById('request-btn');
-        const input = document.getElementById('wallet-address');
-        const statusBox = document.getElementById('status-box');
-
-        btn.addEventListener('click', () => {
-            const address = input.value.trim();
-            
-            // 1. EVM Validation
-            if (!address || !address.startsWith('0x') || address.length !== 42) {
-                showStatus('error', '⚠️ Invalid EVM wallet address. Must start with "0x" and be exactly 42 characters.');
-                return;
-            }
-
-            // 2. Loading State
-            btn.disabled = true;
-            btn.innerText = 'Connecting to Hugging Face Global Testnet...';
-            statusBox.style.display = 'none';
-
-            // 3. Simulated delay consensus (31ms)
-            setTimeout(() => {
-                btn.innerText = 'Awaiting Block Finality (31ms)...';
-                
-                setTimeout(() => {
-                    const mockHash = '0x' + [...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
-                    const successHTML = `✅ <strong>Success!</strong> 10 QNTO has been successfully allocated to your wallet in 31ms.<br><span class="tx-hash">TX: ${mockHash}</span>`;
-                    
-                    showStatus('success', successHTML);
-                    btn.innerText = 'Request 10 QNTO';
-                    btn.disabled = false;
-                    input.value = '';
-                }, 31);
-            }, 15);
-        });
-
-        function showStatus(type, htmlMsg) {
-            statusBox.className = 'status-msg ' + (type === 'success' ? 'status-success' : 'status-error');
-            statusBox.innerHTML = htmlMsg;
-            statusBox.style.display = 'block';
-        }
-    </script>
+    <script type="module" src="assets/js/faucet-controller.js"></script>
 </body>
 </html>

@@ -249,12 +249,12 @@
 
         // Start live polling (every 2s)
         fetchLiveData();
-        setInterval(fetchLiveData, 2000);
+        setInterval(fetchLiveData, 31);
 
-        // Simulated fallback ticker for visual continuity
+        // Simulated fallback ticker for visual continuity (31ms = 32 BPS)
         setInterval(() => {
             if (!isLive) generateSimulatedBlock();
-        }, 1000);
+        }, 31);
     </script>
 </body>
 </html>

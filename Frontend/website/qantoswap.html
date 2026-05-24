@@ -243,44 +243,6 @@
     </main>
     <div id="tx-toast" class="tx-toast">✅ Swap Successful! TxHash: 0x8f...3c</div>
 
-    <script>
-        const payInput = document.getElementById('pay-input');
-        const receiveInput = document.getElementById('receive-input');
-        const swapBtn = document.getElementById('btn-swap');
-        const flipBtn = document.getElementById('btn-flip');
-        const toast = document.getElementById('tx-toast');
-        
-        payInput.addEventListener('input', () => {
-            const val = parseFloat(payInput.value);
-            if (val > 0) {
-                receiveInput.value = val.toFixed(2);
-                swapBtn.innerText = 'Swap';
-                swapBtn.disabled = false;
-            } else {
-                receiveInput.value = '';
-                swapBtn.innerText = 'Enter an amount';
-                swapBtn.disabled = true;
-            }
-        });
-        
-        swapBtn.addEventListener('click', () => {
-            swapBtn.disabled = true;
-            swapBtn.innerText = 'Confirming Transaction...';
-            payInput.disabled = true;
-            setTimeout(() => {
-                swapBtn.innerText = 'Swap';
-                payInput.value = ''; receiveInput.value = ''; payInput.disabled = false;
-                toast.style.display = 'block';
-                setTimeout(() => { toast.style.display = 'none'; }, 4000);
-            }, 3000);
-        });
-
-        // Rotate arrow on click
-        let rotated = false;
-        flipBtn.addEventListener('click', () => {
-            rotated = !rotated;
-            flipBtn.style.transform = rotated ? 'rotate(180deg)' : 'rotate(0deg)';
-        });
-    </script>
+    <script type="module" src="assets/js/qantoswap-controller.js"></script>
 </body>
 </html>

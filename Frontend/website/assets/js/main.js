@@ -1,4 +1,6 @@
 // Qanto Main Website - Core JavaScript
+import { ethers } from "ethers";
+import { connectWallet } from "./web3-provider.js";
 
 class QantoWebsite {
     constructor() {
@@ -770,12 +772,6 @@ class QantoWebsite {
         const text = document.getElementById('connection-text');
         
         try {
-            // Using Ethers.js v6 (umd version accessible via 'ethers' global)
-            // Note: In UMD version, it's often just 'ethers'
-            if (typeof ethers === 'undefined') {
-                throw new Error("Ethers.js not loaded");
-            }
-            
             this.provider = new ethers.JsonRpcProvider(this.rpcUrl);
             
             // Check connection

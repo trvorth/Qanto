@@ -1,7 +1,4 @@
-/**
- * QantoSwap Logic - Phase 33
- * Handles real-time swap calculations and economic telemetry.
- */
+import { connectWallet } from "./web3-provider.js";
 
 class QantoSwap {
     constructor() {
@@ -13,6 +10,7 @@ class QantoSwap {
         
         this.currentPrice = 1.0; // 1 QNTO = 1 USDT (Testnet Initial)
         this.slippage = 0.005; // 0.5%
+        this.userAddress = null;
         
         this.init();
     }
@@ -41,7 +39,6 @@ class QantoSwap {
         }
 
         // AMM Simulation: x * y = k
-        // For demonstration, we use a simple linear price with minor impact
         const output = amount * this.currentPrice;
         const impact = (amount / 1000000) * 100; // Simulated 1% impact per 1M QNTO
         
@@ -59,36 +56,76 @@ class QantoSwap {
     }
 
     async handleSwapAction() {
-        if (this.swapButton.innerText === "Connect Wallet") {
-            // Trigger global connection from main.js if available
-            if (window.ethereum) {
-                try {
-                    await window.ethereum.request({ method: 'eth_requestAccounts' });
-                    this.swapButton.innerText = "Swap QNTO";
-                    this.swapButton.classList.remove('btn-primary');
-                    this.swapButton.classList.add('btn-success');
-                } catch (err) {
-                    console.error("User rejected connection");
+        if (!this.userAddress) {
+            const connection = await connectWallet();
+            if (connection) {
+                this.userAddress = connection.address;
+                this.swapButton.innerText = "Swap QNTO";
+                this.swapButton.classList.remove('btn-primary');
+                this.swapButton.classList.add('btn-success');
+                
+                // Update balance HUDs if they exist
+                const balHUD = document.getElementById('token-a-balance');
+                if (balHUD) {
+                    balHUD.innerText = `Balance: ${parseFloat(connection.balance).toFixed(4)} QNTO`;
                 }
-            } else {
-                alert("Please install a Web3 wallet to swap.");
             }
         } else {
             this.executeSwap();
         }
     }
 
-    executeSwap() {
+    async executeSwap() {
         const amount = this.inputAmount.value;
+        if (!amount || parseFloat(amount) <= 0) return;
+        
         this.swapButton.disabled = true;
         this.swapButton.innerText = "Processing Transaction...";
         
-        // Simulate transaction delay
-        setTimeout(() => {
-            alert(`Successfully swapped ${amount} QNTO! \nTransaction: 0x${Math.random().toString(16).slice(2)}...`);
+        try {
+            // Interactive signature request
+            const msgParams = JSON.stringify({
+                domain: {
+                    chainId: 1234,
+                    name: 'QantoSwap',
+                    version: '1',
+                },
+                message: {
+                    from: this.userAddress,
+                    to: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+                    value: amount,
+                },
+                primaryType: 'Swap',
+                types: {
+                    EIP712Domain: [
+                        { name: 'name', type: 'string' },
+                        { name: 'version', type: 'string' },
+                        { name: 'chainId', type: 'uint256' },
+                    ],
+                    Swap: [
+                        { name: 'from', type: 'address' },
+                        { name: 'to', type: 'address' },
+                        { name: 'value', type: 'string' },
+                    ],
+                },
+            });
+
+            const signature = await window.ethereum.request({
+                method: 'eth_signTypedData_v4',
+                params: [this.userAddress, msgParams],
+            });
+
+            console.log("QantoSwap signature confirmed:", signature);
+            alert(`Swap transaction signed successfully!\nSignature: ${signature.substring(0, 16)}...`);
+        } catch (err) {
+            console.error("User rejected swap or MetaMask error:", err);
+            alert("Swap rejected or failed.");
+        } finally {
             this.swapButton.disabled = false;
             this.swapButton.innerText = "Swap QNTO";
-        }, 2000);
+            this.inputAmount.value = '';
+            this.outputAmount.value = '';
+        }
     }
 }
 
@@ -96,3 +133,4 @@ class QantoSwap {
 window.addEventListener('DOMContentLoaded', () => {
     window.qantoSwap = new QantoSwap();
 });
+export default QantoSwap;

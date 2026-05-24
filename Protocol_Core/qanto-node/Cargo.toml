@@ -207,3 +207,8 @@ path = "src/bin/metrics_server.rs"
 [[bin]]
 name = "performance-benchmark"
 path = "src/performance_benchmark.rs"
+
+[[bin]]
+name = "genesis_flood"
+path = "src/bin/genesis_flood.rs"
+

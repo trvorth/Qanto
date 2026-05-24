@@ -1,4 +1,6 @@
 // MINIMAL, PARASITE-FREE QANTO OS
+import { connectWallet } from "./web3-provider.js";
+
 document.addEventListener("DOMContentLoaded", () => {
     
     // 1. Safe RPC Heartbeat (15s timeout)
@@ -9,7 +11,6 @@ document.addEventListener("DOMContentLoaded", () => {
             // Ping the HF Testnet
             await fetch('https://trvorth-qanto-testnet.hf.space/rpc', { signal: controller.signal });
             clearTimeout(timeoutId);
-            // If we had UI elements to update, we would do it here safely without modals
         } catch(e) {
             console.warn("QANTO RPC Offline or Syncing...");
         }
@@ -17,24 +18,17 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     checkRPC();
 
-    // 2. MetaMask Network Addition
+    // 2. MetaMask Network Addition / Connection
     const addNetBtn = document.getElementById('btn-add-network');
     if (addNetBtn) {
-        addNetBtn.addEventListener('click', async () => {
-            if (window.ethereum) {
-                try {
-                    await window.ethereum.request({
-                        method: 'wallet_addEthereumChain',
-                        params: [{ 
-                            chainId: '0x1234', 
-                            chainName: 'QANTO Testnet', 
-                            nativeCurrency: { name: 'QANTO', symbol: 'QNTO', decimals: 9 }, 
-                            rpcUrls: ['https://trvorth-qanto-testnet.hf.space/rpc'] 
-                        }]
-                    });
-                } catch (error) { console.error("MetaMask Error:", error); }
-            } else {
-                alert("Please install MetaMask to connect to QANTO Layer-0.");
+        addNetBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const connection = await connectWallet();
+            if (connection) {
+                const shortAddr = `${connection.address.substring(0, 6)}...${connection.address.substring(38)}`;
+                addNetBtn.innerText = `${shortAddr} (${parseFloat(connection.balance).toFixed(2)} QNTO)`;
+                addNetBtn.classList.remove('btn-primary');
+                addNetBtn.classList.add('btn-success');
             }
         });
     }
