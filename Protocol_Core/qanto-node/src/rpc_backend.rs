@@ -468,3 +468,105 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
         self.rpc_balance_sender.subscribe()
     }
 }
+
+pub async fn handle_request_faucet_funds(
+    wallet: &crate::wallet::Wallet,
+    utxos_lock: &tokio::sync::RwLock<std::collections::HashMap<String, crate::types::UTXO>>,
+    p2p_sender: &tokio::sync::mpsc::Sender<crate::p2p::P2PCommand>,
+    _dag: &crate::qantodag::QantoDAG,
+    receiver_address_hex: String,
+) -> Result<String, String> {
+    // 1. Get sender address and keys
+    let sender = wallet.address();
+    let (sk, pk) = wallet.get_keypair().map_err(|e| e.to_string())?;
+
+    // 2. Select UTXOs to spend
+    let target_amount = 100_000_000_000u128; // 100 QNTO
+    let mut selected_utxos = Vec::new();
+    let mut input_sum = 0u128;
+
+    {
+        let utxos = utxos_lock.read().await;
+        for utxo in utxos.values() {
+            if utxo.address == sender {
+                selected_utxos.push(utxo.clone());
+                input_sum += utxo.amount;
+                if input_sum >= target_amount {
+                    break;
+                }
+            }
+        }
+    }
+
+    if input_sum < target_amount {
+        return Err(format!(
+            "Insufficient treasury funds: balance is {}, target is {}",
+            input_sum, target_amount
+        ));
+    }
+
+    // 3. Create inputs
+    let inputs: Vec<crate::transaction::Input> = selected_utxos
+        .iter()
+        .map(|u| crate::transaction::Input {
+            tx_id: u.tx_id.clone(),
+            output_index: u.output_index,
+        })
+        .collect();
+
+    // 4. Create outputs
+    let pk_bytes = pk.as_bytes();
+    
+    // Clean and pad address to 64 chars
+    let mut cleaned_addr = receiver_address_hex.trim_start_matches("0x").to_string();
+    if cleaned_addr.len() < 64 {
+        cleaned_addr = format!("{:0<64}", cleaned_addr);
+    } else if cleaned_addr.len() > 64 {
+        cleaned_addr = cleaned_addr[..64].to_string();
+    }
+
+    let mut outputs = vec![crate::transaction::Output {
+        address: cleaned_addr.clone(),
+        amount: target_amount,
+        homomorphic_encrypted: crate::types::HomomorphicEncrypted::new(target_amount, pk_bytes),
+    }];
+
+    if input_sum > target_amount {
+        let change = input_sum - target_amount;
+        outputs.push(crate::transaction::Output {
+            address: sender.clone(),
+            amount: change,
+            homomorphic_encrypted: crate::types::HomomorphicEncrypted::new(change, pk_bytes),
+        });
+    }
+
+    // 5. Create transaction config and sign
+    let cfg = crate::transaction::TransactionConfig {
+        sender,
+        receiver: cleaned_addr,
+        amount: target_amount,
+        fee: 0,
+        gas_limit: 50_000,
+        gas_price: 1,
+        priority_fee: 0,
+        inputs,
+        outputs,
+        metadata: None,
+        tx_timestamps: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+    };
+
+    let tx = crate::transaction::Transaction::new(cfg, &sk)
+        .await
+        .map_err(|e| format!("Failed to create transaction: {e}"))?;
+
+    let tx_id = tx.id.clone();
+
+    // 6. Broadcast via P2P (which adds it to mempool automatically)
+    p2p_sender
+        .send(crate::p2p::P2PCommand::BroadcastTransaction(tx))
+        .await
+        .map_err(|e| format!("Failed to broadcast transaction: {e}"))?;
+
+    Ok(tx_id)
+}
+

@@ -1159,6 +1159,7 @@ impl Node {
             native_network: None,
             hlld: self.hlld.clone(),
             config: self.config.clone(),
+            wallet: self.wallet.clone(),
         };
 
         // Create GraphQL context outside the async block
@@ -1509,6 +1510,7 @@ struct AppState {
     #[allow(dead_code)]
     hlld: Arc<RwLock<HLLDConsensus>>,
     config: Config,
+    wallet: Arc<Wallet>,
 }
 
 // --- API Error Handling ---
@@ -2118,20 +2120,59 @@ async fn jsonrpc_handler(
             // Return a mocked gas price for Metamask UI
             serde_json::json!("0x3b9aca00") // 1 GWEI
         }
-        "qanto_mintFaucet" => {
+        "qanto_mintFaucet" | "qanto_requestFaucetFunds" => {
             let params = payload.get("params").and_then(|p| p.as_array());
             if let Some(params) = params {
                 if let Some(address) = params.first().and_then(|a| a.as_str()) {
-                    tracing::info!("Genesis claim requested for address: {}", address);
-                    // In a real implementation, we would sign a transaction here.
-                    // For now, we return a mock pseudo-TX hash.
-                    let tx_hash = format!("0x{:032x}", rand::random::<u128>());
-                    serde_json::json!(tx_hash)
+                    tracing::info!("Faucet claim requested for address: {}", address);
+                    match crate::rpc_backend::handle_request_faucet_funds(
+                        &state.wallet,
+                        &state.utxos,
+                        &state.p2p_command_sender,
+                        &state.dag,
+                        address.to_string(),
+                    ).await {
+                        Ok(tx_hash) => serde_json::json!(format!("0x{}", tx_hash)),
+                        Err(e) => {
+                            error!("Faucet execution failed: {}", e);
+                            return (
+                                StatusCode::OK,
+                                Json(serde_json::json!({
+                                    "jsonrpc": "2.0",
+                                    "id": id,
+                                    "error": {
+                                        "code": -32603,
+                                        "message": e
+                                    }
+                                })),
+                            );
+                        }
+                    }
                 } else {
-                    serde_json::json!({"error": "Invalid address parameter"})
+                    return (
+                        StatusCode::OK,
+                        Json(serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": id,
+                            "error": {
+                                "code": -32602,
+                                "message": "Invalid address parameter"
+                            }
+                        })),
+                    );
                 }
             } else {
-                serde_json::json!({"error": "Missing params"})
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": {
+                            "code": -32602,
+                            "message": "Missing params"
+                        }
+                    })),
+                );
             }
         }
         "eth_sendTransaction" => {
