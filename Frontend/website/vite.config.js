@@ -8,7 +8,9 @@ export default defineConfig({
         main: resolve(__dirname, 'index.html'),
         explorer: resolve(__dirname, 'explorer.html'),
         faucet: resolve(__dirname, 'faucet.html'),
-        qantoswap: resolve(__dirname, 'qantoswap.html')
+        qantoswap: resolve(__dirname, 'qantoswap.html'),
+        staking: resolve(__dirname, 'staking.html'),
+        bridge: resolve(__dirname, 'bridge.html')
       }
     }
   }

@@ -5210,6 +5210,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "qanto-zk-sdk"
+version = "0.1.0"
+
+[[package]]
 name = "quanta"
 version = "0.12.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

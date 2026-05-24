@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QantoSwap | Decentralized Exchange</title>
+    <title>QANTO | ZK-Bridge</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
         
@@ -17,7 +17,7 @@
             padding-top: 80px;
         }
         
-        .dex-wrapper { 
+        .bridge-wrapper { 
             display: flex; 
             align-items: center; 
             justify-content: center; 
@@ -25,20 +25,20 @@
             padding: 20px; 
         }
         
-        .dex-card { 
+        .bridge-card { 
             width: 100%; 
             max-width: 480px; 
             padding: 30px; 
         }
         
-        .dex-header { 
+        .bridge-header { 
             display: flex; 
             justify-content: space-between; 
             align-items: center; 
             margin-bottom: 24px; 
         }
         
-        .dex-title { 
+        .bridge-title { 
             font-size: 1.6rem; 
             font-weight: 700; 
             background: linear-gradient(to right, #fff, #94A3B8);
@@ -46,7 +46,7 @@
             -webkit-text-fill-color: transparent;
         }
         
-        .token-box { 
+        .chain-box { 
             background: rgba(0, 0, 0, 0.3); 
             border: 1px solid rgba(255, 255, 255, 0.05); 
             border-radius: 18px; 
@@ -55,12 +55,12 @@
             transition: all 0.3s ease;
         }
         
-        .token-box:hover, .token-box:focus-within {
+        .chain-box:hover, .chain-box:focus-within {
             border-color: var(--neon-cyan);
             box-shadow: 0 0 15px rgba(6, 182, 212, 0.25);
         }
         
-        .token-box-header { 
+        .chain-box-header { 
             display: flex; 
             justify-content: space-between; 
             font-size: 0.82rem; 
@@ -68,24 +68,24 @@
             margin-bottom: 12px; 
         }
         
-        .token-input-row { 
+        .chain-input-row { 
             display: flex; 
             justify-content: space-between; 
             align-items: center; 
         }
         
-        .token-input { 
+        .bridge-input { 
             background: transparent; 
             border: none; 
             color: #fff; 
             font-size: 1.8rem; 
             font-weight: 600; 
-            width: 60%; 
+            width: 65%; 
             outline: none; 
             font-family: 'JetBrains Mono', monospace; 
         }
         
-        .token-selector { 
+        .token-badge { 
             display: flex; 
             align-items: center; 
             background: rgba(255, 255, 255, 0.08); 
@@ -93,16 +93,10 @@
             border-radius: 20px; 
             color: #fff; 
             font-weight: 600; 
-            cursor: pointer; 
             border: 1px solid rgba(255, 255, 255, 0.05);
-            transition: background 0.2s ease;
         }
         
-        .token-selector:hover {
-            background: rgba(255, 255, 255, 0.15);
-        }
-        
-        .swap-arrow-container {
+        .arrow-container {
             display: flex;
             justify-content: center;
             align-items: center;
@@ -111,7 +105,7 @@
             z-index: 2;
         }
         
-        .swap-arrow { 
+        .bridge-arrow { 
             display: flex; 
             justify-content: center; 
             align-items: center; 
@@ -126,14 +120,14 @@
             box-shadow: 0 4px 10px rgba(0,0,0,0.5);
         }
         
-        .swap-arrow:hover { 
+        .bridge-arrow:hover { 
             transform: rotate(180deg);
             border-color: var(--neon-cyan);
             color: var(--quantum-purple);
             box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
         }
         
-        .dex-details { 
+        .bridge-details { 
             background: rgba(0, 0, 0, 0.2); 
             border-radius: 14px; 
             padding: 16px; 
@@ -151,7 +145,7 @@
             justify-content: space-between; 
         }
         
-        .btn-swap { 
+        .btn-bridge { 
             width: 100%; 
             padding: 16px; 
             background: linear-gradient(135deg, var(--neon-cyan), var(--quantum-purple)); 
@@ -165,12 +159,12 @@
             box-shadow: 0 8px 20px -5px rgba(6, 182, 212, 0.4);
         }
         
-        .btn-swap:hover:not(:disabled) {
+        .btn-bridge:hover:not(:disabled) {
             box-shadow: 0 12px 25px -5px rgba(139, 92, 246, 0.5);
             transform: scale(1.02);
         }
         
-        .btn-swap:disabled { 
+        .btn-bridge:disabled { 
             background: #1F2937; 
             color: #4B5563; 
             cursor: not-allowed; 
@@ -178,7 +172,7 @@
             transform: none;
         }
         
-        .tx-toast { 
+        .toast { 
             position: fixed; 
             bottom: 20px; 
             right: 20px; 
@@ -191,10 +185,10 @@
             font-weight: 600; 
             display: none; 
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 1000;
         }
     </style>
-  <script type="module" crossorigin src="/assets/qantoswap-5eCTz75O.js"></script>
+  <script type="module" crossorigin src="/assets/bridge-Dc-8PXcF.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/web3-provider-DlBdWA7o.js">
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-Dezn_h7o.js">
   <link rel="stylesheet" crossorigin href="/assets/main-CSYc5mxy.css">
@@ -205,46 +199,50 @@
             <a href="index.html" class="logo" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: #fff; font-family: 'JetBrains Mono', monospace;">QANTO</a>
             <div>
                 <a href="explorer.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px; font-weight: 500;">Explorer</a>
-                <a href="faucet.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 25px; font-weight: 500;">Faucet</a>
+                <a href="qantoswap.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px; font-weight: 500;">DEX</a>
+                <a href="staking.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px; font-weight: 500;">Staking</a>
+                <button id="btn-connect" class="btn-premium" style="font-size: 0.9rem; padding: 10px 20px; border-radius: 8px;">Connect Wallet</button>
             </div>
         </div>
     </nav>
 
-    <main class="dex-wrapper">
-        <div class="glass-panel dex-card">
-            <div class="dex-header">
-                <div class="dex-title">Swap</div>
+    <main class="bridge-wrapper">
+        <div class="glass-panel bridge-card">
+            <div class="bridge-header">
+                <div class="bridge-title">ZK-Bridge</div>
             </div>
             
-            <div class="token-box">
-                <div class="token-box-header"><span>You pay</span><span>Balance: 150.00 QNTO</span></div>
-                <div class="token-input-row">
-                    <input type="number" id="pay-input" class="token-input" placeholder="0" autocomplete="off">
-                    <div class="token-selector">QNTO ▼</div>
+            <div class="chain-box" id="source-chain-box">
+                <div class="chain-box-header"><span id="src-label">From: Ethereum Sepolia</span><span id="src-balance">Balance: 0.00 ETH</span></div>
+                <div class="chain-input-row">
+                    <input type="number" id="bridge-amount" class="bridge-input" placeholder="0.0" autocomplete="off">
+                    <div class="token-badge" id="src-token-symbol">ETH</div>
                 </div>
             </div>
             
-            <div class="swap-arrow-container">
-                <button class="swap-arrow" id="btn-flip">↓</button>
+            <div class="arrow-container">
+                <button class="bridge-arrow" id="btn-switch-direction">↓</button>
             </div>
             
-            <div class="token-box">
-                <div class="token-box-header"><span>You receive</span><span>Balance: 0.00 WQNTO</span></div>
-                <div class="token-input-row">
-                    <input type="number" id="receive-input" class="token-input" placeholder="0" readonly>
-                    <div class="token-selector">WQNTO ▼</div>
+            <div class="chain-box" id="dest-chain-box">
+                <div class="chain-box-header"><span id="dst-label">To: QANTO Layer-0</span><span id="dst-balance">Balance: 0.00 QNTO</span></div>
+                <div class="chain-input-row">
+                    <input type="number" id="bridge-receive" class="bridge-input" placeholder="0.0" readonly>
+                    <div class="token-badge" id="dst-token-symbol">QNTO</div>
                 </div>
             </div>
             
-            <div class="dex-details">
-                <div class="detail-row"><span>Exchange Rate</span><span style="color: #fff; font-weight: 500;">1 QNTO = 1 WQNTO</span></div>
-                <div class="detail-row"><span>Network Fee</span><span style="color: #fff; font-weight: 500;">0.0001 QNTO</span></div>
+            <div class="bridge-details">
+                <div class="detail-row"><span>Synaptic Latency</span><span style="color: #fff; font-weight: 500;">~31 ms</span></div>
+                <div class="detail-row"><span>ZK-SNARK Prover</span><span style="color: var(--neon-cyan); font-weight: 600;">Plonky2 (Rapid-Verification)</span></div>
+                <div class="detail-row"><span>Relayer Fee</span><span style="color: #fff; font-weight: 500;">0.001 ETH</span></div>
             </div>
             
-            <button id="btn-swap" class="btn-swap" disabled>Enter an amount</button>
+            <button id="btn-bridge-action" class="btn-bridge">Connect Wallet</button>
         </div>
     </main>
-    <div id="tx-toast" class="tx-toast">✅ Swap Successful! TxHash: 0x8f...3c</div>
+
+    <div id="toast" class="toast"></div>
 
 </body>
 </html>

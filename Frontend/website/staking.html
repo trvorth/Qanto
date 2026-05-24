@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | Sentinel Staking</title>
+    <link rel="stylesheet" href="assets/css/main.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        
+        body {
+            background: radial-gradient(circle at top right, rgba(139, 92, 246, 0.12), transparent 45%),
+                        radial-gradient(circle at bottom left, rgba(6, 182, 212, 0.12), transparent 45%),
+                        #030712;
+            color: #F8FAFC;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding-top: 80px;
+        }
+        
+        .staking-wrapper {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            max-width: 1200px;
+            margin: 60px auto;
+            padding: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .staking-wrapper {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .stat-card {
+            text-align: center;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(to right, #06b6d4, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-top: 10px;
+            margin-bottom: 30px;
+        }
+        
+        .stake-box {
+            padding: 40px;
+        }
+        
+        .input-wrapper {
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 20px;
+            margin: 20px 0;
+            transition: all 0.3s ease;
+        }
+        
+        .input-wrapper:focus-within {
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.25);
+        }
+        
+        .input-wrapper input {
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 2rem;
+            width: 100%;
+            outline: none;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        .btn-premium-full {
+            width: 100%;
+            padding: 20px;
+            background: linear-gradient(135deg, var(--neon-cyan), var(--quantum-purple));
+            border: none;
+            border-radius: 16px;
+            color: white;
+            font-weight: 700;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 20px -5px rgba(6, 182, 212, 0.4);
+        }
+        
+        .btn-premium-full:hover:not(:disabled) {
+            box-shadow: 0 12px 25px -5px rgba(139, 92, 246, 0.5);
+            transform: scale(1.02);
+        }
+        
+        .btn-premium-full:disabled {
+            background: #1F2937;
+            color: #4B5563;
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0;">
+            <a href="index.html" class="logo" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: #fff; font-family: 'JetBrains Mono', monospace;">QANTO</a>
+            <div>
+                <a href="explorer.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px; font-weight: 500;">Explorer</a>
+                <a href="qantoswap.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px; font-weight: 500;">DEX</a>
+                <a href="bridge.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px; font-weight: 500;">Bridge</a>
+                <button id="btn-connect" class="btn-premium" style="font-size: 0.9rem; padding: 10px 20px; border-radius: 8px;">Connect Sentinel</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="staking-wrapper">
+        <div class="glass-panel stat-card">
+            <h2 style="margin-bottom: 30px; font-weight: 700;">Network Security</h2>
+            <div class="stat-value">642,000 QNTO</div>
+            <div class="stat-label">Total Value Locked (TVL)</div>
+            <div class="stat-value">18.4%</div>
+            <div class="stat-label">Current APY</div>
+            <div class="stat-value">1,402</div>
+            <div class="stat-label">Active Sentinels</div>
+        </div>
+
+        <div class="glass-panel stake-box">
+            <h2 style="font-weight: 700;">Become a Sentinel</h2>
+            <p style="color: var(--text-muted); margin-top: 10px; line-height: 1.6;">Lock QNTO to secure the 10M TPS Agentic Mesh and earn epoch rewards.</p>
+            <div class="input-wrapper">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px; color: var(--text-muted); font-size: 0.85rem;">
+                    <span>Amount to Stake</span>
+                    <span id="wallet-balance">Balance: 0.00 QNTO</span>
+                </div>
+                <input type="number" id="stake-input" placeholder="0.0" min="0" step="any" />
+            </div>
+            <button id="btn-stake" class="btn-premium-full">Initialize Sentinel Node</button>
+        </div>
+    </main>
+    
+    <script type="module">
+        import { connectWallet } from './assets/js/web3-provider.js';
+        
+        let walletConnected = false;
+        
+        document.getElementById('btn-connect').addEventListener('click', async () => {
+            const wallet = await connectWallet();
+            if (wallet) {
+                walletConnected = true;
+                document.getElementById('btn-connect').innerText = wallet.address.substring(0, 6) + '...' + wallet.address.slice(-4);
+                document.getElementById('wallet-balance').innerText = `Balance: ${wallet.balance} QNTO`;
+            }
+        });
+        
+        document.getElementById('btn-stake').addEventListener('click', () => {
+            const inputVal = document.getElementById('stake-input').value;
+            if (!walletConnected) {
+                alert("Please connect your wallet first.");
+                return;
+            }
+            if (!inputVal || parseFloat(inputVal) <= 0) {
+                alert("Please enter a valid amount of QNTO to stake.");
+                return;
+            }
+            const btn = document.getElementById('btn-stake');
+            btn.disabled = true;
+            btn.innerText = "Awaiting Multi-Party Computation...";
+            setTimeout(() => { 
+                btn.innerText = "Sentinel Active ✅";
+                alert(`Successfully staked ${inputVal} QNTO. Sentinel node has been activated on the Qanto Agentic Mesh!`);
+            }, 2500);
+        });
+    </script>
+</body>
+</html>
