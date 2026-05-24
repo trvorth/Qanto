@@ -195,8 +195,19 @@ pub async fn run() -> Result<()> {
             let wallet_path = node_config.wallet_path.clone();
             let p2p_identity_path = node_config.p2p_identity_path.clone();
 
-            // Pass the SecretString directly, without re-wrapping it.
-            let wallet_instance = Wallet::from_file(&wallet_path, &password)?;
+            // Load wallet or generate new one headlessly if it doesn't exist
+            let wallet_instance = if !Path::new(&wallet_path).exists() {
+                info!("Wallet file not found at {}. Generating a new one headlessly...", wallet_path);
+                let new_wallet = Wallet::new()?;
+                new_wallet.save_to_file(&wallet_path, &password)?;
+                info!("Generated new wallet at {} with address: {}", wallet_path, new_wallet.address());
+                node_config.genesis_validator = new_wallet.address();
+                node_config.save(&config)?;
+                info!("Updated genesis_validator in configuration file to match the generated wallet address.");
+                new_wallet
+            } else {
+                Wallet::from_file(&wallet_path, &password)?
+            };
             let wallet_arc = Arc::new(wallet_instance);
 
             // Create shutdown flag

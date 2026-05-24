@@ -1562,7 +1562,7 @@ impl QantoDAG {
 
         // Release reserved transactions for this miner since the block was successfully added
         if let (Some(mempool_arc), Some(miner_id)) = (mempool_arc, miner_id) {
-            let mut mempool_guard = mempool_arc.write().await;
+            let mempool_guard = mempool_arc.read().await;
             mempool_guard.release_reserved_transactions(miner_id);
             info!("Released reserved transactions for miner: {}", miner_id);
         }

@@ -5,36 +5,148 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QANTO | Testnet Faucet</title>
     <style>
-        .faucet-wrapper { display: flex; align-items: center; justify-content: center; min-height: 80vh; padding: 20px; }
-        .faucet-card { width: 100%; max-width: 550px; padding: 40px; background: rgba(10, 15, 20, 0.75); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; text-align: center; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }
-        .faucet-title { font-size: 2.2rem; font-weight: 700; margin-bottom: 12px; color: #fff; letter-spacing: -0.5px; }
-        .faucet-subtitle { color: #8892b0; margin-bottom: 35px; font-size: 1rem; line-height: 1.5; }
-        .input-group { margin-bottom: 25px; text-align: left; }
-        .wallet-input { width: 100%; padding: 16px 20px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-family: monospace; font-size: 1.05rem; box-sizing: border-box; outline: none; transition: border 0.3s, box-shadow 0.3s; }
-        .wallet-input:focus { border-color: #3B82F6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
-        .btn-faucet { width: 100%; padding: 16px; background: #2563EB; border: none; border-radius: 8px; color: white; font-weight: 600; font-size: 1.05rem; cursor: pointer; transition: all 0.2s ease; }
-        .btn-faucet:hover { background: #1D4ED8; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4); transform: translateY(-1px); }
-        .btn-faucet:disabled { background: #475569; color: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; }
-        .status-msg { margin-top: 25px; padding: 16px; border-radius: 8px; display: none; font-weight: 500; font-size: 0.95rem; text-align: left; word-break: break-all; line-height: 1.5; }
-        .status-success { background: rgba(16, 185, 129, 0.1); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.2); }
-        .status-error { background: rgba(239, 68, 68, 0.1); color: #EF4444; border: 1px solid rgba(239, 68, 68, 0.2); }
-        .tx-hash { font-family: monospace; color: #fff; margin-top: 8px; display: block; font-size: 0.85rem; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        
+        body {
+            background: radial-gradient(circle at top right, rgba(139, 92, 246, 0.12), transparent 45%),
+                        radial-gradient(circle at bottom left, rgba(6, 182, 212, 0.12), transparent 45%),
+                        #030712;
+            color: #F8FAFC;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding-top: 80px;
+        }
+        
+        .faucet-wrapper { 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 80vh; 
+            padding: 20px; 
+        }
+        
+        .faucet-card { 
+            width: 100%; 
+            max-width: 550px; 
+            padding: 40px; 
+            text-align: center; 
+        }
+        
+        .faucet-title { 
+            font-size: 2.2rem; 
+            font-weight: 700; 
+            margin-bottom: 12px; 
+            background: linear-gradient(to right, #fff, #94A3B8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px; 
+        }
+        
+        .faucet-subtitle { 
+            color: #94A3B8; 
+            margin-bottom: 35px; 
+            font-size: 1rem; 
+            line-height: 1.6; 
+        }
+        
+        .input-group { 
+            margin-bottom: 25px; 
+            text-align: left; 
+        }
+        
+        .wallet-input { 
+            width: 100%; 
+            padding: 16px 20px; 
+            background: rgba(0, 0, 0, 0.4); 
+            border: 1px solid rgba(255, 255, 255, 0.12); 
+            border-radius: 12px; 
+            color: #fff; 
+            font-family: 'JetBrains Mono', monospace; 
+            font-size: 1.05rem; 
+            box-sizing: border-box; 
+            outline: none; 
+            transition: all 0.3s ease; 
+        }
+        
+        .wallet-input:focus { 
+            border-color: var(--neon-cyan); 
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.25); 
+        }
+        
+        .btn-faucet { 
+            width: 100%; 
+            padding: 16px; 
+            background: linear-gradient(135deg, var(--neon-cyan), var(--quantum-purple)); 
+            border: none; 
+            border-radius: 12px; 
+            color: white; 
+            font-weight: 600; 
+            font-size: 1.05rem; 
+            cursor: pointer; 
+            transition: all 0.3s ease; 
+            box-shadow: 0 8px 20px -5px rgba(6, 182, 212, 0.4);
+        }
+        
+        .btn-faucet:hover:not(:disabled) { 
+            box-shadow: 0 12px 25px -5px rgba(139, 92, 246, 0.5);
+            transform: scale(1.01); 
+        }
+        
+        .btn-faucet:disabled { 
+            background: #1F2937; 
+            color: #4B5563; 
+            cursor: not-allowed; 
+            transform: none; 
+            box-shadow: none; 
+        }
+        
+        .status-msg { 
+            margin-top: 25px; 
+            padding: 16px; 
+            border-radius: 12px; 
+            display: none; 
+            font-weight: 500; 
+            font-size: 0.95rem; 
+            text-align: left; 
+            word-break: break-all; 
+            line-height: 1.5; 
+        }
+        
+        .status-success { 
+            background: rgba(16, 185, 129, 0.1); 
+            color: #10B981; 
+            border: 1px solid rgba(16, 185, 129, 0.2); 
+        }
+        
+        .status-error { 
+            background: rgba(239, 68, 68, 0.1); 
+            color: #EF4444; 
+            border: 1px solid rgba(239, 68, 68, 0.2); 
+        }
+        
+        .tx-hash { 
+            font-family: 'JetBrains Mono', monospace; 
+            color: #fff; 
+            margin-top: 8px; 
+            display: block; 
+            font-size: 0.85rem; 
+        }
     </style>
-  <link rel="stylesheet" crossorigin href="/assets/main-Cd-zpGjP.css">
+  <link rel="stylesheet" crossorigin href="/assets/main-BbvOuOP5.css">
 </head>
 <body>
     <nav class="navbar">
         <div class="container" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0;">
-            <a href="index.html" class="logo" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: #fff;">QANTO</a>
+            <a href="index.html" class="logo" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: #fff; font-family: 'JetBrains Mono', monospace;">QANTO</a>
             <div>
                 <a href="explorer.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 25px; font-weight: 500;">Explorer</a>
-                <a href="index.html" class="btn-primary" style="text-decoration: none; font-size: 0.9rem;">Mainnet</a>
+                <a href="index.html" class="btn-premium" style="text-decoration: none; font-size: 0.9rem; padding: 10px 20px; border-radius: 8px;">Mainnet</a>
             </div>
         </div>
     </nav>
 
     <main class="faucet-wrapper">
-        <div class="faucet-card">
+        <div class="glass-panel faucet-card">
             <h1 class="faucet-title">Testnet Faucet</h1>
             <p class="faucet-subtitle">Request mock QNTO tokens to deploy smart contracts and interact with the Qanto Agentic Mesh testnet.</p>
             
@@ -56,7 +168,7 @@
         btn.addEventListener('click', () => {
             const address = input.value.trim();
             
-            // 1. Strict EVM Validation
+            // 1. EVM Validation
             if (!address || !address.startsWith('0x') || address.length !== 42) {
                 showStatus('error', '⚠️ Invalid EVM wallet address. Must start with "0x" and be exactly 42 characters.');
                 return;
@@ -67,7 +179,7 @@
             btn.innerText = 'Connecting to Hugging Face Global Testnet...';
             statusBox.style.display = 'none';
 
-            // 3. Simulate Network Delay & Finality (Consensus-tuned to 31ms)
+            // 3. Simulated delay consensus (31ms)
             setTimeout(() => {
                 btn.innerText = 'Awaiting Block Finality (31ms)...';
                 

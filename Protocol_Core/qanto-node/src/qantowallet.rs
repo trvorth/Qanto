@@ -1481,11 +1481,10 @@ mod tests {
         };
         let storage = QantoStorage::new(storage_config).expect("Failed to create storage");
 
-        // Add test UTXOs with known amounts
         let qan_base = crate::transaction::SMALLEST_UNITS_PER_QAN;
         let utxo1_amount = qan_base; // 1 QANTO
         let utxo2_amount = qan_base / 2; // 0.5 QANTO
-        let utxo3_amount = 123_456; // 0.123456 QANTO
+        let utxo3_amount = 123_456_000; // 0.123456 QANTO (scaled to 9 decimals)
 
         // Create test UTXOs
         let utxo1 = UTXO {

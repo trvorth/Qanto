@@ -28,7 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         params: [{ 
                             chainId: '0x1234', 
                             chainName: 'QANTO Testnet', 
-                            nativeCurrency: { name: 'QANTO', symbol: 'QNTO', decimals: 6 }, 
+                            nativeCurrency: { name: 'QANTO', symbol: 'QNTO', decimals: 9 }, 
                             rpcUrls: ['https://trvorth-qanto-testnet.hf.space/rpc'] 
                         }]
                     });

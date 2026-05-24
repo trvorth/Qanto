@@ -1320,21 +1320,20 @@ mod tests {
 
     #[test]
     fn test_compute_hash_rate() {
-        // 1000 attempts over 1 second -> 1000 H/s
-        assert!((QantoMetrics::compute_hash_rate(1000, 1000) - 1000.0).abs() < 1e-6);
-        // 500 attempts over 2 seconds -> 250 H/s
-        assert!((QantoMetrics::compute_hash_rate(500, 2000) - 250.0).abs() < 1e-6);
+        // 1000 attempts over 1 second -> 1000 H/s (scaled by 1e9)
+        assert_eq!(QantoMetrics::compute_hash_rate(1000, 1000), 1000 * crate::QANTO_SCALE);
+        // 500 attempts over 2 seconds -> 250 H/s (scaled by 1e9)
+        assert_eq!(QantoMetrics::compute_hash_rate(500, 2000), 250 * crate::QANTO_SCALE);
     }
 
     #[test]
     fn test_format_hash_rate_units() {
-        assert_eq!(QantoMetrics::format_hash_rate(0.0), "0.00 H/s");
-        assert_eq!(QantoMetrics::format_hash_rate(999.0), "999.00 H/s");
-        assert_eq!(QantoMetrics::format_hash_rate(1000.0), "1.00 kH/s");
-        assert_eq!(QantoMetrics::format_hash_rate(12_345.0), "12.35 kH/s");
-        assert_eq!(QantoMetrics::format_hash_rate(1_000_000.0), "1.00 MH/s");
-        assert_eq!(QantoMetrics::format_hash_rate(12_345_678.0), "12.35 MH/s");
-        assert_eq!(QantoMetrics::format_hash_rate(1_234_567_890.0), "1.23 GH/s");
-        assert_eq!(QantoMetrics::format_hash_rate(-5.0), "0.00 H/s"); // clamp negatives
+        assert_eq!(QantoMetrics::format_hash_rate(0), "0.00 H/s");
+        assert_eq!(QantoMetrics::format_hash_rate(999 * crate::QANTO_SCALE), "999.00 H/s");
+        assert_eq!(QantoMetrics::format_hash_rate(1000 * crate::QANTO_SCALE), "1.00 kH/s");
+        assert_eq!(QantoMetrics::format_hash_rate(12_345 * crate::QANTO_SCALE), "12.34 kH/s");
+        assert_eq!(QantoMetrics::format_hash_rate(1_000_000 * crate::QANTO_SCALE), "1.00 MH/s");
+        assert_eq!(QantoMetrics::format_hash_rate(12_345_678 * crate::QANTO_SCALE), "12.34 MH/s");
+        assert_eq!(QantoMetrics::format_hash_rate(1_234_567_890 * crate::QANTO_SCALE), "1.23 GH/s");
     }
 }

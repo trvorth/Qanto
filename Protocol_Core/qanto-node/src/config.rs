@@ -156,6 +156,8 @@ pub struct Config {
     pub logging: LoggingConfig,
     pub p2p: P2pConfig,
     pub rpc: RpcConfig,
+    #[serde(default)]
+    pub mempool: MempoolSectionConfig,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -173,6 +175,21 @@ pub struct LoggingConfig {
 
 fn default_celebration_log_level() -> String {
     "info".to_string()
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MempoolSectionConfig {
+    pub parallel_verification_threads: usize,
+    pub capacity: usize,
+}
+
+impl Default for MempoolSectionConfig {
+    fn default() -> Self {
+        Self {
+            parallel_verification_threads: num_cpus::get(),
+            capacity: 1_000_000,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -279,6 +296,7 @@ impl Default for Config {
             rpc: RpcConfig {
                 address: "127.0.0.1:50051".to_string(),
             },
+            mempool: MempoolSectionConfig::default(),
         }
     }
 }
@@ -359,7 +377,12 @@ impl Config {
         }
 
         if let Some(listen_addr) = listen {
-            self.p2p_address = listen_addr;
+            if listen_addr.parse::<std::net::IpAddr>().is_ok() {
+                let port = p2p_port.unwrap_or(30303);
+                self.p2p_address = format!("/ip4/{}/tcp/{}/ws", listen_addr, port);
+            } else {
+                self.p2p_address = listen_addr;
+            }
         }
 
         if let Some(nodes) = bootnodes {
@@ -505,6 +528,7 @@ impl Config {
             rpc: RpcConfig {
                 address: "127.0.0.1:50051".to_string(),
             },
+            mempool: MempoolSectionConfig::default(),
         }
     }
 
@@ -603,6 +627,7 @@ impl Config {
             rpc: RpcConfig {
                 address: "127.0.0.1:50051".to_string(),
             },
+            mempool: MempoolSectionConfig::default(),
         }
     }
 

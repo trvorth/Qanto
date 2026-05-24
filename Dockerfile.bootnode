@@ -16,5 +16,8 @@ COPY --from=builder /usr/src/qanto/config.toml /app/
 # Expose Hugging Face Proxy Port (7860) and P2P (30303)
 EXPOSE 7860 30303 9090
 
-# Start the node, bind RPC to 7860, enable Bootnode, enable public Mining
-CMD ["./qanto-node", "--rpc-port", "7860", "--p2p-port", "30303", "--listen", "0.0.0.0", "--bootnode", "--mine"]
+ENV WALLET_PASSWORD=""
+ENV RUST_LOG="info"
+
+# Start the node (wallet auto-generated headlessly if missing)
+CMD ./qanto-node start --config config.toml --wallet wallet.key --rpc-port 7860 --p2p-port 30303 --listen 0.0.0.0 --bootnode --mine

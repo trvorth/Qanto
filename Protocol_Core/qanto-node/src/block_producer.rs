@@ -462,7 +462,7 @@ impl SoloProducer {
                     }
 
                     if let Some(miner_id) = mined_block.reservation_miner_id.as_deref() {
-                        let mut guard = mempool.write().await;
+                        let guard = mempool.read().await;
                         guard.release_reserved_transactions(miner_id);
                         info!("Released reserved transactions for miner: {}", miner_id);
                     }
@@ -476,7 +476,7 @@ impl SoloProducer {
                             MAX_ADD_RETRIES, e
                         );
                         if let Some(miner_id) = mined_block.reservation_miner_id.as_deref() {
-                            let mut guard = mempool.write().await;
+                            let guard = mempool.read().await;
                             guard.release_reserved_transactions(miner_id);
                             warn!(
                                 "Released reserved transactions after failure for miner: {}",

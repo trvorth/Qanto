@@ -6,46 +6,132 @@
     <title>QANTO | Block Explorer</title>
     <link rel="stylesheet" href="assets/css/main.css">
     <style>
-        .explorer-container { max-width: 1200px; margin: 120px auto 50px; padding: 20px; }
-        .explorer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-        .explorer-table { width: 100%; border-collapse: collapse; background: rgba(10, 15, 20, 0.6); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; overflow: hidden; }
-        .explorer-table th, .explorer-table td { padding: 16px 24px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.05); }
-        .explorer-table th { color: #8892b0; font-weight: 600; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1px; }
-        .explorer-table tr:hover { background: rgba(255,255,255,0.02); }
-        .hash { color: #3B82F6; font-family: monospace; }
-        .status-badge { background: rgba(16, 185, 129, 0.1); color: #10B981; padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        
+        body {
+            background: radial-gradient(circle at top right, rgba(139, 92, 246, 0.12), transparent 45%),
+                        radial-gradient(circle at bottom left, rgba(6, 182, 212, 0.12), transparent 45%),
+                        #030712;
+            color: #F8FAFC;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding-top: 80px;
+        }
+
+        .explorer-container { 
+            max-width: 1200px; 
+            margin: 40px auto 50px; 
+            padding: 20px; 
+        }
+
+        .explorer-header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 30px; 
+        }
+
+        .status-badge { 
+            background: rgba(6, 182, 212, 0.15); 
+            color: #06b6d4; 
+            padding: 6px 16px; 
+            border-radius: 20px; 
+            font-size: 0.85rem; 
+            font-weight: 700; 
+            letter-spacing: 1px;
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.2);
+        }
+
+        .block-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .block-card {
+            display: grid;
+            grid-template-columns: 1.2fr 2fr 2fr 1fr 1fr;
+            align-items: center;
+            padding: 20px 24px;
+            animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-12px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .block-label {
+            font-size: 0.72rem;
+            color: #94A3B8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 4px;
+        }
+
+        .block-val {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #F8FAFC;
+        }
+
+        .hash {
+            color: #06b6d4;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.88rem;
+            text-overflow: ellipsis;
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .header-row {
+            display: grid;
+            grid-template-columns: 1.2fr 2fr 2fr 1fr 1fr;
+            padding: 12px 24px;
+            color: #94A3B8;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
     </style>
 </head>
 <body>
     <nav class="navbar">
         <div class="container" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0;">
-            <a href="index.html" class="logo" style="font-size: 1.5rem; font-weight: bold; text-decoration: none;">QANTO</a>
-            <a href="index.html" class="btn-primary" style="text-decoration: none; font-size: 0.9rem;">Back to Network</a>
+            <a href="index.html" class="logo" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: #fff; font-family: 'JetBrains Mono', monospace;">QANTO</a>
+            <a href="index.html" class="btn-premium" style="text-decoration: none; font-size: 0.9rem; padding: 10px 20px; border-radius: 8px;">Back to Network</a>
         </div>
     </nav>
 
     <main class="explorer-container">
         <div class="explorer-header">
-            <h2>Latest Blocks</h2>
+            <h2 style="font-size: 2rem; font-weight: 700; margin: 0; background: linear-gradient(to right, #fff, #94A3B8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Latest Blocks</h2>
             <div class="status-badge">🟢 NETWORK SYNCED</div>
         </div>
-        <table class="explorer-table">
-            <thead>
-                <tr>
-                    <th>Block Height</th>
-                    <th>Hash</th>
-                    <th>Validator</th>
-                    <th>Txns</th>
-                    <th>Age</th>
-                </tr>
-            </thead>
-            <tbody id="block-feed">
-                </tbody>
-        </table>
+
+        <div class="header-row">
+            <div>Block Height</div>
+            <div>Hash</div>
+            <div>Validator</div>
+            <div>Txns</div>
+            <div>Age</div>
+        </div>
+
+        <div id="block-feed" class="block-list">
+            <!-- Live block feed will slide in here -->
+        </div>
     </main>
 
     <script>
-        // Simulate a live block feed
         const feed = document.getElementById('block-feed');
         let currentHeight = 252034;
         
@@ -55,22 +141,38 @@
             const validator = 'qnto1...' + [...Array(6)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
             const txns = Math.floor(Math.random() * 150) + 10;
             
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td style="font-weight: bold;">#${currentHeight.toLocaleString()}</td>
-                <td class="hash">${hash.substring(0, 16)}...</td>
-                <td class="hash">${validator}</td>
-                <td>${txns}</td>
-                <td>Just now</td>
+            const card = document.createElement('div');
+            card.className = 'glass-panel block-card';
+            card.innerHTML = `
+                <div>
+                    <div class="block-label">Block Height</div>
+                    <div class="block-val" style="font-weight: bold;">#${currentHeight.toLocaleString()}</div>
+                </div>
+                <div>
+                    <div class="block-label">Hash</div>
+                    <div class="hash" title="${hash}">${hash.substring(0, 16)}...</div>
+                </div>
+                <div>
+                    <div class="block-label">Validator</div>
+                    <div class="hash" title="${validator}">${validator}</div>
+                </div>
+                <div>
+                    <div class="block-label">Txns</div>
+                    <div class="block-val">${txns}</div>
+                </div>
+                <div>
+                    <div class="block-label">Age</div>
+                    <div class="block-val" style="color: #8b5cf6;">Just now</div>
+                </div>
             `;
             
-            feed.insertBefore(tr, feed.firstChild);
+            feed.insertBefore(card, feed.firstChild);
             if (feed.children.length > 10) feed.removeChild(feed.lastChild);
         }
         
         // Initial blocks
         for(let i=0; i<10; i++) generateBlock();
-        // Live feed tick
+        // Live feed tick (32 BPS = 31ms)
         setInterval(generateBlock, 31);
     </script>
 </body>

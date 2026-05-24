@@ -43,6 +43,31 @@
     <link rel="stylesheet" href="assets/css/animations.css">
     
     <style>
+        /* Quantum Aura Glowing Mesh Background */
+        .glowing-mesh {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 30% 20%, rgba(6, 182, 212, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.15) 0%, transparent 50%);
+            filter: blur(40px);
+            z-index: 0;
+            animation: mesh-float 15s ease-in-out infinite alternate;
+        }
+        @keyframes mesh-float {
+            0% { transform: scale(1) translate(0, 0); }
+            100% { transform: scale(1.1) translate(2%, 3%); }
+        }
+        .hero-text h1 {
+            background-clip: text !important;
+            -webkit-background-clip: text !important;
+            color: transparent !important;
+            background-image: linear-gradient(to right, #fff, #94A3B8) !important;
+        }
+
         /* Phase 33: QantoSwap UI Styles */
         .swap-module {
             margin-top: 4rem;
@@ -250,6 +275,7 @@
                 <div class="quantum-grid"></div>
                 <div class="floating-particles"></div>
                 <div class="aurora-bg"></div>
+                <div class="glowing-mesh"></div>
             </div>
             
             <div class="container">
@@ -641,7 +667,7 @@
                             <h3>Qanto Wallet</h3>
                         </div>
                         <p>Secure, user-friendly wallet with quantum-resistant security features.</p>
-                        <a href="#" class="card-link">
+                        <a href="https://qanto.org/ecosystem" class="card-link">
                             Download Wallet
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M7 17L17 7M17 7H7M17 7V17"/>
@@ -662,7 +688,7 @@
                             <h3>DeFi Suite</h3>
                         </div>
                         <p>Decentralized finance applications built on Qanto's secure infrastructure.</p>
-                        <a href="#" class="card-link">
+                        <a href="qantoswap.html" class="card-link">
                             Explore DeFi
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M7 17L17 7M17 7H7M17 7V17"/>
@@ -863,7 +889,7 @@ async fn main() -&gt; Result&lt;()&gt; {
                             <li><a href="https://discord.gg/qanto" target="_blank">Discord</a></li>
                             <li><a href="https://t.me/qanto_official" target="_blank">Telegram</a></li>
                             <li><a href="https://x.com/QantoLayer0" target="_blank">Twitter</a></li>
-                            <li><a href="#">Blog</a></li>
+                            <li><a href="https://qanto.org/blog" target="_blank">Blog</a></li>
                         </ul>
                     </div>
                 </div>
@@ -874,9 +900,9 @@ async fn main() -&gt; Result&lt;()&gt; {
                     <p>&copy; 2024 Qanto. All rights reserved.</p>
                 </div>
                 <div class="footer-legal">
-                    <a href="#">Privacy Policy</a>
-                    <a href="#">Terms of Service</a>
-                    <a href="#">Cookie Policy</a>
+                    <a href="https://qanto.org/privacy" target="_blank">Privacy Policy</a>
+                    <a href="https://qanto.org/terms" target="_blank">Terms of Service</a>
+                    <a href="https://qanto.org/cookies" target="_blank">Cookie Policy</a>
                 </div>
             </div>
         </div>

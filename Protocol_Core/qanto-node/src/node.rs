@@ -596,9 +596,9 @@ impl Node {
                         }
                         P2PCommand::BroadcastTransaction(tx) => {
                             debug!("Command processor received transaction {}", tx.id);
-                            let mempool_writer = mempool_clone.write().await;
+                            let mempool_reader = mempool_clone.read().await;
                             let utxos_reader = utxos_clone.read().await;
-                            if let Err(e) = mempool_writer
+                            if let Err(e) = mempool_reader
                                 .add_transaction(tx, &utxos_reader, &dag_clone)
                                 .await
                             {
@@ -610,9 +610,9 @@ impl Node {
                                 "Command processor received transaction batch: {} txs",
                                 txs.len()
                             );
-                            let mempool_writer = mempool_clone.write().await;
+                            let mempool_reader = mempool_clone.read().await;
                             let utxos_reader = utxos_clone.read().await;
-                            let (_accepted, rejected) = mempool_writer
+                            let (_accepted, rejected) = mempool_reader
                                 .add_transaction_batch(txs, &utxos_reader, &dag_clone)
                                 .await;
                             for (id, err) in rejected {
@@ -1158,6 +1158,7 @@ impl Node {
             websocket_state: websocket_state.clone(),
             native_network: None,
             hlld: self.hlld.clone(),
+            config: self.config.clone(),
         };
 
         // Create GraphQL context outside the async block
@@ -1507,6 +1508,7 @@ struct AppState {
     native_network: Option<Arc<QantoNetServer>>,
     #[allow(dead_code)]
     hlld: Arc<RwLock<HLLDConsensus>>,
+    config: Config,
 }
 
 // --- API Error Handling ---
@@ -1808,7 +1810,9 @@ async fn submit_transactions(
     let sig_ok_all = Transaction::verify_signatures_batch_parallel(&tx_list);
 
     // Parallel UTXO/DAG verification with bounded concurrency via semaphore
-    let verification_semaphore = Arc::new(tokio::sync::Semaphore::new(32));
+    let verification_semaphore = Arc::new(tokio::sync::Semaphore::new(
+        state.config.mempool.parallel_verification_threads
+    ));
     let verify_results =
         Transaction::verify_batch_parallel(&tx_list, &utxos_read_guard, &verification_semaphore);
 
@@ -1843,7 +1847,7 @@ async fn submit_transactions(
     // Batch-ingest accepted transactions into local mempool
     if !accepted_txs.is_empty() {
         let (mp_accepted, mp_rejected) = {
-            let mempool_guard = state.mempool.write().await;
+            let mempool_guard = state.mempool.read().await;
             mempool_guard
                 .add_transaction_batch(accepted_txs.clone(), &utxos_read_guard, &state.dag)
                 .await
@@ -2229,7 +2233,7 @@ mod balance_tests {
         let utxos: std::collections::HashMap<String, UTXO> = std::collections::HashMap::new();
         let resp = make_balance_response(&utxos, address);
         assert_eq!(resp.base_units, 0);
-        assert_eq!(resp.balance, "0.000000");
+        assert_eq!(resp.balance, "0.000000000");
     }
 
     #[test]
@@ -2241,7 +2245,7 @@ mod balance_tests {
         utxos.insert(id, utxo);
         let resp = make_balance_response(&utxos, address);
         assert_eq!(resp.base_units, one_qan);
-        assert_eq!(resp.balance, "1.000000");
+        assert_eq!(resp.balance, "1.000000000");
     }
 
     #[test]
@@ -2253,7 +2257,7 @@ mod balance_tests {
         utxos.insert(id, utxo);
         let resp = make_balance_response(&utxos, address);
         assert_eq!(resp.base_units, amt);
-        assert_eq!(resp.balance, "1.123456");
+        assert_eq!(resp.balance, "1.000123456");
     }
 
     #[test]
@@ -2283,7 +2287,7 @@ mod balance_tests {
         );
         let resp = make_balance_response(&utxos, address);
         assert_eq!(resp.base_units, q * 2 + q / 2);
-        assert_eq!(resp.balance, "2.500000");
+        assert_eq!(resp.balance, "2.500000000");
     }
 }
 

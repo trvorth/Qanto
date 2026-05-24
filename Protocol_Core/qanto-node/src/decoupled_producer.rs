@@ -607,7 +607,7 @@ impl DecoupledProducer {
 
                         // Remove transactions from mempool after successful block addition
                         {
-                            let mempool_guard = mempool.write().await;
+                            let mempool_guard = mempool.read().await;
                             mempool_guard
                                 .remove_transactions(&block_to_add.transactions)
                                 .await;
@@ -619,7 +619,7 @@ impl DecoupledProducer {
 
                         // Release reserved transactions for this miner after success
                         if let Some(miner_id) = block_to_add.reservation_miner_id.as_deref() {
-                            let mut mempool_guard = mempool.write().await;
+                            let mempool_guard = mempool.read().await;
                             mempool_guard.release_reserved_transactions(miner_id);
                             info!(
                                 "BLOCK PROCESSOR: Released reserved transactions for miner {} after success",
@@ -669,7 +669,7 @@ impl DecoupledProducer {
                         );
                         // Even if it exists, release reservations to avoid starvation
                         if let Some(miner_id) = block_to_add.reservation_miner_id.as_deref() {
-                            let mut mempool_guard = mempool.write().await;
+                            let mempool_guard = mempool.read().await;
                             mempool_guard.release_reserved_transactions(miner_id);
                             info!(
                                 "BLOCK PROCESSOR: Released reserved transactions for miner {} after rejection",
@@ -723,7 +723,7 @@ impl DecoupledProducer {
                         // Release reservations for expired children outside of the retain() closure
                         for (_parent_id, expired_child) in expired_children {
                             if let Some(miner_id) = expired_child.block.reservation_miner_id.as_deref() {
-                                let mut mempool_guard = mempool.write().await;
+                                let mempool_guard = mempool.read().await;
                                 mempool_guard.release_reserved_transactions(miner_id);
                             }
                         }
@@ -784,7 +784,7 @@ impl DecoupledProducer {
                                                     );
                                                     // Release reservations on hard failure
                                                     if let Some(miner_id) = child.block.reservation_miner_id.as_deref() {
-                                                        let mut mempool_guard = mempool.write().await;
+                                                        let mempool_guard = mempool.read().await;
                                                         mempool_guard.release_reserved_transactions(miner_id);
                                                     }
                                                 }
@@ -876,7 +876,7 @@ impl DecoupledProducer {
                                                     block_to_add.id, other
                                                 );
                                                 if let Some(miner_id) = block_to_add.reservation_miner_id.as_deref() {
-                                                    let mut mempool_guard = mempool.write().await;
+                                                    let mempool_guard = mempool.read().await;
                                                     mempool_guard.release_reserved_transactions(miner_id);
                                                     warn!(
                                                         "BLOCK PROCESSOR: Released reserved transactions for miner {} after failure",

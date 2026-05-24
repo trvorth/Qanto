@@ -5,37 +5,210 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QantoSwap | Decentralized Exchange</title>
     <style>
-        .dex-wrapper { display: flex; align-items: center; justify-content: center; min-height: 85vh; padding: 20px; }
-        .dex-card { width: 100%; max-width: 480px; padding: 24px; background: rgba(15, 20, 30, 0.6); backdrop-filter: blur(25px); border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; box-shadow: 0 25px 50px rgba(0,0,0,0.8); }
-        .dex-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; color: #fff; }
-        .dex-title { font-size: 1.4rem; font-weight: 700; }
-        .token-box { background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); border-radius: 16px; padding: 16px; margin-bottom: 8px; }
-        .token-box-header { display: flex; justify-content: space-between; font-size: 0.85rem; color: #8892b0; margin-bottom: 12px; }
-        .token-input-row { display: flex; justify-content: space-between; align-items: center; }
-        .token-input { background: transparent; border: none; color: #fff; font-size: 2rem; font-weight: 500; width: 60%; outline: none; font-family: monospace; }
-        .token-selector { display: flex; align-items: center; background: rgba(255,255,255,0.1); padding: 6px 12px; border-radius: 20px; color: #fff; font-weight: 600; cursor: pointer; }
-        .swap-arrow { display: flex; justify-content: center; align-items: center; width: 40px; height: 40px; background: #070B14; border: 4px solid #0F141E; border-radius: 50%; margin: -20px auto 8px; position: relative; z-index: 2; color: #3B82F6; cursor: pointer; }
-        .dex-details { background: rgba(0,0,0,0.2); border-radius: 12px; padding: 16px; margin: 16px 0; font-size: 0.85rem; color: #8892b0; display: flex; flex-direction: column; gap: 8px; }
-        .detail-row { display: flex; justify-content: space-between; }
-        .btn-swap { width: 100%; padding: 18px; background: #2563EB; border: none; border-radius: 16px; color: white; font-weight: 700; font-size: 1.1rem; cursor: pointer; transition: all 0.2s ease; }
-        .btn-swap:disabled { background: #1E293B; color: #64748B; cursor: not-allowed; }
-        .tx-toast { position: fixed; bottom: 20px; right: 20px; background: rgba(16, 185, 129, 0.9); color: #fff; padding: 16px 24px; border-radius: 12px; font-weight: 500; display: none; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        
+        body {
+            background: radial-gradient(circle at top right, rgba(139, 92, 246, 0.12), transparent 45%),
+                        radial-gradient(circle at bottom left, rgba(6, 182, 212, 0.12), transparent 45%),
+                        #030712;
+            color: #F8FAFC;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding-top: 80px;
+        }
+        
+        .dex-wrapper { 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 80vh; 
+            padding: 20px; 
+        }
+        
+        .dex-card { 
+            width: 100%; 
+            max-width: 480px; 
+            padding: 30px; 
+        }
+        
+        .dex-header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 24px; 
+        }
+        
+        .dex-title { 
+            font-size: 1.6rem; 
+            font-weight: 700; 
+            background: linear-gradient(to right, #fff, #94A3B8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .token-box { 
+            background: rgba(0, 0, 0, 0.3); 
+            border: 1px solid rgba(255, 255, 255, 0.05); 
+            border-radius: 18px; 
+            padding: 18px; 
+            margin-bottom: 12px; 
+            transition: all 0.3s ease;
+        }
+        
+        .token-box:hover, .token-box:focus-within {
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.25);
+        }
+        
+        .token-box-header { 
+            display: flex; 
+            justify-content: space-between; 
+            font-size: 0.82rem; 
+            color: #94A3B8; 
+            margin-bottom: 12px; 
+        }
+        
+        .token-input-row { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+        }
+        
+        .token-input { 
+            background: transparent; 
+            border: none; 
+            color: #fff; 
+            font-size: 1.8rem; 
+            font-weight: 600; 
+            width: 60%; 
+            outline: none; 
+            font-family: 'JetBrains Mono', monospace; 
+        }
+        
+        .token-selector { 
+            display: flex; 
+            align-items: center; 
+            background: rgba(255, 255, 255, 0.08); 
+            padding: 6px 14px; 
+            border-radius: 20px; 
+            color: #fff; 
+            font-weight: 600; 
+            cursor: pointer; 
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: background 0.2s ease;
+        }
+        
+        .token-selector:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        .swap-arrow-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: -22px auto 6px;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .swap-arrow { 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            width: 40px; 
+            height: 40px; 
+            background: #030712; 
+            border: 2px solid var(--glass-border); 
+            border-radius: 50%; 
+            color: var(--neon-cyan); 
+            cursor: pointer; 
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        
+        .swap-arrow:hover { 
+            transform: rotate(180deg);
+            border-color: var(--neon-cyan);
+            color: var(--quantum-purple);
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
+        }
+        
+        .dex-details { 
+            background: rgba(0, 0, 0, 0.2); 
+            border-radius: 14px; 
+            padding: 16px; 
+            margin: 20px 0; 
+            font-size: 0.85rem; 
+            color: #94A3B8; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 8px; 
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+        
+        .detail-row { 
+            display: flex; 
+            justify-content: space-between; 
+        }
+        
+        .btn-swap { 
+            width: 100%; 
+            padding: 16px; 
+            background: linear-gradient(135deg, var(--neon-cyan), var(--quantum-purple)); 
+            border: none; 
+            border-radius: 16px; 
+            color: white; 
+            font-weight: 700; 
+            font-size: 1.1rem; 
+            cursor: pointer; 
+            transition: all 0.3s ease; 
+            box-shadow: 0 8px 20px -5px rgba(6, 182, 212, 0.4);
+        }
+        
+        .btn-swap:hover:not(:disabled) {
+            box-shadow: 0 12px 25px -5px rgba(139, 92, 246, 0.5);
+            transform: scale(1.02);
+        }
+        
+        .btn-swap:disabled { 
+            background: #1F2937; 
+            color: #4B5563; 
+            cursor: not-allowed; 
+            box-shadow: none;
+            transform: none;
+        }
+        
+        .tx-toast { 
+            position: fixed; 
+            bottom: 20px; 
+            right: 20px; 
+            background: rgba(6, 182, 212, 0.95); 
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff; 
+            padding: 16px 24px; 
+            border-radius: 12px; 
+            font-weight: 600; 
+            display: none; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
     </style>
-  <link rel="stylesheet" crossorigin href="/assets/main-Cd-zpGjP.css">
+  <link rel="stylesheet" crossorigin href="/assets/main-BbvOuOP5.css">
 </head>
 <body>
     <nav class="navbar">
         <div class="container" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0;">
-            <a href="index.html" class="logo" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: #fff;">QANTO</a>
+            <a href="index.html" class="logo" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: #fff; font-family: 'JetBrains Mono', monospace;">QANTO</a>
             <div>
-                <a href="explorer.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px;">Explorer</a>
-                <a href="faucet.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 25px;">Faucet</a>
+                <a href="explorer.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px; font-weight: 500;">Explorer</a>
+                <a href="faucet.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 25px; font-weight: 500;">Faucet</a>
             </div>
         </div>
     </nav>
 
     <main class="dex-wrapper">
-        <div class="dex-card">
+        <div class="glass-panel dex-card">
             <div class="dex-header">
                 <div class="dex-title">Swap</div>
             </div>
@@ -48,7 +221,9 @@
                 </div>
             </div>
             
-            <div class="swap-arrow">↓</div>
+            <div class="swap-arrow-container">
+                <button class="swap-arrow" id="btn-flip">↓</button>
+            </div>
             
             <div class="token-box">
                 <div class="token-box-header"><span>You receive</span><span>Balance: 0.00 WQNTO</span></div>
@@ -59,8 +234,8 @@
             </div>
             
             <div class="dex-details">
-                <div class="detail-row"><span>Exchange Rate</span><span style="color: #fff;">1 QNTO = 1 WQNTO</span></div>
-                <div class="detail-row"><span>Network Fee</span><span style="color: #fff;">0.0001 QNTO</span></div>
+                <div class="detail-row"><span>Exchange Rate</span><span style="color: #fff; font-weight: 500;">1 QNTO = 1 WQNTO</span></div>
+                <div class="detail-row"><span>Network Fee</span><span style="color: #fff; font-weight: 500;">0.0001 QNTO</span></div>
             </div>
             
             <button id="btn-swap" class="btn-swap" disabled>Enter an amount</button>
@@ -72,6 +247,7 @@
         const payInput = document.getElementById('pay-input');
         const receiveInput = document.getElementById('receive-input');
         const swapBtn = document.getElementById('btn-swap');
+        const flipBtn = document.getElementById('btn-flip');
         const toast = document.getElementById('tx-toast');
         
         payInput.addEventListener('input', () => {
@@ -97,6 +273,13 @@
                 toast.style.display = 'block';
                 setTimeout(() => { toast.style.display = 'none'; }, 4000);
             }, 3000);
+        });
+
+        // Rotate arrow on click
+        let rotated = false;
+        flipBtn.addEventListener('click', () => {
+            rotated = !rotated;
+            flipBtn.style.transform = rotated ? 'rotate(180deg)' : 'rotate(0deg)';
         });
     </script>
 </body>

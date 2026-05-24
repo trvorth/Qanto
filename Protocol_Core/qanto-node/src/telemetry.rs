@@ -151,12 +151,21 @@ pub fn get_hash_attempts() -> u64 {
 
 /// Convert hash attempts delta and time interval to hash rate
 pub fn calculate_hash_rate(attempts_delta: u64, interval_ms: u64) -> f64 {
-    QantoMetrics::compute_hash_rate(attempts_delta, interval_ms) as f64
+    QantoMetrics::compute_hash_rate(attempts_delta, interval_ms) as f64 / crate::QANTO_SCALE as f64
 }
 
 /// Format hash rate with appropriate units (H/s, KH/s, MH/s, etc.)
-pub fn format_hash_rate(hash_rate_hps: f64) -> String {
-    QantoMetrics::format_hash_rate(hash_rate_hps as u128)
+pub fn format_hash_rate(mut hash_rate_hps: f64) -> String {
+    if hash_rate_hps.is_nan() || hash_rate_hps.is_infinite() || hash_rate_hps < 0.0 {
+        return "0.00 H/s".to_string();
+    }
+    let units = ["H/s", "kH/s", "MH/s", "GH/s", "TH/s", "PH/s"];
+    let mut unit_idx = 0;
+    while hash_rate_hps >= 1000.0 && unit_idx < units.len() - 1 {
+        hash_rate_hps /= 1000.0;
+        unit_idx += 1;
+    }
+    format!("{:.2} {}", hash_rate_hps, units[unit_idx])
 }
 
 #[cfg(test)]
@@ -185,15 +194,15 @@ mod tests {
     #[test]
     fn test_hash_rate_formatting() {
         // Test basic formatting
-        assert_eq!(QantoMetrics::format_hash_rate(500.0), "500.00 H/s");
-        assert_eq!(QantoMetrics::format_hash_rate(1500.0), "1.50 kH/s");
-        assert_eq!(QantoMetrics::format_hash_rate(2_500_000.0), "2.50 MH/s");
-        assert_eq!(QantoMetrics::format_hash_rate(3_500_000_000.0), "3.50 GH/s");
+        assert_eq!(format_hash_rate(500.0), "500.00 H/s");
+        assert_eq!(format_hash_rate(1500.0), "1.50 kH/s");
+        assert_eq!(format_hash_rate(2_500_000.0), "2.50 MH/s");
+        assert_eq!(format_hash_rate(3_500_000_000.0), "3.50 GH/s");
 
         // Test edge cases
-        assert_eq!(QantoMetrics::format_hash_rate(0.0), "0.00 H/s");
-        assert_eq!(QantoMetrics::format_hash_rate(999.0), "999.00 H/s");
-        assert_eq!(QantoMetrics::format_hash_rate(1000.0), "1.00 kH/s");
+        assert_eq!(format_hash_rate(0.0), "0.00 H/s");
+        assert_eq!(format_hash_rate(999.0), "999.00 H/s");
+        assert_eq!(format_hash_rate(1000.0), "1.00 kH/s");
     }
 
     #[test]
@@ -215,31 +224,31 @@ mod tests {
     #[test]
     fn test_edge_cases() {
         // Test negative values
-        assert_eq!(QantoMetrics::format_hash_rate(-100.0), "0.00 H/s");
+        assert_eq!(format_hash_rate(-100.0), "0.00 H/s");
 
         // Test infinity and NaN
-        assert_eq!(QantoMetrics::format_hash_rate(f64::INFINITY), "0.00 H/s");
+        assert_eq!(format_hash_rate(f64::INFINITY), "0.00 H/s");
         assert_eq!(
-            QantoMetrics::format_hash_rate(f64::NEG_INFINITY),
+            format_hash_rate(f64::NEG_INFINITY),
             "0.00 H/s"
         );
-        assert_eq!(QantoMetrics::format_hash_rate(f64::NAN), "0.00 H/s");
+        assert_eq!(format_hash_rate(f64::NAN), "0.00 H/s");
 
         // Test very large values
-        assert_eq!(QantoMetrics::format_hash_rate(1e15), "1.00 PH/s");
-        assert_eq!(QantoMetrics::format_hash_rate(1e18), "1000.00 PH/s");
+        assert_eq!(format_hash_rate(1e15), "1.00 PH/s");
+        assert_eq!(format_hash_rate(1e18), "1000.00 PH/s");
     }
 
     #[test]
     fn test_precision_and_rounding() {
         // Test precision with decimal values
-        assert_eq!(QantoMetrics::format_hash_rate(1234.567), "1.23 kH/s");
-        assert_eq!(QantoMetrics::format_hash_rate(999.999), "1000.00 H/s");
-        assert_eq!(QantoMetrics::format_hash_rate(1000.001), "1.00 kH/s");
+        assert_eq!(format_hash_rate(1234.567), "1.23 kH/s");
+        assert_eq!(format_hash_rate(999.999), "1000.00 H/s");
+        assert_eq!(format_hash_rate(1000.001), "1.00 kH/s");
 
         // Test rounding behavior
-        assert_eq!(QantoMetrics::format_hash_rate(1234.994), "1.23 kH/s");
-        assert_eq!(QantoMetrics::format_hash_rate(1234.995), "1.23 kH/s");
+        assert_eq!(format_hash_rate(1234.994), "1.23 kH/s");
+        assert_eq!(format_hash_rate(1234.995), "1.23 kH/s");
     }
 
     #[tokio::test]

@@ -67,7 +67,7 @@ impl PartialOrd for PrioritizedTransaction {
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct Mempool {
-    transactions: Arc<RwLock<HashMap<String, PrioritizedTransaction>>>,
+    transactions: Arc<DashMap<String, PrioritizedTransaction>>,
     priority_queue: Arc<RwLock<BTreeMap<u128, Vec<String>>>>,
     priority_heap: Arc<ParkingRwLock<BinaryHeap<PrioritizedTransaction>>>,
     max_age: Duration,
@@ -1306,7 +1306,7 @@ impl Mempool {
             .collect();
 
         Self {
-            transactions: Arc::new(RwLock::new(HashMap::new())),
+            transactions: Arc::new(DashMap::new()),
             priority_queue: Arc::new(RwLock::new(BTreeMap::new())),
             priority_heap: Arc::new(ParkingRwLock::new(BinaryHeap::new())),
             max_age: Duration::from_secs(max_age_secs),
@@ -1327,13 +1327,12 @@ impl Mempool {
     }
 
     pub async fn size(&self) -> usize {
-        self.transactions.read().await.len()
+        self.transactions.len()
     }
 
     /// Prunes transactions that have exceeded their maximum age from the mempool.
     pub async fn prune_old_transactions(&self) {
-        let mut transactions = self.transactions.write().await;
-        if transactions.is_empty() {
+        if self.transactions.is_empty() {
             return;
         }
 
@@ -1343,10 +1342,10 @@ impl Mempool {
             .as_secs();
         let max_age_secs = self.max_age.as_secs();
 
-        let ids_to_prune: Vec<String> = transactions
+        let ids_to_prune: Vec<String> = self.transactions
             .iter()
-            .filter(|(_, p_tx)| now.saturating_sub(p_tx.timestamp) > max_age_secs)
-            .map(|(id, _)| id.clone())
+            .filter(|entry| now.saturating_sub(entry.value().timestamp) > max_age_secs)
+            .map(|entry| entry.key().clone())
             .collect();
 
         if ids_to_prune.is_empty() {
@@ -1360,7 +1359,7 @@ impl Mempool {
         let mut priority_queue = self.priority_queue.write().await;
 
         for id in ids_to_prune {
-            if let Some(removed_ptx) = transactions.remove(&id) {
+            if let Some((_, removed_ptx)) = self.transactions.remove(&id) {
                 let tx_size = serde_json::to_vec(&removed_ptx.tx)
                     .unwrap_or_default()
                     .len();
@@ -1400,8 +1399,7 @@ impl Mempool {
 
         // Fast duplicate check in standard mempool
         {
-            let transactions_read = self.transactions.read().await;
-            if transactions_read.contains_key(&tx.id) {
+            if self.transactions.contains_key(&tx.id) {
                 warn!("Rejected tx {}: duplicate transaction id", tx.id);
                 return Err(MempoolError::TransactionValidation(
                     "Duplicate transaction".to_string(),
@@ -1431,8 +1429,8 @@ impl Mempool {
                 .map(|i| format!("{}_{}", i.tx_id, i.output_index))
                 .collect();
 
-            let transactions_guard = self.transactions.read().await;
-            for (_, existing) in transactions_guard.iter() {
+            for entry in self.transactions.iter() {
+                let existing = entry.value();
                 for ex_in in &existing.tx.inputs {
                     let key = format!("{}_{}", ex_in.tx_id, ex_in.output_index);
                     if tx_inputs.contains(&key) {
@@ -1507,8 +1505,7 @@ impl Mempool {
 
         // Add to transactions map
         {
-            let mut transactions = self.transactions.write().await;
-            if transactions.contains_key(&tx_id) {
+            if self.transactions.contains_key(&tx_id) {
                 warn!(
                     "Rejected tx {}: duplicate detected during atomic insertion",
                     tx_id
@@ -1517,7 +1514,7 @@ impl Mempool {
                     "Duplicate transaction".to_string(),
                 ));
             }
-            transactions.insert(tx_id.clone(), prioritized_tx.clone());
+            self.transactions.insert(tx_id.clone(), prioritized_tx.clone());
         }
 
         // Add to priority queue (BTreeMap keyed by fee per byte)
@@ -1564,14 +1561,10 @@ impl Mempool {
         if should_log_summary {
             let current_size = self.current_size_bytes.load(Ordering::Relaxed);
             let capacity_percentage = (current_size as f64 / self.max_size_bytes as f64) * 100.0;
-            let transactions_count = {
-                let transactions = self.transactions.read().await;
-                transactions.len()
-            };
+            let transactions_count = self.transactions.len();
             let avg_fee_per_byte = if transactions_count > 0 {
-                let transactions = self.transactions.read().await;
                 let total_fee_per_byte: u128 =
-                    transactions.values().map(|ptx| ptx.fee_per_byte).sum();
+                    self.transactions.iter().map(|entry| entry.value().fee_per_byte).sum();
                 total_fee_per_byte as f64 / transactions_count as f64
             } else {
                 0.0
@@ -1598,10 +1591,9 @@ impl Mempool {
     }
 
     pub async fn get_transactions(&self) -> HashMap<String, Transaction> {
-        let transactions = self.transactions.read().await;
-        let mut result = HashMap::with_capacity(transactions.len());
-        for (id, p_tx) in transactions.iter() {
-            result.insert(id.clone(), p_tx.tx.clone());
+        let mut result = HashMap::with_capacity(self.transactions.len());
+        for entry in self.transactions.iter() {
+            result.insert(entry.key().clone(), entry.value().tx.clone());
         }
         result
     }
@@ -1624,10 +1616,7 @@ impl Mempool {
         let mut result: Vec<Transaction> = Vec::with_capacity(max_txs);
 
         // Snapshot current transaction IDs to detect in-flight dependencies without awaiting inside loops
-        let tx_ids_snapshot: HashSet<String> = {
-            let txs = self.transactions.read().await;
-            txs.keys().cloned().collect()
-        };
+        let tx_ids_snapshot: HashSet<String> = self.transactions.iter().map(|entry| entry.key().clone()).collect();
 
         // Fallback to single heap when sharding is not active
         if self.shard_count <= 1 || self.sharded_heaps.is_empty() {
@@ -1773,11 +1762,10 @@ impl Mempool {
             return;
         }
 
-        let mut transactions = self.transactions.write().await;
         let mut priority_queue = self.priority_queue.write().await;
 
         for tx in txs_to_remove {
-            if let Some(removed_ptx) = transactions.remove(&tx.id) {
+            if let Some((_, removed_ptx)) = self.transactions.remove(&tx.id) {
                 // Use accurate transaction size calculation for consistency
                 let tx_size = Self::calculate_transaction_size(&removed_ptx.tx);
                 self.current_size_bytes
@@ -1805,25 +1793,23 @@ impl Mempool {
 
     /// Get the number of transactions in the mempool
     pub async fn len(&self) -> usize {
-        self.transactions.read().await.len()
+        self.transactions.len()
     }
 
     pub async fn is_empty(&self) -> bool {
-        self.transactions.read().await.is_empty()
+        self.transactions.is_empty()
     }
 
     /// Get the total fees of all transactions in the mempool
     pub async fn get_total_fees(&self) -> u128 {
-        let transactions = self.transactions.read().await;
-        transactions.values().map(|ptx| ptx.tx.fee).sum::<u128>()
+        self.transactions.iter().map(|entry| entry.value().tx.fee).sum::<u128>()
     }
 
     /// Get all pending transactions
     pub async fn get_pending_transactions(&self) -> Vec<Transaction> {
-        let transactions = self.transactions.read().await;
-        let mut pending = Vec::with_capacity(transactions.len());
-        for ptx in transactions.values() {
-            pending.push(ptx.tx.clone());
+        let mut pending = Vec::with_capacity(self.transactions.len());
+        for entry in self.transactions.iter() {
+            pending.push(entry.value().tx.clone());
         }
         pending
     }
@@ -1950,7 +1936,7 @@ impl Mempool {
     }
 
     /// Release reserved transactions for a specific miner (Mempool implementation)
-    pub fn release_reserved_transactions(&mut self, miner_id: &str) {
+    pub fn release_reserved_transactions(&self, miner_id: &str) {
         let mut reserved = self.reserved_transactions.write();
         let mut timestamps = self.reservation_timestamps.write();
 
