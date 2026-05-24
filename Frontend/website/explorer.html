@@ -133,20 +133,31 @@
 
     <script>
         const feed = document.getElementById('block-feed');
-        let currentHeight = 252034;
-        
-        function generateBlock() {
-            currentHeight++;
-            const hash = '0x' + [...Array(40)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
-            const validator = 'qnto1...' + [...Array(6)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
-            const txns = Math.floor(Math.random() * 150) + 10;
-            
+        const RPC_BASE = 'https://trvorth-qanto-testnet.hf.space';
+        let currentHeight = 0;
+        let isLive = false;
+
+        function timeAgo(ts) {
+            const diff = Math.floor(Date.now() / 1000) - ts;
+            if (diff < 5) return 'Just now';
+            if (diff < 60) return diff + 's ago';
+            if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+            return Math.floor(diff / 3600) + 'h ago';
+        }
+
+        function renderBlock(block) {
             const card = document.createElement('div');
             card.className = 'glass-panel block-card';
+            const height = block.height || currentHeight;
+            const hash = block.id || ('0x' + [...Array(40)].map(() => Math.floor(Math.random() * 16).toString(16)).join(''));
+            const validator = block.validator || ('qnto1...' + [...Array(6)].map(() => Math.floor(Math.random() * 16).toString(16)).join(''));
+            const txns = block.transaction_count ?? (block.transactions ? block.transactions.length : Math.floor(Math.random() * 150) + 10);
+            const age = block.timestamp ? timeAgo(block.timestamp) : 'Just now';
+
             card.innerHTML = `
                 <div>
                     <div class="block-label">Block Height</div>
-                    <div class="block-val" style="font-weight: bold;">#${currentHeight.toLocaleString()}</div>
+                    <div class="block-val" style="font-weight: bold;">#${height.toLocaleString()}</div>
                 </div>
                 <div>
                     <div class="block-label">Hash</div>
@@ -154,7 +165,7 @@
                 </div>
                 <div>
                     <div class="block-label">Validator</div>
-                    <div class="hash" title="${validator}">${validator}</div>
+                    <div class="hash" title="${validator}">${validator.length > 16 ? validator.substring(0, 12) + '...' : validator}</div>
                 </div>
                 <div>
                     <div class="block-label">Txns</div>
@@ -162,18 +173,88 @@
                 </div>
                 <div>
                     <div class="block-label">Age</div>
-                    <div class="block-val" style="color: #8b5cf6;">Just now</div>
+                    <div class="block-val" style="color: #8b5cf6;">${age}</div>
                 </div>
             `;
-            
             feed.insertBefore(card, feed.firstChild);
-            if (feed.children.length > 10) feed.removeChild(feed.lastChild);
+            if (feed.children.length > 20) feed.removeChild(feed.lastChild);
         }
-        
-        // Initial blocks
-        for(let i=0; i<10; i++) generateBlock();
-        // Live feed tick (32 BPS = 31ms)
-        setInterval(generateBlock, 31);
+
+        // Simulated fallback
+        function generateSimulatedBlock() {
+            currentHeight++;
+            renderBlock({ height: currentHeight });
+        }
+
+        // Live RPC polling
+        async function fetchLiveData() {
+            try {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 8000);
+                const infoRes = await fetch(`${RPC_BASE}/info`, { signal: controller.signal });
+                clearTimeout(timeout);
+                if (!infoRes.ok) throw new Error('RPC unreachable');
+                const info = await infoRes.json();
+
+                const liveHeight = info.block_count || 0;
+                if (liveHeight > currentHeight) {
+                    currentHeight = liveHeight;
+                    isLive = true;
+                    document.querySelector('.status-badge').textContent = '🟢 LIVE — NETWORK SYNCED';
+                    document.querySelector('.status-badge').style.boxShadow = '0 0 20px rgba(67, 233, 123, 0.4)';
+                    document.querySelector('.status-badge').style.color = '#43e97b';
+                    document.querySelector('.status-badge').style.borderColor = 'rgba(67, 233, 123, 0.4)';
+                    document.querySelector('.status-badge').style.background = 'rgba(67, 233, 123, 0.12)';
+
+                    // Fetch latest block IDs
+                    try {
+                        const blocksRes = await fetch(`${RPC_BASE}/blocks`, { signal: AbortSignal.timeout(5000) });
+                        if (blocksRes.ok) {
+                            const blockIds = await blocksRes.json();
+                            const latestIds = Array.isArray(blockIds) ? blockIds.slice(-3) : [];
+                            for (const id of latestIds) {
+                                try {
+                                    const blockRes = await fetch(`${RPC_BASE}/block/${id}`, { signal: AbortSignal.timeout(3000) });
+                                    if (blockRes.ok) {
+                                        const block = await blockRes.json();
+                                        block.height = currentHeight;
+                                        renderBlock(block);
+                                    }
+                                } catch { /* skip individual block fetch failures */ }
+                            }
+                            return; // Successfully rendered live blocks
+                        }
+                    } catch { /* fall through to render info-only block */ }
+
+                    // Render block from info data alone
+                    renderBlock({
+                        height: currentHeight,
+                        transaction_count: info.mempool_size || 0,
+                    });
+                }
+            } catch (err) {
+                if (!isLive) {
+                    document.querySelector('.status-badge').textContent = '🟡 SIMULATED — RPC SYNCING';
+                    document.querySelector('.status-badge').style.color = '#ed8936';
+                    document.querySelector('.status-badge').style.borderColor = 'rgba(237, 137, 54, 0.3)';
+                    document.querySelector('.status-badge').style.background = 'rgba(237, 137, 54, 0.1)';
+                    generateSimulatedBlock();
+                }
+            }
+        }
+
+        // Initial simulated blocks while RPC connects
+        currentHeight = 252034;
+        for (let i = 0; i < 5; i++) generateSimulatedBlock();
+
+        // Start live polling (every 2s)
+        fetchLiveData();
+        setInterval(fetchLiveData, 2000);
+
+        // Simulated fallback ticker for visual continuity
+        setInterval(() => {
+            if (!isLive) generateSimulatedBlock();
+        }, 1000);
     </script>
 </body>
 </html>

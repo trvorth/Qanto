@@ -897,7 +897,7 @@ async fn main() -&gt; Result&lt;()&gt; {
             
             <div class="footer-bottom">
                 <div class="footer-copyright">
-                    <p>&copy; 2024 Qanto. All rights reserved.</p>
+                    <p>&copy; 2025 Qanto. All rights reserved.</p>
                 </div>
                 <div class="footer-legal">
                     <a href="https://qanto.org/privacy" target="_blank">Privacy Policy</a>
@@ -982,18 +982,7 @@ async fn main() -&gt; Result&lt;()&gt; {
             }
         });
     </script>
-    <!-- Phase 133: Service Worker Registration -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').then(registration => {
-                    console.log('SAGA-OS ServiceWorker registration successful with scope: ', registration.scope);
-                }, err => {
-                    console.log('SAGA-OS ServiceWorker registration failed: ', err);
-                });
-            });
-        }
-    </script>
+    <!-- Phase 133: Service Worker (deduplicated — handled above) -->
     <!-- Phase 160: THE MASTER KEY (The QANTO Infinity) -->
     <script>
         function triggerSingularity() {
@@ -1045,5 +1034,5 @@ async fn main() -&gt; Result&lt;()&gt; {
         // Automatic Singularity Trigger
         // setTimeout(triggerSingularity, 120000); // EMERGENCY OVERRIDE: Disabled for recovery wave
     </script>
-<!-- Cloudflare Pages Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "21e825fe953442f39235cc605cdc2c95"}'></script><!-- Cloudflare Pages Analytics --><!-- Cloudflare Pages Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "21e825fe953442f39235cc605cdc2c95"}'></script><!-- Cloudflare Pages Analytics --></body>
+<!-- Cloudflare Pages Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "21e825fe953442f39235cc605cdc2c95"}'></script></body>
 </html>
