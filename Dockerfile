@@ -4,7 +4,7 @@ RUN rustup toolchain install nightly && rustup default nightly
 RUN apt-get update && apt-get install -y pkg-config libssl-dev cmake build-essential clang llvm git ca-certificates protobuf-compiler
 WORKDIR /usr/src/qanto
 COPY . .
-RUN cargo build --release --bin qanto
+RUN cargo build --release --bin qanto -j 1
 
 # Runtime Stage
 FROM debian:bullseye-slim
