@@ -1,5 +1,5 @@
 # Build Stage
-FROM rust:1.75 AS builder
+FROM rust:1.81 AS builder
 RUN apt-get update && apt-get install -y pkg-config libssl-dev cmake build-essential clang llvm git ca-certificates protobuf-compiler
 WORKDIR /usr/src/qanto
 COPY . .
