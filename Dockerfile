@@ -7,7 +7,7 @@ COPY . .
 RUN cargo build --release --bin qanto -j 1
 
 # Runtime Stage
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /usr/src/qanto/target/release/qanto /app/qanto-node
