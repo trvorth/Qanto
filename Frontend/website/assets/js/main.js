@@ -888,3 +888,11 @@ document.addEventListener('DOMContentLoaded', () => {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = QantoWebsite;
 }
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('QANTO PWA Matrix Engaged:', reg.scope))
+      .catch(err => console.log('PWA Registration Failed:', err));
+  });
+}

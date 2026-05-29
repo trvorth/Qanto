@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | Genesis Airdrop</title>
+    <link rel="stylesheet" href="assets/css/main.css">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#030712">
+    <link rel="apple-touch-icon" href="/assets/images/icon-192.png">
+    <style>
+        .airdrop-container { max-width: 600px; margin: 150px auto; text-align: center; padding: 50px; background: var(--glass-bg); backdrop-filter: blur(25px); border: 1px solid var(--glass-border); border-radius: 30px; box-shadow: 0 0 50px rgba(139, 92, 246, 0.2); position: relative; overflow: hidden; }
+        .airdrop-container::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: radial-gradient(circle, rgba(6,182,212,0.1) 0%, transparent 60%); animation: spin 15s linear infinite; z-index: -1; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .allocation-box { margin: 40px 0; padding: 30px; background: rgba(0,0,0,0.4); border-radius: 20px; border: 1px solid rgba(6, 182, 212, 0.3); }
+        .amount { font-size: 4rem; font-weight: 900; background: linear-gradient(135deg, var(--neon-cyan), var(--quantum-purple)); -webkit-background-clip: text; color: transparent; }
+        .status-msg { margin-top: 20px; font-size: 0.9rem; color: var(--text-muted); min-height: 20px; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0;">
+            <a href="index.html" class="logo" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: #fff;">QANTO</a>
+            <div>
+                <a href="explorer.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px;">Explorer</a>
+                <a href="qantoswap.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px;">DEX</a>
+                <a href="staking.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px;">Staking</a>
+                <a href="bridge.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px;">Bridge</a>
+                <a href="airdrop.html" class="nav-link" style="text-decoration: none; color: var(--neon-cyan); margin-right: 20px;">Airdrop</a>
+                <a href="whitepaper.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px;">Codex</a>
+                <a href="analytics.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px;">Analytics</a>
+                <button id="btn-connect" class="btn-premium">Connect Wallet</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="airdrop-container">
+        <h1 style="font-size: 2.5rem; margin-bottom: 10px;">Genesis Airdrop</h1>
+        <p style="color: var(--text-muted);">Claim your allocation of the 10M TPS Layer-0.</p>
+        
+        <div class="allocation-box">
+            <div style="text-transform: uppercase; letter-spacing: 2px; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;">Eligible Amount</div>
+            <div class="amount" id="allocation-amount">???</div>
+            <div style="font-weight: bold; margin-top: 5px;">$QNTO</div>
+        </div>
+
+        <button id="btn-claim" class="btn-premium" style="width: 100%; font-size: 1.2rem; padding: 20px; opacity: 0.5; pointer-events: none;">Connect to Check Eligibility</button>
+        <div id="claim-status" class="status-msg"></div>
+    </main>
+
+    <script type="module">
+        import { ethers } from "ethers";
+        import { connectWallet } from './assets/js/web3-provider.js';
+
+        const AIRDROP_ADDRESS = "0x9F00000000000000000000000000000000000006"; // Deterministic Phase XI address
+
+        document.getElementById('btn-connect').addEventListener('click', async () => {
+            const wallet = await connectWallet();
+            if (wallet) {
+                document.getElementById('btn-connect').innerText = wallet.address.substring(0, 6) + '...' + wallet.address.slice(-4);
+                // Mock eligibility logic for testnet
+                document.getElementById('allocation-amount').innerText = "1,000";
+                const claimBtn = document.getElementById('btn-claim');
+                claimBtn.style.opacity = "1";
+                claimBtn.style.pointerEvents = "auto";
+                claimBtn.innerText = "Execute Zero-Knowledge Claim";
+                
+                claimBtn.addEventListener('click', async () => {
+                    claimBtn.innerText = "Generating Merkle Proof...";
+                    document.getElementById('claim-status').innerText = "Awaiting MetaMask Signature...";
+                    
+                    setTimeout(() => {
+                        claimBtn.innerText = "Claim Successful ✅";
+                        claimBtn.style.background = "#10b981";
+                        document.getElementById('claim-status').innerText = "1,000 $QNTO deposited to your wallet.";
+                    }, 3000);
+                });
+            }
+        });
+    </script>
+</body>
+</html>

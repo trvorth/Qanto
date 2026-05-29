@@ -12,7 +12,8 @@ export default defineConfig({
         staking: resolve(__dirname, 'staking.html'),
         bridge: resolve(__dirname, 'bridge.html'),
         analytics: resolve(__dirname, 'analytics.html'),
-        whitepaper: resolve(__dirname, 'whitepaper.html')
+        whitepaper: resolve(__dirname, 'whitepaper.html'),
+        airdrop: resolve(__dirname, 'airdrop.html')
       }
     }
   }

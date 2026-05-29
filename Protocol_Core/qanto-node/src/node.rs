@@ -2120,6 +2120,10 @@ async fn jsonrpc_handler(
             // Return a mocked gas price for Metamask UI
             serde_json::json!("0x3b9aca00") // 1 GWEI
         }
+        "qanto_getTelemetry" => {
+            let metrics = crate::telemetry::get_live_metrics();
+            serde_json::to_value(metrics).unwrap_or(serde_json::Value::Null)
+        }
         "qanto_mintFaucet" | "qanto_requestFaucetFunds" => {
             let params = payload.get("params").and_then(|p| p.as_array());
             if let Some(params) = params {
