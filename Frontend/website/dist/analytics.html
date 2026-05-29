@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | Network Analytics Matrix</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .analytics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; max-width: 1400px; margin: 100px auto; padding: 20px; }
+        .chart-container { padding: 30px; position: relative; height: 350px; width: 100%; }
+        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .live-pulse { width: 12px; height: 12px; background-color: var(--neon-cyan); border-radius: 50%; box-shadow: 0 0 15px var(--neon-cyan); animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.7); } 70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(6, 182, 212, 0); } 100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(6, 182, 212, 0); } }
+        .metric-huge { font-size: 3rem; font-weight: 800; background: linear-gradient(to right, #fff, #94A3B8); -webkit-background-clip: text; color: transparent; }
+    </style>
+  <link rel="stylesheet" crossorigin href="/assets/main-CSYc5mxy.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0;">
+            <a href="index.html" class="logo" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: #fff;">QANTO</a>
+            <div>
+                <a href="explorer.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px;">Explorer</a>
+                <a href="whitepaper.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px;">Codex</a>
+                <a href="analytics.html" class="nav-link" style="text-decoration: none; color: var(--neon-cyan); margin-right: 20px;">Analytics</a>
+            </div>
+        </div>
+    </nav>
+
+    <div style="text-align: center; margin-top: 80px;">
+        <h1 class="metric-huge">Global Network State</h1>
+        <p style="color: var(--text-muted);">Real-time telemetry of the QANTO Layer-0 Synaptic DAG</p>
+    </div>
+
+    <main class="analytics-grid">
+        <div class="glass-panel chart-container">
+            <div class="chart-header">
+                <h3>Transactions Per Second (TPS)</h3>
+                <div class="live-pulse"></div>
+            </div>
+            <canvas id="tpsChart"></canvas>
+        </div>
+        
+        <div class="glass-panel chart-container">
+            <div class="chart-header">
+                <h3>Block Finality Latency (ms)</h3>
+                <div class="live-pulse"></div>
+            </div>
+            <canvas id="latencyChart"></canvas>
+        </div>
+
+        <div class="glass-panel chart-container">
+            <div class="chart-header">
+                <h3>Sentinel TVL (Millions QNTO)</h3>
+            </div>
+            <canvas id="tvlChart"></canvas>
+        </div>
+    </main>
+
+    <script>
+        // Common Chart.js Configuration for Dark Mode / Glassmorphism
+        Chart.defaults.color = '#94A3B8';
+        Chart.defaults.font.family = 'Inter';
+        const commonOptions = {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { 
+                x: { grid: { color: 'rgba(255,255,255,0.05)' } },
+                y: { grid: { color: 'rgba(255,255,255,0.05)' } }
+            }
+        };
+
+        // 1. TPS Chart (Simulating extreme spikes up to 10M)
+        const tpsCtx = document.getElementById('tpsChart').getContext('2d');
+        const tpsGradient = tpsCtx.createLinearGradient(0, 0, 0, 400);
+        tpsGradient.addColorStop(0, 'rgba(6, 182, 212, 0.5)'); tpsGradient.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
+        
+        let tpsData = Array.from({length: 20}, () => Math.floor(Math.random() * 5000) + 20000);
+        const tpsChart = new Chart(tpsCtx, {
+            type: 'line',
+            data: { labels: Array(20).fill(''), datasets: [{ data: tpsData, borderColor: '#06b6d4', backgroundColor: tpsGradient, fill: true, tension: 0.4 }] },
+            options: commonOptions
+        });
+
+        // 2. Latency Chart (Hovering strictly around 31ms finality)
+        const latencyCtx = document.getElementById('latencyChart').getContext('2d');
+        let latencyData = Array.from({length: 20}, () => Math.random() * 2 + 30);
+        const latencyChart = new Chart(latencyCtx, {
+            type: 'line',
+            data: { labels: Array(20).fill(''), datasets: [{ data: latencyData, borderColor: '#8b5cf6', backgroundColor: 'transparent', borderWidth: 2, tension: 0.2 }] },
+            options: { ...commonOptions, scales: { y: { min: 25, max: 35, grid: { color: 'rgba(255,255,255,0.05)' } } } }
+        });
+
+        // 3. TVL Chart (Gradual Growth)
+        const tvlCtx = document.getElementById('tvlChart').getContext('2d');
+        const tvlChart = new Chart(tvlCtx, {
+            type: 'bar',
+            data: { labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'], datasets: [{ data: [120, 190, 300, 450, 520, 642], backgroundColor: '#06b6d4', borderRadius: 4 }] },
+            options: commonOptions
+        });
+
+        // Real-time Simulation Update Loop
+        setInterval(() => {
+            // Occasional massive 10M TPS flood simulation
+            const isFlood = Math.random() > 0.9;
+            const newTps = isFlood ? Math.floor(Math.random() * 2000000) + 8000000 : Math.floor(Math.random() * 5000) + 20000;
+            tpsChart.data.datasets[0].data.shift(); tpsChart.data.datasets[0].data.push(newTps); tpsChart.update('none');
+
+            // Constant 31ms latency
+            latencyChart.data.datasets[0].data.shift(); latencyChart.data.datasets[0].data.push(Math.random() * 2 + 30); latencyChart.update('none');
+        }, 1000);
+    </script>
+</body>
+</html>

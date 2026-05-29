@@ -1,0 +1,35 @@
+name: QANTO Layer-0 CI/CD Matrix
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  rust-backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install Rust Stable
+      uses: actions-rs/toolchain@v1
+      with:
+        profile: minimal
+        toolchain: 1.81.0
+        override: true
+    - name: Cargo Check Node
+      run: cd Protocol_Core/qanto-node && cargo check --release
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+    - name: Install & Build Vite
+      run: |
+        cd Frontend/website
+        npm install
+        npm run build

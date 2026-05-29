@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import { connectWallet, getSigner, getProvider } from "./web3-provider.js";
 
-const WQNTO_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Local/Testnet deployment address
+const WQNTO_ADDRESS = "0x9F00000000000000000000000000000000000001"; // Deterministic Mainnet Alpha Address
 
 document.addEventListener("DOMContentLoaded", () => {
     const payInput = document.getElementById('pay-input');

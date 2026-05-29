@@ -41,16 +41,16 @@ const MAX_MEMPOOL_MAX_SIZE: usize = 16 * 1024 * 1024 * 1024; // Maximum 16GB mem
 // --- Mempool batch processing constants ---
 const MIN_MEMPOOL_BATCH_SIZE: usize = 10; // Minimum 10 transactions per batch
 const MAX_MEMPOOL_BATCH_SIZE: usize = 1000000; // Maximum 1M transactions per batch (increased for 10M TPS)
-const MIN_MEMPOOL_BACKPRESSURE_THRESHOLD: u128 = 500_000_000; // Minimum 50% utilization
-const MAX_MEMPOOL_BACKPRESSURE_THRESHOLD: u128 = 950_000_000; // Maximum 95% utilization
+const MIN_MEMPOOL_BACKPRESSURE_THRESHOLD: u64 = 500_000_000; // Minimum 50% utilization
+const MAX_MEMPOOL_BACKPRESSURE_THRESHOLD: u64 = 950_000_000; // Maximum 95% utilization
 
 // --- Memory limit constants for TX generator backpressure ---
 const SOFT_MEMORY_LIMIT: usize = 8 * 1024 * 1024; // 8MB soft limit for backpressure // 8MB soft limit
 const HARD_MEMORY_LIMIT: usize = 10 * 1024 * 1024; // 10MB hard limit
 const MIN_TX_BATCH_SIZE: usize = 1; // Minimum 1 transaction per batch
 const MAX_TX_BATCH_SIZE: usize = 200000; // Maximum 200K transactions per batch (increased for high performance)
-const MIN_ADAPTIVE_BATCH_THRESHOLD: u128 = 600_000_000; // Minimum 60% memory utilization for adaptive batching
-const MAX_ADAPTIVE_BATCH_THRESHOLD: u128 = 900_000_000; // Maximum 90% memory utilization for adaptive batching
+const MIN_ADAPTIVE_BATCH_THRESHOLD: u64 = 600_000_000; // Minimum 60% memory utilization for adaptive batching
+const MAX_ADAPTIVE_BATCH_THRESHOLD: u64 = 900_000_000; // Maximum 90% memory utilization for adaptive batching
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -133,15 +133,15 @@ pub struct Config {
     pub mempool_max_size_bytes: Option<usize>,
     pub mempool_max_size: Option<usize>, // Number of transactions (default: 1000)
     pub mempool_batch_size: Option<usize>,
-    pub mempool_backpressure_threshold: Option<u128>,
+    pub mempool_backpressure_threshold: Option<u64>,
 
     // --- TX Generator Backpressure Configuration ---
     pub tx_batch_size: Option<usize>,
-    pub adaptive_batch_threshold: Option<u128>,
+    pub adaptive_batch_threshold: Option<u64>,
     pub memory_soft_limit: Option<usize>,
     pub memory_hard_limit: Option<usize>,
     /// Optional developer fee rate applied to coinbase rewards (0.10 = 10%)
-    pub dev_fee_rate: Option<u128>,
+    pub dev_fee_rate: Option<u64>,
 
     // --- File & Database Paths ---
     pub data_dir: String,
@@ -840,7 +840,7 @@ impl Config {
         }
 
         if let Some(dev_fee_rate) = self.dev_fee_rate {
-            if dev_fee_rate > crate::QANTO_SCALE {
+            if (dev_fee_rate as u128) > crate::QANTO_SCALE {
                 return Err(ConfigError::Validation(
                     "dev_fee_rate must be between 0 and 1.0 (scaled)".to_string(),
                 ));

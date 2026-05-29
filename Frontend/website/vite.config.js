@@ -10,7 +10,9 @@ export default defineConfig({
         faucet: resolve(__dirname, 'faucet.html'),
         qantoswap: resolve(__dirname, 'qantoswap.html'),
         staking: resolve(__dirname, 'staking.html'),
-        bridge: resolve(__dirname, 'bridge.html')
+        bridge: resolve(__dirname, 'bridge.html'),
+        analytics: resolve(__dirname, 'analytics.html'),
+        whitepaper: resolve(__dirname, 'whitepaper.html')
       }
     }
   }

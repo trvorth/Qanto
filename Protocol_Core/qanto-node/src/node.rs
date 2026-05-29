@@ -367,7 +367,7 @@ impl Node {
             initial_validator,
             target_block_time: config.target_block_time,
             num_chains: config.num_chains,
-            dev_fee_rate: config.dev_fee_rate.unwrap_or(100_000_000), // Default 10% (0.10 scaled by 1e9)
+            dev_fee_rate: config.dev_fee_rate.unwrap_or(100_000_000) as u128, // Default 10% (0.10 scaled by 1e9)
         };
         info!("QantoDagConfig configured successfully");
 

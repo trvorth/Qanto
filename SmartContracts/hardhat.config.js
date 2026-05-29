@@ -16,7 +16,7 @@ export default {
   networks: {
     qanto_testnet: {
       url: "https://trvorth-qanto-testnet.hf.space/rpc",
-      chainId: 1234, // Standardize Qanto Testnet Chain ID
+      chainId: 21313, // Standardize Qanto Testnet Chain ID
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []
     }
   }
