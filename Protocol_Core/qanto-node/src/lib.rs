@@ -40,6 +40,8 @@ pub mod safe_interval;
 pub mod shutdown;
 pub mod telemetry;
 pub mod timing;
+pub mod saga_ai;
+pub mod pq_crypto;
 pub mod interplanetary;
 pub mod kernel_boot;
 pub mod heritage_archive;

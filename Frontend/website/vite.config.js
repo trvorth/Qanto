@@ -13,7 +13,9 @@ export default defineConfig({
         bridge: resolve(__dirname, 'bridge.html'),
         analytics: resolve(__dirname, 'analytics.html'),
         whitepaper: resolve(__dirname, 'whitepaper.html'),
-        airdrop: resolve(__dirname, 'airdrop.html')
+        airdrop: resolve(__dirname, 'airdrop.html'),
+        saga: resolve(__dirname, 'saga.html'),
+        tge: resolve(__dirname, 'tge.html')
       }
     }
   }
