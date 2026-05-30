@@ -54,6 +54,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use axum::http::{Method, header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE}};
 use tower_http::cors::{CorsLayer, Any};
 use governor::clock::QuantaClock;
 use governor::state::{InMemoryState, NotKeyed};
@@ -1249,8 +1250,9 @@ impl Node {
                 // Combine API, WebSocket, and GraphQL routes
                 let cors = CorsLayer::new()
                     .allow_origin(Any)
-                    .allow_methods(Any)
-                    .allow_headers(Any);
+                    .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+                    .allow_headers([CONTENT_TYPE, AUTHORIZATION, ACCEPT])
+                    .max_age(std::time::Duration::from_secs(3600)); // Cache preflight requests for 1 hour
                 let app = api_routes.merge(websocket_routes).merge(graphql_routes).layer(cors);
 
                 let addr: SocketAddr = self.config.api_address.parse().map_err(|e| {

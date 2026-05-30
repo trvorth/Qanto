@@ -15,7 +15,8 @@ export default defineConfig({
         whitepaper: resolve(__dirname, 'whitepaper.html'),
         airdrop: resolve(__dirname, 'airdrop.html'),
         saga: resolve(__dirname, 'saga.html'),
-        tge: resolve(__dirname, 'tge.html')
+        tge: resolve(__dirname, 'tge.html'),
+        genesis: resolve(__dirname, 'genesis.html')
       }
     }
   }

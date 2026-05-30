@@ -28,8 +28,15 @@ export async function getSigner() {
 
 export async function connectWallet() {
     if (!window.ethereum) {
-        alert("MetaMask is required to access the QANTO Agentic Mesh.");
-        return null;
+        // Check if mobile device
+        if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            const dappUrl = window.location.href.split('//')[1];
+            window.location.href = `https://metamask.app.link/dapp/${dappUrl}`;
+            return null;
+        } else {
+            alert("MetaMask extension is required to access the QANTO Layer-0 Mesh.");
+            return null;
+        }
     }
     try {
         provider = new ethers.BrowserProvider(window.ethereum);

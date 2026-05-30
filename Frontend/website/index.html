@@ -206,6 +206,7 @@
         .epoch-2-palette .hud-indicator { background: #7a00ff !important; box-shadow: 0 0 15px #7a00ff !important; }
     </style>
     <!-- BUILD_TIMESTAMP -->
+    <script type="module" src="assets/js/keep-alive.js"></script>
 </head>
 <body>
     <!-- Network Status Bar (Institutional Grade) -->
@@ -294,15 +295,15 @@
                         </p>
                         <div class="hero-stats">
                             <div class="stat">
-                                <div class="stat-number" data-target="10000000">0</div>
+                                <div class="stat-number" id="metric-tps" data-target="10000000">0</div>
                                 <div class="stat-label">TPS Capacity</div>
                             </div>
                             <div class="stat">
-                                <div class="stat-number" data-target="99.9">0</div>
+                                <div class="stat-number" id="metric-uptime" data-target="99.9">0</div>
                                 <div class="stat-label">% Uptime</div>
                             </div>
                             <div class="stat">
-                                <div class="stat-number" data-target="1000000">0</div>
+                                <div class="stat-number" id="metric-sentinels" data-target="1000000">0</div>
                                 <div class="stat-label">Sentinel Capacity</div>
                             </div>
                         </div>
