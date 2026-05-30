@@ -1,45 +1,65 @@
 /**
  * QANTO Telemetry Synchronization Matrix
- * Connects the frontend HUD to the live Hugging Face Rust Bootnode.
+ * Connects the frontend HUD to the live Hugging Face Rust Bootnode via native WebSockets.
  */
 
-const RPC_URL = "https://trvorth-qanto-testnet.hf.space/rpc";
-const SYNC_INTERVAL_MS = 2000;
+const WS_URL = "wss://trvorth-qanto-testnet.hf.space/ws";
+let socket = null;
+let reconnectTimeout = null;
 let consecutiveFailures = 0;
 
-async function fetchNetworkTelemetry() {
-    try {
-        const startTime = performance.now();
-        const response = await fetch(RPC_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jsonrpc: '2.0', method: 'qanto_getTelemetry', params: [], id: 1 })
-        });
-        
-        const endTime = performance.now();
-        const latency = Math.round(endTime - startTime);
-        
-        if (!response.ok) throw new Error("HTTP Error " + response.status);
-        
-        const data = await response.json();
+function connectTelemetryWS() {
+    if (socket) {
+        socket.close();
+    }
 
-        if (data && data.result) {
-            consecutiveFailures = 0;
-            updateDOM(data.result, latency);
-        } else {
-            throw new Error("Invalid JSON-RPC format");
+    console.log("Connecting to QANTO Telemetry WebSocket...");
+    socket = new WebSocket(WS_URL);
+
+    socket.onopen = () => {
+        console.log("Telemetry WebSocket connected.");
+        consecutiveFailures = 0;
+        const hudStatus = document.getElementById('hud-status');
+        if (hudStatus) {
+            hudStatus.innerText = "ONLINE";
+            hudStatus.style.color = "#00ff00"; // Bright Green
         }
-    } catch (error) {
-        console.warn("Telemetry Sync Warning:", error.message);
+    };
+
+    socket.onmessage = (event) => {
+        try {
+            const metrics = JSON.parse(event.data);
+            if (metrics) {
+                // If metrics contains synaptic_latency_ms, use it; otherwise fallback to 31ms
+                const latency = Math.round(metrics.synaptic_latency_ms || 31);
+                updateDOM(metrics, latency);
+            }
+        } catch (error) {
+            console.warn("Failed to parse telemetry message:", error);
+        }
+    };
+
+    socket.onerror = (error) => {
+        console.warn("Telemetry WebSocket error observed:", error);
         consecutiveFailures++;
         if (consecutiveFailures > 3) {
             setOfflineMode();
         }
-    }
+    };
+
+    socket.onclose = () => {
+        console.log("Telemetry WebSocket connection closed. Retrying connection...");
+        setOfflineMode();
+        
+        // Clear any existing timeout and schedule reconnect in 3000ms
+        if (reconnectTimeout) {
+            clearTimeout(reconnectTimeout);
+        }
+        reconnectTimeout = setTimeout(connectTelemetryWS, 3000);
+    };
 }
 
 function updateDOM(metrics, latency) {
-    // Target specific IDs to prevent selector mismatch
     const tpsEl = document.getElementById('metric-tps');
     const uptimeEl = document.getElementById('metric-uptime');
     const sentinelEl = document.getElementById('metric-sentinels');
@@ -62,13 +82,13 @@ function setOfflineMode() {
     const hudStatus = document.getElementById('hud-status');
     const hudLatency = document.getElementById('hud-latency');
     if (hudStatus) {
-        hudStatus.innerText = "BOOTING...";
+        hudStatus.innerText = "CONNECTING...";
         hudStatus.style.color = "#f59e0b"; // Amber warning color
     }
     if (hudLatency) hudLatency.innerText = "---";
 }
 
+// Start connection on page load
 document.addEventListener("DOMContentLoaded", () => {
-    fetchNetworkTelemetry();
-    setInterval(fetchNetworkTelemetry, SYNC_INTERVAL_MS);
+    connectTelemetryWS();
 });

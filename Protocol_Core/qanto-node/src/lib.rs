@@ -27,6 +27,7 @@ pub mod omega_enhanced;
 pub mod optimized_decoupled_producer;
 pub mod optimized_qdag;
 pub mod p2p;
+pub mod p2p_mesh;
 pub mod password_utils;
 pub mod performance_monitoring;
 pub mod performance_optimizations;

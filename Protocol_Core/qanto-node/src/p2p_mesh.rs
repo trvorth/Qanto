@@ -1,68 +1,48 @@
-//! QANTO SAGA-Mesh Connectivity Module
-//! v1.0.0 - Phase 47
+//! QANTO Libp2p Gossip Mesh
+use libp2p::{identity, PeerId, SwarmBuilder};
+use libp2p::mdns::{tokio::Behaviour as Mdns, Config as MdnsConfig, Event as MdnsEvent};
+use std::error::Error;
+use futures::StreamExt;
 
-use serde::{Deserialize, Serialize};
+pub async fn initialize_p2p_mesh() -> Result<(), Box<dyn Error>> {
+    let local_key = identity::Keypair::generate_ed25519();
+    let local_peer_id = PeerId::from(local_key.public());
+    println!("🌐 QANTO Libp2p Mesh Initializing... Local Peer ID: {}", local_peer_id);
+    
+    let mdns = Mdns::new(MdnsConfig::default(), local_peer_id)?;
+    let mut swarm = SwarmBuilder::with_existing_identity(local_key)
+        .with_tokio()
+        .with_tcp(
+            libp2p::tcp::Config::default().nodelay(true),
+            libp2p::noise::Config::new,
+            libp2p::yamux::Config::default,
+        )?
+        .with_behaviour(|_key| Ok(mdns))?
+        .build();
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MeshTunnel {
-    pub id: String,
-    pub source_node: String,
-    pub target_node: String,
-    pub bandwidth_limit_gb: u32,
-    pub encryption_key: [u8; 32],
-}
+    swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TelemetryPacket {
-    pub sensor_id: String,
-    pub value: f64,
-    pub hardware_signature: Vec<u8>,
-    pub timestamp: u64,
-}
-
-pub struct MeshManager {
-    pub active_tunnels: Vec<MeshTunnel>,
-}
-
-impl MeshManager {
-    pub fn new() -> Self {
-        Self {
-            active_tunnels: Vec::new(),
+    tokio::spawn(async move {
+        loop {
+            match swarm.select_next_some().await {
+                libp2p::swarm::SwarmEvent::NewListenAddr { address, .. } => {
+                    println!("🌐 P2P Mesh listening on {}", address);
+                }
+                libp2p::swarm::SwarmEvent::Behaviour(MdnsEvent::Discovered(peers)) => {
+                    for (peer_id, addr) in peers {
+                        println!("🌐 P2P Mesh discovered peer: {} at {}", peer_id, addr);
+                        let _ = swarm.dial(addr);
+                    }
+                }
+                libp2p::swarm::SwarmEvent::Behaviour(MdnsEvent::Expired(peers)) => {
+                    for (peer_id, addr) in peers {
+                        println!("🌐 P2P Mesh peer expired: {} at {}", peer_id, addr);
+                    }
+                }
+                _ => {}
+            }
         }
-    }
+    });
 
-    /// Establishes a secure, high-bandwidth P2P tunnel between two nodes.
-    pub fn create_tunnel(&mut self, source: &str, target: &str, limit: u32) -> MeshTunnel {
-        let tunnel = MeshTunnel {
-            id: format!("tunnel_{}_{}", source, target),
-            source_node: source.to_string(),
-            target_node: target.to_string(),
-            bandwidth_limit_gb: limit,
-            encryption_key: [0u8; 32], // Mock key
-        };
-        self.active_tunnels.push(tunnel.clone());
-        tunnel
-    }
-
-    /// Measures the 'Flux' (Bandwidth usage) across the mesh.
-    pub fn measure_flux(&self) -> u64 {
-        // Mock measurement of current global mesh throughput in Mbps
-        self.active_tunnels.len() as u64 * 1250 // ~1.25 Gbps per tunnel
-    }
-
-    /// Global Scaling: Streams hardware-attested industrial telemetry.
-    pub fn stream_industrial_telemetry(&self, packet: TelemetryPacket) {
-        println!("Mesh: Telemetry Stream from {}. Sensor Value: {:.4}. Hardware Signature Verified.", 
-            packet.sensor_id, packet.value);
-    }
-
-    /// Phase 74: Light-Speed Latency Calibration for Orbital Mesh.
-    /// Logic: Calibrates inter-orbital ZK-consensus based on c (speed of light) bottlenecks.
-    pub fn calibrate_orbital_latency(&self, distance_km: f64) -> f64 {
-        const SPEED_OF_LIGHT_KM_MS: f64 = 299.792458;
-        let latency_ms = distance_km / SPEED_OF_LIGHT_KM_MS;
-        println!("Mesh: Calibrating Orbital Latency for {}km. Expected: {:.2}ms...", distance_km, latency_ms);
-        println!("Mesh: ZK-Consensus windows adjusted for c-latency.");
-        latency_ms
-    }
+    Ok(())
 }

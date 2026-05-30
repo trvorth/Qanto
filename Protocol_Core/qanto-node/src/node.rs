@@ -486,6 +486,13 @@ impl Node {
         let (tx_to_p2p, rx_to_p2p) = mpsc::channel::<P2PCommand>(100);
         let mut join_set: JoinSet<Result<(), anyhow::Error>> = JoinSet::new();
 
+        // Spawn P2P mesh auto-discovery task
+        tokio::spawn(async {
+            if let Err(e) = crate::p2p_mesh::initialize_p2p_mesh().await {
+                error!("Failed to initialize P2P mesh: {}", e);
+            }
+        });
+
         // Get the cancellation token from resource cleanup system
         let shutdown_token = self.resource_cleanup.get_cancellation_token();
 

@@ -397,6 +397,24 @@ async fn handle_websocket(socket: WebSocket, state: WebSocketServerState) {
     // Create a channel for pong responses
     let (pong_tx, mut pong_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
+    // Create a channel for telemetry stream updates
+    let (telemetry_tx, mut telemetry_rx) = tokio::sync::mpsc::unbounded_channel::<axum::extract::ws::Message>();
+
+    // Spawn a Tokio task that streams get_live_metrics() every 1000ms
+    let telemetry_tx_clone = telemetry_tx.clone();
+    let telemetry_task = tokio::spawn(async move {
+        let mut telemetry_interval = tokio::time::interval(Duration::from_millis(1000));
+        loop {
+            telemetry_interval.tick().await;
+            let metrics = crate::telemetry::get_live_metrics();
+            if let Ok(json) = serde_json::to_string(&metrics) {
+                if telemetry_tx_clone.send(axum::extract::ws::Message::Text(json.into())).is_err() {
+                    break;
+                }
+            }
+        }
+    });
+
     // Spawn task to handle incoming messages from client
     let state_clone = state.clone();
     let client_id_clone = client_id.clone();
@@ -434,6 +452,12 @@ async fn handle_websocket(socket: WebSocket, state: WebSocketServerState) {
 
     loop {
         tokio::select! {
+            // Stream telemetry metrics every 1000ms
+            Some(telemetry_msg) = telemetry_rx.recv() => {
+                if sender.send(telemetry_msg).await.is_err() {
+                    break;
+                }
+            }
             // Handle analytics updates
             Ok(analytics_data) = analytics_rx.recv() => {
                 if client_has_subscription(&state, &client_id, &SubscriptionType::Analytics).await {
@@ -553,6 +577,7 @@ async fn handle_websocket(socket: WebSocket, state: WebSocketServerState) {
     // Cleanup
     state.remove_client(&client_id).await;
     incoming_task.abort();
+    telemetry_task.abort();
 }
 
 /// Handle incoming client messages
