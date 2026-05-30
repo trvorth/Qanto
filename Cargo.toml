@@ -16,6 +16,8 @@ members = [
     "Protocol_Core/myblockchain",
     "Protocol_Core/qanto-zk-sdk",
     "Scripts/tools/relayer",
+    "Protocol_Core/qanto-relayer",
+    "qanto-desktop/src-tauri",
 ]
 
 # Force secure versions to override transitive dependencies

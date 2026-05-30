@@ -944,8 +944,8 @@ async fn main() -&gt; Result&lt;()&gt; {
     <!-- DEBUG HUD -->
     <div id="debug-hud">
         <div>[DEBUG HUD] ACTIVE</div>
-        <div>Node Latency: <span id="debug-latency">---</span></div>
-        <div>RPC Status: <span id="debug-rpc" >OFFLINE</span></div>
+        <div>Node Latency: <span id="hud-latency">---</span></div>
+        <div>RPC Status: <span id="hud-status" >OFFLINE</span></div>
         <div>[IPFS MIRROR LIST] Pinata, Infura, Web3.Storage</div>
         <div id="debug-errors"></div>
     </div>
@@ -957,6 +957,7 @@ async fn main() -&gt; Result&lt;()&gt; {
     <script type="module" src="assets/js/visualizations.js"></script>
     <script type="module" src="assets/js/swap.js"></script>
     <script type="module" src="assets/js/os.js?v=1.0.0-hard-sync"></script>
+    <script type="module" src="assets/js/telemetry-sync.js"></script>
     
     <!-- Service Worker Registration -->
     <script>

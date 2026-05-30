@@ -1,5 +1,5 @@
 [package]
-name = "qanto-relayer"
+name = "qanto-legacy-relayer"
 version = "0.1.0"
 edition = "2021"
 authors = ["Trevor <trvorth@gmail.com>"]

@@ -1160,6 +1160,7 @@ impl Node {
             hlld: self.hlld.clone(),
             config: self.config.clone(),
             wallet: self.wallet.clone(),
+            faucet_limiter: Arc::new(dashmap::DashMap::new()),
         };
 
         // Create GraphQL context outside the async block
@@ -1511,6 +1512,7 @@ struct AppState {
     hlld: Arc<RwLock<HLLDConsensus>>,
     config: Config,
     wallet: Arc<Wallet>,
+    faucet_limiter: Arc<dashmap::DashMap<String, std::time::Instant>>,
 }
 
 // --- API Error Handling ---
@@ -2103,6 +2105,7 @@ async fn analytics_dashboard_handler(
 /// Handles standard EVM JSON-RPC requests for Metamask compatibility.
 async fn jsonrpc_handler(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
     let method = payload.get("method").and_then(|m| m.as_str()).unwrap_or("");
@@ -2128,6 +2131,57 @@ async fn jsonrpc_handler(
             let params = payload.get("params").and_then(|p| p.as_array());
             if let Some(params) = params {
                 if let Some(address) = params.first().and_then(|a| a.as_str()) {
+                    // Extract client IP from headers
+                    let ip = headers
+                        .get("cf-connecting-ip")
+                        .or_else(|| headers.get("x-forwarded-for"))
+                        .or_else(|| headers.get("x-real-ip"))
+                        .and_then(|h| h.to_str().ok())
+                        .unwrap_or("unknown_ip")
+                        .to_string();
+
+                    // Check rate limit for both IP and Wallet Address
+                    let now = std::time::Instant::now();
+                    let limit_duration = std::time::Duration::from_secs(86400);
+
+                    // Check Wallet Address
+                    if let Some(last_claim) = state.faucet_limiter.get(address) {
+                        if now.duration_since(*last_claim) < limit_duration {
+                            let remaining = limit_duration - now.duration_since(*last_claim);
+                            return (
+                                StatusCode::OK,
+                                Json(serde_json::json!({
+                                    "jsonrpc": "2.0",
+                                    "id": id,
+                                    "error": {
+                                        "code": -32005,
+                                        "message": format!("Rate limit exceeded. Try again in {} seconds.", remaining.as_secs())
+                                    }
+                                })),
+                            ).into_response();
+                        }
+                    }
+
+                    // Check IP
+                    if ip != "unknown_ip" {
+                        if let Some(last_claim) = state.faucet_limiter.get(&ip) {
+                            if now.duration_since(*last_claim) < limit_duration {
+                                let remaining = limit_duration - now.duration_since(*last_claim);
+                                return (
+                                    StatusCode::OK,
+                                    Json(serde_json::json!({
+                                        "jsonrpc": "2.0",
+                                        "id": id,
+                                        "error": {
+                                            "code": -32005,
+                                            "message": format!("IP rate limit exceeded. Try again in {} seconds.", remaining.as_secs())
+                                        }
+                                    })),
+                                ).into_response();
+                            }
+                        }
+                    }
+
                     tracing::info!("Faucet claim requested for address: {}", address);
                     match crate::rpc_backend::handle_request_faucet_funds(
                         &state.wallet,
@@ -2136,7 +2190,14 @@ async fn jsonrpc_handler(
                         &state.dag,
                         address.to_string(),
                     ).await {
-                        Ok(tx_hash) => serde_json::json!(format!("0x{}", tx_hash)),
+                        Ok(tx_hash) => {
+                            // Record the claim in the limiter
+                            state.faucet_limiter.insert(address.to_string(), now);
+                            if ip != "unknown_ip" {
+                                state.faucet_limiter.insert(ip, now);
+                            }
+                            serde_json::json!(format!("0x{}", tx_hash))
+                        }
                         Err(e) => {
                             error!("Faucet execution failed: {}", e);
                             return (
@@ -2149,7 +2210,7 @@ async fn jsonrpc_handler(
                                         "message": e
                                     }
                                 })),
-                            );
+                            ).into_response();
                         }
                     }
                 } else {
@@ -2163,7 +2224,7 @@ async fn jsonrpc_handler(
                                 "message": "Invalid address parameter"
                             }
                         })),
-                    );
+                    ).into_response();
                 }
             } else {
                 return (
@@ -2176,7 +2237,7 @@ async fn jsonrpc_handler(
                             "message": "Missing params"
                         }
                     })),
-                );
+                ).into_response();
             }
         }
         "eth_sendTransaction" => {
@@ -2230,7 +2291,7 @@ async fn jsonrpc_handler(
                         "message": format!("Method '{}' not found", method)
                     }
                 })),
-            );
+            ).into_response();
         }
     };
 
@@ -2241,7 +2302,7 @@ async fn jsonrpc_handler(
             "id": id,
             "result": result
         })),
-    )
+    ).into_response()
 }
 
 async fn metrics_json_handler(
