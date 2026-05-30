@@ -13,6 +13,7 @@ pub mod elite_mempool;
 pub mod emission;
 pub mod gas_fee_model;
 pub mod graphql_server;
+pub mod graphql_api;
 pub mod hame;
 pub mod interoperability;
 pub mod keygen;

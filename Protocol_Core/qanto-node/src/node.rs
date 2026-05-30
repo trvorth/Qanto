@@ -25,7 +25,7 @@ use crate::analytics_dashboard::{AnalyticsDashboard, DashboardConfig};
 use crate::block_producer::DecoupledProducer;
 use crate::config::{Config, ConfigError};
 use crate::elite_mempool::EliteMempool;
-use crate::graphql_server::{create_graphql_router, create_graphql_schema, GraphQLContext};
+use crate::graphql_server::{create_graphql_router, GraphQLContext};
 use crate::mempool::Mempool;
 use crate::miner::{Miner, MinerConfig, MiningError};
 use crate::omega::reflect_on_action;
@@ -1174,7 +1174,7 @@ impl Node {
         // Create GraphQL context outside the async block
         let (block_sender, _) = tokio::sync::broadcast::channel(1000);
         let (transaction_sender, _) = tokio::sync::broadcast::channel(1000);
-        let _graphql_context = GraphQLContext {
+        let graphql_context = GraphQLContext {
             node: Arc::new(Node {
                 _config_path: self._config_path.clone(),
                 config: self.config.clone(),
@@ -1246,7 +1246,7 @@ impl Node {
                     .with_state(app_state.clone());
 
                 // Use the pre-created GraphQL context
-                let graphql_schema = create_graphql_schema();
+                let graphql_schema = crate::graphql_server::create_schema(graphql_context.clone());
 
                 // Create WebSocket routes
                 let websocket_routes = create_websocket_router((*app_state.websocket_state).clone());

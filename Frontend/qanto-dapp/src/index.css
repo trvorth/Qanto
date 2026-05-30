@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-obsidian text-slate-300 antialiased selection:bg-cyan-500/30 selection:text-cyan-200 overflow-x-hidden;
+    background: #020205;
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+/* Custom glow utility animations */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(6, 182, 212, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(139, 92, 246, 0.25);
+  }
+}
+
+.shadow-quantum-glow {
+  animation: pulse-glow 8s infinite ease-in-out;
+}

@@ -208,131 +208,8 @@ pub struct GraphQLContext {
     pub transaction_sender: broadcast::Sender<Transaction>,
 }
 
-/// Root query object
-#[derive(Default)]
-pub struct QueryRoot;
+use crate::graphql_api::QueryRoot;
 
-#[Object]
-impl QueryRoot {
-    /// Get blockchain information
-    async fn blockchain_info(&self, ctx: &Context<'_>) -> GraphQLResult<BlockchainInfo> {
-        let context = ctx.data::<GraphQLContext>()?;
-        let dag = &context.node.dag;
-
-        Ok(BlockchainInfo {
-            block_count: dag.get_block_count().await as i32,
-            total_transactions: dag.get_total_transactions().await as i32,
-            network_hash_rate: "1.5 TH/s".to_string(), // Placeholder
-            difficulty: dag.get_current_difficulty().await as f64 / crate::QANTO_SCALE as f64,
-            latest_block_hash: dag.get_latest_block_hash().await.unwrap_or_default(),
-        })
-    }
-
-    /// Get block by ID or hash
-    async fn block(
-        &self,
-        ctx: &Context<'_>,
-        #[graphql(desc = "Block ID or hash")] id: String,
-    ) -> GraphQLResult<Option<Block>> {
-        let context = ctx.data::<GraphQLContext>()?;
-        let dag = &context.node.dag;
-
-        match dag.get_block(&id).await {
-            Some(block) => Ok(Some(Block::from(block))),
-            None => Ok(None),
-        }
-    }
-
-    /// Get blocks with pagination
-    async fn blocks(
-        &self,
-        ctx: &Context<'_>,
-        #[graphql(desc = "Number of blocks to fetch", default = 10)] limit: i32,
-        #[graphql(desc = "Offset for pagination", default = 0)] offset: i32,
-    ) -> GraphQLResult<Vec<Block>> {
-        let context = ctx.data::<GraphQLContext>()?;
-        let dag = &context.node.dag;
-
-        let blocks = dag
-            .get_blocks_paginated(limit as usize, offset as usize)
-            .await;
-
-        Ok(blocks.into_iter().map(Block::from).collect())
-    }
-
-    /// Get transaction by ID
-    async fn transaction(
-        &self,
-        ctx: &Context<'_>,
-        #[graphql(desc = "Transaction ID")] id: String,
-    ) -> GraphQLResult<Option<TransactionGQL>> {
-        let context = ctx.data::<GraphQLContext>()?;
-        let dag = &context.node.dag;
-
-        match dag.get_transaction(&id).await {
-            Some(tx) => Ok(Some(transaction_to_gql(&tx))),
-            None => Ok(None),
-        }
-    }
-
-    /// Get account balance
-    async fn balance(
-        &self,
-        ctx: &Context<'_>,
-        #[graphql(desc = "Account address")] address: String,
-    ) -> GraphQLResult<Balance> {
-        let _context = ctx.data::<GraphQLContext>()?;
-        // Note: wallet is private, using placeholder balance
-        let balance = 0.0;
-
-        Ok(Balance {
-            address,
-            amount: balance,
-            currency: "QANTO".to_string(),
-        })
-    }
-
-    /// Get mempool status
-    async fn mempool(&self, ctx: &Context<'_>) -> GraphQLResult<MempoolInfo> {
-        let context = ctx.data::<GraphQLContext>()?;
-        let mempool_guard = context.node.mempool.read().await;
-
-        let pending_transactions: Vec<TransactionGQL> = mempool_guard
-            .get_pending_transactions()
-            .await
-            .iter()
-            .map(transaction_to_gql)
-            .collect();
-
-        Ok(MempoolInfo {
-            size: mempool_guard.len().await as i32,
-            total_fees: mempool_guard.get_total_fees().await as f64 / crate::QANTO_SCALE as f64,
-            pending_transactions,
-        })
-    }
-
-    /// Get pending transactions
-    async fn pending_transactions(&self, ctx: &Context<'_>) -> GraphQLResult<Vec<TransactionGQL>> {
-        let context = ctx.data::<GraphQLContext>()?;
-        let mempool_guard = context.node.mempool.read().await;
-
-        let transactions = mempool_guard.get_pending_transactions().await;
-        Ok(transactions.iter().map(transaction_to_gql).collect())
-    }
-
-    /// Get network statistics
-    async fn network_stats(&self, ctx: &Context<'_>) -> GraphQLResult<NetworkStats> {
-        let context = ctx.data::<GraphQLContext>()?;
-        let _node = &context.node;
-
-        Ok(NetworkStats {
-            connected_peers: 0, // Note: get_connected_peers method doesn't exist, using placeholder
-            total_nodes: 100,   // Placeholder
-            network_version: "1.0.0".to_string(),
-            sync_status: "synced".to_string(),
-        })
-    }
-}
 
 /// Root mutation object
 #[derive(Default)]
@@ -466,23 +343,23 @@ impl SubscriptionRoot {
 // GraphQL Types
 
 #[derive(SimpleObject)]
-struct BlockchainInfo {
-    block_count: i32,
-    total_transactions: i32,
-    network_hash_rate: String,
-    difficulty: f64,
-    latest_block_hash: String,
+pub struct BlockchainInfo {
+    pub block_count: i32,
+    pub total_transactions: i32,
+    pub network_hash_rate: String,
+    pub difficulty: f64,
+    pub latest_block_hash: String,
 }
 
 #[derive(SimpleObject)]
-struct Block {
-    id: ID,
-    height: i32,
-    hash: String,
-    previous_hash: String,
-    timestamp: i32,
-    transaction_count: i32,
-    transactions: Vec<TransactionGQL>,
+pub struct Block {
+    pub id: ID,
+    pub height: i32,
+    pub hash: String,
+    pub previous_hash: String,
+    pub timestamp: i32,
+    pub transaction_count: i32,
+    pub transactions: Vec<TransactionGQL>,
 }
 
 impl From<QantoBlock> for Block {
@@ -500,15 +377,15 @@ impl From<QantoBlock> for Block {
 }
 
 #[derive(SimpleObject)]
-struct TransactionGQL {
-    id: ID,
-    from: String,
-    to: String,
-    amount: f64,
-    fee: f64,
-    timestamp: i32,
-    signature: String,
-    nonce: i32,
+pub struct TransactionGQL {
+    pub id: ID,
+    pub from: String,
+    pub to: String,
+    pub amount: f64,
+    pub fee: f64,
+    pub timestamp: i32,
+    pub signature: String,
+    pub nonce: i32,
 }
 
 impl From<Transaction> for TransactionGQL {
@@ -527,7 +404,7 @@ impl From<Transaction> for TransactionGQL {
 }
 
 // Helper function to avoid async_graphql conflicts
-fn transaction_to_gql(tx: &Transaction) -> TransactionGQL {
+pub fn transaction_to_gql(tx: &Transaction) -> TransactionGQL {
     TransactionGQL {
         id: ID(tx.id.clone()),
         from: tx.sender.clone(),
@@ -541,25 +418,25 @@ fn transaction_to_gql(tx: &Transaction) -> TransactionGQL {
 }
 
 #[derive(SimpleObject)]
-struct Balance {
-    address: String,
-    amount: f64,
-    currency: String,
+pub struct Balance {
+    pub address: String,
+    pub amount: f64,
+    pub currency: String,
 }
 
 #[derive(SimpleObject)]
-struct MempoolInfo {
-    size: i32,
-    total_fees: f64,
-    pending_transactions: Vec<TransactionGQL>,
+pub struct MempoolInfo {
+    pub size: i32,
+    pub total_fees: f64,
+    pub pending_transactions: Vec<TransactionGQL>,
 }
 
 #[derive(SimpleObject)]
-struct NetworkStats {
-    connected_peers: i32,
-    total_nodes: i32,
-    network_version: String,
-    sync_status: String,
+pub struct NetworkStats {
+    pub connected_peers: i32,
+    pub total_nodes: i32,
+    pub network_version: String,
+    pub sync_status: String,
 }
 
 #[derive(async_graphql::InputObject)]
