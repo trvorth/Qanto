@@ -3,13 +3,21 @@ import { QuantumCanvas } from './components/QuantumCanvas';
 import { Hero } from './components/Hero';
 import { TelemetryDashboard } from './components/TelemetryDashboard';
 import { AirdropClaim } from './components/AirdropClaim';
+import { TokenSale } from './components/TokenSale';
 
 export default function App() {
   const claimRef = useRef<HTMLDivElement | null>(null);
+  const saleRef = useRef<HTMLDivElement | null>(null);
 
   const scrollToAirdrop = () => {
     if (claimRef.current) {
       claimRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
+  const scrollToSale = () => {
+    if (saleRef.current) {
+      saleRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
 
@@ -21,7 +29,7 @@ export default function App() {
       {/* Main Content Area */}
       <div className="relative z-10 flex-grow">
         {/* Hero Section */}
-        <Hero onAirdropClick={scrollToAirdrop} />
+        <Hero onAirdropClick={scrollToAirdrop} onSaleClick={scrollToSale} />
 
         {/* Telemetry Dashboard Portal */}
         <div className="py-12">
@@ -31,6 +39,11 @@ export default function App() {
         {/* Claim Airdrop Section */}
         <div ref={claimRef} id="airdrop" className="py-16 md:py-24">
           <AirdropClaim />
+        </div>
+
+        {/* Token Sale (TGE) Section */}
+        <div ref={saleRef} id="tge" className="py-16 md:py-24 border-t border-white/5 bg-black/20">
+          <TokenSale />
         </div>
       </div>
 
@@ -42,3 +55,4 @@ export default function App() {
     </div>
   );
 }
+

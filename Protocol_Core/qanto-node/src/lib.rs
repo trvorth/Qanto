@@ -87,6 +87,8 @@ pub mod zkp;
 #[path = "zkp_stub.rs"]
 pub mod zkp;
 
+pub mod zk_sequencer;
+
 pub mod memory_optimization;
 pub use my_blockchain::qanhash;
 

@@ -42,10 +42,31 @@ pub fn evaluate_network_state() -> SagaDecision {
     DYNAMIC_BATCH_THRESHOLD.store(new_batch_size, Ordering::SeqCst);
     NETWORK_THROTTLE_BPS.store(target_bps, Ordering::SeqCst);
 
+    broadcast_to_discord(&action);
+
     SagaDecision {
         adjusted_batch_size: new_batch_size,
         target_bps,
         ai_confidence_score: confidence,
         action_taken: action,
     }
+}
+
+pub fn broadcast_to_discord(action_message: &str) {
+    let webhook_url = std::env::var("DISCORD_SAGA_WEBHOOK").unwrap_or_default();
+    if webhook_url.is_empty() { return; }
+
+    let message = action_message.to_string();
+    tokio::spawn(async move {
+        let client = reqwest::Client::new();
+        let payload = serde_json::json!({
+            "username": "SAGA Neural Core",
+            "embeds": [{
+                "title": "🧠 SAGA AI Governance Decision",
+                "description": message,
+                "color": 9133270,
+            }]
+        });
+        let _ = client.post(&webhook_url).json(&payload).send().await;
+    });
 }

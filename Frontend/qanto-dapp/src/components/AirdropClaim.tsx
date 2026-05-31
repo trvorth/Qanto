@@ -1,26 +1,52 @@
-import { useState } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, useWriteContract, useReadContract } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
+
+const AIRDROP_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000008';
+
+const QantoDropAbi = [
+  {
+    type: 'function',
+    name: 'claim',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'amount', type: 'uint256' },
+      { name: 'merkleProof', type: 'bytes32[]' }
+    ],
+    outputs: []
+  },
+  {
+    type: 'function',
+    name: 'hasClaimed',
+    stateMutability: 'view',
+    inputs: [{ name: '', type: 'address' }],
+    outputs: [{ name: '', type: 'bool' }]
+  }
+] as const;
 
 export function AirdropClaim() {
   const { isConnected, address } = useAccount();
-  const [claiming, setClaiming] = useState(false);
-  const [claimed, setClaimed] = useState(false);
-  const [statusText, setStatusText] = useState('');
+  const { writeContract, isPending, isSuccess, error, data: txHash } = useWriteContract();
+
+  const { data: hasClaimed } = useReadContract({
+    abi: QantoDropAbi,
+    address: AIRDROP_CONTRACT_ADDRESS,
+    functionName: 'hasClaimed',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: !!address,
+    }
+  });
 
   const handleClaim = () => {
-    setClaiming(true);
-    setStatusText('Generating Merkle Proof inside Sentinel Enclave...');
-    
-    setTimeout(() => {
-      setStatusText('Awaiting wallet cryptographic approval...');
-      
-      setTimeout(() => {
-        setClaimed(true);
-        setClaiming(false);
-        setStatusText('1,000 $QNTO successfully deposited into your wallet.');
-      }, 2000);
-    }, 2000);
+    writeContract({
+      abi: QantoDropAbi,
+      address: AIRDROP_CONTRACT_ADDRESS,
+      functionName: 'claim',
+      args: [
+        BigInt(1000 * 10 ** 9), // 1000 QNTO (9 decimals)
+        [] // Empty proof for simulation / testing
+      ]
+    });
   };
 
   return (
@@ -49,49 +75,53 @@ export function AirdropClaim() {
             </div>
           </div>
 
-          {!isConnected ? (
-            <div className="flex flex-col items-center gap-4">
-              <p className="text-xs text-slate-400 font-sans">
-                Connect your Web3 wallet to verify block eligibility.
-              </p>
-              <div className="flex justify-center">
-                <ConnectButton label="Connect Wallet" />
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              <button
-                onClick={handleClaim}
-                disabled={claiming || claimed}
-                className={`w-full py-4 px-6 rounded-xl font-bold font-sans text-sm md:text-base border transition-all duration-300 ${
-                  claimed
-                    ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400 cursor-default'
-                    : claiming
-                    ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400 cursor-wait'
-                    : 'bg-gradient-to-r from-neon-cyan to-quantum-purple border-transparent text-white shadow-lg shadow-quantum-purple/10 hover:shadow-quantum-purple/25 hover:scale-[1.02]'
-                }`}
-              >
-                {claimed 
-                  ? 'CLAIM SUCCESSFUL ✅' 
-                  : claiming 
-                  ? 'GENERATING ZERO-KNOWLEDGE PROOF...' 
-                  : 'EXECUTE ZK-PROOF CLAIM'}
-              </button>
-              
-              {statusText && (
-                <div className={`text-xs font-mono mt-2 transition-all duration-300 ${
-                  claimed ? 'text-emerald-400' : 'text-slate-400'
-                }`}>
-                  {statusText}
-                </div>
-              )}
+          <div className="flex flex-col gap-4">
+            <button
+              onClick={handleClaim}
+              disabled={!isConnected || isPending || !!hasClaimed || isSuccess}
+              className={`w-full py-4 px-6 rounded-xl font-bold font-sans text-sm md:text-base border transition-all duration-300 ${
+                !isConnected || isPending || !!hasClaimed
+                  ? 'bg-slate-700 cursor-not-allowed text-slate-400 border-transparent shadow-none'
+                  : isSuccess
+                  ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400 cursor-default'
+                  : 'bg-cyan-500 hover:bg-cyan-400 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)] border-transparent hover:scale-[1.02]'
+              }`}
+            >
+              {!isConnected
+                ? 'Wallet Disconnected'
+                : hasClaimed
+                ? 'AIRDROP ALREADY CLAIMED 🟢'
+                : isSuccess
+                ? 'CLAIM SUCCESSFUL ✅'
+                : isPending
+                ? 'GENERATING ZERO-KNOWLEDGE PROOF...'
+                : 'EXECUTE ZK-PROOF CLAIM'}
+            </button>
 
-              {/* Connected details */}
-              <div className="text-[10px] font-mono text-slate-500 break-all mt-4">
-                Connected Address: {address}
+            {!isConnected && (
+              <div className="flex flex-col items-center gap-4 mt-2">
+                <p className="text-xs text-slate-400 font-sans">
+                  Connect your Web3 wallet to verify block eligibility.
+                </p>
+                <div className="flex justify-center">
+                  <ConnectButton label="Connect Wallet" />
+                </div>
               </div>
-            </div>
-          )}
+            )}
+
+            {isConnected && (
+              <div className="flex flex-col gap-2 mt-4 text-[10px] font-mono text-slate-500 break-all">
+                <div>Connected Address: {address}</div>
+                {txHash && <div className="text-cyan-400">Transaction Hash: {txHash}</div>}
+              </div>
+            )}
+
+            {error && (
+              <div className="text-xs font-mono text-rose-500 mt-2 bg-rose-500/10 border border-rose-500/20 py-2 px-3 rounded-lg text-left break-words">
+                ⚠️ Claim Error: {error.message}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
