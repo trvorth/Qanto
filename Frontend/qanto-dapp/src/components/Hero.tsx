@@ -3,9 +3,11 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 interface HeroProps {
   onAirdropClick: () => void;
   onSaleClick: () => void;
+  onExplorerClick: () => void;
+  onGovernanceClick: () => void;
 }
 
-export function Hero({ onAirdropClick, onSaleClick }: HeroProps) {
+export function Hero({ onAirdropClick, onSaleClick, onExplorerClick, onGovernanceClick }: HeroProps) {
   return (
     <div className="relative z-10 w-full">
       {/* Navigation Header */}
@@ -22,13 +24,10 @@ export function Hero({ onAirdropClick, onSaleClick }: HeroProps) {
             {/* Nav Menu */}
             <div className="hidden lg:flex items-center gap-6 text-sm font-medium text-slate-300">
               <a href="#home" className="hover:text-white transition-colors">Home</a>
-              <a href="https://qanto.org/dex" className="hover:text-white transition-colors">DEX</a>
-              <a href="https://qanto.org/staking" className="hover:text-white transition-colors">Staking</a>
-              <a href="https://qanto.org/bridge" className="hover:text-white transition-colors">Bridge</a>
-              <a href="#airdrop" onClick={(e) => { e.preventDefault(); onAirdropClick(); }} className="text-cyan-400 hover:text-cyan-300 transition-colors">Airdrop</a>
+              <a href="#explorer" onClick={(e) => { e.preventDefault(); onExplorerClick(); }} className="text-cyan-400 hover:text-cyan-300 transition-colors">Explorer</a>
+              <a href="#governance" onClick={(e) => { e.preventDefault(); onGovernanceClick(); }} className="text-cyan-400 hover:text-cyan-300 transition-colors">Governance</a>
+              <a href="#airdrop" onClick={(e) => { e.preventDefault(); onAirdropClick(); }} className="hover:text-white hover:text-cyan-400 transition-colors">Airdrop</a>
               <a href="#tge" onClick={(e) => { e.preventDefault(); onSaleClick(); }} className="hover:text-white hover:text-cyan-400 transition-colors">TGE Sale</a>
-              <a href="https://qanto.org/codex" className="hover:text-white transition-colors">Codex</a>
-              <a href="https://qanto.org/analytics" className="hover:text-white transition-colors">Analytics</a>
             </div>
 
             {/* Wallet Connect Button */}
