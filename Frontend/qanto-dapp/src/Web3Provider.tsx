@@ -4,6 +4,7 @@ import { getDefaultConfig, RainbowKitProvider, darkTheme } from '@rainbow-me/rai
 import { WagmiProvider } from 'wagmi';
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { defineChain } from 'viem';
+import { mainnet } from 'wagmi/chains';
 
 export const qantoChain = defineChain({
   id: 21313,
@@ -20,7 +21,7 @@ export const qantoChain = defineChain({
 const config = getDefaultConfig({
   appName: 'Qanto dApp',
   projectId: 'a0f8bfd8b8ea5f32a76f2f2679cc7a00', // Injected dummy WalletConnect ID
-  chains: [qantoChain],
+  chains: [qantoChain, mainnet],
 });
 
 const queryClient = new QueryClient();

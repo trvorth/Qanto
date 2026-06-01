@@ -1,8 +1,18 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { request, gql } from 'graphql-request';
+import { AddressDisplay } from './AddressDisplay';
 
 const GRAPHQL_ENDPOINT = 'https://trvorth-qanto-testnet.hf.space/graphql';
+
+interface TransactionGQL {
+  id: string;
+  from: string;
+  to: string;
+  amount: number;
+  fee: number;
+  timestamp: number;
+}
 
 interface BlockGQL {
   id: string;
@@ -11,6 +21,7 @@ interface BlockGQL {
   previousHash: string;
   timestamp: number;
   transactionCount: number;
+  transactions: TransactionGQL[];
 }
 
 interface ZkBatchRecordGQL {
@@ -34,6 +45,14 @@ const GET_LATEST_BATCHES = gql`
       previousHash
       timestamp
       transactionCount
+      transactions {
+        id
+        from
+        to
+        amount
+        fee
+        timestamp
+      }
     }
     zkBatches {
       batchId
@@ -48,6 +67,7 @@ export function Explorer() {
   const [activeTab, setActiveTab] = useState<'batches' | 'blocks'>('batches');
   const [latency, setLatency] = useState<number | null>(null);
   const [copiedText, setCopiedText] = useState<string | null>(null);
+  const [expandedBlockId, setExpandedBlockId] = useState<string | null>(null);
 
   const { data, isLoading, error } = useQuery<ExplorerData>({
     queryKey: ['explorerData'],
@@ -192,27 +212,83 @@ export function Explorer() {
               </thead>
               <tbody className="divide-y divide-white/5 font-mono text-xs md:text-sm">
                 {data?.latestBlocks?.map((block) => (
-                  <tr key={block.id} className="hover:bg-white/[0.02] transition-colors group">
-                    <td className="py-4 px-6 text-slate-300 flex items-center gap-2">
-                      <span className="text-cyan-400">{truncateHash(block.hash)}</span>
-                      <button
-                        onClick={() => handleCopy(block.hash)}
-                        className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-cyan-400 transition-all ml-1"
-                        title="Copy Block Hash"
-                      >
-                        {copiedText === block.hash ? '✅' : '📋'}
-                      </button>
-                    </td>
-                    <td className="py-4 px-6 text-slate-300 font-semibold">
-                      #{block.height}
-                    </td>
-                    <td className="py-4 px-6 text-slate-300">
-                      {block.transactionCount}
-                    </td>
-                    <td className="py-4 px-6 text-right text-slate-400">
-                      {formatTimestamp(block.timestamp)}
-                    </td>
-                  </tr>
+                  <Fragment key={block.id}>
+                    <tr 
+                      onClick={() => setExpandedBlockId(expandedBlockId === block.id ? null : block.id)}
+                      className="hover:bg-white/[0.02] transition-colors group cursor-pointer"
+                    >
+                      <td className="py-4 px-6 text-slate-300 flex items-center gap-2">
+                        <span className="text-cyan-500 mr-1">{expandedBlockId === block.id ? '▼' : '▶'}</span>
+                        <span className="text-cyan-400">{truncateHash(block.hash)}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopy(block.hash);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-cyan-400 transition-all ml-1"
+                          title="Copy Block Hash"
+                        >
+                          {copiedText === block.hash ? '✅' : '📋'}
+                        </button>
+                      </td>
+                      <td className="py-4 px-6 text-slate-300 font-semibold">
+                        #{block.height}
+                      </td>
+                      <td className="py-4 px-6 text-slate-300">
+                        {block.transactionCount}
+                      </td>
+                      <td className="py-4 px-6 text-right text-slate-400">
+                        {formatTimestamp(block.timestamp)}
+                      </td>
+                    </tr>
+                    {expandedBlockId === block.id && (
+                      <tr className="bg-black/60">
+                        <td colSpan={4} className="py-4 px-6 border-t border-b border-white/5">
+                          <div className="space-y-4">
+                            <h4 className="text-xs font-bold text-slate-400 tracking-wider uppercase font-sans">
+                              Block Transactions ({block.transactions?.length || 0})
+                            </h4>
+                            {!block.transactions || block.transactions.length === 0 ? (
+                              <div className="text-xs text-slate-500 font-mono py-2">
+                                No transactions in this block (coinbase only or empty).
+                              </div>
+                            ) : (
+                              <div className="overflow-x-auto rounded-xl border border-white/5 bg-[#07070e]">
+                                <table className="w-full text-left border-collapse">
+                                  <thead>
+                                    <tr className="bg-white/5 text-[10px] font-mono uppercase text-slate-400 border-b border-white/5">
+                                      <th className="py-2 px-4">Tx ID</th>
+                                      <th className="py-2 px-4">From</th>
+                                      <th className="py-2 px-4">To</th>
+                                      <th className="py-2 px-4 text-right">Amount</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-white/5 text-xs text-slate-300 font-mono">
+                                    {block.transactions.map((tx) => (
+                                      <tr key={tx.id} className="hover:bg-white/[0.01]">
+                                        <td className="py-2.5 px-4 font-semibold text-violet-400">
+                                          {truncateHash(tx.id)}
+                                        </td>
+                                        <td className="py-2.5 px-4">
+                                          <AddressDisplay address={tx.from} />
+                                        </td>
+                                        <td className="py-2.5 px-4">
+                                          <AddressDisplay address={tx.to} />
+                                        </td>
+                                        <td className="py-2.5 px-4 text-right font-bold text-cyan-400">
+                                          {tx.amount} QNTO
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

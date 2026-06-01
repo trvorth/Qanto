@@ -1,12 +1,13 @@
 //! GraphQL API Resolvers for Qanto Network
 //!
-//! This module defines the consolidated QueryRoot for Qanto's GraphQL endpoint.
+//! This module defines the consolidated QueryRoot and MutationRoot for Qanto's GraphQL endpoint.
 
 use crate::graphql_server::{
     Balance, Block, BlockchainInfo, GraphQLContext, MempoolInfo, NetworkStats,
     TransactionGQL, transaction_to_gql,
 };
 use async_graphql::{Context, Object, Result as GraphQLResult};
+use crate::transaction::Transaction;
 
 pub struct QueryRoot;
 
@@ -267,6 +268,36 @@ impl QueryRoot {
             },
         ])
     }
+
+    /// Get all governance proposals
+    async fn proposals(&self, ctx: &Context<'_>) -> GraphQLResult<Vec<ProposalGQL>> {
+        let context = ctx.data::<GraphQLContext>()?;
+        let proposals_guard = context.node.saga_pallet.governance.proposals.read().await;
+        
+        let mut list = Vec::new();
+        for (_, p) in proposals_guard.iter() {
+            list.push(ProposalGQL {
+                id: p.id.clone(),
+                proposer: p.proposer.clone(),
+                proposal_type: match &p.proposal_type {
+                    crate::saga::ProposalType::UpdateRule(name, val) => format!("UpdateRule({}, {})", name, val),
+                    crate::saga::ProposalType::Signal(msg) => format!("Signal({})", msg),
+                },
+                votes_for: p.votes_for,
+                votes_against: p.votes_against,
+                status: match p.status {
+                    crate::saga::ProposalStatus::Voting => "Voting".to_string(),
+                    crate::saga::ProposalStatus::Enacted => "Enacted".to_string(),
+                    crate::saga::ProposalStatus::Rejected => "Rejected".to_string(),
+                    crate::saga::ProposalStatus::Vetoed => "Vetoed".to_string(),
+                },
+                creation_epoch: p.creation_epoch as i32,
+                justification: p.justification.clone(),
+            });
+        }
+        
+        Ok(list)
+    }
 }
 
 #[derive(async_graphql::SimpleObject)]
@@ -275,4 +306,170 @@ pub struct ZkBatchRecord {
     pub tx_count: i32,
     pub state_root: String,
     pub proving_time_ms: i32,
+}
+
+#[derive(async_graphql::SimpleObject)]
+pub struct ProposalGQL {
+    pub id: String,
+    pub proposer: String,
+    pub proposal_type: String,
+    pub votes_for: f64,
+    pub votes_against: f64,
+    pub status: String,
+    pub creation_epoch: i32,
+    pub justification: Option<String>,
+}
+
+#[derive(async_graphql::SimpleObject)]
+pub struct ProposalResponse {
+    pub success: bool,
+    pub proposal_id: String,
+    pub message: String,
+}
+
+#[derive(async_graphql::InputObject)]
+pub struct TransactionInput {
+    pub id: Option<String>,
+    pub from: String,
+    pub to: String,
+    pub amount: f64,
+    pub fee: Option<f64>,
+    pub signature: Option<String>,
+    pub nonce: Option<i32>,
+}
+
+#[derive(async_graphql::SimpleObject)]
+pub struct TransactionResponse {
+    pub success: bool,
+    pub transaction_id: String,
+    pub message: String,
+}
+
+/// Root mutation object
+#[derive(Default)]
+pub struct MutationRoot;
+
+#[Object]
+impl MutationRoot {
+    /// Submit a new transaction
+    async fn submit_transaction(
+        &self,
+        ctx: &Context<'_>,
+        #[graphql(desc = "Transaction data")] input: TransactionInput,
+    ) -> GraphQLResult<TransactionResponse> {
+        let context = ctx.data::<GraphQLContext>()?;
+        let node = &context.node;
+        let dag = &node.dag;
+
+        // Create transaction from input
+        let transaction = Transaction {
+            id: input.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+            sender: input.from.clone(),
+            receiver: input.to.clone(),
+            amount: (input.amount * crate::QANTO_SCALE as f64) as u128,
+            fee: (input.fee.unwrap_or(0.0001) * crate::QANTO_SCALE as f64) as u128,
+            gas_limit: 21000,
+            gas_used: 0,
+            gas_price: 1,
+            priority_fee: 0,
+            inputs: vec![],
+            outputs: vec![],
+            signature: crate::types::QuantumResistantSignature {
+                signature: hex::decode(input.signature.unwrap_or_default()).unwrap_or_default(),
+                signer_public_key: hex::decode("").unwrap_or_default(),
+            },
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            metadata: std::collections::HashMap::new(),
+            fee_breakdown: None,
+        };
+
+        // Submit to mempool
+        let utxos = std::collections::HashMap::new();
+        match node
+            .mempool
+            .write()
+            .await
+            .add_transaction(transaction.clone(), &utxos, dag)
+            .await
+        {
+            Ok(_) => {
+                // Broadcast transaction
+                let _ = context.transaction_sender.send(transaction.clone());
+
+                Ok(TransactionResponse {
+                    success: true,
+                    transaction_id: transaction.id.clone(),
+                    message: "Transaction submitted successfully".to_string(),
+                })
+            }
+            Err(e) => {
+                let mut error_msg = String::with_capacity(32 + e.to_string().len());
+                error_msg.push_str("Failed to submit transaction: ");
+                error_msg.push_str(&e.to_string());
+                Ok(TransactionResponse {
+                    success: false,
+                    transaction_id: transaction.id.clone(),
+                    message: error_msg,
+                })
+            }
+        }
+    }
+
+    /// Submit a new IPFS proposal with CID validation
+    async fn submit_proposal(
+        &self,
+        ctx: &Context<'_>,
+        cid: String,
+    ) -> GraphQLResult<ProposalResponse> {
+        let context = ctx.data::<GraphQLContext>()?;
+
+        // Strict validation logic to ensure the incoming string strictly matches standard IPFS CID formats
+        // CIDv0 starts with Qm and is 46 chars long.
+        // CIDv1 starts with bafy and is 59 chars long (usually base32).
+        let qm_regex = regex::Regex::new(r"^Qm[1-9A-HJ-NP-Za-km-z]{44}$").unwrap();
+        let bafy_regex = regex::Regex::new(r"^bafy[a-z0-9]{55,59}$").unwrap();
+
+        if !qm_regex.is_match(&cid) && !bafy_regex.is_match(&cid) {
+            return Ok(ProposalResponse {
+                success: false,
+                proposal_id: String::new(),
+                message: "Invalid IPFS CID format. Must strictly start with Qm (CIDv0) or bafy (CIDv1) and contain correct base58/base32 characters.".to_string(),
+            });
+        }
+
+        let proposal_id = format!("ipfs-{}", cid);
+
+        let mut proposals_guard = context.node.saga_pallet.governance.proposals.write().await;
+        if proposals_guard.contains_key(&proposal_id) {
+            return Ok(ProposalResponse {
+                success: false,
+                proposal_id: proposal_id.clone(),
+                message: "Proposal already exists".to_string(),
+            });
+        }
+
+        let current_epoch = context.node.dag.current_epoch.load(std::sync::atomic::Ordering::SeqCst);
+        let proposal = crate::saga::GovernanceProposal {
+            id: proposal_id.clone(),
+            proposer: "0x0000000000000000000000000000000000000000".to_string(), // Default/mocked proposer
+            proposal_type: crate::saga::ProposalType::Signal(cid.clone()),
+            votes_for: 0.0,
+            votes_against: 0.0,
+            status: crate::saga::ProposalStatus::Voting,
+            voters: vec![],
+            creation_epoch: current_epoch,
+            justification: Some(cid.clone()),
+        };
+
+        proposals_guard.insert(proposal_id.clone(), proposal);
+
+        Ok(ProposalResponse {
+            success: true,
+            proposal_id,
+            message: "IPFS proposal successfully registered into the DAO state".to_string(),
+        })
+    }
 }

@@ -9,7 +9,7 @@ use crate::transaction::Transaction;
 
 use anyhow::Result;
 use async_graphql::{
-    Context, Object, Result as GraphQLResult, Schema, SimpleObject, Subscription, ID,
+    Context, Schema, SimpleObject, Subscription, ID,
 };
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse, GraphQLSubscription};
 use axum::{
@@ -208,82 +208,7 @@ pub struct GraphQLContext {
     pub transaction_sender: broadcast::Sender<Transaction>,
 }
 
-use crate::graphql_api::QueryRoot;
-
-
-/// Root mutation object
-#[derive(Default)]
-pub struct MutationRoot;
-
-#[Object]
-impl MutationRoot {
-    /// Submit a new transaction
-    async fn submit_transaction(
-        &self,
-        ctx: &Context<'_>,
-        #[graphql(desc = "Transaction data")] input: TransactionInput,
-    ) -> GraphQLResult<TransactionResponse> {
-        let context = ctx.data::<GraphQLContext>()?;
-        let node = &context.node;
-        let dag = &node.dag;
-
-        // Create transaction from input
-        let transaction = Transaction {
-            id: input.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
-            sender: input.from.clone(),
-            receiver: input.to.clone(),
-            amount: (input.amount * crate::QANTO_SCALE as f64) as u128,
-            fee: (input.fee.unwrap_or(0.0001) * crate::QANTO_SCALE as f64) as u128,
-            gas_limit: 21000,
-            gas_used: 0,
-            gas_price: 1,
-            priority_fee: 0,
-            inputs: vec![],
-            outputs: vec![],
-            signature: crate::types::QuantumResistantSignature {
-                signature: hex::decode(input.signature.unwrap_or_default()).unwrap_or_default(),
-                signer_public_key: hex::decode("").unwrap_or_default(),
-            },
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            metadata: std::collections::HashMap::new(),
-            fee_breakdown: None,
-        };
-
-        // Submit to mempool
-        let utxos = std::collections::HashMap::new();
-        match node
-            .mempool
-            .write()
-            .await
-            .add_transaction(transaction.clone(), &utxos, dag)
-            .await
-        {
-            Ok(_) => {
-                // Broadcast transaction
-                let _ = context.transaction_sender.send(transaction.clone());
-
-                Ok(TransactionResponse {
-                    success: true,
-                    transaction_id: transaction.id.clone(),
-                    message: "Transaction submitted successfully".to_string(),
-                })
-            }
-            Err(e) => {
-                let mut error_msg = String::with_capacity(32 + e.to_string().len());
-                error_msg.push_str("Failed to submit transaction: ");
-                error_msg.push_str(&e.to_string());
-                Ok(TransactionResponse {
-                    success: false,
-                    transaction_id: transaction.id.clone(),
-                    message: error_msg,
-                })
-            }
-        }
-    }
-}
+use crate::graphql_api::{QueryRoot, MutationRoot};
 
 /// Root subscription object
 #[derive(Default)]
@@ -439,23 +364,7 @@ pub struct NetworkStats {
     pub sync_status: String,
 }
 
-#[derive(async_graphql::InputObject)]
-struct TransactionInput {
-    id: Option<String>,
-    from: String,
-    to: String,
-    amount: f64,
-    fee: Option<f64>,
-    signature: Option<String>,
-    nonce: Option<i32>,
-}
-
-#[derive(SimpleObject)]
-struct TransactionResponse {
-    success: bool,
-    transaction_id: String,
-    message: String,
-}
+pub use crate::graphql_api::{TransactionInput, TransactionResponse};
 
 /// Create GraphQL schema
 pub fn create_schema(context: GraphQLContext) -> QantoSchema {
