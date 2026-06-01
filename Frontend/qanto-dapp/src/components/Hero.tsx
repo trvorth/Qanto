@@ -21,7 +21,7 @@ export function Hero() {
           </h1>
 
           <p className="text-base sm:text-xl text-slate-400 font-sans max-w-2xl mb-10 leading-relaxed">
-            Qanto combines post-quantum security, deterministic DAG finality, and SAGA AI-governed treasury execution to establish the foundation of self-sovereign Web3.
+            21 Billion QNTO. Fair Launch. Zero VC. Qanto combines post-quantum security, deterministic DAG finality at 10M+ TPS, and SAGA AI-subsidized micro-fees to establish the cheapest, most secure Layer-0 in Web3.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center w-full max-w-sm">

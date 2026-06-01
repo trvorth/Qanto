@@ -594,7 +594,7 @@ impl QantoMetrics {
         summary.insert("average_latency_ms".to_string(), self.get_average_latency());
         summary.insert(
             "memory_utilization_percent".to_string(),
-            self.get_memory_utilization() as u128,
+            self.get_memory_utilization(),
         );
         summary.insert(
             "cpu_utilization_percent".to_string(),

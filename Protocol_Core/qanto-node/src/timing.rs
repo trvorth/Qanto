@@ -211,7 +211,7 @@ impl MicrosecondTimer {
         let variance_scaled: u128 = intervals
             .iter()
             .map(|&x| {
-                let diff = if x > avg { x - avg } else { avg - x };
+                let diff = x.abs_diff(avg);
                 diff as u128 * diff as u128
             })
             .sum::<u128>()
@@ -237,7 +237,7 @@ impl MicrosecondTimer {
             let mape_scaled = intervals
                 .iter()
                 .map(|&x| {
-                    let diff = if x as i64 > target as i64 { (x as i64 - target as i64) as u64 } else { (target as i64 - x as i64) as u64 };
+                    let diff = (x as i64).abs_diff(target as i64);
                     (diff as u128 * crate::QANTO_SCALE) / target as u128
                 })
                 .sum::<u128>()
@@ -266,6 +266,7 @@ impl MicrosecondTimer {
 
 /// Timing statistics structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct TimingStats {
     pub target_interval_us: u64,
     pub average_interval_us: u64,
@@ -277,20 +278,6 @@ pub struct TimingStats {
     pub tick_count: u64,
 }
 
-impl Default for TimingStats {
-    fn default() -> Self {
-        Self {
-            target_interval_us: 0,
-            average_interval_us: 0,
-            min_interval_us: 0,
-            max_interval_us: 0,
-            std_deviation_us: 0,
-            drift_us: 0,
-            precision_percentage: 0,
-            tick_count: 0,
-        }
-    }
-}
 
 /// High-performance block timing coordinator
 #[derive(Debug)]

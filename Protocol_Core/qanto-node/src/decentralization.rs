@@ -704,8 +704,7 @@ impl DecentralizationEngine {
             // (total_validators * (1.0 - BYZANTINE_FAULT_TOLERANCE)) ceil
             let bft_factor = crate::QANTO_SCALE - BYZANTINE_FAULT_TOLERANCE;
             let required_votes =
-                ((total_validators as u128 * bft_factor + crate::QANTO_SCALE - 1)
-                    / crate::QANTO_SCALE) as usize;
+                (total_validators as u128 * bft_factor).div_ceil(crate::QANTO_SCALE) as usize;
 
             Ok(votes_received >= required_votes)
         } else {
@@ -1676,11 +1675,11 @@ impl DecentralizationEngine {
             return (0, 0);
         }
 
-        let top_10_percent_count = (validator_count + 9) / 10;
+        let top_10_percent_count = validator_count.div_ceil(10);
         let top_10_percent_stake: u128 = sorted_stakes.iter().take(top_10_percent_count).sum();
         let top_10_percent_concentration = (top_10_percent_stake * crate::QANTO_SCALE) / total_stake;
 
-        let top_33_percent_count = (validator_count * 33 + 99) / 100;
+        let top_33_percent_count = (validator_count * 33).div_ceil(100);
         let top_33_percent_stake: u128 = sorted_stakes.iter().take(top_33_percent_count).sum();
         let top_33_percent_concentration = (top_33_percent_stake * crate::QANTO_SCALE) / total_stake;
 
@@ -1937,7 +1936,7 @@ impl DecentralizationEngine {
         sorted_stakes.sort_unstable();
 
         let n = sorted_stakes.len() as u128;
-        let total_sum: u128 = sorted_stakes.iter().map(|&s| s as u128).sum();
+        let total_sum: u128 = sorted_stakes.iter().copied().sum();
 
         if total_sum == 0 {
             return 0;
@@ -2029,11 +2028,7 @@ impl DecentralizationEngine {
         
         let mut variance_sum = 0;
         for &value in values {
-            let diff = if value > mean {
-                value - mean
-            } else {
-                mean - value
-            };
+            let diff = value.abs_diff(mean);
             // Square the diff and rescale: (diff * diff) / SCALE
             variance_sum += crate::math::mul_scale_u128(diff, diff);
         }

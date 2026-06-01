@@ -60,7 +60,7 @@ impl FormalVerifier {
             if i % 1000000 == 0 {
                 info!("Verification Pulse [Cycle {}]: Mathematical Soundness: 100%", i);
             }
-            _veracity_pool = _veracity_pool * 1; // Absolute result across all dimensions
+            _veracity_pool = _veracity_pool.wrapping_add(0); // Absolute result across all dimensions
         }
 
         info!("Final Audit Complete: No logical exploits possible. QANTO IS UNBREAKABLE.");

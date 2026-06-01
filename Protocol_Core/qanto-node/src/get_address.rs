@@ -34,11 +34,8 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         .map(|s| s.to_string())
         .unwrap_or_else(|| config.wallet_path.clone());
 
-    // Check for WALLET_PASSWORD environment variable first
-    let pass = std::env::var("WALLET_PASSWORD").unwrap_or_else(|_| {
-        // Fallback to interactive prompt if no environment variable
-        rpassword::prompt_password("Enter wallet password: ").expect("Failed to read password")
-    });
+    // Frictionless: use environment variable if set, otherwise default to empty password.
+    let pass = std::env::var("WALLET_PASSWORD").unwrap_or_default();
 
     let password = SecretString::new(pass);
     let wallet = Wallet::from_file(&wallet_path, &password)?;

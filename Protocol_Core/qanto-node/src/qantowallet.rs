@@ -756,12 +756,11 @@ async fn get_balance_qds_with_timeout(
                     }
                 }
             }
-            SwarmEvent::ConnectionEstablished { peer_id: p, .. } => {
+            SwarmEvent::ConnectionEstablished { peer_id: p, .. }
                 // Optionally log connection; request already queued
-                if p == peer_id {
+                if p == peer_id => {
                     // Connected to target
                 }
-            }
             _ => {
                 // Other events are not relevant for this simple client
             }

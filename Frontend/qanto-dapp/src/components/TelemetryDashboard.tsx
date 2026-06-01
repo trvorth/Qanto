@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { request, gql } from 'graphql-request';
 
+/** Canonical QNTO supply constant — hardcoded and immutable. */
+const TOTAL_SUPPLY_QNTO = 21_000_000_000;
+
 const GRAPHQL_ENDPOINT = 'https://trvorth-qanto-testnet.hf.space/graphql';
 
 interface TelemetryData {
@@ -70,7 +73,7 @@ export function TelemetryDashboard() {
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {/* Card 1: Live TPS */}
             <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-[0_0_30px_rgba(6,182,212,0.15)] hover:transform hover:-translate-y-1 transition-all hover:border-cyan-500/30 group">
               <h3 className="text-slate-400 text-sm uppercase tracking-widest mb-2 font-mono">Live TPS</h3>
@@ -96,6 +99,15 @@ export function TelemetryDashboard() {
                 {data ? data.sagaStatus : 'ACTIVE'}
               </p>
               <div className="text-xs text-emerald-400 mt-2 font-sans">🟢 Continuous Singularity</div>
+            </div>
+
+            {/* Card 4: Network Supply Cap */}
+            <div className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-[0_0_30px_rgba(251,191,36,0.15)] hover:transform hover:-translate-y-1 transition-all hover:border-amber-500/30 group">
+              <h3 className="text-slate-400 text-sm uppercase tracking-widest mb-2 font-mono">Supply Cap</h3>
+              <p className="text-4xl font-bold text-amber-400 font-mono">
+                21B
+              </p>
+              <div className="text-xs text-amber-400 mt-2 font-sans">🔒 {TOTAL_SUPPLY_QNTO.toLocaleString()} QNTO</div>
             </div>
           </div>
         )}

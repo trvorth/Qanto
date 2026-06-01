@@ -1,5 +1,18 @@
 import { useState } from 'react';
 
+/**
+ * Canonical QNTO supply constants — hardcoded and immutable.
+ * These mirror the Rust-side `emission::TOTAL_SUPPLY` exactly.
+ */
+const TOTAL_SUPPLY_QNTO = 21_000_000_000;
+const COMMUNITY_ALLOCATION = 0.80;  // 80%
+const ECODEV_ALLOCATION = 0.15;     // 15%
+const LIQUIDITY_ALLOCATION = 0.05;  // 5%
+
+const COMMUNITY_TOKENS = TOTAL_SUPPLY_QNTO * COMMUNITY_ALLOCATION;   // 16,800,000,000
+const ECODEV_TOKENS = TOTAL_SUPPLY_QNTO * ECODEV_ALLOCATION;         // 3,150,000,000
+const LIQUIDITY_TOKENS = TOTAL_SUPPLY_QNTO * LIQUIDITY_ALLOCATION;   // 1,050,000,000
+
 export const Codex = () => {
   const [activeTab, setActiveTab] = useState('architecture');
 
@@ -126,33 +139,52 @@ export const Codex = () => {
           {activeTab === 'tokenomics' && (
             <div className="prose prose-invert max-w-none">
               <h1 className="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-indigo-300 to-purple-500 mb-6 font-sans tracking-tight">
-                QNTO Token Distribution
+                QNTO Fair Launch Tokenomics
               </h1>
               <p className="text-slate-300 leading-relaxed text-base mb-6 font-sans">
-                The native asset of the Qanto Layer-0 Mesh is <strong>$QNTO</strong>. It serves as gas fee payment, staking collateral for Sentinel Nodes, and governance voting weight.
+                <strong>Total Supply: {TOTAL_SUPPLY_QNTO.toLocaleString()} QNTO. Hard-capped. Immutable.</strong>
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+              <p className="text-slate-300 leading-relaxed text-base mb-6 font-sans">
+                Qanto's tokenomics live by one core principle: the community comes first. We are committed to a fair launch, with no pre-mine, no venture capitalist allocations, and no team tokens.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
                 <div className="bg-black/30 border border-white/5 rounded-xl p-4 text-center">
                   <div className="text-xs text-slate-500 font-mono">TOTAL SUPPLY</div>
-                  <div className="text-xl font-bold text-cyan-400 font-mono mt-1">100,000,000</div>
+                  <div className="text-xl font-bold text-cyan-400 font-mono mt-1">{TOTAL_SUPPLY_QNTO.toLocaleString()}</div>
                 </div>
                 <div className="bg-black/30 border border-white/5 rounded-xl p-4 text-center">
-                  <div className="text-xs text-slate-500 font-mono">TGE SALE</div>
-                  <div className="text-xl font-bold text-purple-400 font-mono mt-1">25,000,000</div>
+                  <div className="text-xs text-slate-500 font-mono">COMMUNITY</div>
+                  <div className="text-xl font-bold text-purple-400 font-mono mt-1">80%</div>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">{COMMUNITY_TOKENS.toLocaleString()}</div>
                 </div>
                 <div className="bg-black/30 border border-white/5 rounded-xl p-4 text-center">
-                  <div className="text-xs text-slate-500 font-mono">STAKING EMISSIONS</div>
-                  <div className="text-xl font-bold text-indigo-400 font-mono mt-1">45,000,000</div>
+                  <div className="text-xs text-slate-500 font-mono">ECO / DEV FUND</div>
+                  <div className="text-xl font-bold text-amber-400 font-mono mt-1">15%</div>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">{ECODEV_TOKENS.toLocaleString()}</div>
+                </div>
+                <div className="bg-black/30 border border-white/5 rounded-xl p-4 text-center">
+                  <div className="text-xs text-slate-500 font-mono">PUBLIC LIQUIDITY</div>
+                  <div className="text-xl font-bold text-blue-400 font-mono mt-1">5%</div>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">{LIQUIDITY_TOKENS.toLocaleString()}</div>
+                </div>
+                <div className="bg-black/30 border border-white/5 rounded-xl p-4 text-center">
+                  <div className="text-xs text-slate-500 font-mono">FAIR LAUNCH</div>
+                  <div className="text-xl font-bold text-emerald-400 font-mono mt-1">✓ Zero VC</div>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">No Pre-mine</div>
                 </div>
               </div>
               <h2 className="text-xl font-bold text-white mb-3 font-sans">Allocation Breakdown</h2>
               <ul className="list-disc list-inside text-slate-300 space-y-2 mb-6 text-sm font-sans">
-                <li><strong>45% (45M $QNTO):</strong> Stakeholder Rewards & Sentinel Node Incentives (emitted linearly over 120 months).</li>
-                <li><strong>25% (25M $QNTO):</strong> Public Token Generation Event (TGE).</li>
-                <li><strong>15% (15M $QNTO):</strong> Ecosystem Development, ZK-SDK Grants, and Core Dev Funding.</li>
-                <li><strong>10% (10M $QNTO):</strong> Pioneer Genesis Airdrop (ZKP verified).</li>
-                <li><strong>5% (5M $QNTO):</strong> Liquidity pools and initial market support.</li>
+                <li><strong>80% ({COMMUNITY_TOKENS.toLocaleString()} $QNTO):</strong> Community — mining rewards, public distribution, and AI-guided rewards via PoW, DPoS, and SAGA AI.</li>
+                <li><strong>15% ({ECODEV_TOKENS.toLocaleString()} $QNTO):</strong> Ecosystem & Development Fund — 2-year vest, 1-year cliff. ZK-SDK grants and core protocol funding.</li>
+                <li><strong>5% ({LIQUIDITY_TOKENS.toLocaleString()} $QNTO):</strong> Public Liquidity — DEX liquidity pools and initial market support.</li>
               </ul>
+              <div className="border-l-4 border-cyan-500 bg-cyan-950/20 rounded-r-xl p-5 mb-6 text-sm text-slate-300 font-sans leading-relaxed">
+                <strong>Fair Launch Guarantee:</strong> Zero pre-mine. Zero venture capitalist allocations. Zero team tokens. 100% of supply is distributed through community mechanisms and transparent vesting schedules.
+              </div>
+              <div className="border-l-4 border-violet-500 bg-violet-950/20 rounded-r-xl p-5 mb-6 text-sm text-slate-300 font-sans leading-relaxed">
+                <strong>SAGA AI Micro-Fee Engine:</strong> Base transaction fee: 0.000001 QNTO (1 micro-QNTO). When the network operates below 8M TPS baseline capacity, SAGA AI fully subsidizes standard P2P transfers down to zero user-facing cost. Micro-fees are reserved strictly as an anti-spam threshold for dense smart contract computations.
+              </div>
             </div>
           )}
         </div>

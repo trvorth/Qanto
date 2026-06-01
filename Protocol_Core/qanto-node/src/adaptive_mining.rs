@@ -333,7 +333,7 @@ impl AdaptiveMiningLoop {
 
                         // Use sliding-window average if available; fallback to configured target
                         let avg_interval_ms = if !self.state.recent_block_times.is_empty() {
-                            self.calculate_sliding_window_average() as u64
+                            self.calculate_sliding_window_average()
                         } else {
                             self.config.target_block_time_ms
                         };
@@ -435,8 +435,8 @@ impl AdaptiveMiningLoop {
                 .record_strata_state(StrataStateParams {
                     layer_count: 1,
                     current_layer: 0,
-                    vdf_iterations: self.state.current_difficulty as u64,
-                    vdf_difficulty: self.state.current_difficulty as u64,
+                    vdf_iterations: self.state.current_difficulty,
+                    vdf_difficulty: self.state.current_difficulty,
                     proof_verification_time_ms: 0,
                     quantum_state_valid: true,
                     threshold_signatures_count: self.state.consecutive_failures,
@@ -877,16 +877,12 @@ impl AdaptiveMiningLoop {
         );
 
         let one_percent = (crate::QANTO_SCALE / 100) as u64;
-        let delta = if difficulty_adjustment_factor > crate::QANTO_SCALE as u64 {
-            difficulty_adjustment_factor - crate::QANTO_SCALE as u64
-        } else {
-            crate::QANTO_SCALE as u64 - difficulty_adjustment_factor
-        };
+        let delta = difficulty_adjustment_factor.abs_diff(crate::QANTO_SCALE as u64);
 
         if delta > one_percent {
             // Only adjust if the change is significant (> 1%)
             let old_difficulty = self.state.current_difficulty;
-            self.state.current_difficulty = ((old_difficulty as u128 * difficulty_adjustment_factor as u128 / crate::QANTO_SCALE as u128) as u64)
+            self.state.current_difficulty = ((old_difficulty as u128 * difficulty_adjustment_factor as u128 / crate::QANTO_SCALE) as u64)
                 .max(self.config.min_difficulty)
                 .min(self.config.max_difficulty);
 

@@ -22,9 +22,15 @@ pub enum GasFeeError {
 }
 
 /// Gas fee model constants (in base units - 1e9 scale)
-pub const BASE_FEE_QANTO: u128 = 100_000; // 0.0001 QAN = 100,000 base units
+/// Micro-fee: 0.000001 QAN = 1,000 base units (1 micro-QNTO)
+pub const BASE_FEE_QANTO: u128 = 1_000; // 0.000001 QAN = 1 micro-QNTO
 pub const TARGET_TPS: u64 = 10_000_000;
 pub const CONGESTION_ADJUSTMENT_FACTOR: f64 = 0.5;
+/// SAGA AI subsidy: when network load is below this fraction of TARGET_TPS
+/// (i.e., below 8,000,000 TPS = 80% of 10M capacity), simple P2P transfers
+/// are fully subsidized (fee = 0). Micro-fees only apply as an anti-spam
+/// measure during heavy smart-contract computation bursts.
+pub const SAGA_SUBSIDY_THRESHOLD: f64 = 0.8;
 
 /// Storage rates per byte (in base units)
 pub const STORAGE_RATE_TEMPORARY: u128 = 1_000; // 0.000001 QAN/byte
@@ -157,7 +163,7 @@ impl GasFeeModel {
             StorageDuration::ShortTerm => STORAGE_RATE_SHORT_TERM,
             StorageDuration::Permanent => STORAGE_RATE_PERMANENT,
         };
-        let storage_fee = (transaction_size as u128) * storage_rate;
+        let storage_fee = transaction_size * storage_rate;
 
         // 4. Calculate gas fee
         let gas_used = self.estimate_gas_usage(transaction, complexity);
@@ -169,7 +175,7 @@ impl GasFeeModel {
         }
 
         let gas_price = *self.gas_price_oracle.read().await;
-        let gas_fee = (gas_used as u128) * gas_price;
+        let gas_fee = gas_used * gas_price;
 
         // 5. Calculate congestion multiplier
         let congestion_multiplier = self.calculate_congestion_multiplier();
@@ -179,7 +185,21 @@ impl GasFeeModel {
         let adjusted_fee = (base_components as f64 * congestion_multiplier) as u128;
 
         // 7. Add priority fee (not affected by congestion)
-        let total_fee = adjusted_fee + priority_fee;
+        let mut total_fee = adjusted_fee + priority_fee;
+
+        // 8. SAGA AI Subsidy: For simple P2P transfers, if the network is operating
+        //    under capacity (below SAGA_SUBSIDY_THRESHOLD), the fee is fully subsidized.
+        //    This makes standard peer-to-peer transfers practically free.
+        let current_tps = self.congestion_metrics.get_current_tps();
+        let subsidy_limit = (TARGET_TPS as f64 * SAGA_SUBSIDY_THRESHOLD) as u64;
+        if complexity == TransactionComplexity::SimpleTransfer && current_tps <= subsidy_limit {
+            debug!(
+                tx_id = %transaction.id,
+                "SAGA AI subsidy applied: simple transfer fee zeroed (network at {}% capacity)",
+                (current_tps as f64 / TARGET_TPS as f64 * 100.0) as u64,
+            );
+            total_fee = 0;
+        }
 
         let breakdown = FeeBreakdown {
             base_fee,
@@ -440,18 +460,18 @@ impl FeeEstimator {
         let congestion_multiplier = self.gas_model.calculate_congestion_multiplier();
 
         // Simple transfer
-        let simple_fee = (BASE_FEE_QANTO + GAS_COST_TRANSFER as u128 * base_gas_price) as f64
+        let simple_fee = (BASE_FEE_QANTO + GAS_COST_TRANSFER * base_gas_price) as f64
             * congestion_multiplier;
         estimates.insert("simple_transfer".to_string(), simple_fee as u128);
 
         // Smart contract call
-        let contract_fee = (BASE_FEE_QANTO + GAS_COST_CONTRACT_CALL as u128 * base_gas_price) as f64
+        let contract_fee = (BASE_FEE_QANTO + GAS_COST_CONTRACT_CALL * base_gas_price) as f64
             * congestion_multiplier
             * 1.5;
         estimates.insert("contract_call".to_string(), contract_fee as u128);
 
         // Contract deployment
-        let deploy_fee = (BASE_FEE_QANTO + GAS_COST_CONTRACT_DEPLOY as u128 * base_gas_price) as f64
+        let deploy_fee = (BASE_FEE_QANTO + GAS_COST_CONTRACT_DEPLOY * base_gas_price) as f64
             * congestion_multiplier
             * 3.0;
         estimates.insert("contract_deployment".to_string(), deploy_fee as u128);
@@ -531,7 +551,8 @@ mod tests {
         assert!(result.is_ok());
         let breakdown = result.unwrap();
         assert_eq!(breakdown.base_fee, BASE_FEE_QANTO);
-        assert!(breakdown.total_fee > 0);
+        // SAGA AI subsidy: simple transfers are free when network is under capacity (0 TPS)
+        assert_eq!(breakdown.total_fee, 0, "Simple P2P transfers should be subsidized to zero under normal load");
     }
 
     #[test]
@@ -552,6 +573,7 @@ mod tests {
     #[tokio::test]
     async fn test_batch_fee_calculation() {
         let gas_model = GasFeeModel::new();
+        gas_model.congestion_metrics.update_tps(TARGET_TPS);
         let transactions = vec![create_test_transaction(); 15]; // 15 transactions for batch discount
         let gas_limits = vec![50000u128; 15];
         let priority_fees = vec![0u128; 15];

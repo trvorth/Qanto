@@ -981,7 +981,7 @@ impl Config {
 
         // Validate P2P heartbeat interval consistency
         // Heartbeat should be at most 2x target block time
-        if self.p2p.heartbeat_interval as u64 > self.target_block_time * 2 {
+        if self.p2p.heartbeat_interval > self.target_block_time * 2 {
             return Err(ConfigError::Validation(format!(
                 "p2p.heartbeat_interval ({}ms) is too large relative to target_block_time ({}ms). \
                  Heartbeat interval should be at most 2x target block time ({}ms)",

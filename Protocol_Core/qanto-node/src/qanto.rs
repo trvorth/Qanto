@@ -84,6 +84,20 @@ enum Commands {
         )]
         output: String,
     },
+
+    /// Export the raw private key from a wallet file (requires password)
+    ExportKey {
+        /// Path to the wallet key file
+        #[arg(short, long, default_value = "wallet.key")]
+        wallet: String,
+    },
+
+    /// Display the BIP-39 mnemonic for a wallet file (requires password)
+    ShowMnemonic {
+        /// Path to the wallet key file
+        #[arg(short, long, default_value = "wallet.key")]
+        wallet: String,
+    },
 }
 
 pub async fn run() -> Result<()> {
@@ -113,6 +127,33 @@ pub async fn run() -> Result<()> {
                 wallet.address()
             );
             println!("IMPORTANT: Please back up this file securely and remember your password.");
+        }
+        Some(Commands::ExportKey { wallet: wallet_path }) => {
+            // SENSITIVE OPERATION: Interactive password prompt required
+            println!("⚠️  Exporting private key requires authentication.");
+            let password = prompt_for_password(false, Some("Enter wallet password:"))
+                .map_err(|e| anyhow::anyhow!("Password error: {e}"))?;
+            let wallet_instance = Wallet::from_file(&wallet_path, &password)?;
+            println!("Address: {}", wallet_instance.address());
+            println!("Private Key (hex): {}", wallet_instance.export_private_key_hex());
+            println!("⚠️  NEVER share this private key. Store it securely offline.");
+        }
+        Some(Commands::ShowMnemonic { wallet: wallet_path }) => {
+            // SENSITIVE OPERATION: Interactive password prompt required
+            println!("⚠️  Displaying mnemonic requires authentication.");
+            let password = prompt_for_password(false, Some("Enter wallet password:"))
+                .map_err(|e| anyhow::anyhow!("Password error: {e}"))?;
+            let wallet_instance = Wallet::from_file(&wallet_path, &password)?;
+            match wallet_instance.get_mnemonic() {
+                Some(mnemonic) => {
+                    println!("BIP-39 Mnemonic Phrase:");
+                    println!("{}", mnemonic);
+                    println!("⚠️  NEVER share this mnemonic. Store it securely offline.");
+                }
+                None => {
+                    println!("This wallet was imported without a mnemonic phrase.");
+                }
+            }
         }
         None | Some(Commands::Start) => {
             let config = cli.config;

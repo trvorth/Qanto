@@ -1558,7 +1558,7 @@ async fn info_handler(
     let num_chains_val = *state.dag.num_chains.read().await;
     let current_difficulty = {
         let rules = state.dag.saga.economy.epoch_rules.read().await;
-        rules.get("base_difficulty").map_or(10 * crate::Q_SCALE as u128, |r| r.value as u128)
+        rules.get("base_difficulty").map_or(10 * crate::Q_SCALE, |r| r.value as u128)
     };
 
     Ok(Json(serde_json::json!({
@@ -1929,7 +1929,7 @@ async fn get_dag(State(state): State<AppState>) -> Result<Json<DagInfo>, StatusC
     let validator_count = state.dag.validators.len();
     let current_difficulty = {
         let rules = state.dag.saga.economy.epoch_rules.read().await;
-        rules.get("base_difficulty").map_or(10 * crate::Q_SCALE as u128, |r| r.value as u128)
+        rules.get("base_difficulty").map_or(10 * crate::Q_SCALE, |r| r.value as u128)
     };
     let num_chains_val = *state.dag.num_chains.read().await;
 
@@ -2255,7 +2255,7 @@ async fn jsonrpc_handler(
         }
         "eth_sendTransaction" => {
             let params = payload.get("params").and_then(|p| p.as_array());
-            let tx_data = params.and_then(|p| p.get(0)).and_then(|v| v.get("data")).and_then(|d| d.as_str()).unwrap_or("");
+            let tx_data = params.and_then(|p| p.first()).and_then(|v| v.get("data")).and_then(|d| d.as_str()).unwrap_or("");
             
             if tx_data == "0x7374616b65" {
                 tracing::info!("STAKING TX RECEIVED");
@@ -2268,7 +2268,7 @@ async fn jsonrpc_handler(
         }
         "eth_getBlockByNumber" => {
             let params = payload.get("params").and_then(|p| p.as_array());
-            let height_hex = params.and_then(|p| p.get(0)).and_then(|v| v.as_str()).unwrap_or("0x0");
+            let height_hex = params.and_then(|p| p.first()).and_then(|v| v.as_str()).unwrap_or("0x0");
             let height = usize::from_str_radix(height_hex.trim_start_matches("0x"), 16).unwrap_or(0);
             
             let txs = if height > 0 {

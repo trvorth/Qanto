@@ -337,7 +337,7 @@ fn convert_proto_tx(ptx: proto::Transaction) -> Result<crate::transaction::Trans
 fn convert_internal_utxo_to_proto(u: &crate::types::UTXO) -> proto::Utxo {
     proto::Utxo {
         address: u.address.clone(),
-        amount: u.amount as u64 as u64,
+        amount: u.amount as u64,
         tx_id: u.tx_id.clone(),
         output_index: u.output_index,
         explorer_link: u.explorer_link.clone(),
@@ -347,7 +347,7 @@ fn convert_internal_utxo_to_proto(u: &crate::types::UTXO) -> proto::Utxo {
 fn convert_proto_utxo(u: proto::Utxo) -> crate::types::UTXO {
     crate::types::UTXO {
         address: u.address,
-        amount: u.amount as u128 as u128,
+        amount: u.amount as u128,
         tx_id: u.tx_id,
         output_index: u.output_index,
         explorer_link: u.explorer_link,

@@ -265,6 +265,23 @@ impl Wallet {
         &self.data.mnemonic
     }
 
+    /// Returns the Ed25519 private key as a hex string.
+    /// This is a sensitive operation — callers must protect the output.
+    pub fn export_private_key_hex(&self) -> String {
+        hex::encode(self.data.signing_key.expose_secret())
+    }
+
+    /// Returns the BIP-39 mnemonic phrase if one exists, or None if the wallet
+    /// was imported from a raw private key without a mnemonic.
+    pub fn get_mnemonic(&self) -> Option<String> {
+        let m = self.data.mnemonic.expose_secret();
+        if m.is_empty() {
+            None
+        } else {
+            Some(m.clone())
+        }
+    }
+
     /// Saves the wallet to a file, encrypted with a passphrase.
     pub fn save_to_file<P: AsRef<Path>>(
         &self,

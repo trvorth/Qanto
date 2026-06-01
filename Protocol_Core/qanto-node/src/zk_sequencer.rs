@@ -16,6 +16,12 @@ pub struct SequencerState {
     pub pending_tx_count: u32,
 }
 
+impl Default for SequencerState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SequencerState {
     pub fn new() -> Self {
         Self { current_batch_id: 0, pending_tx_count: 0 }

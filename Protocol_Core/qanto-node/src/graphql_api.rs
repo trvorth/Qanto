@@ -275,7 +275,7 @@ impl QueryRoot {
         let proposals_guard = context.node.saga_pallet.governance.proposals.read().await;
         
         let mut list = Vec::new();
-        for (_, p) in proposals_guard.iter() {
+        for p in proposals_guard.values() {
             list.push(ProposalGQL {
                 id: p.id.clone(),
                 proposer: p.proposer.clone(),

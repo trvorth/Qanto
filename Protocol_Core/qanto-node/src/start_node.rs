@@ -89,6 +89,18 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .help("Enable block celebration logging (overrides config)")
                 .action(ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("export-key")
+                .long("export-key")
+                .help("Export the raw private key (requires password prompt)")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("show-mnemonic")
+                .long("show-mnemonic")
+                .help("Display the BIP-39 mnemonic (requires password prompt)")
+                .action(ArgAction::SetTrue),
+        )
         .get_matches();
 
     // Load configuration
@@ -211,11 +223,41 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         mode = mode
     );
 
-    // Check for WALLET_PASSWORD environment variable first
-    let pass = std::env::var("WALLET_PASSWORD").unwrap_or_else(|_| {
-        // Fallback to interactive prompt if no environment variable
-        rpassword::prompt_password("Enter wallet password: ").expect("Failed to read password")
-    });
+    // Handle sensitive key export operations FIRST — these are the ONLY paths
+    // that require an interactive password prompt. They exit before node boot.
+    if matches.get_flag("export-key") {
+        use crate::password_utils::prompt_for_password;
+        println!("⚠️  Exporting private key requires authentication.");
+        let password = prompt_for_password(false, Some("Enter wallet password:"))?;
+        let wallet = Wallet::from_file(&config.wallet_path, &password)?;
+        println!("Address: {}", wallet.address());
+        println!("Private Key (hex): {}", wallet.export_private_key_hex());
+        println!("⚠️  NEVER share this private key. Store it securely offline.");
+        return Ok(());
+    }
+
+    if matches.get_flag("show-mnemonic") {
+        use crate::password_utils::prompt_for_password;
+        println!("⚠️  Displaying mnemonic requires authentication.");
+        let password = prompt_for_password(false, Some("Enter wallet password:"))?;
+        let wallet = Wallet::from_file(&config.wallet_path, &password)?;
+        match wallet.get_mnemonic() {
+            Some(mnemonic) => {
+                println!("BIP-39 Mnemonic Phrase:");
+                println!("{}", mnemonic);
+                println!("⚠️  NEVER share this mnemonic. Store it securely offline.");
+            }
+            None => {
+                println!("This wallet was imported without a mnemonic phrase.");
+            }
+        }
+        return Ok(());
+    }
+
+    // Frictionless startup: use environment variable if set, otherwise default to
+    // empty password. Interactive prompts are ONLY used for `--export-key` or
+    // `--show-mnemonic` operations (not during node boot).
+    let pass = std::env::var("WALLET_PASSWORD").unwrap_or_default();
 
     let password = SecretString::new(pass);
     let wallet = Wallet::from_file(&config.wallet_path, &password)?;

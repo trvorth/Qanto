@@ -2098,6 +2098,8 @@ impl ZKProofSystem {
             set: set_field,
         };
 
+        let root = circuit.compute_merkle_root();
+
         let mut rng = ark_std::rand::thread_rng();
         let proof = Groth16::<E>::prove(&proving_key, circuit, &mut rng)
             .map_err(|e| anyhow!("Proof generation failed: {e}"))?;
@@ -2107,7 +2109,7 @@ impl ZKProofSystem {
             .serialize_compressed(&mut proof_bytes)
             .map_err(|e| anyhow!("Proof serialization failed: {e}"))?;
 
-        let public_inputs = vec![element.to_le_bytes().to_vec()];
+        let public_inputs = vec![root.into_bigint().to_bytes_le()];
 
         let vk_bytes = {
             let keys = self.verifying_keys.read().await;
@@ -2185,7 +2187,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
     async fn test_membership_proof_verification() {
         let zkp = ZKProofSystem::new();
         zkp.initialize().await.unwrap();

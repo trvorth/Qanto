@@ -2472,7 +2472,7 @@ impl SecurityMonitor {
             .filter(|creds| !creds.is_empty())
             .count();
 
-        for (_miner, creds) in creds_by_miner.iter() {
+        for creds in creds_by_miner.values() {
             if creds.is_empty() {
                 continue;
             }

@@ -659,7 +659,7 @@ impl Miner {
                     block_height: block_template.height,
                     block_hash: hex::encode(&final_hash[..8]), // First 8 bytes as hex
                     nonce: found_nonce,
-                    difficulty: block_template.difficulty as u128 / crate::QANTO_SCALE as u128, // Convert for display
+                    difficulty: block_template.difficulty as u128 / crate::QANTO_SCALE, // Convert for display
                     transactions_count: block_template.transactions.len(),
                     mining_time: Duration::from_secs(30), // Approximate mining time
                     effort,

@@ -6,6 +6,14 @@ import { formatEther } from 'viem';
 const TGE_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000009';
 const RATE = 10000; // 1 ETH = 10,000 QNTO
 
+/**
+ * Canonical supply constants — mathematically sealed.
+ * No purchase interaction can exceed the total network capacity.
+ */
+const TOTAL_SUPPLY_QNTO = 21_000_000_000;
+const COMMUNITY_ALLOCATION_QNTO = TOTAL_SUPPLY_QNTO * 0.80; // 16,800,000,000
+const MAX_PURCHASABLE_QNTO = COMMUNITY_ALLOCATION_QNTO; // Hard ceiling for TGE
+
 const QantoTgeAbi = [
   {
     type: 'function',
@@ -45,12 +53,16 @@ export function TokenSale() {
       address: TGE_CONTRACT_ADDRESS,
       functionName: 'buyTokens',
       value: BigInt(Math.floor(parseFloat(ethAmount) * 10 ** 18)),
-    });
+    } as any);
   };
 
-  const calculatedQnto = ethAmount && !isNaN(parseFloat(ethAmount)) 
-    ? (parseFloat(ethAmount) * RATE).toLocaleString() 
-    : '0';
+  const rawQnto = ethAmount && !isNaN(parseFloat(ethAmount))
+    ? parseFloat(ethAmount) * RATE
+    : 0;
+  // Overflow guard: clamp to the maximum purchasable supply ceiling
+  const clampedQnto = Math.min(rawQnto, MAX_PURCHASABLE_QNTO);
+  const calculatedQnto = clampedQnto.toLocaleString();
+  const isOverCap = rawQnto > MAX_PURCHASABLE_QNTO;
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-8 relative z-10">
@@ -60,10 +72,13 @@ export function TokenSale() {
 
         <div className="relative z-10">
           <h1 className="text-3xl font-extrabold text-white text-center mb-2 font-sans tracking-tight">
-            Qanto Token Generation Event
+            Qanto Fair Launch Participation
           </h1>
+          <p className="text-sm text-slate-400 text-center font-sans mb-4">
+            Fair Launch: 21,000,000,000 QNTO — 80% Community, 15% Ecosystem, 5% Liquidity.
+          </p>
           <p className="text-sm text-slate-400 text-center font-sans mb-8">
-            Participate in the public TGE launch. 1 ETH = 10,000 $QNTO.
+            1 ETH = 10,000 $QNTO. Zero VC. Zero team tokens. Zero pre-mine.
           </p>
 
           {/* Progress bar or info */}
@@ -78,8 +93,8 @@ export function TokenSale() {
               <div className="bg-gradient-to-r from-cyan-400 to-violet-500 h-full w-[12%]" />
             </div>
             <div className="flex justify-between text-[9px] text-slate-500 font-mono mt-1.5">
-              <span>Soft Cap: 500 ETH</span>
-              <span>Hard Cap: 2,500 ETH</span>
+              <span>Community: 80% (16.8B QNTO)</span>
+              <span>Total Supply: 21B QNTO</span>
             </div>
           </div>
 
@@ -106,17 +121,27 @@ export function TokenSale() {
           </div>
 
           {/* Output allocation */}
-          <div className="bg-white/5 border border-white/5 rounded-xl p-4 mb-8 flex justify-between items-center">
+          <div className="bg-white/5 border border-white/5 rounded-xl p-4 mb-4 flex justify-between items-center">
             <span className="text-xs font-sans text-slate-400">Tokens to Receive:</span>
             <span className="text-xl font-bold text-cyan-400 font-mono">{calculatedQnto} $QNTO</span>
+          </div>
+
+          {isOverCap && (
+            <div className="text-xs font-mono text-amber-500 mb-4 bg-amber-500/10 border border-amber-500/20 py-2 px-3 rounded-lg text-center">
+              ⚠️ Purchase clamped to maximum supply ceiling: {MAX_PURCHASABLE_QNTO.toLocaleString()} QNTO (Community 80%)
+            </div>
+          )}
+
+          <div className="text-[9px] text-slate-500 font-mono text-center mb-6">
+            Hard Cap: {TOTAL_SUPPLY_QNTO.toLocaleString()} QNTO · Community: 80% · Eco/Dev: 15% · Liquidity: 5%
           </div>
 
           <div className="flex flex-col gap-4">
             <button
               onClick={handleBuy}
-              disabled={!isConnected || isPending || !ethAmount || parseFloat(ethAmount) <= 0}
+              disabled={!isConnected || isPending || !ethAmount || parseFloat(ethAmount) <= 0 || isOverCap}
               className={`w-full py-4 px-6 rounded-xl font-bold font-sans text-sm md:text-base border transition-all duration-300 ${
-                !isConnected || isPending || !ethAmount || parseFloat(ethAmount) <= 0
+                !isConnected || isPending || !ethAmount || parseFloat(ethAmount) <= 0 || isOverCap
                   ? 'bg-slate-700 cursor-not-allowed text-slate-400 border-transparent shadow-none'
                   : 'bg-cyan-500 hover:bg-cyan-400 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)] border-transparent hover:scale-[1.02]'
               }`}

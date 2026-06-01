@@ -166,7 +166,7 @@ impl MiningStats {
 
         // Calculate theoretical TPS based on 31ms block time
         let theoretical_tps_scaled = if self.mining_time.as_millis() > 0 {
-            (self.transactions_count as u128 * 1000 * crate::QANTO_SCALE) / self.mining_time.as_millis() as u128
+            (self.transactions_count as u128 * 1000 * crate::QANTO_SCALE) / self.mining_time.as_millis()
         } else {
             0
         };
@@ -190,7 +190,7 @@ impl MiningStats {
 
         // Calculate BPS (Blocks Per Second)
         let bps_scaled = if self.mining_time.as_millis() > 0 {
-            (1000 * crate::QANTO_SCALE) / self.mining_time.as_millis() as u128
+            (1000 * crate::QANTO_SCALE) / self.mining_time.as_millis()
         } else {
             0
         };

@@ -48,7 +48,7 @@ impl NodeRpcBackend {
                             // Bridge to RPC subscribers
                             let update = proto::BalanceUpdate {
                                 address: ev.address,
-                                base_units: ev.balance as u64 as u64,
+                                base_units: ev.balance as u64,
                                 timestamp: ev.timestamp,
                             };
                             let _ = rpc_tx.send(update);
@@ -86,7 +86,7 @@ fn convert_proto_tx(ptx: proto::Transaction) -> Result<Transaction, String> {
         .into_iter()
         .map(|o| crate::transaction::Output {
             address: o.address,
-            amount: o.amount as u128 as u128,
+            amount: o.amount as u128,
             homomorphic_encrypted: match o.homomorphic_encrypted {
                 Some(he) => crate::types::HomomorphicEncrypted {
                     ciphertext: he.ciphertext,
@@ -111,15 +111,15 @@ fn convert_proto_tx(ptx: proto::Transaction) -> Result<Transaction, String> {
     let fee_breakdown = ptx
         .fee_breakdown
         .map(|fb| crate::gas_fee_model::FeeBreakdown {
-            base_fee: fb.base_fee as u128 as u128,
-            complexity_fee: fb.complexity_fee as u128 as u128,
-            storage_fee: fb.storage_fee as u128 as u128,
-            gas_fee: fb.gas_fee as u128 as u128,
-            priority_fee: fb.priority_fee as u128 as u128,
+            base_fee: fb.base_fee as u128,
+            complexity_fee: fb.complexity_fee as u128,
+            storage_fee: fb.storage_fee as u128,
+            gas_fee: fb.gas_fee as u128,
+            priority_fee: fb.priority_fee as u128,
             congestion_multiplier: fb.congestion_multiplier,
-            total_fee: fb.total_fee as u128 as u128,
-            gas_used: fb.gas_used as u128 as u128,
-            gas_price: fb.gas_price as u128 as u128,
+            total_fee: fb.total_fee as u128,
+            gas_used: fb.gas_used as u128,
+            gas_price: fb.gas_price as u128,
         });
 
     Ok(Transaction {
@@ -128,10 +128,10 @@ fn convert_proto_tx(ptx: proto::Transaction) -> Result<Transaction, String> {
         receiver: ptx.receiver,
         amount: ptx.amount as u128,
         fee: ptx.fee as u128,
-        gas_limit: ptx.gas_limit as u128 as u128,
-        gas_used: ptx.gas_used as u128 as u128,
+        gas_limit: ptx.gas_limit as u128,
+        gas_used: ptx.gas_used as u128,
         gas_price: ptx.gas_price as u128,
-        priority_fee: ptx.priority_fee as u128 as u128,
+        priority_fee: ptx.priority_fee as u128,
         inputs,
         outputs,
         timestamp: ptx.timestamp,
@@ -170,15 +170,15 @@ fn convert_internal_tx_to_proto(tx: &crate::transaction::Transaction) -> proto::
     });
 
     let fee_breakdown = tx.fee_breakdown.as_ref().map(|fb| proto::FeeBreakdown {
-        base_fee: fb.base_fee as u64 as u64,
-        complexity_fee: fb.complexity_fee as u64 as u64,
-        storage_fee: fb.storage_fee as u64 as u64,
-        gas_fee: fb.gas_fee as u64 as u64,
-        priority_fee: fb.priority_fee as u64 as u64,
+        base_fee: fb.base_fee as u64,
+        complexity_fee: fb.complexity_fee as u64,
+        storage_fee: fb.storage_fee as u64,
+        gas_fee: fb.gas_fee as u64,
+        priority_fee: fb.priority_fee as u64,
         congestion_multiplier: fb.congestion_multiplier,
-        total_fee: fb.total_fee as u64 as u64,
-        gas_used: fb.gas_used as u64 as u64,
-        gas_price: fb.gas_price as u64 as u64,
+        total_fee: fb.total_fee as u64,
+        gas_used: fb.gas_used as u64,
+        gas_price: fb.gas_price as u64,
     });
 
     proto::Transaction {
@@ -187,10 +187,10 @@ fn convert_internal_tx_to_proto(tx: &crate::transaction::Transaction) -> proto::
         receiver: tx.receiver.clone(),
         amount: tx.amount as u64,
         fee: tx.fee as u64,
-        gas_limit: tx.gas_limit as u64 as u64,
-        gas_used: tx.gas_used as u64 as u64,
-        gas_price: tx.gas_price as u64 as u64,
-        priority_fee: tx.priority_fee as u64 as u64,
+        gas_limit: tx.gas_limit as u64,
+        gas_used: tx.gas_used as u64,
+        gas_price: tx.gas_price as u64,
+        priority_fee: tx.priority_fee as u64,
         inputs,
         outputs,
         timestamp: tx.timestamp,
@@ -223,7 +223,7 @@ fn convert_block_to_proto(b: &crate::qantodag::QantoBlock) -> proto::QantoBlock 
             swap_id: s.swap_id.clone(),
             source_chain: s.source_chain,
             target_chain: s.target_chain,
-            amount: s.amount as u64 as u64,
+            amount: s.amount as u64,
             initiator: s.initiator.clone(),
             responder: s.responder.clone(),
             timelock: s.timelock,
@@ -259,7 +259,7 @@ fn convert_block_to_proto(b: &crate::qantodag::QantoBlock) -> proto::QantoBlock 
             code: sc.code.clone(),
             storage: sc.storage.clone(),
             owner: sc.owner.clone(),
-            gas_balance: sc.gas_balance as u64 as u64,
+            gas_balance: sc.gas_balance as u64,
         })
         .collect::<Vec<_>>();
 
@@ -292,7 +292,7 @@ fn convert_block_to_proto(b: &crate::qantodag::QantoBlock) -> proto::QantoBlock 
         timestamp: b.timestamp,
         height: b.height,
         reward: b.reward as u64,
-        effort: b.effort as u64 as u64,
+        effort: b.effort as u64,
         cross_chain_references,
         cross_chain_swaps,
         merkle_root: b.merkle_root.clone(),
@@ -342,7 +342,7 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
                 // UTXO scan
                 let utxos = self.utxos.read().await;
                 let mut total: u128 = 0;
-                for (_k, utxo) in utxos.iter() {
+                for utxo in utxos.values() {
                     if utxo.address == address {
                         total = total.saturating_add(utxo.amount);
                     }
@@ -445,8 +445,8 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
             let peers = rx
                 .await
                 .map_err(|e| format!("Failed to receive peer list: {e}"))?;
-            let peers_count = peers.len() as u64;
-            peers_count
+            
+            peers.len() as u64
         };
 
         // Block count from DAG

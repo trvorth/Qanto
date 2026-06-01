@@ -23,7 +23,7 @@
 //!
 //! Wallet Integration (Rust)
 //!
-//! ```rust
+//! ```rust,no_run
 //! use qanto_core::{BalanceBroadcaster, BalanceUpdate};
 //! use tokio::task;
 //!

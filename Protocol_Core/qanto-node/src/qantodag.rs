@@ -387,7 +387,7 @@ impl fmt::Display for QantoBlock {
         writeln!(
             f,
             "║ 💰 Block Reward:    {} $QAN (from Emission Rules)",
-            self.reward / crate::transaction::SMALLEST_UNITS_PER_QAN as u128
+            self.reward / crate::transaction::SMALLEST_UNITS_PER_QAN
         )?;
         writeln!(f, "╚{}╝", QBLOCK_BORDER.as_str())?;
         Ok(())
@@ -1112,7 +1112,7 @@ impl QantoDAG {
                     match dag.db.get(&key) {
                         Ok(Some(bytes)) => match decode_balance(&bytes) {
                             Ok(balance) => {
-                                dag.account_state_cache.set_balance(address, balance as u128);
+                                dag.account_state_cache.set_balance(address, balance);
                                 loaded_balances += 1;
                             }
                             Err(err) => {
@@ -1873,7 +1873,7 @@ impl QantoDAG {
 
 
         let base_reward = self.emission.read().await.calculate_reward(temp_block_for_reward_calc.timestamp)
-            .map_err(|e| QantoDAGError::Generic(e))?;
+            .map_err(QantoDAGError::Generic)?;
 
         // Total reward includes base reward plus transaction fees
         let reward = base_reward + total_fees;
@@ -2232,7 +2232,7 @@ impl QantoDAG {
             // Combine results deterministically; fail fast on any invalid
             let any_invalid = utxo_results
                 .into_iter()
-                .zip(signature_results.into_iter())
+                .zip(signature_results)
                 .any(|(utxo_ok, sig_ok)| utxo_ok.is_err() || !sig_ok);
 
             if any_invalid {
@@ -2321,7 +2321,7 @@ impl QantoDAG {
             .values()
             .flat_map(|b| &b.transactions)
             .filter(|tx| !tx.is_coinbase())
-            .map(|tx| tx.amount as u128)
+            .map(|tx| tx.amount)
             .collect();
 
         if transaction_amounts.is_empty() {
@@ -2334,7 +2334,7 @@ impl QantoDAG {
 
         let mut sum_sq_diff = 0u128;
         for &amt in &transaction_amounts {
-            let diff = if amt > mean { amt - mean } else { mean - amt };
+            let diff = amt.abs_diff(mean);
             sum_sq_diff += diff * diff;
         }
         let variance = sum_sq_diff / count;
@@ -2343,12 +2343,12 @@ impl QantoDAG {
         // For z-score threshold check: z = (x - mean) / std_dev => z^2 = (x - mean)^2 / variance
         
         let mut anomaly_detected = false;
-        let threshold_sq_scaled = (ANOMALY_Z_SCORE_THRESHOLD as u128 * ANOMALY_Z_SCORE_THRESHOLD as u128 * 10000) 
-            / (crate::QANTO_SCALE as u128 * crate::QANTO_SCALE as u128);
+        let threshold_sq_scaled = (ANOMALY_Z_SCORE_THRESHOLD * ANOMALY_Z_SCORE_THRESHOLD * 10000) 
+            / (crate::QANTO_SCALE * crate::QANTO_SCALE);
 
         for tx in block.transactions.iter().filter(|tx| !tx.is_coinbase()) {
             if variance > 0 {
-                let diff = if tx.amount as u128 > mean { tx.amount as u128 - mean } else { mean - tx.amount as u128 };
+                let diff = tx.amount.abs_diff(mean);
                 let diff_sq = diff * diff;
                 if diff_sq * 10000 > threshold_sq_scaled * variance {
                     anomaly_detected = true;
@@ -2385,7 +2385,7 @@ impl QantoDAG {
             avg_tx_count - block.transactions.len() as u128
         };
         
-        let anomaly_score = (diff_count * crate::QANTO_SCALE as u128 / avg_tx_count) as u64;
+        let anomaly_score = (diff_count * crate::QANTO_SCALE / avg_tx_count) as u64;
         Ok(anomaly_score)
     }
 

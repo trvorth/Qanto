@@ -17,6 +17,12 @@ pub struct ResonanceField {
     pub resonance_threshold: usize,
 }
 
+impl Default for ResonanceField {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ResonanceField {
     pub fn new() -> Self {
         Self {
