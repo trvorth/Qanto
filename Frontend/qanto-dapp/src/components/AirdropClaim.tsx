@@ -61,7 +61,7 @@ export function AirdropClaim() {
         BigInt(1000 * 10 ** 9), // 1000 QNTO (9 decimals)
         [] // Empty proof for simulation / testing
       ]
-    });
+    } as any);
   };
 
   useEffect(() => {

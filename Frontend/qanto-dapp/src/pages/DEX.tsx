@@ -109,7 +109,7 @@ export const DEX = () => {
       functionName: 'swap',
       args: [tokenIn, tokenOut, amountIn, minAmountOut],
       value: fromToken === 'ETH' ? amountIn : undefined
-    });
+    } as any);
   };
 
   useEffect(() => {

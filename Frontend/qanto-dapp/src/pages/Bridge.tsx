@@ -76,7 +76,7 @@ export const Bridge = () => {
         recipient as `0x${string}`,
         BigInt(parseFloat(amount) * 10 ** 9) // 9 decimals for QNTO
       ]
-    });
+    } as any);
   };
 
   useEffect(() => {

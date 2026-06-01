@@ -54,7 +54,7 @@ export const Staking = () => {
       args: [
         BigInt(parseFloat(stakeAmount) * 10 ** 9) // 9 decimals for QNTO
       ]
-    });
+    } as any);
   };
 
   // Monitor transaction confirmation
