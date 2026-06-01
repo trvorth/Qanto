@@ -1,5 +1,7 @@
-import { useAccount, useWriteContract, useReadContract } from 'wagmi';
+import { useEffect, useRef } from 'react';
+import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { toast } from 'react-hot-toast';
 
 const AIRDROP_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000008';
 
@@ -25,7 +27,7 @@ const QantoDropAbi = [
 
 export function AirdropClaim() {
   const { isConnected, address } = useAccount();
-  const { writeContract, isPending, isSuccess, error, data: txHash } = useWriteContract();
+  const { writeContract, isPending: isWritePending, error, data: txHash } = useWriteContract();
 
   const { data: hasClaimed } = useReadContract({
     abi: QantoDropAbi,
@@ -37,7 +39,20 @@ export function AirdropClaim() {
     }
   });
 
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash: txHash,
+  });
+
+  const toastId = useRef<string | null>(null);
+
   const handleClaim = () => {
+    if (!isConnected) {
+      toast.error('Connect your wallet to claim.');
+      return;
+    }
+
+    toastId.current = toast.loading('Confirming transaction...');
+
     writeContract({
       abi: QantoDropAbi,
       address: AIRDROP_CONTRACT_ADDRESS,
@@ -48,6 +63,29 @@ export function AirdropClaim() {
       ]
     });
   };
+
+  useEffect(() => {
+    if (isConfirmed) {
+      if (toastId.current) {
+        toast.dismiss(toastId.current);
+        toastId.current = null;
+      }
+      toast.success('Airdrop Claim Successful!');
+    }
+  }, [isConfirmed]);
+
+  useEffect(() => {
+    if (error) {
+      if (toastId.current) {
+        toast.dismiss(toastId.current);
+        toastId.current = null;
+      }
+      toast.error(`Claim failed: ${error.message || 'Transaction rejected'}`);
+    }
+  }, [error]);
+
+  const isPending = isWritePending || isConfirming;
+  const isClaimSuccessful = isConfirmed;
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-8 relative z-10">
@@ -78,11 +116,11 @@ export function AirdropClaim() {
           <div className="flex flex-col gap-4">
             <button
               onClick={handleClaim}
-              disabled={!isConnected || isPending || !!hasClaimed || isSuccess}
+              disabled={!isConnected || isPending || !!hasClaimed || isClaimSuccessful}
               className={`w-full py-4 px-6 rounded-xl font-bold font-sans text-sm md:text-base border transition-all duration-300 ${
                 !isConnected || isPending || !!hasClaimed
                   ? 'bg-slate-700 cursor-not-allowed text-slate-400 border-transparent shadow-none'
-                  : isSuccess
+                  : isClaimSuccessful
                   ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400 cursor-default'
                   : 'bg-cyan-500 hover:bg-cyan-400 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)] border-transparent hover:scale-[1.02]'
               }`}
@@ -91,7 +129,7 @@ export function AirdropClaim() {
                 ? 'Wallet Disconnected'
                 : hasClaimed
                 ? 'AIRDROP ALREADY CLAIMED 🟢'
-                : isSuccess
+                : isClaimSuccessful
                 ? 'CLAIM SUCCESSFUL ✅'
                 : isPending
                 ? 'GENERATING ZERO-KNOWLEDGE PROOF...'

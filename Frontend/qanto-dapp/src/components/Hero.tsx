@@ -1,43 +1,8 @@
-import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { Link } from 'react-router-dom';
 
-interface HeroProps {
-  onAirdropClick: () => void;
-  onSaleClick: () => void;
-  onExplorerClick: () => void;
-  onGovernanceClick: () => void;
-}
-
-export function Hero({ onAirdropClick, onSaleClick, onExplorerClick, onGovernanceClick }: HeroProps) {
+export function Hero() {
   return (
     <div className="relative z-10 w-full">
-      {/* Navigation Header */}
-      <nav className="border-b border-white/5 backdrop-blur-md bg-black/40 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 md:h-20">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full border-2 border-cyan-500/50 flex items-center justify-center bg-black/60 shadow-quantum-glow">
-                <span className="text-cyan-400 font-mono font-bold text-lg">Q</span>
-              </div>
-              <span className="text-white font-sans font-bold text-lg tracking-wider">Qanto</span>
-            </div>
-
-            {/* Nav Menu */}
-            <div className="hidden lg:flex items-center gap-6 text-sm font-medium text-slate-300">
-              <a href="#home" className="hover:text-white transition-colors">Home</a>
-              <a href="#explorer" onClick={(e) => { e.preventDefault(); onExplorerClick(); }} className="text-cyan-400 hover:text-cyan-300 transition-colors">Explorer</a>
-              <a href="#governance" onClick={(e) => { e.preventDefault(); onGovernanceClick(); }} className="text-cyan-400 hover:text-cyan-300 transition-colors">Governance</a>
-              <a href="#airdrop" onClick={(e) => { e.preventDefault(); onAirdropClick(); }} className="hover:text-white hover:text-cyan-400 transition-colors">Airdrop</a>
-              <a href="#tge" onClick={(e) => { e.preventDefault(); onSaleClick(); }} className="hover:text-white hover:text-cyan-400 transition-colors">TGE Sale</a>
-            </div>
-
-            {/* Wallet Connect Button */}
-            <div className="flex items-center gap-4">
-              <ConnectButton showBalance={false} chainStatus="icon" />
-            </div>
-          </div>
-        </div>
-      </nav>
-
       {/* Hero Body */}
       <section id="home" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-32 flex flex-col items-center text-center">
         {/* Glow Effects */}
@@ -60,26 +25,24 @@ export function Hero({ onAirdropClick, onSaleClick, onExplorerClick, onGovernanc
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center w-full max-w-sm">
-            <button
-              onClick={onAirdropClick}
+            <Link
+              to="/airdrop"
               className="px-8 py-4 rounded-xl bg-gradient-to-r from-neon-cyan to-quantum-purple text-white font-bold font-sans text-sm hover:scale-[1.02] transition-transform duration-200 shadow-lg shadow-quantum-purple/10 flex items-center justify-center gap-2 group"
             >
               <span>Claim Pioneer Airdrop</span>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" className="group-hover:translate-x-0.5 transition-transform">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="group-hover:translate-x-0.5 transition-transform">
                 <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
-            </button>
-            <a
-              href="https://qanto.org/doc"
-              target="_blank"
-              rel="noopener noreferrer"
+            </Link>
+            <Link
+              to="/codex"
               className="px-8 py-4 rounded-xl border border-white/10 hover:border-white/20 text-white font-bold font-sans text-sm transition-colors flex items-center justify-center gap-2 bg-white/5"
             >
               <span>ZK-SDK Docs</span>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" />
               </svg>
-            </a>
+            </Link>
           </div>
         </div>
       </section>
