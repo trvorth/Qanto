@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { QuantumCanvas } from './components/QuantumCanvas';
 import { Hero } from './components/Hero';
 import { TelemetryDashboard } from './components/TelemetryDashboard';
-import { Explorer } from './components/Explorer';
+import { HoloExplorer } from './components/HoloExplorer';
 import { Governance } from './components/Governance';
 import { AirdropClaim } from './components/AirdropClaim';
 import { TokenSale } from './components/TokenSale';
@@ -59,7 +59,7 @@ export default function App() {
 
         {/* Omniscient Explorer Section */}
         <div ref={explorerRef} id="explorer" className="py-12 border-t border-white/5 bg-black/10">
-          <Explorer />
+          <HoloExplorer />
         </div>
 
         {/* Sovereign DAO Governance Section */}

@@ -49,6 +49,7 @@ pub mod kernel_boot;
 pub mod heritage_archive;
 pub mod storage_mesh;
 pub mod formal_verifier;
+pub mod holo_mesh;
 
 pub mod derive_genesis_key;
 pub mod generate_wallet;
