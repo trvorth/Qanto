@@ -139,13 +139,13 @@ export const Codex = () => {
           {activeTab === 'tokenomics' && (
             <div className="prose prose-invert max-w-none">
               <h1 className="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-indigo-300 to-purple-500 mb-6 font-sans tracking-tight">
-                QNTO Fair Launch Tokenomics
+                Qanto Tokenomics
               </h1>
-              <p className="text-slate-300 leading-relaxed text-base mb-6 font-sans">
-                <strong>Total Supply: {TOTAL_SUPPLY_QNTO.toLocaleString()} QNTO. Hard-capped. Immutable.</strong>
+              <p className="text-slate-300 leading-relaxed text-base mb-4 font-sans">
+                <strong>Total Supply: {TOTAL_SUPPLY_QNTO.toLocaleString()} QNTO</strong>
               </p>
               <p className="text-slate-300 leading-relaxed text-base mb-6 font-sans">
-                Qanto's tokenomics live by one core principle: the community comes first. We are committed to a fair launch, with no pre-mine, no venture capitalist allocations, and no team tokens.
+                Qanto's tokenomics are designed for fairness, sustainability, and decentralization, while ensuring enough resources for long-term growth. Qanto's tokenomics live along with one core principle: <strong>the community comes first</strong>. We are committed to a fair launch, with no pre-mine, no venture capitalist allocations, and no team tokens. This is a project for the builders, the creators, and the believers in a truly decentralized world.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
                 <div className="bg-black/30 border border-white/5 rounded-xl p-4 text-center">
@@ -175,9 +175,9 @@ export const Codex = () => {
               </div>
               <h2 className="text-xl font-bold text-white mb-3 font-sans">Allocation Breakdown</h2>
               <ul className="list-disc list-inside text-slate-300 space-y-2 mb-6 text-sm font-sans">
-                <li><strong>80% ({COMMUNITY_TOKENS.toLocaleString()} $QNTO):</strong> Community — mining rewards, public distribution, and AI-guided rewards via PoW, DPoS, and SAGA AI.</li>
-                <li><strong>15% ({ECODEV_TOKENS.toLocaleString()} $QNTO):</strong> Ecosystem & Development Fund — 2-year vest, 1-year cliff. ZK-SDK grants and core protocol funding.</li>
-                <li><strong>5% ({LIQUIDITY_TOKENS.toLocaleString()} $QNTO):</strong> Public Liquidity — DEX liquidity pools and initial market support.</li>
+                <li><strong>Community (mining / public / rewards): 80%</strong> ({COMMUNITY_TOKENS.toLocaleString()} $QNTO) — Open participation via PoW, DPoS, and AI-guided rewards.</li>
+                <li><strong>Ecosystem & Development Fund: 15%</strong> ({ECODEV_TOKENS.toLocaleString()} $QNTO) — A community-governed treasury to fund grants, partnerships, and future protocol development. All funds are subject to a multi-year vesting schedule (2-year vest, 1-year cliff).</li>
+                <li><strong>Public Liquidity: 5%</strong> ({LIQUIDITY_TOKENS.toLocaleString()} $QNTO) — Used to provide initial liquidity on decentralized exchanges and for a public sale, accessible to all.</li>
               </ul>
               <div className="border-l-4 border-cyan-500 bg-cyan-950/20 rounded-r-xl p-5 mb-6 text-sm text-slate-300 font-sans leading-relaxed">
                 <strong>Fair Launch Guarantee:</strong> Zero pre-mine. Zero venture capitalist allocations. Zero team tokens. 100% of supply is distributed through community mechanisms and transparent vesting schedules.

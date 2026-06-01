@@ -9,7 +9,7 @@ fn start_qanto_node() -> String {
     println!("Initializing QANTO Layer-0 Sentinel Node...");
     
     // Mocking the daemon thread execution for the GUI
-    format!("Node Initialized at 10,000,000 TPS. Synaptic DAG Active.")
+    "Node Initialized at 10,000,000 TPS. Synaptic DAG Active.".to_string()
 }
 
 fn main() {

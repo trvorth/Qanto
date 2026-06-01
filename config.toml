@@ -61,6 +61,7 @@ address = "127.0.0.1:50051"
 listen_address = "0.0.0.0"
 p2p_port = 30303
 rpc_port = 7860
+external_ip = "trvorth-qanto-testnet.hf.space"
 max_peers = 100000
 
 [consensus]

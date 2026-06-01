@@ -834,7 +834,7 @@ impl QantoNetServer {
 
         let connections = self.peers.read().await;
 
-        for (peer_id, _connection) in connections.iter() {
+        for peer_id in connections.keys() {
             // Send message to each peer
             println!("[QantoNet] Sending message to peer {peer_id}");
         }

@@ -385,7 +385,7 @@ impl DAGAwareMempool {
         let queues = self.level_queues.read().await;
 
         // Process transactions level by level (DAG order)
-        for (_level, queue) in queues.iter() {
+        for queue in queues.values() {
             for tx_id in queue {
                 if selected.len() >= max_count || total_size >= max_size {
                     break;

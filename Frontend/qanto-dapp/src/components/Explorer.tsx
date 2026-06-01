@@ -3,6 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { request, gql } from 'graphql-request';
 import { AddressDisplay } from './AddressDisplay';
 
+/** Canonical QNTO supply constant — hardcoded and immutable. */
+const TOTAL_SUPPLY_QNTO = 21_000_000_000;
+
 const GRAPHQL_ENDPOINT = 'https://trvorth-qanto-testnet.hf.space/graphql';
 
 interface TransactionGQL {
@@ -117,7 +120,11 @@ export function Explorer() {
             <p className="text-sm text-slate-400 font-sans mt-1">Real-time ZK-Sequencer Batch Telemetry & Block Verification</p>
           </div>
           
-          <div className="flex items-center gap-4 text-xs font-mono">
+          <div className="flex items-center gap-4 text-xs font-mono flex-wrap">
+            <div className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3 py-1.5 rounded-full flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              🔒 {TOTAL_SUPPLY_QNTO.toLocaleString()} QNTO HARD CAP
+            </div>
             <div className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 px-3 py-1.5 rounded-full flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
               10M TPS MATRIX

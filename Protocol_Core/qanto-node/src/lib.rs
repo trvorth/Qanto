@@ -121,6 +121,27 @@ pub const Q_SCALE: u128 = 1_000_000_000;
 pub const QANTO_SCALE: u128 = Q_SCALE;
 pub const SCORE_SCALE: i128 = 1_000_000_000;
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// CANONICAL TOKENOMICS — MATHEMATICALLY SEALED AT THE KERNEL LEVEL
+// These constants are the single source of truth for QNTO supply distribution.
+// Any module that needs supply constants MUST reference these or emission::TOTAL_SUPPLY.
+// ═══════════════════════════════════════════════════════════════════════════════
+/// 21 Billion QNTO total supply (9-decimal fixed-point)
+pub const MAX_TOTAL_SUPPLY: u128 = 21_000_000_000 * Q_SCALE;
+/// 80% → Community (mining, public rewards, fair launch distribution)
+pub const COMMUNITY_ALLOC: u128  = 16_800_000_000 * Q_SCALE;
+/// 15% → Ecosystem & Development Fund (2-year vest, 1-year cliff)
+pub const ECO_DEV_ALLOC: u128    =  3_150_000_000 * Q_SCALE;
+/// 5% → Public Liquidity (DEX bootstrapping)
+pub const LIQUIDITY_ALLOC: u128  =  1_050_000_000 * Q_SCALE;
+
+// Compile-time proof: allocations MUST sum exactly to MAX_TOTAL_SUPPLY.
+// If this assertion fails, the crate will not compile.
+const _: () = assert!(
+    COMMUNITY_ALLOC + ECO_DEV_ALLOC + LIQUIDITY_ALLOC == MAX_TOTAL_SUPPLY,
+    "FATAL: Tokenomics allocations do not sum to MAX_TOTAL_SUPPLY (21B QNTO)"
+);
+
 /// QAmount: Fixed-point u128 representing a decimal quantity (scale 1e9).
 /// Used for balances, rewards, fees, and stakes.
 pub type QAmount = u128;

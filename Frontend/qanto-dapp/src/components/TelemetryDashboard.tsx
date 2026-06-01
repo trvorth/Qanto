@@ -22,7 +22,7 @@ const telemetryQuery = gql`
 `;
 
 export function TelemetryDashboard() {
-  const [latency, setLatency] = useState<number | null>(31);
+  const [latency, setLatency] = useState<number | null>(null);
 
   const { data, isLoading, error } = useQuery<TelemetryData>({
     queryKey: ['telemetry'],
