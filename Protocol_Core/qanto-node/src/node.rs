@@ -237,6 +237,10 @@ impl Node {
         p2p_identity_path: &str,
         peer_cache_path: String,
     ) -> Result<Self, NodeError> {
+        std::panic::set_hook(Box::new(|info| {
+            eprintln!("🚨 CRITICAL NODE EXCEPTION DETECTED: {}", info);
+        }));
+
         info!("Validating configuration");
         config.validate()?;
         info!("Configuration validated successfully");

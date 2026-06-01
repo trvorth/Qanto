@@ -29,7 +29,24 @@ export const DEX = () => {
   const [fromAmount, setFromAmount] = useState('0.1');
   const [toAmount, setToAmount] = useState('1000');
 
-  const { writeContract, data: txHash, isPending: isWritePending, error: writeError } = useWriteContract();
+  const { writeContract, data: txHash, isPending: isWritePending } = useWriteContract({
+    mutation: {
+      onError: (error: any) => {
+        if (toastId.current) {
+          toast.dismiss(toastId.current);
+          toastId.current = null;
+        }
+        if (error.message?.includes('User rejected') || error.code === 4001) {
+          toast.error('Transaction cancelled by user.');
+        } else if (error.message?.includes('insufficient funds')) {
+          toast.error('Insufficient QNTO balance for execution.');
+        } else {
+          toast.error('Blockchain transaction failed.');
+          console.error('Wagmi Core Error:', error);
+        }
+      }
+    }
+  });
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash: txHash,
   });
@@ -122,15 +139,7 @@ export const DEX = () => {
     }
   }, [isConfirmed]);
 
-  useEffect(() => {
-    if (writeError) {
-      if (toastId.current) {
-        toast.dismiss(toastId.current);
-        toastId.current = null;
-      }
-      toast.error(`Swap failed: ${writeError.message || 'Transaction rejected'}`);
-    }
-  }, [writeError]);
+
 
   const isPending = isWritePending || isConfirming;
   const isSwapSuccess = isConfirmed;
@@ -222,9 +231,9 @@ export const DEX = () => {
               <span>Rate:</span>
               <span>1 ETH = {rate.toLocaleString()} QNTO</span>
             </div>
-            <div className="flex justify-between">
-              <span>Network Fee:</span>
-              <span className="text-emerald-400">0.000000000 QNTO (GASLESS)</span>
+            <div className="flex justify-between text-sm mt-4">
+              <span className="text-slate-400">Network Fee</span>
+              <span className="text-emerald-400 font-bold drop-shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse">Sponsored by SAGA 🧠</span>
             </div>
             <div className="flex justify-between">
               <span>Price Slippage:</span>

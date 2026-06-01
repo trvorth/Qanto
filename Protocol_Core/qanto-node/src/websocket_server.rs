@@ -400,6 +400,9 @@ async fn handle_websocket(socket: WebSocket, state: WebSocketServerState) {
     // Create a channel for telemetry stream updates
     let (telemetry_tx, mut telemetry_rx) = tokio::sync::mpsc::unbounded_channel::<axum::extract::ws::Message>();
 
+    // Track last seen activity
+    let last_seen = Arc::new(RwLock::new(std::time::Instant::now()));
+
     // Spawn a Tokio task that streams get_live_metrics() every 1000ms
     let telemetry_tx_clone = telemetry_tx.clone();
     let telemetry_task = tokio::spawn(async move {
@@ -418,8 +421,11 @@ async fn handle_websocket(socket: WebSocket, state: WebSocketServerState) {
     // Spawn task to handle incoming messages from client
     let state_clone = state.clone();
     let client_id_clone = client_id.clone();
+    let last_seen_clone = last_seen.clone();
     let mut incoming_task = tokio::spawn(async move {
         while let Some(msg) = receiver.next().await {
+            // Update activity timestamp
+            *last_seen_clone.write().await = std::time::Instant::now();
             match msg {
                 Ok(axum::extract::ws::Message::Text(text)) => {
                     if let Err(e) =
@@ -433,6 +439,9 @@ async fn handle_websocket(socket: WebSocket, state: WebSocketServerState) {
                         error!("Failed to send pong data: {}", e);
                         break;
                     }
+                }
+                Ok(axum::extract::ws::Message::Pong(_)) => {
+                    debug!("Received pong from client {}", client_id_clone);
                 }
                 Ok(axum::extract::ws::Message::Close(_)) => {
                     info!("Client {} requested close", client_id_clone);
@@ -560,6 +569,11 @@ async fn handle_websocket(socket: WebSocket, state: WebSocketServerState) {
 
             // Heartbeat
             _ = heartbeat_interval.tick() => {
+                let elapsed = last_seen.read().await.elapsed();
+                if elapsed > Duration::from_secs(65) {
+                    warn!("Client {} timed out (no ping/pong or message for {}s)", client_id, elapsed.as_secs());
+                    break;
+                }
                 if let Err(e) = sender.send(axum::extract::ws::Message::Ping(vec![].into())).await {
                     error!("Failed to send heartbeat ping: {}", e);
                     break;

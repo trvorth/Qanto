@@ -800,9 +800,12 @@ impl Transaction {
 
         // Validate that the fee is reasonable (not zero for non-coinbase)
         if !self.inputs.is_empty() && self.fee == 0 {
-            return Err(TransactionError::InvalidStructure(
-                "Non-coinbase transaction must have a fee".to_string(),
-            ));
+            let network_load = crate::saga_ai::NETWORK_THROTTLE_BPS.load(std::sync::atomic::Ordering::Relaxed);
+            if !crate::saga_ai::authorize_gasless_transaction(&self.sender, network_load) {
+                return Err(TransactionError::InvalidStructure(
+                    "Non-coinbase transaction must have a fee".to_string(),
+                ));
+            }
         }
 
         // Check for duplicate inputs
@@ -938,9 +941,12 @@ impl Transaction {
         }
 
         if self.gas_price == 0 && !self.is_coinbase() {
-            return Err(TransactionError::InvalidStructure(
-                "Gas price cannot be zero for non-coinbase transactions".to_string(),
-            ));
+            let network_load = crate::saga_ai::NETWORK_THROTTLE_BPS.load(std::sync::atomic::Ordering::Relaxed);
+            if !crate::saga_ai::authorize_gasless_transaction(&self.sender, network_load) {
+                return Err(TransactionError::InvalidStructure(
+                    "Gas price cannot be zero for non-coinbase transactions".to_string(),
+                ));
+            }
         }
 
         Ok(())

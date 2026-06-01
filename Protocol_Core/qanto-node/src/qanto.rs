@@ -87,6 +87,10 @@ enum Commands {
 }
 
 pub async fn run() -> Result<()> {
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("🚨 CRITICAL NODE EXCEPTION DETECTED: {}", info);
+    }));
+
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let _ = tracing_subscriber::registry()
         .with(filter)

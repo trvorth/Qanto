@@ -155,8 +155,27 @@ export function Explorer() {
         {/* Data Table */}
         <div className="overflow-x-auto relative z-10 border border-white/5 rounded-2xl bg-black/40">
           {isLoading && !data ? (
-            <div className="text-center text-cyan-400 animate-pulse py-16 font-mono text-sm">
-              FETCHING DECENTRALIZED DATASTREAM...
+            <div className="animate-pulse w-full">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-white/10 bg-white/5 text-[10px] md:text-xs font-mono uppercase tracking-wider text-slate-400">
+                    <th className="py-4 px-6"><div className="h-4 bg-slate-800 rounded w-16"></div></th>
+                    <th className="py-4 px-6"><div className="h-4 bg-slate-800 rounded w-16"></div></th>
+                    <th className="py-4 px-6"><div className="h-4 bg-slate-800 rounded w-24"></div></th>
+                    <th className="py-4 px-6 text-right"><div className="h-4 bg-slate-800 rounded w-24 ml-auto"></div></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 font-mono">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <tr key={i} className="hover:bg-white/[0.02]">
+                      <td className="py-4 px-6"><div className="h-4 bg-slate-800/60 rounded w-24"></div></td>
+                      <td className="py-4 px-6"><div className="h-4 bg-slate-800/60 rounded w-12"></div></td>
+                      <td className="py-4 px-6"><div className="h-4 bg-slate-800/60 rounded w-32"></div></td>
+                      <td className="py-4 px-6 text-right"><div className="h-4 bg-slate-800/60 rounded w-16 ml-auto"></div></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : error ? (
             <div className="text-center text-rose-500 py-16 font-mono text-sm">

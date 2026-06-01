@@ -60,7 +60,15 @@ export function TelemetryDashboard() {
         </div>
 
         {isLoading && !data ? (
-          <div className="text-center text-cyan-400 animate-pulse py-12">Syncing with Mainnet...</div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-quantum-glow animate-pulse">
+                <div className="h-4 bg-slate-800 rounded w-20 mb-3"></div>
+                <div className="h-10 bg-slate-800 rounded w-32 mb-4"></div>
+                <div className="h-3 bg-slate-800 rounded w-28"></div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Card 1: Live TPS */}

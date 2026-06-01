@@ -27,7 +27,24 @@ const QantoDropAbi = [
 
 export function AirdropClaim() {
   const { isConnected, address } = useAccount();
-  const { writeContract, isPending: isWritePending, error, data: txHash } = useWriteContract();
+  const { writeContract, isPending: isWritePending, error, data: txHash } = useWriteContract({
+    mutation: {
+      onError: (error: any) => {
+        if (toastId.current) {
+          toast.dismiss(toastId.current);
+          toastId.current = null;
+        }
+        if (error.message?.includes('User rejected') || error.code === 4001) {
+          toast.error('Transaction cancelled by user.');
+        } else if (error.message?.includes('insufficient funds')) {
+          toast.error('Insufficient QNTO balance for execution.');
+        } else {
+          toast.error('Blockchain transaction failed.');
+          console.error('Wagmi Core Error:', error);
+        }
+      }
+    }
+  });
 
   const { data: hasClaimed } = useReadContract({
     abi: QantoDropAbi,
@@ -74,15 +91,7 @@ export function AirdropClaim() {
     }
   }, [isConfirmed]);
 
-  useEffect(() => {
-    if (error) {
-      if (toastId.current) {
-        toast.dismiss(toastId.current);
-        toastId.current = null;
-      }
-      toast.error(`Claim failed: ${error.message || 'Transaction rejected'}`);
-    }
-  }, [error]);
+
 
   const isPending = isWritePending || isConfirming;
   const isClaimSuccessful = isConfirmed;

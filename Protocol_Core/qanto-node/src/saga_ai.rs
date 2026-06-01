@@ -82,3 +82,11 @@ pub fn predictive_resonance_tuning(current_tps: u64, active_waves: usize) -> Str
     
     predicted_action.to_string()
 }
+
+pub fn authorize_gasless_transaction(user_address: &str, network_load_bps: u64) -> bool {
+    if network_load_bps < 8_000_000 {
+        println!("🧠 SAGA PAYMASTER: Transact fee sponsored for {}", user_address);
+        return true;
+    }
+    false
+}

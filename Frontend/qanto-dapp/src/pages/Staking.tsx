@@ -22,7 +22,24 @@ export const Staking = () => {
   const { openConnectModal } = useConnectModal();
   const [stakeAmount, setStakeAmount] = useState('1000');
   
-  const { writeContract, data: txHash, isPending: isWritePending, error: writeError } = useWriteContract();
+  const { writeContract, data: txHash, isPending: isWritePending } = useWriteContract({
+    mutation: {
+      onError: (error: any) => {
+        if (toastId.current) {
+          toast.dismiss(toastId.current);
+          toastId.current = null;
+        }
+        if (error.message?.includes('User rejected') || error.code === 4001) {
+          toast.error('Transaction cancelled by user.');
+        } else if (error.message?.includes('insufficient funds')) {
+          toast.error('Insufficient QNTO balance for execution.');
+        } else {
+          toast.error('Blockchain transaction failed.');
+          console.error('Wagmi Core Error:', error);
+        }
+      }
+    }
+  });
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash: txHash,
   });
@@ -68,16 +85,7 @@ export const Staking = () => {
     }
   }, [isConfirmed]);
 
-  // Monitor write errors
-  useEffect(() => {
-    if (writeError) {
-      if (toastId.current) {
-        toast.dismiss(toastId.current);
-        toastId.current = null;
-      }
-      toast.error(`Transaction rejected: ${writeError.message || 'Unknown error'}`);
-    }
-  }, [writeError]);
+
 
   const isPending = isWritePending || isConfirming;
   const isStakedSuccessfully = isConfirmed;
@@ -107,7 +115,7 @@ export const Staking = () => {
           </p>
 
           {/* Staking Stats Grid */}
-          <div className="grid grid-cols-2 gap-4 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 w-full">
             <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
               <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1">
                 Estimated APY
@@ -147,6 +155,14 @@ export const Staking = () => {
             <div className="mt-2 text-[10px] text-slate-500 font-mono flex justify-between">
               <span>Minimum Stake: 1,000 $QNTO</span>
               <span>Available: {isConnected ? '5,000 QNTO' : '0.00 QNTO'}</span>
+            </div>
+            
+            {/* Details */}
+            <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4 mt-4 mb-6 text-xs font-mono text-slate-400 space-y-2">
+              <div className="flex justify-between text-sm mt-4">
+                <span className="text-slate-400">Network Fee</span>
+                <span className="text-emerald-400 font-bold drop-shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse">Sponsored by SAGA 🧠</span>
+              </div>
             </div>
           </div>
 

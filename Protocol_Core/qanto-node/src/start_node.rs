@@ -17,6 +17,10 @@ use dhat;
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("🚨 CRITICAL NODE EXCEPTION DETECTED: {}", info);
+    }));
+
     #[cfg(feature = "dhat-heap")]
     let _profiler = dhat::Profiler::new_heap();
     let matches = Command::new("start_node")
