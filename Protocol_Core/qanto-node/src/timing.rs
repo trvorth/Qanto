@@ -216,10 +216,12 @@ impl MicrosecondTimer {
             })
             .sum::<u128>()
             / intervals.len() as u128;
-            
+
         // Integer sqrt for std_dev
         // Integer sqrt for std_dev (Newton's method or simple estimation)
-        let std_dev = if variance_scaled == 0 { 0 } else {
+        let std_dev = if variance_scaled == 0 {
+            0
+        } else {
             let mut x = variance_scaled / 2 + 1;
             let mut y = (x + variance_scaled / x) / 2;
             while y < x {
@@ -230,7 +232,7 @@ impl MicrosecondTimer {
         };
         // Wait, I should use a custom isqrt if crate doesn't have it.
         // Actually, let's use the property that std_dev^2 = variance.
-        
+
         let precision_percentage = if target == 0 {
             0
         } else {
@@ -242,7 +244,7 @@ impl MicrosecondTimer {
                 })
                 .sum::<u128>()
                 / intervals.len() as u128;
-            
+
             // Convert to percentage and clamp to [0, 100]
             if mape_scaled > crate::QANTO_SCALE {
                 0
@@ -265,8 +267,7 @@ impl MicrosecondTimer {
 }
 
 /// Timing statistics structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TimingStats {
     pub target_interval_us: u64,
     pub average_interval_us: u64,
@@ -277,7 +278,6 @@ pub struct TimingStats {
     pub precision_percentage: u64,
     pub tick_count: u64,
 }
-
 
 /// High-performance block timing coordinator
 #[derive(Debug)]
@@ -433,9 +433,10 @@ impl BlockTimingCoordinator {
                     if let Some(trend_factor) =
                         Self::calculate_safe_trend(&recent_values, &older_values)
                     {
-                        let trend_adjusted_time = (predicted_time as u128 * trend_factor) / crate::Q_SCALE;
-                        let clamped =
-                            (trend_adjusted_time as u64).clamp(MIN_BLOCK_TIME_US, MAX_BLOCK_TIME_US);
+                        let trend_adjusted_time =
+                            (predicted_time as u128 * trend_factor) / crate::Q_SCALE;
+                        let clamped = (trend_adjusted_time as u64)
+                            .clamp(MIN_BLOCK_TIME_US, MAX_BLOCK_TIME_US);
                         self.predicted_next_block_time
                             .store(clamped, Ordering::Relaxed);
                     } else {
@@ -551,10 +552,13 @@ impl BlockTimingCoordinator {
         // Adaptive logic: 15-35ms range based on load and performance (more aggressive)
         if performance_ratio < (85 * crate::Q_SCALE / 100) {
             // Performance below 85% of target - reduce interval (faster blocks)
-            let reduction_factor = (92 * crate::Q_SCALE / 100).saturating_sub(load_factor * 12 / 100);
+            let reduction_factor =
+                (92 * crate::Q_SCALE / 100).saturating_sub(load_factor * 12 / 100);
             new_interval = ((current_interval as u128 * reduction_factor) / crate::Q_SCALE) as u64;
             new_interval = new_interval.max(15_000); // Min 15ms (66.7 BPS)
-        } else if performance_ratio > (115 * crate::Q_SCALE / 100) && trend > (8 * crate::Q_SCALE / 100) as i128 {
+        } else if performance_ratio > (115 * crate::Q_SCALE / 100)
+            && trend > (8 * crate::Q_SCALE / 100) as i128
+        {
             // Performance above 115% and trending up - can increase interval slightly
             let increase_factor = (103 * crate::Q_SCALE / 100) + (load_factor * 2 / 100);
             new_interval = ((current_interval as u128 * increase_factor) / crate::Q_SCALE) as u64;
@@ -587,11 +591,7 @@ impl BlockTimingCoordinator {
 
             debug!(
                 "Adaptive timing adjustment: {}μs -> {}μs (load: {} units, BPS: {}, trend: {})",
-                current_interval,
-                new_interval,
-                load_factor,
-                current_bps,
-                trend
+                current_interval, new_interval, load_factor, current_bps, trend
             );
         }
     }

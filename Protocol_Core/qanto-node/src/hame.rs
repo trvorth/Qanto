@@ -19,8 +19,8 @@
 //! - **Regulatory Compliance**: Incorporates mechanisms to ensure compliance with relevant regulations and standards.
 
 // --- Core Dependencies ---
+use ahash::AHashMap as HashMap;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;

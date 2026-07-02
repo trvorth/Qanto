@@ -1,0 +1,22 @@
+{
+  "networkId": "qanto-local-testnet-alpha",
+  "chainId": 1234,
+  "genesisTimestamp": 1717250400,
+  "genesisValidator": "aaeb6affc75c5dc161cd56c8c5379b20f8a7ce5985ba0282cc85b2ab00ce414a",
+  "contractAddress": "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3",
+  "tokenomics": {
+    "symbol": "QNTO",
+    "maxSupply": "21000000000",
+    "tokenDecimals": 9,
+    "smallestUnitsPerQanto": "1000000000",
+    "maxSupplyBaseUnits": "21000000000000000000"
+  },
+  "allocations": [
+    {
+      "address": "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3",
+      "amountQanto": "21000000000",
+      "amountBaseUnits": "21000000000000000000",
+      "role": "local-testnet-prefund"
+    }
+  ]
+}

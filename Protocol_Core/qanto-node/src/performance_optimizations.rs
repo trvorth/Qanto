@@ -19,6 +19,7 @@ use crate::qantodag::{QantoBlock, QantoDAG};
 use crate::transaction::{Transaction, TransactionError};
 use crate::types::UTXO;
 // Remove unused imports
+use ahash::AHashMap as HashMap;
 use crossbeam_channel::{bounded, Receiver, Sender};
 use crossbeam_utils::CachePadded;
 use dashmap::DashMap;
@@ -456,7 +457,7 @@ impl OptimizedMempool {
         // Add to mempool - use the 3-parameter add_transaction from wrapped Mempool
         let mempool = self.mempool.read().await;
         // Create empty UTXO set and dummy DAG for now - this is a simplified implementation
-        let empty_utxos = std::collections::HashMap::new();
+        let empty_utxos = HashMap::new();
         let dummy_dag = crate::qantodag::QantoDAG::new_dummy_for_verification();
         mempool
             .add_transaction(tx, &empty_utxos, &dummy_dag)

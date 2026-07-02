@@ -1,3 +1,4 @@
+#![recursion_limit = "512"]
 // The primary modules that define the Qanto node and its behavior.
 pub mod adaptive_mining;
 pub mod analytics_dashboard;
@@ -11,11 +12,16 @@ pub mod deterministic_mining;
 pub mod diagnostics;
 pub mod elite_mempool;
 pub mod emission;
+pub mod formal_verifier;
 pub mod gas_fee_model;
-pub mod graphql_server;
 pub mod graphql_api;
+pub mod graphql_server;
 pub mod hame;
+pub mod heritage_archive;
+pub mod holo_mesh;
 pub mod interoperability;
+pub mod interplanetary;
+pub mod kernel_boot;
 pub mod keygen;
 pub mod mempool;
 pub mod metrics;
@@ -35,21 +41,46 @@ pub mod performance_optimizations;
 pub mod performance_validation;
 pub mod persistence;
 pub mod post_quantum_crypto;
+pub mod pq_crypto;
 pub mod pq_suite;
 pub mod privacy;
 pub mod resource_cleanup;
 pub mod safe_interval;
+pub mod saga_ai;
 pub mod shutdown;
+pub mod storage_mesh;
 pub mod telemetry;
 pub mod timing;
-pub mod saga_ai;
-pub mod pq_crypto;
-pub mod interplanetary;
-pub mod kernel_boot;
-pub mod heritage_archive;
-pub mod storage_mesh;
-pub mod formal_verifier;
-pub mod holo_mesh;
+
+// --- Added unreferenced modules ---
+pub mod a2a_material;
+pub mod absolute_genesis;
+pub mod absolute_singularity;
+pub mod config_validation;
+pub mod cosmic_consensus;
+pub mod entropy_shield;
+pub mod eternal_existence;
+pub mod final_transcendence;
+pub mod futarchy_market;
+pub mod global_synthesis;
+pub mod inference_mesh;
+pub mod infinite_omnipresence;
+pub mod mesh_finality;
+pub mod mesh_optimizer;
+pub mod mesh_recovery;
+pub mod neural_arbitrage;
+pub mod neural_consensus;
+pub mod neural_link;
+pub mod neural_mirror;
+pub mod qantodag_testnet;
+pub mod quantum_bridge;
+pub mod recursive_evolution;
+pub mod self_sovereign_code;
+pub mod sharding;
+pub mod swarm_orchestrator;
+pub mod truth_engine;
+pub mod ubi_credits;
+pub mod zk;
 
 pub mod derive_genesis_key;
 pub mod generate_wallet;
@@ -96,7 +127,19 @@ pub use my_blockchain::qanhash;
 pub mod qantowallet;
 pub mod qds;
 
+#[cfg(test)]
+pub mod byzantine_tests;
+#[cfg(test)]
+pub mod corruption_tests;
+#[cfg(test)]
+pub mod economic_attack_tests;
+#[cfg(test)]
+pub mod partition_tests;
+#[cfg(test)]
+pub mod security_tests;
 pub mod start_node;
+pub mod state_sync;
+
 // Test-safe tracing initialization to avoid double-init panics in tests
 use std::sync::Once;
 static INIT_TRACING: Once = Once::new();
@@ -129,11 +172,11 @@ pub const SCORE_SCALE: i128 = 1_000_000_000;
 /// 21 Billion QNTO total supply (9-decimal fixed-point)
 pub const MAX_TOTAL_SUPPLY: u128 = 21_000_000_000 * Q_SCALE;
 /// 80% → Community (mining, public rewards, fair launch distribution)
-pub const COMMUNITY_ALLOC: u128  = 16_800_000_000 * Q_SCALE;
+pub const COMMUNITY_ALLOC: u128 = 16_800_000_000 * Q_SCALE;
 /// 15% → Ecosystem & Development Fund (2-year vest, 1-year cliff)
-pub const ECO_DEV_ALLOC: u128    =  3_150_000_000 * Q_SCALE;
+pub const ECO_DEV_ALLOC: u128 = 3_150_000_000 * Q_SCALE;
 /// 5% → Public Liquidity (DEX bootstrapping)
-pub const LIQUIDITY_ALLOC: u128  =  1_050_000_000 * Q_SCALE;
+pub const LIQUIDITY_ALLOC: u128 = 1_050_000_000 * Q_SCALE;
 
 // Compile-time proof: allocations MUST sum exactly to MAX_TOTAL_SUPPLY.
 // If this assertion fails, the crate will not compile.

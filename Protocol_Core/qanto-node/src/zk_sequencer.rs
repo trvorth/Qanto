@@ -1,5 +1,5 @@
-use std::time::{Instant, Duration};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ZkBatchProof {
@@ -24,7 +24,10 @@ impl Default for SequencerState {
 
 impl SequencerState {
     pub fn new() -> Self {
-        Self { current_batch_id: 0, pending_tx_count: 0 }
+        Self {
+            current_batch_id: 0,
+            pending_tx_count: 0,
+        }
     }
 
     pub fn ingest_transaction(&mut self) {
@@ -35,10 +38,10 @@ impl SequencerState {
         if self.pending_tx_count >= 10_000 {
             let start = Instant::now();
             // Simulate ZK-SNARK proving time
-            std::thread::sleep(Duration::from_millis(450)); 
+            std::thread::sleep(Duration::from_millis(450));
             let duration = start.elapsed().as_millis();
             self.current_batch_id += 1;
-            
+
             let proof = ZkBatchProof {
                 batch_id: self.current_batch_id,
                 transaction_count: self.pending_tx_count,
@@ -47,9 +50,12 @@ impl SequencerState {
                 snark_proof_payload: "0xZK_PLONK_PROOF_SIMULATION_DATA".to_string(),
                 generation_time_ms: duration,
             };
-            
+
             self.pending_tx_count = 0;
-            println!("🔒 ZK-Rollup Sequencer generated Proof for Batch #{} in {}ms", proof.batch_id, duration);
+            println!(
+                "🔒 ZK-Rollup Sequencer generated Proof for Batch #{} in {}ms",
+                proof.batch_id, duration
+            );
             return Some(proof);
         }
         None

@@ -4,7 +4,7 @@ services:
   qanto-node:
     build:
       context: ../..
-      dockerfile: deployment/docker/Dockerfile
+      dockerfile: DevOps/docker/Dockerfile
       args:
         - VERSION=${QANTO_VERSION:-latest}
         - RUST_VERSION=${RUST_VERSION:-1.75}
@@ -21,6 +21,7 @@ services:
       - PEER_CACHE=/opt/qanto/keys/peer_cache.json
       - LOG_DIR=/opt/qanto/logs
       - DATA_DIR=/opt/qanto/data
+      - HEALTHCHECK_URL=http://localhost:${API_PORT:-8081}/health
       
       # Security
       - WALLET_PASSWORD_FILE=/run/secrets/wallet_password
@@ -30,11 +31,6 @@ services:
       - RUST_BACKTRACE=${RUST_BACKTRACE:-1}
       - QANTO_THREADS=${QANTO_THREADS:-4}
       - QANTO_MAX_CONNECTIONS=${QANTO_MAX_CONNECTIONS:-100}
-      
-      # Monitoring
-      - ENABLE_METRICS=${ENABLE_METRICS:-true}
-      - METRICS_PORT=${METRICS_PORT:-9090}
-      - ENABLE_TRACING=${ENABLE_TRACING:-true}
       
       # Environment
       - ENVIRONMENT=${ENVIRONMENT:-development}
@@ -52,14 +48,12 @@ services:
       # Logs (read-write)
       - qanto_logs:/opt/qanto/logs:rw
     ports:
-      # External API (public)
-      - "${EXTERNAL_API_PORT:-8080}:8080"
-      # Internal API (health checks, admin)
-      - "${INTERNAL_API_PORT:-8081}:8081"
+      # HTTP API, WebSocket, metrics, and JSON-RPC /rpc
+      - "${API_PORT:-8081}:8081"
       # P2P network
-      - "${P2P_PORT:-8333}:8333"
-      # Metrics (if enabled)
-      - "${METRICS_PORT:-9090}:9090"
+      - "${P2P_PORT:-30303}:30303"
+      # gRPC RPC server
+      - "${GRPC_PORT:-50051}:50051"
     secrets:
       - wallet_password
     networks:

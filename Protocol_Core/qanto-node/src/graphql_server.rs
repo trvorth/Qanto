@@ -8,9 +8,7 @@ use crate::qantodag::QantoBlock;
 use crate::transaction::Transaction;
 
 use anyhow::Result;
-use async_graphql::{
-    Context, Schema, SimpleObject, Subscription, ID,
-};
+use async_graphql::{Context, Schema, SimpleObject, Subscription, ID};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse, GraphQLSubscription};
 use axum::{
     extract::State,
@@ -208,7 +206,7 @@ pub struct GraphQLContext {
     pub transaction_sender: broadcast::Sender<Transaction>,
 }
 
-use crate::graphql_api::{QueryRoot, MutationRoot};
+use crate::graphql_api::{MutationRoot, QueryRoot};
 
 /// Root subscription object
 #[derive(Default)]
@@ -311,6 +309,7 @@ pub struct TransactionGQL {
     pub timestamp: i32,
     pub signature: String,
     pub nonce: i32,
+    pub transaction_kind: String,
 }
 
 impl From<Transaction> for TransactionGQL {
@@ -324,6 +323,7 @@ impl From<Transaction> for TransactionGQL {
             timestamp: tx.timestamp as i32,
             signature: hex::encode(tx.signature.signature.clone()),
             nonce: 0, // Transaction struct doesn't have nonce field
+            transaction_kind: format!("{:?}", tx.transaction_kind).to_uppercase(),
         }
     }
 }
@@ -339,6 +339,7 @@ pub fn transaction_to_gql(tx: &Transaction) -> TransactionGQL {
         timestamp: tx.timestamp as i32,
         signature: hex::encode(tx.signature.signature.clone()),
         nonce: 0,
+        transaction_kind: format!("{:?}", tx.transaction_kind).to_uppercase(),
     }
 }
 

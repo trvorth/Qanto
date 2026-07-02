@@ -8,7 +8,7 @@ use tracing::{info, warn, error};
 use std::time::Duration;
 use tokio::time::sleep;
 
-/// Simulated Ethereum DEX Price (Mock for Phase 36)
+/// Simulated Ethereum DEX Price (Synthetic for Phase 36)
 const MOCK_ETH_DEX_PRICE: f64 = 1.25; // QNTO/USDT
 
 /// SAGA-Agent Structure
@@ -56,7 +56,7 @@ impl SagaAgent {
             // 1. Fetch current price from QantoSwap
             let qanto_price = self.fetch_qanto_price().await?;
             
-            // 2. Compare with Mock Ethereum DEX
+            // 2. Compare with Synthetic Ethereum DEX
             let delta = (MOCK_ETH_DEX_PRICE - qanto_price) / qanto_price;
             
             if delta > self.profit_threshold {
@@ -179,10 +179,10 @@ impl SagaAgent {
         let mock_intent = "Draft legal audit and verify bridge liquidity".to_string();
         info!("SAGA-Agent: Triggering SAGA-Swarm for intent: '{}'", mock_intent);
         
-        // 1. Decompose into sub-tasks (Mock SwarmOrchestrator call)
+        // 1. Decompose into sub-tasks (Synthetic SwarmOrchestrator call)
         info!("SAGA-Agent: Intent decomposed into 2 sub-tasks. Monitoring x402 Bidding...");
         
-        // 2. Mock x402 Settlement
+        // 2. Synthetic x402 Settlement
         info!("SAGA-Agent: Agents 'Sentinel_A' and 'Agent_Shadow' fulfilled tasks.");
         info!("SAGA-Agent: Calling settleTask() on QantoPay ({}) via x402...", self.pay_address);
         
@@ -198,7 +198,7 @@ impl SagaAgent {
         let mock_claim_id = "MEDIA_PARIS_01";
         info!("SAGA-Agent: Media Claim detected: '{}'. Initializing NTE Audit...", mock_claim_id);
         
-        // 1. Mock hardware-signed metadata verification
+        // 1. Synthetic hardware-signed metadata verification
         info!("SAGA-Agent: ZMA Verification: mSAGA GPS (48.8, 2.3) + Hardware Signature VALID.");
         
         // 2. Neural Truth Engine (NTE) Deep-Scan

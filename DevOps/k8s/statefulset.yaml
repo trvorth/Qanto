@@ -33,28 +33,34 @@ spec:
               value: /opt/qanto/keys/peer_cache.json
             - name: LOG_DIR
               value: /opt/qanto/logs
+            - name: DATA_DIR
+              value: /opt/qanto/data
             - name: WALLET_PASSWORD_FILE
               value: /run/secrets/wallet_password
+            - name: HEALTHCHECK_URL
+              value: http://localhost:8081/health
           volumeMounts:
             - name: config
               mountPath: /opt/qanto/config
               readOnly: true
-            - name: keys
+            - name: data
               mountPath: /opt/qanto/keys
+              subPath: keys
             - name: data
               mountPath: /opt/qanto/data
-            - name: logs
+            - name: data
               mountPath: /opt/qanto/logs
+              subPath: logs
             - name: wallet-password
               mountPath: /run/secrets
               readOnly: true
           ports:
+            - name: rpc
+              containerPort: 50051
             - name: api
-              containerPort: 8080
-            - name: api-internal
               containerPort: 8081
             - name: p2p
-              containerPort: 8333
+              containerPort: 30303
           resources:
             requests:
               cpu: "1"
@@ -65,7 +71,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: api-internal
+              port: api
             initialDelaySeconds: 60
             periodSeconds: 30
             timeoutSeconds: 5
@@ -73,7 +79,7 @@ spec:
           readinessProbe:
             httpGet:
               path: /health
-              port: api-internal
+              port: api
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
@@ -82,10 +88,6 @@ spec:
         - name: config
           configMap:
             name: qanto-config
-        - name: keys
-          secret:
-            secretName: qanto-keys
-            defaultMode: 0600
         - name: wallet-password
           secret:
             secretName: qanto-wallet-password
@@ -100,10 +102,3 @@ spec:
         resources:
           requests:
             storage: 100Gi
-    - metadata:
-        name: logs
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 10Gi

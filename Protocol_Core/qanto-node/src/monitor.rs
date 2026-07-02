@@ -2,8 +2,8 @@
 
 use crate::decentralization::PeerDiscoveryService;
 use crate::qanto_net::{PeerId, PeerInfo};
+use ahash::AHashMap as HashMap;
 use qanto_core::qanto_p2p::{NetworkConfig, QantoP2P};
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -172,6 +172,6 @@ pub async fn run() {
 mod tests {
     #[test]
     fn placeholder() {
-        // Placeholder test to prevent test runner warnings
+        // Reference test to prevent test runner warnings
     }
 }

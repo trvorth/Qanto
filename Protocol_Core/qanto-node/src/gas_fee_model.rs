@@ -1,11 +1,11 @@
 use crate::transaction::Transaction;
+use ahash::AHashMap as HashMap;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::RwLock;
 use thiserror::Error;
+use tokio::sync::RwLock;
 use tracing::{debug, info};
 
 /// Gas-based fee model errors
@@ -19,6 +19,21 @@ pub enum GasFeeError {
     InvalidGasPrice { price: u128 },
     #[error("Fee calculation error: {reason}")]
     FeeCalculationError { reason: String },
+    #[error("Legacy ECDSA schemes are deprecated. Please use a Hybrid Signature.")]
+    LegacySchemeDeprecated,
+}
+
+/// PQC Migration constants
+pub const PQC_EPOCH_START_DEFAULT: u64 = 1_000_000;
+pub const PQC_GRACE_PERIOD_WINDOW: u64 = 50_000;
+pub const PQC_GAMMA_FACTOR: u128 = 100;
+
+/// State machine for Post-Quantum Migration Epoch
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MigrationEpochState {
+    Legacy,
+    GracePeriod(u64), // blocks_into_grace
+    PurePqc,
 }
 
 /// Gas fee model constants (in base units - 1e9 scale)
@@ -174,7 +189,66 @@ impl GasFeeModel {
             });
         }
 
-        let gas_price = *self.gas_price_oracle.read().await;
+        let mut gas_price = *self.gas_price_oracle.read().await;
+
+        // --- Deterministic PQC Migration Epoch Penalty ---
+        // For legacy transactions, apply a strict integer-based linear penalty
+        let is_legacy = transaction
+            .get_metadata()
+            .get("is_legacy")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        if is_legacy {
+            let block_height: u64 = transaction
+                .get_metadata()
+                .get("block_height")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+
+            // Resolve epoch start height via consensus config or fallback to default
+            let e_pqc = transaction
+                .get_metadata()
+                .get("pqc_epoch_start")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(PQC_EPOCH_START_DEFAULT);
+
+            let epoch_state = if block_height < e_pqc {
+                MigrationEpochState::Legacy
+            } else if block_height
+                < e_pqc
+                    .checked_add(PQC_GRACE_PERIOD_WINDOW)
+                    .unwrap_or(u64::MAX)
+            {
+                MigrationEpochState::GracePeriod(block_height.checked_sub(e_pqc).unwrap_or(0))
+            } else {
+                MigrationEpochState::PurePqc
+            };
+
+            match epoch_state {
+                MigrationEpochState::Legacy => {
+                    // No penalty before epoch
+                }
+                MigrationEpochState::GracePeriod(blocks_into_grace) => {
+                    // GasPenalty = BaseGas + (BaseGas * gamma * (CurrentBlock - E_pqc) / GracePeriodWindow)
+                    let penalty_increment = gas_price
+                        .checked_mul(PQC_GAMMA_FACTOR)
+                        .unwrap_or(0)
+                        .checked_mul(blocks_into_grace as u128)
+                        .unwrap_or(0)
+                        .checked_div(PQC_GRACE_PERIOD_WINDOW as u128)
+                        .unwrap_or(0);
+
+                    gas_price = gas_price
+                        .checked_add(penalty_increment)
+                        .unwrap_or(u128::MAX);
+                }
+                MigrationEpochState::PurePqc => {
+                    // Reject legacy transaction instantly without valid HybridSignature wrapper
+                    return Err(GasFeeError::LegacySchemeDeprecated);
+                }
+            }
+        }
+
         let gas_fee = gas_used * gas_price;
 
         // 5. Calculate congestion multiplier
@@ -339,7 +413,8 @@ impl GasFeeModel {
             gas_limit,
             priority_fee,
             StorageDuration::ShortTerm,
-        ).await
+        )
+        .await
     }
 
     /// Get fee statistics from history
@@ -388,12 +463,14 @@ impl GasFeeModel {
         let mut results = Vec::with_capacity(transactions.len());
 
         for (i, transaction) in transactions.iter().enumerate() {
-            let breakdown = self.calculate_transaction_fee(
-                transaction,
-                gas_limits[i],
-                priority_fees[i],
-                storage_duration,
-            ).await?;
+            let breakdown = self
+                .calculate_transaction_fee(
+                    transaction,
+                    gas_limits[i],
+                    priority_fees[i],
+                    storage_duration,
+                )
+                .await?;
             results.push(breakdown);
         }
 
@@ -430,7 +507,9 @@ impl GasFeeModel {
         priority_fee: u128,
         available_balance: u128,
     ) -> Result<FeeBreakdown, GasFeeError> {
-        let breakdown = self.estimate_fee(transaction, gas_limit, priority_fee).await?;
+        let breakdown = self
+            .estimate_fee(transaction, gas_limit, priority_fee)
+            .await?;
 
         if breakdown.total_fee > available_balance {
             return Err(GasFeeError::InsufficientGasBalance {
@@ -460,8 +539,8 @@ impl FeeEstimator {
         let congestion_multiplier = self.gas_model.calculate_congestion_multiplier();
 
         // Simple transfer
-        let simple_fee = (BASE_FEE_QANTO + GAS_COST_TRANSFER * base_gas_price) as f64
-            * congestion_multiplier;
+        let simple_fee =
+            (BASE_FEE_QANTO + GAS_COST_TRANSFER * base_gas_price) as f64 * congestion_multiplier;
         estimates.insert("simple_transfer".to_string(), simple_fee as u128);
 
         // Smart contract call
@@ -530,9 +609,11 @@ mod tests {
                 homomorphic_encrypted: HomomorphicEncrypted::default(),
             }],
             timestamp: 1640995200,
-            metadata: std::collections::HashMap::new(),
+            metadata: HashMap::new(),
             signature: QuantumResistantSignature::default(),
             fee_breakdown: None,
+            transaction_kind: crate::transaction::TransactionKind::Transfer,
+            chain_id: 1234,
         }
     }
 
@@ -541,18 +622,23 @@ mod tests {
         let gas_model = GasFeeModel::new();
         let transaction = create_test_transaction();
 
-        let result = gas_model.calculate_transaction_fee(
-            &transaction,
-            50000u128, // gas limit
-            0,     // priority fee
-            StorageDuration::ShortTerm,
-        ).await;
+        let result = gas_model
+            .calculate_transaction_fee(
+                &transaction,
+                50000u128, // gas limit
+                0,         // priority fee
+                StorageDuration::ShortTerm,
+            )
+            .await;
 
         assert!(result.is_ok());
         let breakdown = result.unwrap();
         assert_eq!(breakdown.base_fee, BASE_FEE_QANTO);
         // SAGA AI subsidy: simple transfers are free when network is under capacity (0 TPS)
-        assert_eq!(breakdown.total_fee, 0, "Simple P2P transfers should be subsidized to zero under normal load");
+        assert_eq!(
+            breakdown.total_fee, 0,
+            "Simple P2P transfers should be subsidized to zero under normal load"
+        );
     }
 
     #[test]
@@ -578,12 +664,14 @@ mod tests {
         let gas_limits = vec![50000u128; 15];
         let priority_fees = vec![0u128; 15];
 
-        let result = gas_model.calculate_batch_fees(
-            &transactions,
-            &gas_limits,
-            &priority_fees,
-            StorageDuration::ShortTerm,
-        ).await;
+        let result = gas_model
+            .calculate_batch_fees(
+                &transactions,
+                &gas_limits,
+                &priority_fees,
+                StorageDuration::ShortTerm,
+            )
+            .await;
 
         assert!(result.is_ok());
         let breakdowns = result.unwrap();
@@ -600,12 +688,14 @@ mod tests {
         let gas_model = GasFeeModel::new();
         let transaction = create_test_transaction();
 
-        let result = gas_model.calculate_transaction_fee(
-            &transaction,
-            1000u128, // Very low gas limit
-            0,
-            StorageDuration::ShortTerm,
-        ).await;
+        let result = gas_model
+            .calculate_transaction_fee(
+                &transaction,
+                1000u128, // Very low gas limit
+                0,
+                StorageDuration::ShortTerm,
+            )
+            .await;
 
         assert!(matches!(result, Err(GasFeeError::GasLimitExceeded { .. })));
     }
@@ -623,5 +713,71 @@ mod tests {
         // Contract calls should be more expensive than simple transfers
         assert!(estimates["contract_call"] > estimates["simple_transfer"]);
         assert!(estimates["contract_deployment"] > estimates["contract_call"]);
+    }
+
+    #[tokio::test]
+    async fn test_pqc_migration_epoch_gas_penalty() {
+        let gas_model = GasFeeModel::new();
+        let mut transaction = create_test_transaction();
+
+        // Base gas usage is GAS_COST_TRANSFER (21000) + data_gas
+        // Base gas price is 100
+
+        transaction
+            .metadata
+            .insert("is_legacy".to_string(), "true".to_string());
+        transaction.metadata.insert(
+            "pqc_epoch_start".to_string(),
+            PQC_EPOCH_START_DEFAULT.to_string(),
+        );
+
+        // At exactly 10% of the grace period (5,000 blocks into 50,000 block window)
+        transaction.metadata.insert(
+            "block_height".to_string(),
+            (PQC_EPOCH_START_DEFAULT + 5_000).to_string(),
+        );
+        let result_10 = gas_model
+            .calculate_transaction_fee(&transaction, 500000u128, 0, StorageDuration::ShortTerm)
+            .await
+            .unwrap();
+        // Base price 100 + (100 * 100 * 5000 / 50000) = 100 + 1000 = 1100
+        assert_eq!(result_10.gas_price, 1100);
+
+        // At exactly 50% of the grace period (25,000 blocks)
+        transaction.metadata.insert(
+            "block_height".to_string(),
+            (PQC_EPOCH_START_DEFAULT + 25_000).to_string(),
+        );
+        let result_50 = gas_model
+            .calculate_transaction_fee(&transaction, 500000u128, 0, StorageDuration::ShortTerm)
+            .await
+            .unwrap();
+        // Base price 100 + (100 * 100 * 25000 / 50000) = 100 + 5000 = 5100
+        assert_eq!(result_50.gas_price, 5100);
+
+        // At exactly 99% of the grace period (49,500 blocks)
+        transaction.metadata.insert(
+            "block_height".to_string(),
+            (PQC_EPOCH_START_DEFAULT + 49_500).to_string(),
+        );
+        let result_99 = gas_model
+            .calculate_transaction_fee(&transaction, 500000u128, 0, StorageDuration::ShortTerm)
+            .await
+            .unwrap();
+        // Base price 100 + (100 * 100 * 49500 / 50000) = 100 + 9900 = 10000
+        assert_eq!(result_99.gas_price, 10000);
+
+        // At PurePqc (50,000 blocks)
+        transaction.metadata.insert(
+            "block_height".to_string(),
+            (PQC_EPOCH_START_DEFAULT + 50_000).to_string(),
+        );
+        let result_rejected = gas_model
+            .calculate_transaction_fee(&transaction, 500000u128, 0, StorageDuration::ShortTerm)
+            .await;
+        assert!(matches!(
+            result_rejected,
+            Err(GasFeeError::LegacySchemeDeprecated)
+        ));
     }
 }

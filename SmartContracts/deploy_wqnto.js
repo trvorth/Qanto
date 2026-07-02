@@ -142,7 +142,7 @@ async function main() {
         token: {
             name: 'Wrapped QANTO',
             symbol: 'WQNTO',
-            decimals: 6,
+            decimals: 9,
         },
     };
 

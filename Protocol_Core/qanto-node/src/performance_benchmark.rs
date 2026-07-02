@@ -8,10 +8,10 @@ use qanto::transaction::{Input, Output, Transaction, TransactionError};
 use qanto::types::{HomomorphicEncrypted, QuantumResistantSignature, UTXO};
 use sysinfo::{get_current_pid, ProcessRefreshKind, System};
 
+use ahash::AHashMap as HashMap;
 #[allow(clippy::single_component_path_imports)]
 use num_cpus;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -228,6 +228,7 @@ impl PerformanceBenchmark {
         // Setup DAG
         let dag_config = QantoDagConfig {
             initial_validator: "benchmark_validator".to_string(),
+            genesis_timestamp: 1_717_250_400,
             target_block_time: 1000,
             num_chains: 1,
             dev_fee_rate: 100_000_000,
@@ -520,6 +521,9 @@ impl PerformanceBenchmark {
             metadata: HashMap::new(),
             signature: QuantumResistantSignature::default(),
             fee_breakdown: None,
+            transaction_kind: qanto::transaction::TransactionKind::Transfer,
+            chain_id: qanto::transaction::GLOBAL_CHAIN_ID.load(std::sync::atomic::Ordering::Relaxed)
+                as u32,
         }
     }
 
@@ -811,6 +815,9 @@ impl PerformanceBenchmark {
                                             TransactionError::QuantumSignatureVerification => {
                                                 std_tx_sig.fetch_add(1, Ordering::Relaxed);
                                             }
+                                            TransactionError::InvalidTransactionSignature => {
+                                                std_tx_sig.fetch_add(1, Ordering::Relaxed);
+                                            }
                                             TransactionError::InsufficientFunds => {
                                                 std_tx_insuf.fetch_add(1, Ordering::Relaxed);
                                             }
@@ -867,6 +874,9 @@ impl PerformanceBenchmark {
                                             TransactionError::GasFee(_) => {
                                                 std_tx_gas.fetch_add(1, Ordering::Relaxed);
                                             }
+                                            TransactionError::LegacySchemeDeprecated => {
+                                                std_tx_other_c.fetch_add(1, Ordering::Relaxed);
+                                            }
                                         }
                                     }
                                 }
@@ -921,6 +931,9 @@ impl PerformanceBenchmark {
                                                     .fetch_add(1, Ordering::Relaxed);
                                             }
                                             TransactionError::QuantumSignatureVerification => {
+                                                elite_tx_sig.fetch_add(1, Ordering::Relaxed);
+                                            }
+                                            TransactionError::InvalidTransactionSignature => {
                                                 elite_tx_sig.fetch_add(1, Ordering::Relaxed);
                                             }
                                             TransactionError::InsufficientFunds => {
@@ -984,6 +997,9 @@ impl PerformanceBenchmark {
                                             }
                                             TransactionError::GasFee(_) => {
                                                 elite_tx_gas.fetch_add(1, Ordering::Relaxed);
+                                            }
+                                            TransactionError::LegacySchemeDeprecated => {
+                                                elite_tx_other_c.fetch_add(1, Ordering::Relaxed);
                                             }
                                         }
                                     }
@@ -1528,9 +1544,9 @@ impl PerformanceBenchmark {
     async fn collect_system_info(&self) -> SystemInfo {
         SystemInfo {
             cpu_cores: num_cpus::get(),
-            total_memory_gb: 0.0,     // Placeholder
-            available_memory_gb: 0.0, // Placeholder
-            disk_space_gb: 0.0,       // Placeholder
+            total_memory_gb: 0.0,     // Reference
+            available_memory_gb: 0.0, // Reference
+            disk_space_gb: 0.0,       // Reference
             os_info: std::env::consts::OS.to_string(),
             rust_version: env!("CARGO_PKG_VERSION").to_string(),
         }

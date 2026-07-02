@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use ahash::AHashMap as HashMap;
+use serde::{Deserialize, Serialize};
 
 /**
  * @title Mesh Optimizer (TMO)
@@ -38,7 +38,10 @@ impl MeshOptimizer {
      * @dev Reflects shard-level metrics into the optimizer.
      */
     pub fn update_shard_health(&mut self, health: ShardHealth) {
-        println!("TMO: Optimizing Shard {} (TPS: {})", health.shard_id, health.tps);
+        println!(
+            "TMO: Optimizing Shard {} (TPS: {})",
+            health.shard_id, health.tps
+        );
         self.shard_health.insert(health.shard_id, health);
     }
 
@@ -48,18 +51,21 @@ impl MeshOptimizer {
      */
     pub fn calculate_optimization_needs(&mut self) -> Vec<OptimizationEvent> {
         let mut events = Vec::new();
-        
+
         for health in self.shard_health.values() {
             if health.tps > 10000 || health.latency_ms > 150 {
-                println!("🔥 TMO: Thermal Spike detected on Shard {}. Proposing Split.", health.shard_id);
+                println!(
+                    "🔥 TMO: Thermal Spike detected on Shard {}. Proposing Split.",
+                    health.shard_id
+                );
                 events.push(OptimizationEvent {
-                    timestamp: 1775492930, // Mock
+                    timestamp: 1775492930, // Synthetic
                     event_type: "SHARD_SPLIT_PROPOSAL".to_string(),
                     shard_id: health.shard_id,
                 });
             }
         }
-        
+
         self.optimization_history.extend(events.clone());
         events
     }
@@ -68,7 +74,10 @@ impl MeshOptimizer {
      * @dev Optimizes sentinel assignment based on yield and latency.
      */
     pub fn rebalance_sentinels(&mut self, shard_id: u32) {
-        println!("TMO: Rebalancing Sentinel distribution for Shard {}...", shard_id);
+        println!(
+            "TMO: Rebalancing Sentinel distribution for Shard {}...",
+            shard_id
+        );
         // Logic: Move low-latency nodes to high-traffic shards
     }
 }
@@ -83,8 +92,8 @@ mod tests {
         let mut optimizer = MeshOptimizer::new();
         optimizer.update_shard_health(ShardHealth {
             shard_id: 0,
-            latency_ms: 180, // Over Threshold
-            tps: 52000, // Over Threshold
+            latency_ms: 180,                // Over Threshold
+            tps: 52000,                     // Over Threshold
             puai_yield: 92_500_000_000u128, // 92.5 * 1e9
             sentinel_count: 5,
         });

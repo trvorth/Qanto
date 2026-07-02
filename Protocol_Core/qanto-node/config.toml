@@ -1,15 +1,8 @@
 p2p_address = "/ip4/0.0.0.0/tcp/30303/ws"
-api_address = "0.0.0.0:7860"
+api_address = "0.0.0.0:8081"
+chain_id = 1234
 peers = ["/dns4/trvorth-qanto-testnet.hf.space/tcp/443/wss/p2p/12D3KooWK8KoCFm4VjZkSBQqAtsVLV1ZatX7VtjzSdFLQbr893F5"]
 local_full_p2p_address = "/ip4/0.0.0.0/tcp/30303/ws/p2p/12D3KooWKaKVVKwQBzK3M1f3NkWxjvvn5u8fYRQKbGwGbsCh9xUn"
-p2p_port = 30303
-rpc_port = 7860
-max_peers = 100000
-target_blocks_per_second = 32
-block_size_limit_bytes = 33554432
-max_transactions_per_block = 312500
-mempool_capacity = 25000000
-synaptic_finality_delay_ms = 31
 network_id = "qanto-testnet"
 genesis_validator = "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3"
 contract_address = "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"
@@ -57,23 +50,6 @@ mesh_outbound_min = 4
 [rpc]
 address = "127.0.0.1:50051"
 
-[network]
-listen_address = "0.0.0.0"
-p2p_port = 30303
-rpc_port = 7860
-external_ip = "trvorth-qanto-testnet.hf.space"
-max_peers = 100000
-
-[consensus]
-target_blocks_per_second = 32
-block_size_limit_bytes = 33554432
-max_transactions_per_block = 312500
-synaptic_finality_delay_ms = 31
-
 [mempool]
 capacity = 25000000
 parallel_verification_threads = 64
-
-[telemetry]
-enabled = true
-metrics_port = 9090

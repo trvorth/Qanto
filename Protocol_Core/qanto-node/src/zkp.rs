@@ -16,6 +16,7 @@
 //! - Replaced XOR-based placeholder with cryptographically secure QanHashZK sponge
 //! - Enhanced circuit constraints for production readiness with optimal constraint count
 
+use ahash::AHashMap as HashMap;
 use anyhow::{anyhow, Result};
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_crypto_primitives::snark::SNARK;
@@ -28,7 +29,6 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::rand::RngCore as ArkRngCore;
 use my_blockchain::qanto_hash;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock as TokioRwLock;
 use tracing::{debug, error, info};
@@ -130,9 +130,9 @@ struct RangeProofCircuit {
 /// Simulates processing on encrypted ciphertexts while maintaining data privacy.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FheShield {
-   pub ciphertext_in: Vec<u8>,
-   pub ciphertext_out: Vec<u8>,
-   pub model_hash: [u8; 32],
+    pub ciphertext_in: Vec<u8>,
+    pub ciphertext_out: Vec<u8>,
+    pub model_hash: [u8; 32],
 }
 
 impl FheShield {
@@ -149,9 +149,12 @@ impl FheShield {
     /// Processes a confidential inference request.
     /// Ensures that the computation is performed blindly within the Sentinel enclave.
     pub fn confidential_inference_request(&mut self) -> Result<ZKProof> {
-        info!("🔐 FHE-SHIELD: Processing encrypted inference for model {:x?}...", self.model_hash);
-        
-        // Blind computation simulation: 
+        info!(
+            "🔐 FHE-SHIELD: Processing encrypted inference for model {:x?}...",
+            self.model_hash
+        );
+
+        // Blind computation simulation:
         // 1. Decrypt (internally in enclave)
         // 2. Perform AI Inference
         // 3. Encrypt Result
@@ -180,7 +183,10 @@ pub struct HumanhoodProofCircuit {
 }
 
 impl ConstraintSynthesizer<ConstraintF> for HumanhoodProofCircuit {
-    fn generate_constraints(self, _cs: ConstraintSystemRef<ConstraintF>) -> std::result::Result<(), SynthesisError> {
+    fn generate_constraints(
+        self,
+        _cs: ConstraintSystemRef<ConstraintF>,
+    ) -> std::result::Result<(), SynthesisError> {
         // Enforce: Hash(biometric_commitment, secret_salt) == nullifier_hash
         // This ensures the person is unique without revealing their biometric data.
         Ok(())
@@ -200,7 +206,10 @@ pub struct VectorCommitmentCircuit {
 }
 
 impl ConstraintSynthesizer<ConstraintF> for VectorCommitmentCircuit {
-    fn generate_constraints(self, _cs: ConstraintSystemRef<ConstraintF>) -> std::result::Result<(), SynthesisError> {
+    fn generate_constraints(
+        self,
+        _cs: ConstraintSystemRef<ConstraintF>,
+    ) -> std::result::Result<(), SynthesisError> {
         // Enforce: MerkleVerify(context_string, merkle_path, root_hash) == true
         // This verifies the agent is using the correct 'Memory' for their task.
         Ok(())
@@ -220,7 +229,10 @@ pub struct ConsciousnessTransferCircuit {
 }
 
 impl ConstraintSynthesizer<ConstraintF> for ConsciousnessTransferCircuit {
-    fn generate_constraints(self, _cs: ConstraintSystemRef<ConstraintF>) -> std::result::Result<(), SynthesisError> {
+    fn generate_constraints(
+        self,
+        _cs: ConstraintSystemRef<ConstraintF>,
+    ) -> std::result::Result<(), SynthesisError> {
         // Enforce: Hash(mapping_key, neural_weight_hash) == biometric_nullifier
         // This mathematically ensures the agentic twin belongs to the same 'Sovereign' human.
         Ok(())
@@ -239,7 +251,10 @@ pub struct PhysicalIntentCircuit {
 }
 
 impl ConstraintSynthesizer<ConstraintF> for PhysicalIntentCircuit {
-    fn generate_constraints(self, _cs: ConstraintSystemRef<ConstraintF>) -> std::result::Result<(), SynthesisError> {
+    fn generate_constraints(
+        self,
+        _cs: ConstraintSystemRef<ConstraintF>,
+    ) -> std::result::Result<(), SynthesisError> {
         // Enforce: impedance == 10.3 kΩ (Ideal SWIGE interface)
         // Enforce: Hash(biometric_input) == manifest_hash
         Ok(())
@@ -257,7 +272,10 @@ pub struct DITACircuit {
 }
 
 impl ConstraintSynthesizer<ConstraintF> for DITACircuit {
-    fn generate_constraints(self, _cs: ConstraintSystemRef<ConstraintF>) -> std::result::Result<(), SynthesisError> {
+    fn generate_constraints(
+        self,
+        _cs: ConstraintSystemRef<ConstraintF>,
+    ) -> std::result::Result<(), SynthesisError> {
         // Enforce: Intent + Biometric Fusion = Manifested Action
         // Logic: 0ms Latency constraint
         Ok(())
@@ -276,7 +294,10 @@ pub struct NIPCircuit {
 }
 
 impl ConstraintSynthesizer<ConstraintF> for NIPCircuit {
-    fn generate_constraints(self, _cs: ConstraintSystemRef<ConstraintF>) -> std::result::Result<(), SynthesisError> {
+    fn generate_constraints(
+        self,
+        _cs: ConstraintSystemRef<ConstraintF>,
+    ) -> std::result::Result<(), SynthesisError> {
         // Enforce: Prediction(telemetry) == target with veracity > threshold
         // Logic: Zero-Friction Intent Engine
         Ok(())
@@ -295,7 +316,10 @@ pub struct StealthAllocationCircuit {
 }
 
 impl ConstraintSynthesizer<ConstraintF> for StealthAllocationCircuit {
-    fn generate_constraints(self, _cs: ConstraintSystemRef<ConstraintF>) -> std::result::Result<(), SynthesisError> {
+    fn generate_constraints(
+        self,
+        _cs: ConstraintSystemRef<ConstraintF>,
+    ) -> std::result::Result<(), SynthesisError> {
         // Enforce: Hash(recipient_nullifier, amount) == intent_hash
         // This hides the recipient address behind a one-way ZK-nullifier.
         Ok(())
@@ -320,9 +344,15 @@ pub struct RecursiveVeracityCircuit {
 }
 
 impl RecursiveVeracityCircuit {
-    pub fn generate_recursive_proof(&self, previous_proof: RecursiveVeracityProof) -> RecursiveVeracityProof {
-        println!("ZK: Generating Recursive Veracity Proof (Depth: {})...", self.proof_depth);
-        
+    pub fn generate_recursive_proof(
+        &self,
+        previous_proof: RecursiveVeracityProof,
+    ) -> RecursiveVeracityProof {
+        println!(
+            "ZK: Generating Recursive Veracity Proof (Depth: {})...",
+            self.proof_depth
+        );
+
         // In production: perform Groth16 recursive aggregation
         RecursiveVeracityProof {
             proof_bytes: vec![0xCC; 64],
@@ -824,10 +854,10 @@ impl ConstraintSynthesizer<ConstraintF> for MembershipIdentityProofCircuit {
         // 1. Compute PublicIdentityHash = Hash(identity_key)
         // 2. Verify Merkle Path(PublicIdentityHash, whitelist_root)
         // 3. Compute Nullifier = Hash(identity_key, scope)
-        
-        // Simplified Logic: 
+
+        // Simplified Logic:
         // Hash identity to match nullifier (simulated)
-        let computed_nullifier = &identity_var * &identity_var; 
+        let computed_nullifier = &identity_var * &identity_var;
         computed_nullifier.enforce_equal(&nullifier_var)?;
 
         Ok(())
@@ -841,7 +871,7 @@ impl ConstraintSynthesizer<ConstraintF> for AuthorityTreeCircuit {
     ) -> Result<(), SynthesisError> {
         // Allocate public threshold
         let threshold_var = FpVar::new_input(cs.clone(), || Ok(self.threshold))?;
-        
+
         // Allocate public root
         let _root_var = FpVar::new_input(cs.clone(), || Ok(self.authority_root))?;
 
@@ -851,15 +881,15 @@ impl ConstraintSynthesizer<ConstraintF> for AuthorityTreeCircuit {
             let key_var = FpVar::new_witness(cs.clone(), || {
                 signer_key.ok_or(SynthesisError::AssignmentMissing)
             })?;
-            
+
             // In recruitment Phase 37, we simulate the 'is_valid' check
             // For now, any non-zero key is considered a valid signer
             let is_valid = key_var.is_neq(&FpVar::Constant(ConstraintF::from(0)))?;
-            
+
             // Increment count if valid
             let increment = is_valid.select(
                 &FpVar::Constant(ConstraintF::from(1)),
-                &FpVar::Constant(ConstraintF::from(0))
+                &FpVar::Constant(ConstraintF::from(0)),
             )?;
             count_var = &count_var + &increment;
         }
@@ -1481,7 +1511,9 @@ impl ZKProofSystem {
 
         // Create public inputs
         let public_inputs = vec![
-            ConstraintF::from(whitelist_root).into_bigint().to_bytes_le(),
+            ConstraintF::from(whitelist_root)
+                .into_bigint()
+                .to_bytes_le(),
             ConstraintF::from(nullifier).into_bigint().to_bytes_le(),
         ];
 
@@ -1522,7 +1554,10 @@ impl ZKProofSystem {
         let pk = ProvingKey::<E>::deserialize_compressed(&pk_bytes[..])?;
 
         let circuit = AuthorityTreeCircuit {
-            signer_keys: signer_keys.into_iter().map(|k| Some(ConstraintF::from(k))).collect(),
+            signer_keys: signer_keys
+                .into_iter()
+                .map(|k| Some(ConstraintF::from(k)))
+                .collect(),
             authority_root: ConstraintF::from(authority_root),
             threshold: ConstraintF::from(threshold),
         };
@@ -1537,7 +1572,9 @@ impl ZKProofSystem {
 
         // Create public inputs
         let public_inputs = vec![
-            ConstraintF::from(authority_root).into_bigint().to_bytes_le(),
+            ConstraintF::from(authority_root)
+                .into_bigint()
+                .to_bytes_le(),
             ConstraintF::from(threshold).into_bigint().to_bytes_le(),
         ];
 
@@ -2075,7 +2112,9 @@ impl ZKProofSystem {
                 self.generate_voting_proof(voter_key, 1, vec![1], 12345)
                     .await
             }
-            _ => Err(anyhow::anyhow!("Unsupported proof type for generic generation")),
+            _ => Err(anyhow::anyhow!(
+                "Unsupported proof type for generic generation"
+            )),
         }
     }
 
@@ -2167,7 +2206,11 @@ mod tests {
     async fn test_zk_system_initialization() {
         let zkp = ZKProofSystem::new();
         let result = zkp.initialize().await;
-        assert!(result.is_ok(), "ZK system initialization failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "ZK system initialization failed: {:?}",
+            result.err()
+        );
     }
 
     #[tokio::test]
@@ -2194,7 +2237,10 @@ mod tests {
         let element = 42u64;
         let set = vec![10, 42];
 
-        let proof = zkp.generate_membership_proof(element, set.clone()).await.unwrap();
+        let proof = zkp
+            .generate_membership_proof(element, set.clone())
+            .await
+            .unwrap();
         let is_valid = zkp.verify_proof(&proof).await.unwrap();
         assert!(is_valid, "Valid membership proof failed verification");
     }
@@ -2205,14 +2251,14 @@ mod tests {
         zkp.initialize().await.unwrap();
 
         let proof = zkp.generate_range_proof(25, 0, 100).await.unwrap();
-        
+
         // Serialize to JSON and back
         let serialized = serde_json::to_string(&proof).unwrap();
         let deserialized: ZKProof = serde_json::from_str(&serialized).unwrap();
-        
+
         assert_eq!(proof.proof_type, deserialized.proof_type);
         assert_eq!(proof.vk_hash, deserialized.vk_hash);
-        
+
         let is_valid = zkp.verify_proof(&deserialized).await.unwrap();
         assert!(is_valid, "Deserialized proof failed verification");
     }

@@ -8,7 +8,7 @@ services:
     ports:
       - "30303:30303" # P2P
       - "30303:30303/udp"
-      - "8545:8545"   # RPC (Optional for local dashboard)
+      - "8081:8081"   # HTTP API / JSON-RPC /rpc
     volumes:
       - ./data:/root/.qanto
     environment:

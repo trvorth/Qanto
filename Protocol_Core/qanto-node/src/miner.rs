@@ -1485,18 +1485,24 @@ impl Miner {
             return [0xFF; 32];
         }
         let scale = crate::QANTO_SCALE as u64;
-        
+
         // If difficulty is less than 1.0 (scale), the target would exceed MAX.
         // Cap difficulty at 1.0 (min_difficulty) for target calculation.
-        let actual_difficulty = if (difficulty_value as u128) < crate::QANTO_SCALE { crate::QANTO_SCALE as u64 } else { difficulty_value };
+        let actual_difficulty = if (difficulty_value as u128) < crate::QANTO_SCALE {
+            crate::QANTO_SCALE as u64
+        } else {
+            difficulty_value
+        };
         let actual_difficulty_int = U256::from(actual_difficulty);
 
         // target = (U256::MAX * scale) / difficulty
         // Split division to avoid U256 overflow during multiplication:
         // target = (MAX / difficulty) * scale + ((MAX % difficulty) * scale) / difficulty
-        
-        let (quotient, remainder) = U256::MAX.div_rem(actual_difficulty_int).unwrap_or((U256::ZERO, U256::ZERO));
-        
+
+        let (quotient, remainder) = U256::MAX
+            .div_rem(actual_difficulty_int)
+            .unwrap_or((U256::ZERO, U256::ZERO));
+
         // Apply scale to quotient
         let (scaled_quotient, overflow) = quotient.mul_u64(scale);
         if overflow {
@@ -1505,7 +1511,9 @@ impl Miner {
 
         // Apply scale to remainder and divide
         let (scaled_remainder, _) = remainder.mul_u64(scale);
-        let (final_remainder_component, _) = scaled_remainder.div_rem(actual_difficulty_int).unwrap_or((U256::ZERO, U256::ZERO));
+        let (final_remainder_component, _) = scaled_remainder
+            .div_rem(actual_difficulty_int)
+            .unwrap_or((U256::ZERO, U256::ZERO));
 
         let target = scaled_quotient.add_saturating(final_remainder_component);
 

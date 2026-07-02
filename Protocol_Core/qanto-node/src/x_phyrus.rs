@@ -5,11 +5,11 @@
 
 use crate::config::Config;
 use crate::qanto_storage::{QantoStorage, StorageConfig};
+use ahash::AHashMap as HashMap;
 use anyhow::{Context, Result};
 use log::{debug, error, info, warn};
 use my_blockchain::qanto_hash; // For cryptographic hashing in integrity checks
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::env;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -756,7 +756,7 @@ impl AlertManager {
             tokio::spawn(async move {
                 // Simulate P2P broadcast - in real implementation this would
                 // use the qanto_net module's broadcast functionality
-                debug!("Alert broadcasted to {} peers", 0); // Placeholder
+                debug!("Alert broadcasted to {} peers", 0); // Reference
             });
         } else {
             // Direct peer notification

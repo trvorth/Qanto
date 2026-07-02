@@ -18,12 +18,12 @@ use crate::types::UTXO;
 use crate::zkp::{ZKProof, ZKProofSystem, ZKProofType};
 // use crate::qanto_net::{NetworkMessage, PeerId}; // Commented out as qanto_net module doesn't exist
 
+use ahash::{AHashMap as HashMap, AHashSet as HashSet};
 use anyhow::Result;
 use my_blockchain::qanto_hash; // Replaced sha3 with internal QanHash
 use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -1221,7 +1221,7 @@ impl PrivacyEngine {
         inputs: &[Input],
     ) -> Result<Vec<EncryptedInput>, PrivacyError> {
         // For now, we'll use placeholder amounts since we don't have UTXO lookup
-        let mut utxos: HashMap<String, UTXO> = HashMap::new(); // Placeholder
+        let mut utxos: HashMap<String, UTXO> = HashMap::new(); // Reference
                                                                // Populate dummy UTXOs for testing
         for input in inputs {
             let mut utxo_id = String::with_capacity(input.tx_id.len() + 20);

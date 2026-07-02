@@ -161,7 +161,8 @@
     </main>
     
     <script type="module">
-        import { connectWallet } from './assets/js/web3-provider.js';
+        import { connectWallet, getSigner, getProvider } from './assets/js/web3-provider.js';
+        import { ethers } from 'ethers';
         
         let walletConnected = false;
         
@@ -174,7 +175,7 @@
             }
         });
         
-        document.getElementById('btn-stake').addEventListener('click', () => {
+        document.getElementById('btn-stake').addEventListener('click', async () => {
             const inputVal = document.getElementById('stake-input').value;
             if (!walletConnected) {
                 alert("Please connect your wallet first.");
@@ -186,11 +187,30 @@
             }
             const btn = document.getElementById('btn-stake');
             btn.disabled = true;
-            btn.innerText = "Awaiting Multi-Party Computation...";
-            setTimeout(() => { 
+            btn.innerText = "Awaiting MetaMask signature...";
+            try {
+                const signer = await getSigner();
+                const provider = getProvider();
+                
+                const amountWei = ethers.parseUnits(inputVal, 9);
+                
+                const txResponse = await signer.sendTransaction({
+                    to: '0x9F00000000000000000000000000000000000002',
+                    value: amountWei
+                });
+                
+                btn.innerText = "Confirming on Qanto consensus...";
+                
+                await provider.waitForTransaction(txResponse.hash);
+                
                 btn.innerText = "Sentinel Active ✅";
-                alert(`Successfully staked ${inputVal} QNTO. Sentinel node has been activated on the Qanto Agentic Mesh!`);
-            }, 2500);
+                alert(`Successfully staked ${inputVal} QNTO. Sentinel node has been activated on the Qanto Agentic Mesh! Transaction ID: ${txResponse.hash}`);
+            } catch (err) {
+                console.error(err);
+                btn.disabled = false;
+                btn.innerText = "Initialize Sentinel Node";
+                alert("Staking transaction failed: " + err.message);
+            }
         });
     </script>
 </body>

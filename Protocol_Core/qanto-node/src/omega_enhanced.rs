@@ -16,9 +16,9 @@ use anyhow::{Context, Result};
 use my_blockchain::qanto_hash;
 
 use crate::qanto_compat::sp_core::H256;
+use ahash::AHashMap as HashMap;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -1112,6 +1112,7 @@ pub mod enhanced_simulation {
         let mock_config = QantoDagConfig {
             num_chains: 1,
             initial_validator: "mock_validator".to_string(),
+            genesis_timestamp: 1_717_250_400,
             target_block_time: 10000, // 10 seconds in milliseconds
             dev_fee_rate: 100_000_000,
         };

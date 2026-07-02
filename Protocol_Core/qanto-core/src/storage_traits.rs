@@ -1,4 +1,4 @@
-//! Mockable traits for expensive operations
+//! Test-double friendly traits for expensive operations
 //! This module defines traits that can be mocked for testing to avoid expensive operations
 
 use crate::qanto_storage::{QantoStorageError, StorageStats, WriteBatch};

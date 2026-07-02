@@ -1,23 +1,42 @@
-import { defineConfig } from 'vite';
-import { resolve } from 'path';
+import { defineConfig } from "vite";
+
+function cloudflarePagesArtifacts() {
+  return {
+    name: "cloudflare-pages-artifacts",
+    generateBundle() {
+      this.emitFile({
+        type: "asset",
+        fileName: "_redirects",
+        source: "/* /index.html 200\n",
+      });
+
+      this.emitFile({
+        type: "asset",
+        fileName: "_headers",
+        source: `/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: https:; script-src 'self'; style-src 'self'; connect-src 'self'; object-src 'none'; upgrade-insecure-requests
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+`,
+      });
+    },
+  };
+}
 
 export default defineConfig({
+  publicDir: false,
+  plugins: [cloudflarePagesArtifacts()],
   build: {
-    rollupOptions: {
-      input: {
-        main: resolve(__dirname, 'index.html'),
-        explorer: resolve(__dirname, 'explorer.html'),
-        faucet: resolve(__dirname, 'faucet.html'),
-        qantoswap: resolve(__dirname, 'qantoswap.html'),
-        staking: resolve(__dirname, 'staking.html'),
-        bridge: resolve(__dirname, 'bridge.html'),
-        analytics: resolve(__dirname, 'analytics.html'),
-        whitepaper: resolve(__dirname, 'whitepaper.html'),
-        airdrop: resolve(__dirname, 'airdrop.html'),
-        saga: resolve(__dirname, 'saga.html'),
-        tge: resolve(__dirname, 'tge.html'),
-        genesis: resolve(__dirname, 'genesis.html')
-      }
-    }
-  }
+    emptyOutDir: true,
+    sourcemap: false,
+  },
 });

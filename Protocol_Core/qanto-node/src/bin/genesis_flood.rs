@@ -7,7 +7,7 @@ async fn main() {
     println!("========================================================");
     println!("🚀 INITIATING QANTO GENESIS FLOOD: 10M TPS STRESS TEST 🚀");
     println!("========================================================");
-    
+
     let rpc_url = "https://trvorth-qanto-testnet.hf.space/rpc";
     let client = Client::builder()
         .pool_idle_timeout(Some(Duration::from_secs(30)))
@@ -19,7 +19,10 @@ async fn main() {
     let total_txs = 50_000; // Batch size for remote HF connection
     let mut handles = vec![];
 
-    println!("📡 Bombarding {} with {} signed transactions...", rpc_url, total_txs);
+    println!(
+        "📡 Bombarding {} with {} signed transactions...",
+        rpc_url, total_txs
+    );
 
     for i in 0..total_txs {
         let c = client.clone();
@@ -46,7 +49,7 @@ async fn main() {
 
     let elapsed = start_time.elapsed().as_secs_f64();
     let tps = total_txs as f64 / elapsed;
-    
+
     println!("\n🔥 FLOOD COMPLETE 🔥");
     println!("⏱️ Time Elapsed: {:.2} seconds", elapsed);
     println!("⚡ Actual Network TPS Acknowledged: {:.2} TPS", tps);

@@ -18,9 +18,10 @@ use crate::saga::{
     NetworkHealthMetrics, PalletSaga, SagaError, SecurityInsights, ThreatLevel,
 };
 
+use ahash::AHashMap as HashMap;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
@@ -355,8 +356,12 @@ impl AnalyticsDashboard {
             active_addresses: active_addresses as u128,
             mempool_size: 0, // Simplified: mempool not directly accessible
             block_height: block_height as u128,
-            tps_current: (network_health.tps_current.load(Ordering::Relaxed) as i128 * crate::QANTO_SCALE as i128) / 1000,
-            tps_peak: (network_health.tps_peak_24h.load(Ordering::Relaxed) as i128 * crate::QANTO_SCALE as i128) / 1000,
+            tps_current: (network_health.tps_current.load(Ordering::Relaxed) as i128
+                * crate::QANTO_SCALE as i128)
+                / 1000,
+            tps_peak: (network_health.tps_peak_24h.load(Ordering::Relaxed) as i128
+                * crate::QANTO_SCALE as i128)
+                / 1000,
         };
 
         // Update current metrics
@@ -507,7 +512,11 @@ impl AnalyticsDashboard {
             consensus_latency: AtomicU64::new(1000),
             transaction_volume: AtomicU64::new(total_transactions as u64),
             average_gas_usage: AtomicU64::new(21000),
-            network_load: AtomicU64::new(if current_tps > (1000 * crate::Q_SCALE as i128) { 8000 } else { 2000 }),
+            network_load: AtomicU64::new(if current_tps > (1000 * crate::Q_SCALE as i128) {
+                8000
+            } else {
+                2000
+            }),
 
             // SAGA-specific metrics
             throughput: AtomicU64::new((current_tps * 1000) as u64),
@@ -537,12 +546,22 @@ impl AnalyticsDashboard {
             tps_average_1h: AtomicU64::new(avg_tps_1h as u64),
             tps_peak_24h: AtomicU64::new(peak_tps_24h as u64),
             finality_time_ms: AtomicU64::new(2000),
-            network_congestion: AtomicU64::new(if current_tps > (1000 * crate::Q_SCALE as i128) { 80 } else { 20 }),
+            network_congestion: AtomicU64::new(if current_tps > (1000 * crate::Q_SCALE as i128) {
+                80
+            } else {
+                20
+            }),
             block_propagation_time: AtomicU64::new(500),
             mempool_size: AtomicU64::new(0),
-            total_value_locked: crate::metrics::get_global_metrics().total_value_locked.clone(),
-            validator_rewards_24h: crate::metrics::get_global_metrics().validator_rewards_24h.clone(),
-            transaction_fees_24h: crate::metrics::get_global_metrics().transaction_fees_24h.clone(),
+            total_value_locked: crate::metrics::get_global_metrics()
+                .total_value_locked
+                .clone(),
+            validator_rewards_24h: crate::metrics::get_global_metrics()
+                .validator_rewards_24h
+                .clone(),
+            transaction_fees_24h: crate::metrics::get_global_metrics()
+                .transaction_fees_24h
+                .clone(),
 
             // Relayer metrics
             relayer_success_rate: AtomicU64::new(9900), // 99%
@@ -598,6 +617,7 @@ impl AnalyticsDashboard {
 
             // Timestamp for metrics collection
             last_updated: AtomicU64::new(current_time),
+            ..Default::default()
         }
     }
 
@@ -810,12 +830,15 @@ impl AnalyticsDashboard {
         metrics.active_addresses = data.active_addresses as i128;
         metrics.mempool_size = data.mempool_size as i128;
         metrics.block_height = data.block_height as i128;
-        metrics.finality_time_ms = data.network_health.finality_time_ms.load(Ordering::Relaxed) as i128;
-        metrics.validator_count = data.network_health.validator_count.load(Ordering::Relaxed) as i128;
+        metrics.finality_time_ms =
+            data.network_health.finality_time_ms.load(Ordering::Relaxed) as i128;
+        metrics.validator_count =
+            data.network_health.validator_count.load(Ordering::Relaxed) as i128;
         metrics.network_congestion = data
             .network_health
             .network_congestion
-            .load(Ordering::Relaxed) as i128 * 1000; // percentage * 10000 -> QANTO_SCALE (1e9)
+            .load(Ordering::Relaxed) as i128
+            * 1000; // percentage * 10000 -> QANTO_SCALE (1e9)
         metrics.ai_model_accuracy = data.ai_performance.neural_network_accuracy;
         metrics.threat_level = data.security_insights.threat_level.clone();
         metrics.economic_security_score = data.economic_indicators.economic_security;
@@ -824,7 +847,8 @@ impl AnalyticsDashboard {
 
         // Update decentralization metrics if available
         if let Some(ref decentralization_metrics) = self.collect_decentralization_metrics().await {
-            metrics.decentralization_score = decentralization_metrics.decentralization_score as i128;
+            metrics.decentralization_score =
+                decentralization_metrics.decentralization_score as i128;
             metrics.validator_diversity_index = decentralization_metrics
                 .geographic_distribution
                 .country_diversity_index as i128;
@@ -833,7 +857,8 @@ impl AnalyticsDashboard {
                 .region_diversity_index as i128;
             metrics.stake_concentration_ratio = decentralization_metrics
                 .stake_distribution
-                .top_33_percent_concentration as i128;
+                .top_33_percent_concentration
+                as i128;
             metrics.network_resilience_score = decentralization_metrics
                 .network_decentralization
                 .network_resilience as i128;
@@ -870,7 +895,11 @@ impl AnalyticsDashboard {
 
         let congestion_point = TimeSeriesDataPoint {
             timestamp,
-            value: (data.network_health.network_congestion.load(Ordering::Relaxed) as f64) / 1_000_000.0, // 0.0 - 1.0
+            value: (data
+                .network_health
+                .network_congestion
+                .load(Ordering::Relaxed) as f64)
+                / 1_000_000.0, // 0.0 - 1.0
             metadata: HashMap::new(),
         };
 
@@ -927,7 +956,8 @@ impl AnalyticsDashboard {
         if let Some(ref decentralization_metrics) = self.collect_decentralization_metrics().await {
             let decentralization_score_point = TimeSeriesDataPoint {
                 timestamp,
-                value: decentralization_metrics.decentralization_score as f64 / crate::Q_SCALE as f64,
+                value: decentralization_metrics.decentralization_score as f64
+                    / crate::Q_SCALE as f64,
                 metadata: HashMap::new(),
             };
 
@@ -935,7 +965,8 @@ impl AnalyticsDashboard {
                 timestamp,
                 value: decentralization_metrics
                     .geographic_distribution
-                    .country_diversity_index as f64 / crate::Q_SCALE as f64,
+                    .country_diversity_index as f64
+                    / crate::Q_SCALE as f64,
                 metadata: HashMap::new(),
             };
 
@@ -943,7 +974,8 @@ impl AnalyticsDashboard {
                 timestamp,
                 value: decentralization_metrics
                     .stake_distribution
-                    .top_33_percent_concentration as f64 / crate::Q_SCALE as f64,
+                    .top_33_percent_concentration as f64
+                    / crate::Q_SCALE as f64,
                 metadata: HashMap::new(),
             };
 
@@ -951,7 +983,8 @@ impl AnalyticsDashboard {
                 timestamp,
                 value: decentralization_metrics
                     .network_decentralization
-                    .network_resilience as f64 / crate::Q_SCALE as f64,
+                    .network_resilience as f64
+                    / crate::Q_SCALE as f64,
                 metadata: HashMap::new(),
             };
 
@@ -1033,7 +1066,9 @@ impl AnalyticsDashboard {
             .as_secs();
 
         // Network performance alerts
-        let tps_current = network_health.tps_current.load(Ordering::Relaxed) as i128 * (crate::QANTO_SCALE as i128) / 1000;
+        let tps_current = network_health.tps_current.load(Ordering::Relaxed) as i128
+            * (crate::QANTO_SCALE as i128)
+            / 1000;
         let network_congestion = network_health.network_congestion.load(Ordering::Relaxed) as i128;
 
         if tps_current < 100 * crate::Q_SCALE as i128 {
@@ -1046,18 +1081,25 @@ impl AnalyticsDashboard {
                 description: {
                     let mut desc = String::with_capacity(50);
                     desc.push_str("Current TPS (");
-                    desc.push_str(&format!("{:.2}", tps_current as f64 / crate::Q_SCALE as f64));
+                    desc.push_str(&format!(
+                        "{:.2}",
+                        tps_current as f64 / crate::Q_SCALE as f64
+                    ));
                     desc.push_str(") is below optimal threshold");
                     desc
                 },
-                metrics: [("current_tps".to_string(), tps_current as f64 / crate::Q_SCALE as f64)]
-                    .into_iter()
-                    .collect(),
+                metrics: [(
+                    "current_tps".to_string(),
+                    tps_current as f64 / crate::Q_SCALE as f64,
+                )]
+                .into_iter()
+                .collect(),
                 resolved: false,
             });
         }
 
-        if network_congestion > 8000 { // 80% (scaled by 10000 in metrics.rs)
+        if network_congestion > 8000 {
+            // 80% (scaled by 10000 in metrics.rs)
             alerts.push(Alert {
                 id: Uuid::new_v4().to_string(),
                 timestamp,
@@ -1071,15 +1113,19 @@ impl AnalyticsDashboard {
                     desc.push_str(") is critically high");
                     desc
                 },
-                metrics: [("network_congestion".to_string(), network_congestion as f64 / 10000.0)]
-                    .into_iter()
-                    .collect(),
+                metrics: [(
+                    "network_congestion".to_string(),
+                    network_congestion as f64 / 10000.0,
+                )]
+                .into_iter()
+                .collect(),
                 resolved: false,
             });
         }
 
         // AI performance alerts
-        if ai_performance.neural_network_accuracy < 700_000_000 { // 0.7 * Q_SCALE
+        if ai_performance.neural_network_accuracy < 700_000_000 {
+            // 0.7 * Q_SCALE
             alerts.push(Alert {
                 id: Uuid::new_v4().to_string(),
                 timestamp,
@@ -1089,7 +1135,10 @@ impl AnalyticsDashboard {
                 description: {
                     let mut desc = String::with_capacity(60);
                     desc.push_str("Neural network accuracy (");
-                    desc.push_str(&format!("{:.2}", ai_performance.neural_network_accuracy as f64 / crate::Q_SCALE as f64));
+                    desc.push_str(&format!(
+                        "{:.2}",
+                        ai_performance.neural_network_accuracy as f64 / crate::Q_SCALE as f64
+                    ));
                     desc.push_str(") is below acceptable threshold");
                     desc
                 },
@@ -1103,7 +1152,8 @@ impl AnalyticsDashboard {
             });
         }
 
-        if ai_performance.model_drift_score > 500_000_000 { // 0.5 * Q_SCALE
+        if ai_performance.model_drift_score > 500_000_000 {
+            // 0.5 * Q_SCALE
             alerts.push(Alert {
                 id: Uuid::new_v4().to_string(),
                 timestamp,
@@ -1113,13 +1163,19 @@ impl AnalyticsDashboard {
                 description: {
                     let mut desc = String::with_capacity(70);
                     desc.push_str("Model drift score (");
-                    desc.push_str(&format!("{:.2}", ai_performance.model_drift_score as f64 / crate::Q_SCALE as f64));
+                    desc.push_str(&format!(
+                        "{:.2}",
+                        ai_performance.model_drift_score as f64 / crate::Q_SCALE as f64
+                    ));
                     desc.push_str(") indicates significant performance degradation");
                     desc
                 },
-                metrics: [("model_drift".to_string(), ai_performance.model_drift_score as f64 / crate::Q_SCALE as f64)]
-                    .into_iter()
-                    .collect(),
+                metrics: [(
+                    "model_drift".to_string(),
+                    ai_performance.model_drift_score as f64 / crate::Q_SCALE as f64,
+                )]
+                .into_iter()
+                .collect(),
                 resolved: false,
             });
         }
@@ -1135,9 +1191,12 @@ impl AnalyticsDashboard {
                     title: "High Threat Level Detected".to_string(),
                     description: "Security monitoring has detected high-risk activities"
                         .to_string(),
-                    metrics: [("anomaly_score".to_string(), security_insights.anomaly_score as f64 / crate::Q_SCALE as f64)]
-                        .into_iter()
-                        .collect(),
+                    metrics: [(
+                        "anomaly_score".to_string(),
+                        security_insights.anomaly_score as f64 / crate::Q_SCALE as f64,
+                    )]
+                    .into_iter()
+                    .collect(),
                     resolved: false,
                 });
             }
@@ -1149,9 +1208,12 @@ impl AnalyticsDashboard {
                     category: AlertCategory::Security,
                     title: "Critical Security Threat".to_string(),
                     description: "CRITICAL: Immediate security response required".to_string(),
-                    metrics: [("anomaly_score".to_string(), security_insights.anomaly_score as f64 / crate::Q_SCALE as f64)]
-                        .into_iter()
-                        .collect(),
+                    metrics: [(
+                        "anomaly_score".to_string(),
+                        security_insights.anomaly_score as f64 / crate::Q_SCALE as f64,
+                    )]
+                    .into_iter()
+                    .collect(),
                     resolved: false,
                 });
             }
@@ -1344,7 +1406,8 @@ impl AnalyticsDashboard {
             .as_secs();
 
         // Check decentralization score
-        if metrics.decentralization_score < 500_000_000 { // 0.5 * Q_SCALE
+        if metrics.decentralization_score < 500_000_000 {
+            // 0.5 * Q_SCALE
             alerts.push(Alert {
                 id: Uuid::new_v4().to_string(),
                 timestamp,
@@ -1354,7 +1417,10 @@ impl AnalyticsDashboard {
                 description: {
                     let mut desc = String::with_capacity(70);
                     desc.push_str("Network decentralization score (");
-                    desc.push_str(&format!("{:.2}", metrics.decentralization_score as f64 / crate::Q_SCALE as f64));
+                    desc.push_str(&format!(
+                        "{:.2}",
+                        metrics.decentralization_score as f64 / crate::Q_SCALE as f64
+                    ));
                     desc.push_str(") is below recommended threshold");
                     desc
                 },
@@ -1369,7 +1435,8 @@ impl AnalyticsDashboard {
         }
 
         // Check stake concentration
-        if metrics.stake_distribution.top_33_percent_concentration > 700_000_000 { // 0.7 * Q_SCALE
+        if metrics.stake_distribution.top_33_percent_concentration > 700_000_000 {
+            // 0.7 * Q_SCALE
             alerts.push(Alert {
                 id: Uuid::new_v4().to_string(),
                 timestamp,
@@ -1381,14 +1448,16 @@ impl AnalyticsDashboard {
                     desc.push_str("Stake concentration ratio (");
                     desc.push_str(&format!(
                         "{:.2}",
-                        metrics.stake_distribution.top_33_percent_concentration as f64 / crate::Q_SCALE as f64
+                        metrics.stake_distribution.top_33_percent_concentration as f64
+                            / crate::Q_SCALE as f64
                     ));
                     desc.push_str(") indicates potential centralization risk");
                     desc
                 },
                 metrics: [(
                     "stake_concentration".to_string(),
-                    metrics.stake_distribution.top_33_percent_concentration as f64 / crate::Q_SCALE as f64,
+                    metrics.stake_distribution.top_33_percent_concentration as f64
+                        / crate::Q_SCALE as f64,
                 )]
                 .into_iter()
                 .collect(),

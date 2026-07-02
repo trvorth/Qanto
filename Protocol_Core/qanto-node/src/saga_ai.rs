@@ -19,7 +19,7 @@ pub struct SagaDecision {
 /// The SAGA Engine evaluates current telemetry and dynamically scales consensus.
 pub fn evaluate_network_state() -> SagaDecision {
     let metrics = get_live_metrics();
-    
+
     let mut new_batch_size = DYNAMIC_BATCH_THRESHOLD.load(Ordering::Relaxed);
     let mut target_bps = NETWORK_THROTTLE_BPS.load(Ordering::Relaxed);
     let mut action = String::from("SAGA: Network Stable. No action required.");
@@ -30,7 +30,7 @@ pub fn evaluate_network_state() -> SagaDecision {
         new_batch_size = (new_batch_size as f64 * 0.85) as u64;
         action = String::from("SAGA OVERRIDE: High Latency Detected. Scaling down batch size to protect 31ms finality.");
         confidence = 0.94;
-    } 
+    }
     // Neural Heuristic 2: If CPU is low and TPS is maxing out, increase block rate (BPS).
     else if metrics.cpu_usage < 40.0 && metrics.current_tps > 8_000_000 {
         target_bps = 48; // Overclock to 48 BPS
@@ -54,7 +54,9 @@ pub fn evaluate_network_state() -> SagaDecision {
 
 pub fn broadcast_to_discord(action_message: &str) {
     let webhook_url = std::env::var("DISCORD_SAGA_WEBHOOK").unwrap_or_default();
-    if webhook_url.is_empty() { return; }
+    if webhook_url.is_empty() {
+        return;
+    }
 
     let message = action_message.to_string();
     tokio::spawn(async move {
@@ -75,17 +77,20 @@ pub fn predictive_resonance_tuning(current_tps: u64, active_waves: usize) -> Str
     // Advanced heuristic: If TPS is rising exponentially, lower the resonance threshold
     // to crystalize the state faster and prevent memory overflow.
     let mut predicted_action = "SAGA: Harmony Stable.";
-    
+
     if current_tps > 5_000_000 && active_waves > 8_000 {
         predicted_action = "🔮 SAGA PRECOGNITION: Quantum collision imminent. Lowering resonance threshold to 8,000 to force instant crystallization.";
     }
-    
+
     predicted_action.to_string()
 }
 
 pub fn authorize_gasless_transaction(user_address: &str, network_load_bps: u64) -> bool {
     if network_load_bps < 8_000_000 {
-        println!("🧠 SAGA PAYMASTER: Transact fee sponsored for {}", user_address);
+        println!(
+            "🧠 SAGA PAYMASTER: Transact fee sponsored for {}",
+            user_address
+        );
         return true;
     }
     false

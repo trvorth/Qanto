@@ -18,8 +18,10 @@ document.addEventListener("DOMContentLoaded", () => {
         statusBox.style.display = 'none';
 
         try {
-            // 3. Make POST request to Hugging Face JSON-RPC
-            const rpcUrl = 'https://trvorth-qanto-testnet.hf.space/rpc';
+            // 3. Make POST request to JSON-RPC
+            const rpcUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                ? `${window.location.protocol}//${window.location.host}/rpc`
+                : 'https://trvorth-qanto-testnet.hf.space/rpc';
             
             const payload = {
                 jsonrpc: "2.0",

@@ -17,8 +17,10 @@
 //!   `qanto_standalone` module for portability and security.
 
 // --- Module Declarations ---
+pub mod cuda_gpu;
 pub mod error;
 pub mod jsonrpc_server;
+pub mod metal_gpu;
 pub mod qanhash;
 pub mod qanhash32x;
 pub use error::QanhashError;

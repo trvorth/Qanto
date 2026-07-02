@@ -31,10 +31,9 @@ securityContext:
 service:
   type: ClusterIP
   ports:
-    api: 8080
-    metrics: 8081
-    websocket: 9944
-    p2p: 30333
+    api: 8081
+    rpc: 50051
+    p2p: 30303
 
 ingress:
   enabled: false
@@ -82,7 +81,6 @@ qanto:
   network: "mainnet"
   bootNodes: []
   rpcCors: "all"
-  wsMaxConnections: 100
   
 # Monitoring
 monitoring:

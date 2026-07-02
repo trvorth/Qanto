@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use ahash::AHashMap as HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -510,7 +510,7 @@ fn to_core_logging(cfg: &LoggingConfig) -> CoreLoggingConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
+    use ahash::{AHashMap as HashMap, AHashSet as HashSet};
     use std::sync::Arc;
     use tokio::sync::RwLock;
     use tokio_util::sync::CancellationToken;
@@ -550,6 +550,7 @@ mod tests {
 
         let dag_config = QantoDagConfig {
             initial_validator: "test_validator".to_string(),
+            genesis_timestamp: 1_717_250_400,
             target_block_time: 1000,
             num_chains: 1,
             dev_fee_rate: 100_000_000,
@@ -639,7 +640,7 @@ mod tests {
         assert!(!candidate.transactions.is_empty());
         assert!(candidate.transactions.len() <= MAX_TRANSACTIONS_PER_BLOCK);
 
-        let candidate_ids: std::collections::HashSet<String> = candidate
+        let candidate_ids: HashSet<String> = candidate
             .transactions
             .iter()
             .map(|t| t.id.clone())

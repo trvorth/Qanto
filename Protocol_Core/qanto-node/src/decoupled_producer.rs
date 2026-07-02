@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use ahash::{AHashMap as HashMap, AHashSet as HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -31,6 +31,7 @@ pub struct DecoupledProducer {
     mining_workers: usize,
     candidate_buffer_size: usize,
     mined_buffer_size: usize,
+    mempool_batch_size: usize,
 
     // Logging configuration
     logging_config: LoggingConfig,
@@ -47,6 +48,8 @@ pub struct DecoupledProducer {
     // Canonical tips broadcast channel (fast tips vector for parent selection)
     canonical_tip_tx: watch::Sender<Vec<String>>,
     canonical_tip_rx: watch::Receiver<Vec<String>>,
+    // External block notifications to refresh generation/mining on P2P block additions
+    external_block_rx: Option<Arc<tokio::sync::Mutex<mpsc::Receiver<()>>>>,
 }
 
 /// A candidate block ready for mining
@@ -81,13 +84,16 @@ impl DecoupledProducer {
         mining_workers: usize,
         candidate_buffer_size: usize,
         mined_buffer_size: usize,
+        mempool_batch_size: usize,
         logging_config: LoggingConfig,
         p2p_broadcast_tx: Option<mpsc::Sender<P2PCommand>>,
         shutdown_token: CancellationToken,
+        external_block_rx: Option<mpsc::Receiver<()>>,
     ) -> Self {
         let (generation_tx, generation_rx) = watch::channel(0u64);
         let generation_token = Arc::new(RwLock::new(CancellationToken::new()));
         let (canonical_tip_tx, canonical_tip_rx) = watch::channel::<Vec<String>>(Vec::new());
+        let external_block_rx = external_block_rx.map(|rx| Arc::new(tokio::sync::Mutex::new(rx)));
         Self {
             dag,
             wallet,
@@ -98,6 +104,7 @@ impl DecoupledProducer {
             mining_workers,
             candidate_buffer_size,
             mined_buffer_size,
+            mempool_batch_size,
             logging_config,
             p2p_broadcast_tx,
             shutdown_token,
@@ -109,6 +116,7 @@ impl DecoupledProducer {
             last_cancel_instant: Arc::new(RwLock::new(Instant::now() - Duration::from_secs(1))),
             canonical_tip_tx,
             canonical_tip_rx,
+            external_block_rx,
         }
     }
 
@@ -122,6 +130,51 @@ impl DecoupledProducer {
         // Seed canonical tips channel with current fast tips for chain 0
         let latest_tips = self.dag.get_fast_tips(0).await.unwrap_or_default();
         let _ = self.canonical_tip_tx.send(latest_tips);
+
+        // Start external block listener if present
+        if let Some(mutex_rx) = &self.external_block_rx {
+            let mutex_rx = Arc::clone(mutex_rx);
+            let generation_tx = self.generation_tx.clone();
+            let generation_token_holder = Arc::clone(&self.generation_token);
+            let last_cancel_instant_holder = Arc::clone(&self.last_cancel_instant);
+            let dag = Arc::clone(&self.dag);
+            let canonical_tip_tx = self.canonical_tip_tx.clone();
+            let shutdown_token = self.shutdown_token.clone();
+
+            tokio::spawn(async move {
+                let mut rx = mutex_rx.lock().await;
+                loop {
+                    tokio::select! {
+                        _ = shutdown_token.cancelled() => {
+                            break;
+                        }
+                        msg = rx.recv() => {
+                            if msg.is_none() {
+                                break;
+                            }
+                            debug!("DECOUPLED PRODUCER: Received external block notification. Resetting generation and cancelling stale miners.");
+
+                            // 1. Cancel active mining workers
+                            let now = Instant::now();
+                            let mut last_cancel = last_cancel_instant_holder.write().await;
+
+                            let mut gt = generation_token_holder.write().await;
+                            gt.cancel();
+                            *gt = CancellationToken::new();
+                            *last_cancel = now;
+
+                            // 2. Bump generation to trigger block creator refresh
+                            let current = *generation_tx.borrow();
+                            let _ = generation_tx.send(current.wrapping_add(1));
+
+                            // 3. Update canonical tips
+                            let new_tips = dag.get_fast_tips(0).await.unwrap_or_default();
+                            let _ = canonical_tip_tx.send(new_tips);
+                        }
+                    }
+                }
+            });
+        }
 
         // Create communication channels between pipeline stages
         let (candidate_tx, candidate_rx) =
@@ -165,7 +218,7 @@ impl DecoupledProducer {
         let shutdown_token = self.shutdown_token.clone();
         let interval_ms = self.block_creation_interval_ms;
         let mut generation_rx = self.generation_rx.clone();
-        let tip_rx = self.canonical_tip_rx.clone();
+        let _tip_rx = self.canonical_tip_rx.clone();
         let generation_token_holder = Arc::clone(&self.generation_token);
 
         tokio::spawn(async move {
@@ -208,9 +261,8 @@ impl DecoupledProducer {
                                 }
                             };
 
-                            // Clone tips to owned value before await to avoid holding watch::Ref across await
-                            let current_tips = tip_rx.borrow().clone();
-                            let parents_override = if current_tips.is_empty() { None } else { Some(current_tips) };
+                            // Query DAG tips dynamically
+                            let parents_override = None;
                             // Use deterministic chain selection for tests: chain 0
                             let chain_id = 0u32;
                             let candidate_block = match Self::create_candidate_block(
@@ -293,9 +345,8 @@ impl DecoupledProducer {
 
                         // Create candidate block
                         debug!("BLOCK CREATOR: Creating candidate block...");
-                        // Clone tips to owned value before await to avoid holding watch::Ref across await
-                        let current_tips = tip_rx.borrow().clone();
-                        let parents_override = if current_tips.is_empty() { None } else { Some(current_tips) };
+                        // Query DAG tips dynamically
+                        let parents_override = None;
                         // Use deterministic chain selection for tests: chain 0
                         let chain_id = 0u32;
                         let candidate_block = match Self::create_candidate_block(
@@ -539,6 +590,7 @@ impl DecoupledProducer {
         let logging_config = self.logging_config.clone();
         let tip_tx = self.canonical_tip_tx.clone();
         let p2p_broadcast_tx = self.p2p_broadcast_tx.clone();
+        let mempool_batch_size = self.mempool_batch_size;
 
         let pending_ttl_ms = self.block_creation_interval_ms.saturating_mul(3).max(500);
         // Use fixed retry interval to reduce busy-looping and stabilize processing
@@ -554,8 +606,7 @@ impl DecoupledProducer {
                 sequence_id: u64,
                 queued_at: Instant,
             }
-            use std::collections::HashMap as StdHashMap;
-            let mut pending_children: StdHashMap<String, Vec<PendingChild>> = StdHashMap::new();
+            let mut pending_children: HashMap<String, Vec<PendingChild>> = HashMap::new();
             // Hold pending children for up to ~3 block intervals, minimum 500ms
             let pending_ttl = Duration::from_millis(pending_ttl_ms);
             // Retry moderately often; avoid busy loop — aligned with block interval
@@ -595,8 +646,9 @@ impl DecoupledProducer {
                         let block_str = format!("{}", block_to_add);
                         info!("\n{}", block_str);
                         if let Some(tx) = p2p_broadcast_tx {
-                            if let Err(err) =
-                                tx.send(P2PCommand::BroadcastBlock(block_to_add.clone())).await
+                            if let Err(err) = tx
+                                .send(P2PCommand::BroadcastBlock(block_to_add.clone()))
+                                .await
                             {
                                 warn!(
                                     "BLOCK PROCESSOR: Failed to broadcast accepted block {}: {}",
@@ -615,6 +667,26 @@ impl DecoupledProducer {
                                 "BLOCK PROCESSOR: Removed {} transactions from mempool",
                                 block_to_add.transactions.len()
                             );
+
+                            // Sweep mempool for any remaining transactions that reference
+                            // UTXOs consumed by this block. This prevents stale transactions
+                            // (e.g. re-gossiped from peers) from being re-mined.
+                            let mut spent_utxo_ids = HashSet::new();
+                            for tx in &block_to_add.transactions {
+                                for input in &tx.inputs {
+                                    spent_utxo_ids
+                                        .insert(format!("{}_{}", input.tx_id, input.output_index));
+                                }
+                            }
+                            let evicted = mempool_guard
+                                .evict_transactions_spending_utxos(&spent_utxo_ids)
+                                .await;
+                            if evicted > 0 {
+                                info!(
+                                    "BLOCK PROCESSOR: Evicted {} conflicting transactions (spent-UTXO sweep)",
+                                    evicted
+                                );
+                            }
                         }
 
                         // Release reserved transactions for this miner after success
@@ -752,6 +824,7 @@ impl DecoupledProducer {
                                     {
                                     Ok(true) => {
                                         blocks_processed += 1;
+                                        dag.run_periodic_maintenance(mempool_batch_size).await;
                                         debug!(
                                             "BLOCK PROCESSOR: Pending child {} accepted after parent {} committed",
                                                 child.block.id, parent_id
@@ -826,6 +899,7 @@ impl DecoupledProducer {
                                 ).await {
                                     Ok(true) => {
                                         blocks_processed += 1;
+                                        dag.run_periodic_maintenance(mempool_batch_size).await;
                                     }
                                     Ok(false) => {
                                         // already exists or rejected; handled inside helper
@@ -871,11 +945,48 @@ impl DecoupledProducer {
                                                 // Do NOT release reservations yet; expect quick acceptance
                                             }
                                             other => {
+                                                let err_str = other.to_string();
                                                 error!(
                                                     "BLOCK PROCESSOR: Failed to add block {}: {}",
-                                                    block_to_add.id, other
+                                                    block_to_add.id, err_str
                                                 );
-                                                if let Some(miner_id) = block_to_add.reservation_miner_id.as_deref() {
+
+                                                // If failure is due to spent UTXOs, evict the
+                                                // offending transactions from the mempool instead
+                                                // of releasing them back for re-mining.
+                                                let is_utxo_failure = err_str.contains("UTXO")
+                                                    || err_str.contains("transactions failed validation");
+
+                                                if is_utxo_failure {
+                                                    let mempool_guard = mempool.read().await;
+                                                    // Evict the block's transactions so they cannot
+                                                    // be re-included in the next block.
+                                                    mempool_guard
+                                                        .remove_transactions(&block_to_add.transactions)
+                                                        .await;
+
+                                                    // Also sweep for any OTHER transactions in the
+                                                    // mempool that reference the same spent UTXOs
+                                                    // (e.g. re-gossiped from peers under different tx IDs).
+                                                    let mut spent_utxo_ids = HashSet::new();
+                                                    for tx in &block_to_add.transactions {
+                                                        for input in &tx.inputs {
+                                                            spent_utxo_ids.insert(format!("{}_{}", input.tx_id, input.output_index));
+                                                        }
+                                                    }
+                                                    let sweep_evicted = mempool_guard
+                                                        .evict_transactions_spending_utxos(&spent_utxo_ids)
+                                                        .await;
+                                                    warn!(
+                                                        "BLOCK PROCESSOR: Evicted {} block txs + {} swept txs from mempool after UTXO validation failure",
+                                                        block_to_add.transactions.len(),
+                                                        sweep_evicted
+                                                    );
+                                                    // Also release reservations cleanly
+                                                    if let Some(miner_id) = block_to_add.reservation_miner_id.as_deref() {
+                                                        mempool_guard.release_reserved_transactions(miner_id);
+                                                    }
+                                                } else if let Some(miner_id) = block_to_add.reservation_miner_id.as_deref() {
                                                     let mempool_guard = mempool.read().await;
                                                     mempool_guard.release_reserved_transactions(miner_id);
                                                     warn!(
@@ -939,7 +1050,10 @@ impl DecoupledProducer {
         let qr_public_key = QantoPQPublicKey::from_bytes(public_key)
             .map_err(|_| QantoDAGError::Generic("Invalid public key format".to_string()))?;
 
-        debug!("CREATE_CANDIDATE: Calling DAG create_candidate_block on chain {}", chain_id);
+        debug!(
+            "CREATE_CANDIDATE: Calling DAG create_candidate_block on chain {}",
+            chain_id
+        );
         // Create block candidate
         let candidate_block = dag
             .create_candidate_block(

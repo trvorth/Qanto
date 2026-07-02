@@ -1,0 +1,49 @@
+[package]
+name = "qanto-desktop-wallet"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "qanto_desktop_wallet_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+aes-gcm = "0.10.3"
+argon2 = { version = "0.5.3", features = ["alloc"] }
+base64 = "0.22.1"
+bincode = "1.3.3"
+bip39 = "2.1.0"
+ed25519-dalek = "2.2.0"
+hex = "0.4.3"
+hmac = "0.12.1"
+hkdf = "0.12.4"
+my-blockchain = { path = "../../Protocol_Core/myblockchain" }
+pqcrypto-dilithium = "0.5.0"
+pqcrypto-traits = "0.3.5"
+rand = "0.8.5"
+sha2 = "0.10.8"
+sha3 = "0.10.8"
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+qanto-core = { path = "../../Protocol_Core/qanto-core" }
+qanto-zk-sdk = { path = "../../Protocol_Core/qanto-zk-sdk" }
+qanto-rpc = { path = "../../Protocol_Core/qanto-rpc" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1.38", features = ["macros", "rt-multi-thread", "time"] }
+zeroize = { version = "1.8.1", features = ["derive"] }
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
+
+[workspace]

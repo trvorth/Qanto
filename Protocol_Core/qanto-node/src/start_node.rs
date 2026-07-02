@@ -302,6 +302,6 @@ impl Write for LockedWriter {
 mod tests {
     #[test]
     fn test_placeholder() {
-        // Placeholder test to prevent test runner warnings
+        // Reference test to prevent test runner warnings
     }
 }

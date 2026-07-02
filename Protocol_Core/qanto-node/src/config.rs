@@ -71,11 +71,13 @@ pub enum ConfigError {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct RpcConfig {
     pub address: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     // --- Network Configuration ---
     pub p2p_address: String,
@@ -83,6 +85,7 @@ pub struct Config {
     pub peers: Vec<String>,
     pub local_full_p2p_address: Option<String>,
     pub network_id: String,
+    pub chain_id: Option<u64>,
 
     // --- Blockchain Configuration ---
     pub genesis_validator: String,
@@ -116,6 +119,12 @@ pub struct Config {
     // --- Memory & Profiling Configuration ---
     pub db_cache_bytes: Option<usize>, // Database cache size in bytes
     pub mempool_max_bytes: Option<usize>, // Maximum mempool size in bytes
+
+    // --- QantoStorage Memory Limits ---
+    /// Block cache size in megabytes for QantoStorage (default: 128)
+    pub block_cache_size_mb: Option<u64>,
+    /// Write buffer size in megabytes for QantoStorage (default: 64)
+    pub write_buffer_size_mb: Option<u64>,
 
     // --- Dummy Transactions Configuration ---
     pub enable_dummy_tx: Option<bool>, // Enable dummy transaction generation
@@ -161,6 +170,7 @@ pub struct Config {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
+#[serde(deny_unknown_fields)]
 pub struct LoggingConfig {
     pub level: String,
     /// Enable block celebration logging (default: false in production, true in dev)
@@ -178,6 +188,7 @@ fn default_celebration_log_level() -> String {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct MempoolSectionConfig {
     pub parallel_verification_threads: usize,
     pub capacity: usize,
@@ -193,6 +204,7 @@ impl Default for MempoolSectionConfig {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
 pub struct P2pConfig {
     pub heartbeat_interval: u64, // in milliseconds
     pub mesh_n_low: usize,
@@ -217,11 +229,12 @@ impl Default for P2pConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            p2p_address: "/ip4/0.0.0.0/tcp/8008".to_string(),
-            api_address: "127.0.0.1:8080".to_string(),
+            p2p_address: "/ip4/0.0.0.0/tcp/30303/ws".to_string(),
+            api_address: "127.0.0.1:8081".to_string(),
             peers: vec![],
             local_full_p2p_address: None,
             network_id: "qanto-testnet-phoenix".to_string(),
+            chain_id: Some(1234),
             genesis_validator: "0000000000000000000000000000000000000000000000000000000000000000"
                 .to_string(),
             contract_address: "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"
@@ -243,15 +256,19 @@ impl Default for Config {
             enable_detailed_telemetry: Some(false),
 
             // --- Adaptive Difficulty Configuration ---
-            block_target_ms: Some(1000),            // Default to 1 second
-            solve_timeout_ms: Some(30000),          // Default to 30 seconds
-            difficulty_max_adjust_pct: Some(250_000_000),  // Max 25% adjustment (scaled 1e9)
+            block_target_ms: Some(1000),   // Default to 1 second
+            solve_timeout_ms: Some(30000), // Default to 30 seconds
+            difficulty_max_adjust_pct: Some(250_000_000), // Max 25% adjustment (scaled 1e9)
             difficulty_smoothing_factor: Some(100_000_000), // 10% smoothing (scaled 1e9)
             difficulty_min: Some(1),
 
             // --- Memory & Profiling Configuration ---
             db_cache_bytes: Some(64 * 1024 * 1024), // 64MB default
             mempool_max_bytes: Some(128 * 1024 * 1024), // 128MB default
+
+            // --- QantoStorage Memory Limits ---
+            block_cache_size_mb: Some(128), // 128MB default cache
+            write_buffer_size_mb: Some(64), // 64MB default write buffer
 
             // --- Dummy Transactions Configuration ---
             enable_dummy_tx: Some(false),
@@ -355,13 +372,13 @@ impl Config {
         }
 
         if let Some(port) = rpc_port {
-            if let Ok(mut addr) = self.api_address.parse::<SocketAddr>() {
+            if let Ok(mut addr) = self.rpc.address.parse::<SocketAddr>() {
                 addr.set_port(port);
-                self.api_address = addr.to_string();
-            } else if let Some(pos) = self.api_address.rfind(':') {
-                self.api_address = format!("{}:{}", &self.api_address[..pos], port);
+                self.rpc.address = addr.to_string();
+            } else if let Some(pos) = self.rpc.address.rfind(':') {
+                self.rpc.address = format!("{}:{}", &self.rpc.address[..pos], port);
             } else {
-                self.api_address = format!("0.0.0.0:{}", port);
+                self.rpc.address = format!("127.0.0.1:{}", port);
             }
         }
 
@@ -369,10 +386,17 @@ impl Config {
             if let Some(tcp_pos) = self.p2p_address.find("/tcp/") {
                 let start = tcp_pos + 5;
                 let mut end = start;
-                while end < self.p2p_address.len() && self.p2p_address.as_bytes()[end].is_ascii_digit() {
+                while end < self.p2p_address.len()
+                    && self.p2p_address.as_bytes()[end].is_ascii_digit()
+                {
                     end += 1;
                 }
-                self.p2p_address = format!("{}{}{}", &self.p2p_address[..start], port, &self.p2p_address[end..]);
+                self.p2p_address = format!(
+                    "{}{}{}",
+                    &self.p2p_address[..start],
+                    port,
+                    &self.p2p_address[end..]
+                );
             }
         }
 
@@ -444,7 +468,8 @@ impl Config {
     /// Create a free-tier optimized configuration
     pub fn free_tier_optimized() -> Self {
         Self {
-            p2p_address: "/ip4/0.0.0.0/tcp/8001".to_string(),
+            chain_id: Some(1234),
+            p2p_address: "/ip4/0.0.0.0/tcp/30303/ws".to_string(),
             api_address: "127.0.0.1:8082".to_string(),
             peers: vec![],
             local_full_p2p_address: None,
@@ -479,6 +504,10 @@ impl Config {
             // --- Memory & Profiling Configuration ---
             db_cache_bytes: Some(16 * 1024 * 1024), // 16MB for free-tier
             mempool_max_bytes: Some(32 * 1024 * 1024), // 32MB for free-tier
+
+            // --- QantoStorage Memory Limits ---
+            block_cache_size_mb: Some(32),  // 32MB for free-tier
+            write_buffer_size_mb: Some(16), // 16MB for free-tier
 
             // --- Dummy Transactions Configuration ---
             enable_dummy_tx: Some(false), // Disabled for free-tier
@@ -543,8 +572,9 @@ impl Config {
         let mempool_size = ((available_memory_gb * 0.3) * 1024.0 * 1024.0 * 1024.0) as usize; // 30% for mempool
 
         Self {
-            p2p_address: "/ip4/0.0.0.0/tcp/8008".to_string(),
-            api_address: "127.0.0.1:8080".to_string(),
+            chain_id: Some(1234),
+            p2p_address: "/ip4/0.0.0.0/tcp/30303/ws".to_string(),
+            api_address: "127.0.0.1:8081".to_string(),
             peers: vec![],
             local_full_p2p_address: None,
             network_id: "qanto-mainnet-performance".to_string(),
@@ -569,15 +599,19 @@ impl Config {
             enable_detailed_telemetry: Some(true),
 
             // --- Adaptive Difficulty Configuration ---
-            block_target_ms: Some(31),               // 31ms for 32+ BPS
-            solve_timeout_ms: Some(10000),           // 10 second timeout for high performance
-            difficulty_max_adjust_pct: Some(500_000_000),   // Aggressive 50% adjustment (scaled 1e9)
+            block_target_ms: Some(31),     // 31ms for 32+ BPS
+            solve_timeout_ms: Some(10000), // 10 second timeout for high performance
+            difficulty_max_adjust_pct: Some(500_000_000), // Aggressive 50% adjustment (scaled 1e9)
             difficulty_smoothing_factor: Some(50_000_000), // Minimal smoothing (5%) for responsiveness (scaled 1e9)
             difficulty_min: Some(1000),
 
             // --- Memory & Profiling Configuration ---
             db_cache_bytes: Some(512 * 1024 * 1024), // 512MB for high performance
             mempool_max_bytes: Some(mempool_size),   // Dynamic based on available memory
+
+            // --- QantoStorage Memory Limits ---
+            block_cache_size_mb: Some(512), // 512MB for high performance
+            write_buffer_size_mb: Some(256), // 256MB for high performance
 
             // --- Dummy Transactions Configuration ---
             enable_dummy_tx: Some(true),    // Enable for stress testing
@@ -847,6 +881,30 @@ impl Config {
             }
         }
 
+        // Validate QantoStorage memory limits
+        if let Some(cache_mb) = self.block_cache_size_mb {
+            if cache_mb < 16 {
+                return Err(ConfigError::Validation(
+                    "block_cache_size_mb must be at least 16 MB".to_string(),
+                ));
+            }
+        }
+        if let Some(wb_mb) = self.write_buffer_size_mb {
+            if wb_mb < 8 {
+                return Err(ConfigError::Validation(
+                    "write_buffer_size_mb must be at least 8 MB".to_string(),
+                ));
+            }
+        }
+        if let (Some(cache_mb), Some(wb_mb)) = (self.block_cache_size_mb, self.write_buffer_size_mb)
+        {
+            if cache_mb < wb_mb {
+                return Err(ConfigError::Validation(
+                    "block_cache_size_mb must be >= write_buffer_size_mb".to_string(),
+                ));
+            }
+        }
+
         if let Some(memory_soft_limit) = self.memory_soft_limit {
             if memory_soft_limit == 0 {
                 return Err(ConfigError::Validation(
@@ -992,5 +1050,60 @@ impl Config {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn rejects_unknown_top_level_fields() {
+        let temp_dir = tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.toml");
+        let config = format!(
+            "{}\nrogue_field = 1\n",
+            toml::to_string(&Config::default()).unwrap()
+        );
+        fs::write(&config_path, config).expect("write config");
+
+        let err =
+            Config::load(config_path.to_str().unwrap()).expect_err("unknown field should fail");
+        assert!(matches!(err, ConfigError::Load { .. }));
+        assert!(err.to_string().contains("unknown field `rogue_field`"));
+    }
+
+    #[test]
+    fn rejects_unknown_nested_fields() {
+        let temp_dir = tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.toml");
+        let config = toml::to_string(&Config::default()).unwrap().replace(
+            "celebration_log_level = \"info\"\n",
+            "celebration_log_level = \"info\"\nrogue_nested = true\n",
+        );
+        fs::write(&config_path, config).expect("write config");
+
+        let err = Config::load(config_path.to_str().unwrap())
+            .expect_err("unknown nested field should fail");
+        assert!(matches!(err, ConfigError::Load { .. }));
+        assert!(err.to_string().contains("unknown field `rogue_nested`"));
+    }
+
+    #[test]
+    fn round_trips_default_config_under_strict_schema() {
+        let temp_dir = tempdir().expect("tempdir");
+        let config_path = temp_dir.path().join("config.toml");
+        let original = Config::default();
+
+        original
+            .save(config_path.to_str().unwrap())
+            .expect("save config");
+        let loaded = Config::load(config_path.to_str().unwrap()).expect("load config");
+
+        assert_eq!(loaded.p2p_address, original.p2p_address);
+        assert_eq!(loaded.api_address, original.api_address);
+        assert_eq!(loaded.rpc.address, original.rpc.address);
+        assert_eq!(loaded.mempool.capacity, original.mempool.capacity);
     }
 }

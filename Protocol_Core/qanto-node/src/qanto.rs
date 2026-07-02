@@ -128,17 +128,24 @@ pub async fn run() -> Result<()> {
             );
             println!("IMPORTANT: Please back up this file securely and remember your password.");
         }
-        Some(Commands::ExportKey { wallet: wallet_path }) => {
+        Some(Commands::ExportKey {
+            wallet: wallet_path,
+        }) => {
             // SENSITIVE OPERATION: Interactive password prompt required
             println!("⚠️  Exporting private key requires authentication.");
             let password = prompt_for_password(false, Some("Enter wallet password:"))
                 .map_err(|e| anyhow::anyhow!("Password error: {e}"))?;
             let wallet_instance = Wallet::from_file(&wallet_path, &password)?;
             println!("Address: {}", wallet_instance.address());
-            println!("Private Key (hex): {}", wallet_instance.export_private_key_hex());
+            println!(
+                "Private Key (hex): {}",
+                wallet_instance.export_private_key_hex()
+            );
             println!("⚠️  NEVER share this private key. Store it securely offline.");
         }
-        Some(Commands::ShowMnemonic { wallet: wallet_path }) => {
+        Some(Commands::ShowMnemonic {
+            wallet: wallet_path,
+        }) => {
             // SENSITIVE OPERATION: Interactive password prompt required
             println!("⚠️  Displaying mnemonic requires authentication.");
             let password = prompt_for_password(false, Some("Enter wallet password:"))
@@ -242,10 +249,17 @@ pub async fn run() -> Result<()> {
 
             // Load wallet or generate new one headlessly if it doesn't exist
             let wallet_instance = if !Path::new(&wallet_path).exists() {
-                info!("Wallet file not found at {}. Generating a new one headlessly...", wallet_path);
+                info!(
+                    "Wallet file not found at {}. Generating a new one headlessly...",
+                    wallet_path
+                );
                 let new_wallet = Wallet::new()?;
                 new_wallet.save_to_file(&wallet_path, &password)?;
-                info!("Generated new wallet at {} with address: {}", wallet_path, new_wallet.address());
+                info!(
+                    "Generated new wallet at {} with address: {}",
+                    wallet_path,
+                    new_wallet.address()
+                );
                 node_config.genesis_validator = new_wallet.address();
                 node_config.save(&config)?;
                 info!("Updated genesis_validator in configuration file to match the generated wallet address.");
@@ -445,6 +459,6 @@ pub async fn run() -> Result<()> {
 mod tests {
     #[test]
     fn placeholder() {
-        // Placeholder test to prevent test runner warnings
+        // Reference test to prevent test runner warnings
     }
 }

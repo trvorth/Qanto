@@ -1,0 +1,139 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   QANTOscan Explorer — Dark Future Brand Theme
+   ────────────────────────────────────────────────────────────────────────────
+   Inspired by Qanto's quantum-resistant identity: deep space backgrounds,
+   blue-violet glow accents, clean geometric lines, and micro-interactions.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── CSS Variables ──────────────────────────────────────────────────────── */
+:root {
+  /* Core palette */
+  --qanto-bg-deep: #0a0a14;
+  --qanto-bg-surface: #12122a;
+  --qanto-bg-card: #18183a;
+  --qanto-bg-elevated: #1e1e48;
+
+  /* Accent — Qanto blue-violet */
+  --qanto-accent: #6c5ce7;
+  --qanto-accent-glow: #a78bfa;
+  --qanto-accent-dim: #4a3db5;
+  --qanto-accent-text: #c4b5fd;
+
+  /* Semantic */
+  --qanto-success: #34d399;
+  --qanto-warning: #fbbf24;
+  --qanto-danger: #f87171;
+
+  /* Borders & dividers */
+  --qanto-border: rgba(108, 92, 231, 0.15);
+  --qanto-border-hover: rgba(108, 92, 231, 0.4);
+  --qanto-divider: rgba(255, 255, 255, 0.04);
+
+  /* Text */
+  --qanto-text-primary: #f0f0ff;
+  --qanto-text-secondary: #a0a0c0;
+  --qanto-text-muted: #606080;
+  --qanto-text-dim: #404060;
+
+  /* Glow */
+  --qanto-glow-sm: 0 0 8px rgba(108, 92, 231, 0.3);
+  --qanto-glow-md: 0 0 16px rgba(108, 92, 231, 0.4);
+  --qanto-glow-lg: 0 0 32px rgba(108, 92, 231, 0.25);
+  --qanto-glow-accent: 0 0 12px rgba(167, 139, 250, 0.5);
+
+  /* Typography */
+  --qanto-font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  --qanto-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* Spacing */
+  --qanto-radius-sm: 6px;
+  --qanto-radius-md: 10px;
+  --qanto-radius-lg: 16px;
+}
+
+/* ── Reset & Base ────────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--qanto-font-sans);
+  background: var(--qanto-bg-deep);
+  color: var(--qanto-text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Subtle animated background mesh — quantum field */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 20%, rgba(108, 92, 231, 0.06), transparent),
+    radial-gradient(ellipse 60% 70% at 80% 80%, rgba(167, 139, 250, 0.05), transparent),
+    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(74, 61, 181, 0.04), transparent);
+  pointer-events: none;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--qanto-bg-surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--qanto-accent-dim);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--qanto-accent);
+}
+
+/* ── Typography ──────────────────────────────────────────────────────────── */
+a {
+  color: var(--qanto-accent-text);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+a:hover {
+  color: var(--qanto-accent-glow);
+}
+
+/* ── Keyframes ───────────────────────────────────────────────────────────── */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes scan-line {
+  0% { top: -2px; }
+  100% { top: 100%; }
+}

@@ -41,17 +41,19 @@ use libp2p::request_response::{
 use my_blockchain::qanto_hash;
 use nonzero_ext::nonzero;
 
+use ahash::{AHashMap as HashMap, AHashSet as HashSet};
 use bincode;
 use prometheus::{register_int_counter, IntCounter};
 use prost::Message;
 use qanto_rpc::server::generated as proto;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::env;
 use std::error::Error as StdError;
 use std::fs;
 // (removed) use std::hash::Hash;
+use rand::Rng;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
@@ -64,6 +66,13 @@ use tracing::{error, info, instrument, warn};
 const MAX_MESSAGE_SIZE: usize = 2_000_000;
 const MIN_PEERS_FOR_MESH: usize = 1;
 const DEFAULT_HMAC_SECRET: &str = "qanto_secret_key_for_p2p";
+
+// --- Sprint 15B: Reconnect backoff constants ---
+const RECONNECT_INITIAL_DELAY_SECS: u64 = 5;
+const RECONNECT_MAX_DELAY_SECS: u64 = 300; // 5 minutes cap
+const RECONNECT_MULTIPLIER: f64 = 1.5;
+const RECONNECT_JITTER_FACTOR: f64 = 0.25; // ±25% jitter
+const KEEPALIVE_INTERVAL_SECS: u64 = 30; // WSS keep-alive ping interval
 
 lazy_static::lazy_static! {
     static ref MESSAGES_SENT: IntCounter = register_int_counter!("p2p_messages_sent_total", "Total messages sent").unwrap();
@@ -205,7 +214,9 @@ impl NetworkMessage {
     }
 }
 
-fn convert_internal_tx_to_proto(tx: &crate::transaction::Transaction) -> proto::Transaction {
+pub(crate) fn convert_internal_tx_to_proto(
+    tx: &crate::transaction::Transaction,
+) -> proto::Transaction {
     let inputs = tx
         .inputs
         .iter()
@@ -220,7 +231,7 @@ fn convert_internal_tx_to_proto(tx: &crate::transaction::Transaction) -> proto::
         .iter()
         .map(|o| proto::Output {
             address: o.address.clone(),
-            amount: o.amount as u64,
+            amount: format_monetary_value(o.amount),
             homomorphic_encrypted: Some(proto::HomomorphicEncrypted {
                 ciphertext: o.homomorphic_encrypted.ciphertext.clone(),
                 public_key: o.homomorphic_encrypted.public_key.clone(),
@@ -234,37 +245,50 @@ fn convert_internal_tx_to_proto(tx: &crate::transaction::Transaction) -> proto::
     });
 
     let fee_breakdown = tx.fee_breakdown.as_ref().map(|fb| proto::FeeBreakdown {
-        base_fee: fb.base_fee as u64,
-        complexity_fee: fb.complexity_fee as u64,
-        storage_fee: fb.storage_fee as u64,
-        gas_fee: fb.gas_fee as u64,
-        priority_fee: fb.priority_fee as u64,
+        base_fee: format_monetary_value(fb.base_fee),
+        complexity_fee: format_monetary_value(fb.complexity_fee),
+        storage_fee: format_monetary_value(fb.storage_fee),
+        gas_fee: format_monetary_value(fb.gas_fee),
+        priority_fee: format_monetary_value(fb.priority_fee),
         congestion_multiplier: fb.congestion_multiplier,
-        total_fee: fb.total_fee as u64,
+        total_fee: format_monetary_value(fb.total_fee),
         gas_used: fb.gas_used as u64,
-        gas_price: fb.gas_price as u64,
+        gas_price: format_monetary_value(fb.gas_price),
     });
+
+    let mut metadata: std::collections::HashMap<String, String> = tx
+        .metadata
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    metadata.insert(
+        "transaction_kind".to_string(),
+        format!("{:?}", tx.transaction_kind).to_uppercase(),
+    );
 
     proto::Transaction {
         id: tx.id.clone(),
         sender: tx.sender.clone(),
         receiver: tx.receiver.clone(),
-        amount: tx.amount as u64,
-        fee: tx.fee as u64,
+        amount: format_monetary_value(tx.amount),
+        fee: format_monetary_value(tx.fee),
         gas_limit: tx.gas_limit as u64,
         gas_used: tx.gas_used as u64,
-        gas_price: tx.gas_price as u64,
-        priority_fee: tx.priority_fee as u64,
+        gas_price: format_monetary_value(tx.gas_price),
+        priority_fee: format_monetary_value(tx.priority_fee),
         inputs,
         outputs,
         timestamp: tx.timestamp,
-        metadata: tx.metadata.clone(),
+        metadata,
         signature,
         fee_breakdown,
+        chain_id: tx.chain_id,
     }
 }
 
-fn convert_proto_tx(ptx: proto::Transaction) -> Result<crate::transaction::Transaction, String> {
+pub(crate) fn convert_proto_tx(
+    ptx: proto::Transaction,
+) -> Result<crate::transaction::Transaction, String> {
     let inputs = ptx
         .inputs
         .into_iter()
@@ -277,21 +301,23 @@ fn convert_proto_tx(ptx: proto::Transaction) -> Result<crate::transaction::Trans
     let outputs = ptx
         .outputs
         .into_iter()
-        .map(|o| crate::transaction::Output {
-            address: o.address,
-            amount: o.amount as u128,
-            homomorphic_encrypted: match o.homomorphic_encrypted {
-                Some(he) => crate::types::HomomorphicEncrypted {
-                    ciphertext: he.ciphertext,
-                    public_key: he.public_key,
+        .map(|o| {
+            Ok(crate::transaction::Output {
+                address: o.address,
+                amount: parse_monetary_value("transaction.outputs.amount", &o.amount)?,
+                homomorphic_encrypted: match o.homomorphic_encrypted {
+                    Some(he) => crate::types::HomomorphicEncrypted {
+                        ciphertext: he.ciphertext,
+                        public_key: he.public_key,
+                    },
+                    None => crate::types::HomomorphicEncrypted {
+                        ciphertext: vec![],
+                        public_key: vec![],
+                    },
                 },
-                None => crate::types::HomomorphicEncrypted {
-                    ciphertext: vec![],
-                    public_key: vec![],
-                },
-            },
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, String>>()?;
 
     let signature = match ptx.signature {
         Some(sig) => crate::types::QuantumResistantSignature {
@@ -303,55 +329,93 @@ fn convert_proto_tx(ptx: proto::Transaction) -> Result<crate::transaction::Trans
 
     let fee_breakdown = ptx
         .fee_breakdown
-        .map(|fb| crate::gas_fee_model::FeeBreakdown {
-            base_fee: fb.base_fee as u128,
-            complexity_fee: fb.complexity_fee as u128,
-            storage_fee: fb.storage_fee as u128,
-            gas_fee: fb.gas_fee as u128,
-            priority_fee: fb.priority_fee as u128,
-            congestion_multiplier: fb.congestion_multiplier,
-            total_fee: fb.total_fee as u128,
-            gas_used: fb.gas_used as u128,
-            gas_price: fb.gas_price as u128,
-        });
+        .map(|fb| -> Result<crate::gas_fee_model::FeeBreakdown, String> {
+            Ok(crate::gas_fee_model::FeeBreakdown {
+                base_fee: parse_monetary_value("transaction.fee_breakdown.base_fee", &fb.base_fee)?,
+                complexity_fee: parse_monetary_value(
+                    "transaction.fee_breakdown.complexity_fee",
+                    &fb.complexity_fee,
+                )?,
+                storage_fee: parse_monetary_value(
+                    "transaction.fee_breakdown.storage_fee",
+                    &fb.storage_fee,
+                )?,
+                gas_fee: parse_monetary_value("transaction.fee_breakdown.gas_fee", &fb.gas_fee)?,
+                priority_fee: parse_monetary_value(
+                    "transaction.fee_breakdown.priority_fee",
+                    &fb.priority_fee,
+                )?,
+                congestion_multiplier: fb.congestion_multiplier,
+                total_fee: parse_monetary_value(
+                    "transaction.fee_breakdown.total_fee",
+                    &fb.total_fee,
+                )?,
+                gas_used: fb.gas_used as u128,
+                gas_price: parse_monetary_value(
+                    "transaction.fee_breakdown.gas_price",
+                    &fb.gas_price,
+                )?,
+            })
+        })
+        .transpose()?;
+
+    let mut metadata: HashMap<String, String> = ptx.metadata.into_iter().collect();
+    let transaction_kind = match metadata.get("transaction_kind") {
+        Some(kind_str) => match kind_str.as_str() {
+            "STAKE" => crate::transaction::TransactionKind::Stake,
+            "UNSTAKE" => crate::transaction::TransactionKind::Unstake,
+            "DELEGATE" => crate::transaction::TransactionKind::Delegate,
+            "VOTE" => crate::transaction::TransactionKind::Vote,
+            "PROPOSAL" => crate::transaction::TransactionKind::Proposal,
+            "BRIDGELOCK" => crate::transaction::TransactionKind::BridgeLock,
+            "BRIDGEOBSERVE" => crate::transaction::TransactionKind::BridgeObserve,
+            "BRIDGECLAIM" => crate::transaction::TransactionKind::BridgeClaim,
+            "AIRDROPCLAIM" => crate::transaction::TransactionKind::AirdropClaim,
+            _ => crate::transaction::TransactionKind::Transfer,
+        },
+        None => crate::transaction::TransactionKind::Transfer,
+    };
+    metadata.remove("transaction_kind");
 
     Ok(crate::transaction::Transaction {
         id: ptx.id,
         sender: ptx.sender,
         receiver: ptx.receiver,
-        amount: ptx.amount as u128,
-        fee: ptx.fee as u128,
+        amount: parse_monetary_value("transaction.amount", &ptx.amount)?,
+        fee: parse_monetary_value("transaction.fee", &ptx.fee)?,
         gas_limit: ptx.gas_limit as u128,
         gas_used: ptx.gas_used as u128,
-        gas_price: ptx.gas_price as u128,
-        priority_fee: ptx.priority_fee as u128,
+        gas_price: parse_monetary_value("transaction.gas_price", &ptx.gas_price)?,
+        priority_fee: parse_monetary_value("transaction.priority_fee", &ptx.priority_fee)?,
         inputs,
         outputs,
         timestamp: ptx.timestamp,
-        metadata: ptx.metadata,
+        metadata,
         signature,
         fee_breakdown,
+        transaction_kind,
+        chain_id: ptx.chain_id,
     })
 }
 
 fn convert_internal_utxo_to_proto(u: &crate::types::UTXO) -> proto::Utxo {
     proto::Utxo {
         address: u.address.clone(),
-        amount: u.amount as u64,
+        amount: format_monetary_value(u.amount),
         tx_id: u.tx_id.clone(),
         output_index: u.output_index,
         explorer_link: u.explorer_link.clone(),
     }
 }
 
-fn convert_proto_utxo(u: proto::Utxo) -> crate::types::UTXO {
-    crate::types::UTXO {
+fn convert_proto_utxo(u: proto::Utxo) -> Result<crate::types::UTXO, String> {
+    Ok(crate::types::UTXO {
         address: u.address,
-        amount: u.amount as u128,
+        amount: parse_monetary_value("utxo.amount", &u.amount)?,
         tx_id: u.tx_id,
         output_index: u.output_index,
         explorer_link: u.explorer_link,
-    }
+    })
 }
 
 #[derive(Debug)]
@@ -398,6 +462,54 @@ pub struct P2PConfig<'a> {
     pub peer_cache_path: String,
 }
 
+/// Exponential backoff state for reconnection attempts.
+/// Prevents thundering-herd reconnects when the network is partitioned.
+struct ReconnectBackoff {
+    current_delay_secs: u64,
+    attempt_count: u64,
+}
+
+impl ReconnectBackoff {
+    fn new() -> Self {
+        Self {
+            current_delay_secs: RECONNECT_INITIAL_DELAY_SECS,
+            attempt_count: 0,
+        }
+    }
+
+    /// Returns the next delay with jitter applied, then advances the backoff.
+    fn next_delay(&mut self) -> Duration {
+        let base = self.current_delay_secs as f64;
+        // Apply ±JITTER_FACTOR randomness to avoid synchronized reconnects
+        let jitter_range = base * RECONNECT_JITTER_FACTOR;
+        let jitter = rand::thread_rng().gen_range(-jitter_range..=jitter_range);
+        let delay_secs = (base + jitter).max(1.0) as u64;
+
+        // Advance for next call: multiply and cap
+        self.current_delay_secs =
+            ((base * RECONNECT_MULTIPLIER) as u64).min(RECONNECT_MAX_DELAY_SECS);
+        self.attempt_count += 1;
+
+        info!(
+            "Reconnect backoff: attempt #{}, next delay {}s (base {}s, jitter {:.1}s)",
+            self.attempt_count, delay_secs, self.current_delay_secs, jitter
+        );
+        Duration::from_secs(delay_secs)
+    }
+
+    /// Reset backoff to initial state after a successful connection.
+    fn reset(&mut self) {
+        if self.attempt_count > 0 {
+            info!(
+                "Reconnect backoff reset after {} attempts",
+                self.attempt_count
+            );
+        }
+        self.current_delay_secs = RECONNECT_INITIAL_DELAY_SECS;
+        self.attempt_count = 0;
+    }
+}
+
 pub struct P2PServer {
     swarm: Swarm<NodeBehaviour>,
     topics: Vec<IdentTopic>,
@@ -407,6 +519,12 @@ pub struct P2PServer {
     p2p_command_sender: mpsc::Sender<P2PCommand>,
     dag: Arc<QantoDAG>,
     utxos: Arc<RwLock<HashMap<String, UTXO>>>,
+    peer_sessions: HashMap<(PeerId, libp2p::swarm::ConnectionId), std::time::Instant>,
+    unique_peers_seen: HashMap<PeerId, std::time::Instant>,
+    closed_session_durations: Vec<(u64, std::time::Instant)>,
+    disconnect_timestamps: Vec<std::time::Instant>,
+    reconnect_backoff: ReconnectBackoff,
+    pending_block_broadcasts: VecDeque<QantoBlock>,
 }
 
 #[derive(Clone)]
@@ -486,10 +604,7 @@ impl P2PServer {
             .map_err(|e| P2PError::SwarmBuild(format!("TCP error: {:?}", e)))?
             .with_dns()
             .map_err(|e| P2PError::SwarmBuild(format!("DNS error: {:?}", e)))?
-            .with_websocket(
-                noise::Config::new,
-                yamux::Config::default,
-            )
+            .with_websocket(noise::Config::new, yamux::Config::default)
             .await
             .map_err(|e| P2PError::SwarmBuild(format!("Websocket error: {:?}", e)))?
             .with_behaviour(|_key| Ok(behaviour))
@@ -570,6 +685,12 @@ impl P2PServer {
             p2p_command_sender,
             dag: config.dag.clone(),
             utxos: config.utxos.clone(),
+            peer_sessions: HashMap::new(),
+            unique_peers_seen: HashMap::new(),
+            closed_session_durations: Vec::new(),
+            disconnect_timestamps: Vec::new(),
+            reconnect_backoff: ReconnectBackoff::new(),
+            pending_block_broadcasts: VecDeque::new(),
         })
     }
 
@@ -583,6 +704,15 @@ impl P2PServer {
             let hash_result = qanto_hash(&message.data);
             gossipsub::MessageId::from(hex::encode(hash_result.as_bytes()))
         };
+
+        info!(
+            "P2P Gossipsub config: heartbeat_interval={}ms, mesh_n_low={}, mesh_n={}, mesh_n_high={}, mesh_outbound_min={}",
+            p2p_config.heartbeat_interval,
+            p2p_config.mesh_n_low,
+            p2p_config.mesh_n,
+            p2p_config.mesh_n_high,
+            p2p_config.mesh_outbound_min
+        );
 
         let gossipsub_config = gossipsub::ConfigBuilder::default()
             .heartbeat_interval(Duration::from_millis(p2p_config.heartbeat_interval))
@@ -661,6 +791,10 @@ impl P2PServer {
     pub async fn run(&mut self, mut rx: mpsc::Receiver<P2PCommand>) -> Result<(), P2PError> {
         let mut mesh_check_ticker = interval(Duration::from_secs(60));
         let mut peer_cache_ticker = interval(Duration::from_secs(300));
+        // Sprint 15B: WSS keep-alive ticker — sends a Kademlia closest-peers
+        // query every KEEPALIVE_INTERVAL_SECS to exercise TCP/WSS connections
+        // and simultaneously discover new peers.
+        let mut keepalive_ticker = interval(Duration::from_secs(KEEPALIVE_INTERVAL_SECS));
         let blacklist = Arc::new(RwLock::new(HashSet::new()));
 
         let rate_limiters = GossipRateLimiters {
@@ -698,11 +832,30 @@ impl P2PServer {
                         error!("Failed to process internal P2P command: {e}");
                     }
                 }
-                _ = mesh_check_ticker.tick() => { self.check_mesh_peers().await; }
+                _ = mesh_check_ticker.tick() => {
+                    self.check_mesh_peers().await;
+                    self.update_peer_metrics().await;
+                }
                 _ = peer_cache_ticker.tick() => {
                     if let Err(e) = self.save_peers_to_cache().await {
                         warn!("Failed to save peer cache: {e}");
                     }
+                }
+                // Sprint 15B: WSS keep-alive — query our own peer ID's
+                // closest neighbours to send traffic on idle WSS/TCP
+                // connections, preventing proxy/NAT/LB timeouts.
+                _ = keepalive_ticker.tick() => {
+                    let local_peer_id = *self.swarm.local_peer_id();
+                    let _query_id = self
+                        .swarm
+                        .behaviour_mut()
+                        .kademlia
+                        .get_closest_peers(local_peer_id);
+                    let connected_count = self.swarm.connected_peers().count();
+                    info!(
+                        "WSS keep-alive: Kademlia closest-peers query sent ({} connected peers)",
+                        connected_count
+                    );
                 }
             }
         }
@@ -717,8 +870,25 @@ impl P2PServer {
                     self.swarm.local_peer_id()
                 );
             }
-            SwarmEvent::ConnectionEstablished { peer_id, .. } => {
-                info!("Connection established with peer: {peer_id}");
+            SwarmEvent::ConnectionEstablished {
+                peer_id,
+                connection_id,
+                ..
+            } => {
+                info!("Connection established with peer: {peer_id} (connection: {connection_id})");
+                self.swarm
+                    .behaviour_mut()
+                    .gossipsub
+                    .add_explicit_peer(&peer_id);
+                self.peer_sessions
+                    .insert((peer_id, connection_id), std::time::Instant::now());
+                self.unique_peers_seen
+                    .entry(peer_id)
+                    .or_insert_with(std::time::Instant::now);
+                // Sprint 15B: Reset reconnect backoff on successful connection
+                self.reconnect_backoff.reset();
+                self.update_peer_metrics().await;
+
                 // Log current mesh status after connection
                 for topic in &self.topics {
                     let mesh_peers: Vec<_> = self
@@ -734,6 +904,28 @@ impl P2PServer {
                         mesh_peers.len()
                     );
                 }
+
+                if let Err(e) = self.flush_pending_block_broadcasts().await {
+                    error!("Failed to flush deferred block broadcasts after peer connection: {e}");
+                }
+            }
+            SwarmEvent::ConnectionClosed {
+                peer_id,
+                connection_id,
+                ..
+            } => {
+                info!("Connection closed with peer: {peer_id} (connection: {connection_id})");
+                self.swarm
+                    .behaviour_mut()
+                    .gossipsub
+                    .remove_explicit_peer(&peer_id);
+                if let Some(start_time) = self.peer_sessions.remove(&(peer_id, connection_id)) {
+                    let duration = start_time.elapsed().as_secs();
+                    self.closed_session_durations
+                        .push((duration, std::time::Instant::now()));
+                }
+                self.disconnect_timestamps.push(std::time::Instant::now());
+                self.update_peer_metrics().await;
             }
             SwarmEvent::Behaviour(NodeBehaviourEvent::Gossipsub(gossipsub::Event::Message {
                 propagation_source,
@@ -761,10 +953,30 @@ impl P2PServer {
             SwarmEvent::Behaviour(NodeBehaviourEvent::Mdns(MdnsEvent::Discovered(list))) => {
                 for (peer_id, multiaddr) in list {
                     info!("mDNS discovered peer: {} at {}", peer_id, multiaddr);
+                    let multiaddr_str = multiaddr.to_string();
                     self.swarm
                         .behaviour_mut()
                         .kademlia
-                        .add_address(&peer_id, multiaddr);
+                        .add_address(&peer_id, multiaddr.clone());
+
+                    // Prefer dialing real Qanto node websocket endpoints discovered via mDNS.
+                    // This avoids sending QDS traffic only to the ephemeral p2p_mesh identities.
+                    if multiaddr_str.contains("/ws/p2p/") {
+                        match self.swarm.dial(multiaddr.clone()) {
+                            Ok(()) => {
+                                info!(
+                                    "Dialing mDNS-discovered Qanto node peer {} at {}",
+                                    peer_id, multiaddr
+                                );
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "Failed to dial mDNS-discovered Qanto node peer {} at {}: {}",
+                                    peer_id, multiaddr, e
+                                );
+                            }
+                        }
+                    }
                 }
             }
             SwarmEvent::Behaviour(NodeBehaviourEvent::Kademlia(
@@ -804,10 +1016,68 @@ impl P2PServer {
                                     warn!("Failed to send QDS response: {:?}", e);
                                 }
                             }
+                            QDSRequest::PushBlock { block } => {
+                                let block_id = block.id.clone();
+                                let block_height = block.height;
+                                let response = match self
+                                    .p2p_command_sender
+                                    .send(P2PCommand::BroadcastBlock(*block))
+                                    .await
+                                {
+                                    Ok(_) => {
+                                        info!(
+                                            "Queued direct block {} at height {} from peer {} for DAG processing",
+                                            block_id, block_height, peer
+                                        );
+                                        QDSResponse::Ack {
+                                            accepted: true,
+                                            detail: format!(
+                                                "queued block {} at height {}",
+                                                block_id, block_height
+                                            ),
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!(
+                                            "Failed to queue direct block {} at height {} from peer {}: {}",
+                                            block_id, block_height, peer, e
+                                        );
+                                        QDSResponse::Ack {
+                                            accepted: false,
+                                            detail: format!(
+                                                "failed to queue block {} at height {}: {}",
+                                                block_id, block_height, e
+                                            ),
+                                        }
+                                    }
+                                };
+                                if let Err(e) = self
+                                    .swarm
+                                    .behaviour_mut()
+                                    .qds
+                                    .send_response(channel, response)
+                                {
+                                    warn!("Failed to send QDS block ack: {:?}", e);
+                                }
+                            }
                         },
-                        RequestResponseMessage::Response { response, .. } => {
-                            info!("Received QDS response from {}: {:?}", peer, response);
-                        }
+                        RequestResponseMessage::Response { response, .. } => match response {
+                            QDSResponse::Balance {
+                                address,
+                                confirmed_balance,
+                            } => {
+                                info!(
+                                        "Received QDS balance response from {}: address={} confirmed_balance={}",
+                                        peer, address, confirmed_balance
+                                    );
+                            }
+                            QDSResponse::Ack { accepted, detail } => {
+                                info!(
+                                    "Received QDS ack from {}: accepted={} detail={}",
+                                    peer, accepted, detail
+                                );
+                            }
+                        },
                     },
                     RequestResponseEvent::InboundFailure { peer, error, .. } => {
                         warn!("QDS inbound failure from {}: {:?}", peer, error);
@@ -822,6 +1092,53 @@ impl P2PServer {
             }
             _ => {}
         }
+    }
+
+    async fn update_peer_metrics(&mut self) {
+        let now = std::time::Instant::now();
+        let limit_24h = std::time::Duration::from_secs(86400);
+
+        // Prune entries older than 24h
+        self.unique_peers_seen
+            .retain(|_, first_seen| now.duration_since(*first_seen) < limit_24h);
+        self.closed_session_durations
+            .retain(|(_, end_time)| now.duration_since(*end_time) < limit_24h);
+        self.disconnect_timestamps
+            .retain(|ts| now.duration_since(*ts) < limit_24h);
+
+        let unique_peers_count = self.unique_peers_seen.len() as u64;
+        let disconnects_count = self.disconnect_timestamps.len() as u64;
+
+        // Calculate percentiles (p50 and p95)
+        let mut durations: Vec<u64> = self
+            .closed_session_durations
+            .iter()
+            .map(|(d, _)| *d)
+            .collect();
+        let (p50, p95) = if durations.is_empty() {
+            (0, 0)
+        } else {
+            durations.sort_unstable();
+            let len = durations.len();
+            let p50_idx = len / 2;
+            let p95_idx = ((len * 95) / 100).min(len - 1);
+            (durations[p50_idx], durations[p95_idx])
+        };
+
+        // Write directly to global metrics
+        let metrics = crate::metrics::get_global_metrics();
+        metrics
+            .unique_peers_seen_24h
+            .store(unique_peers_count, std::sync::atomic::Ordering::Relaxed);
+        metrics
+            .peer_disconnects_24h
+            .store(disconnects_count, std::sync::atomic::Ordering::Relaxed);
+        metrics
+            .peer_session_duration_p50
+            .store(p50, std::sync::atomic::Ordering::Relaxed);
+        metrics
+            .peer_session_duration_p95
+            .store(p95, std::sync::atomic::Ordering::Relaxed);
     }
 
     async fn save_peers_to_cache(&mut self) -> Result<(), P2PError> {
@@ -847,6 +1164,29 @@ impl P2PServer {
     async fn process_internal_command(&mut self, command: P2PCommand) -> Result<(), P2PError> {
         match command {
             P2PCommand::BroadcastBlock(block) => {
+                let mesh_peer_count = self.block_topic_mesh_peer_count();
+                let connected_peers = self.connected_peer_ids();
+                if mesh_peer_count < MIN_PEERS_FOR_MESH && connected_peers.is_empty() {
+                    if !self
+                        .pending_block_broadcasts
+                        .iter()
+                        .any(|queued| queued.id == block.id)
+                    {
+                        warn!(
+                            "Queueing block {} for deferred broadcast because the block topic has no mesh peers yet",
+                            block.id
+                        );
+                        self.pending_block_broadcasts.push_back(block);
+                    }
+                    return Ok(());
+                }
+
+                self.flush_pending_block_broadcasts().await?;
+                if mesh_peer_count < MIN_PEERS_FOR_MESH {
+                    return self
+                        .send_block_directly_to_peers(&connected_peers, &block)
+                        .await;
+                }
                 let mut log_msg = String::with_capacity(6 + block.id.len());
                 log_msg.push_str("block ");
                 log_msg.push_str(&block.id);
@@ -907,6 +1247,9 @@ impl P2PServer {
                 let connected_peers = self.get_connected_peers();
                 let _ = response_sender.send(connected_peers);
                 Ok(())
+            }
+            P2PCommand::SendBlockToOnePeer { peer_id, block } => {
+                self.send_block_directly_to_peers(&[peer_id], &block).await
             }
             _ => Ok(()),
         }
@@ -1100,7 +1443,13 @@ impl P2PServer {
                         };
                         let mut utxos_map: HashMap<String, UTXO> = HashMap::new();
                         for pu in state.utxos.into_iter() {
-                            let u = convert_proto_utxo(pu);
+                            let u = match convert_proto_utxo(pu) {
+                                Ok(utxo) => utxo,
+                                Err(e) => {
+                                    error!("Failed to convert StateSnapshot UTXO: {}", e);
+                                    return;
+                                }
+                            };
                             let key = format!("{}_{}", u.tx_id, u.output_index);
                             utxos_map.insert(key, u);
                         }
@@ -1169,15 +1518,122 @@ impl P2PServer {
             );
             if mesh_peers.len() < MIN_PEERS_FOR_MESH {
                 warn!(
-                    "Insufficient mesh peers for topic {}, attempting reconnection",
+                    "Insufficient mesh peers for topic {}, attempting reconnection with backoff",
                     topic_instance
                 );
-                self.reconnect_to_initial_peers().await;
+                self.reconnect_with_backoff().await;
                 break;
             }
         }
+
+        if let Err(e) = self.flush_pending_block_broadcasts().await {
+            error!("Failed to flush deferred block broadcasts during mesh check: {e}");
+        }
     }
 
+    fn block_topic_mesh_peer_count(&self) -> usize {
+        self.topics
+            .first()
+            .map(|topic| {
+                self.swarm
+                    .behaviour()
+                    .gossipsub
+                    .mesh_peers(&topic.hash())
+                    .count()
+            })
+            .unwrap_or(0)
+    }
+
+    fn block_topic_publish_ready_peer_count(&self) -> usize {
+        self.block_topic_mesh_peer_count()
+            .max(self.swarm.connected_peers().count())
+    }
+
+    fn connected_peer_ids(&self) -> Vec<PeerId> {
+        self.swarm.connected_peers().cloned().collect()
+    }
+
+    async fn send_block_directly_to_peers(
+        &mut self,
+        peer_ids: &[PeerId],
+        block: &QantoBlock,
+    ) -> Result<(), P2PError> {
+        if peer_ids.is_empty() {
+            return Ok(());
+        }
+
+        for peer_id in peer_ids {
+            self.swarm.behaviour_mut().qds.send_request(
+                peer_id,
+                QDSRequest::PushBlock {
+                    block: Box::new(block.clone()),
+                },
+            );
+            info!(
+                "Directly sent block {} at height {} to peer {} over QDS",
+                block.id, block.height, peer_id
+            );
+        }
+
+        Ok(())
+    }
+
+    async fn flush_pending_block_broadcasts(&mut self) -> Result<(), P2PError> {
+        let mesh_peer_count = self.block_topic_mesh_peer_count();
+        let connected_peers = self.connected_peer_ids();
+        if self.pending_block_broadcasts.is_empty()
+            || (mesh_peer_count < MIN_PEERS_FOR_MESH && connected_peers.is_empty())
+        {
+            return Ok(());
+        }
+
+        info!(
+            "Flushing {} deferred block broadcasts now that the block topic has {} publish-ready peers",
+            self.pending_block_broadcasts.len(),
+            self.block_topic_publish_ready_peer_count()
+        );
+
+        while let Some(block) = self.pending_block_broadcasts.pop_front() {
+            if mesh_peer_count >= MIN_PEERS_FOR_MESH {
+                let mut log_msg = String::with_capacity(13 + block.id.len());
+                log_msg.push_str("queued block ");
+                log_msg.push_str(&block.id);
+                self.broadcast_message(NetworkMessageData::Block(block), 0, &log_msg)
+                    .await?;
+            } else {
+                self.send_block_directly_to_peers(&connected_peers, &block)
+                    .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Sprint 15B: Reconnect with exponential backoff + jitter.
+    /// Also triggers Kademlia bootstrap for peer rediscovery.
+    async fn reconnect_with_backoff(&mut self) {
+        let delay = self.reconnect_backoff.next_delay();
+        info!(
+            "Reconnect backoff: waiting {}s before dialing {} initial peers",
+            delay.as_secs(),
+            self.initial_peers_config.len()
+        );
+        tokio::time::sleep(delay).await;
+
+        // Re-dial configured bootstrap/initial peers
+        Self::dial_initial_peers(&mut self.swarm, &self.initial_peers_config).await;
+
+        // Sprint 15B: Trigger Kademlia bootstrap to rediscover peers
+        // from the DHT routing table, not just hardcoded initial peers.
+        if let Err(e) = self.swarm.behaviour_mut().kademlia.bootstrap() {
+            warn!("Kademlia bootstrap failed during reconnect: {e:?}");
+        } else {
+            info!("Kademlia bootstrap initiated for peer rediscovery");
+        }
+    }
+
+    /// Legacy reconnect (kept for direct calls that don't need backoff).
+    #[allow(dead_code)]
     async fn reconnect_to_initial_peers(&mut self) {
         info!("Attempting to reconnect to initial peers from configuration.");
         Self::dial_initial_peers(&mut self.swarm, &self.initial_peers_config).await;
@@ -1222,84 +1678,7 @@ impl P2PServer {
                 )
             }
             NetworkMessageData::Block(ref b) => {
-                // Minimal block conversion using rpc_backend's logic mirrored here
-                let transactions = b
-                    .transactions
-                    .iter()
-                    .map(convert_internal_tx_to_proto)
-                    .collect::<Vec<_>>();
-                let cross_chain_references = b
-                    .cross_chain_references
-                    .iter()
-                    .map(|(cid, bid)| proto::CrossChainReference {
-                        chain_id: *cid,
-                        block_id: bid.clone(),
-                    })
-                    .collect::<Vec<_>>();
-                let cross_chain_swaps = vec![];
-                let signature = Some(proto::QuantumResistantSignature {
-                    signer_public_key: b.signature.signer_public_key.clone(),
-                    signature: b.signature.signature.clone(),
-                });
-                let homomorphic_encrypted = b
-                    .homomorphic_encrypted
-                    .iter()
-                    .map(|he| proto::HomomorphicEncrypted {
-                        ciphertext: he.ciphertext.clone(),
-                        public_key: he.public_key.clone(),
-                    })
-                    .collect::<Vec<_>>();
-                let smart_contracts = b
-                    .smart_contracts
-                    .iter()
-                    .map(|sc| proto::SmartContract {
-                        contract_id: sc.contract_id.clone(),
-                        code: sc.code.clone(),
-                        storage: sc.storage.clone(),
-                        owner: sc.owner.clone(),
-                        gas_balance: sc.gas_balance as u64,
-                    })
-                    .collect::<Vec<_>>();
-                let carbon_credentials = b
-                    .carbon_credentials
-                    .iter()
-                    .map(|cc| proto::CarbonOffsetCredential {
-                        id: cc.id.clone(),
-                        issuer_id: cc.issuer_id.clone(),
-                        beneficiary_node: cc.beneficiary_node.clone(),
-                        tonnes_co2_sequestered: (cc.tonnes_co2_sequestered as f64) / crate::Q_SCALE as f64,
-                        project_id: cc.project_id.clone(),
-                        vintage_year: cc.vintage_year,
-                        verification_signature: cc.verification_signature.clone(),
-                        additionality_proof_hash: cc.additionality_proof_hash.clone(),
-                        issuer_reputation_score: (cc.issuer_reputation_score as f64) / crate::Q_SCALE as f64,
-                        geospatial_consistency_score: (cc.geospatial_consistency_score as f64) / crate::Q_SCALE as f64,
-                    })
-                    .collect::<Vec<_>>();
-                let pb = proto::QantoBlock {
-                    chain_id: b.chain_id,
-                    id: b.id.clone(),
-                    parents: b.parents.clone(),
-                    transactions,
-                    difficulty: b.difficulty as f64,
-                    validator: b.validator.clone(),
-                    miner: b.miner.clone(),
-                    nonce: b.nonce,
-                    timestamp: b.timestamp,
-                    height: b.height,
-                    reward: b.reward as u64,
-                    effort: b.effort as u64,
-                    cross_chain_references,
-                    cross_chain_swaps,
-                    merkle_root: b.merkle_root.clone(),
-                    signature,
-                    homomorphic_encrypted,
-                    smart_contracts,
-                    carbon_credentials,
-                    epoch: b.epoch,
-                    finality_proof: b.finality_proof.clone(),
-                    reservation_miner_id: b.reservation_miner_id.clone(),
-                };
+                let pb = convert_internal_block_to_proto(b);
                 (proto::P2pPayloadType::Block as i32, pb.encode_to_vec())
             }
             NetworkMessageData::CarbonOffsetCredential(ref cc) => {
@@ -1307,13 +1686,16 @@ impl P2PServer {
                     id: cc.id.clone(),
                     issuer_id: cc.issuer_id.clone(),
                     beneficiary_node: cc.beneficiary_node.clone(),
-                    tonnes_co2_sequestered: (cc.tonnes_co2_sequestered as f64) / crate::Q_SCALE as f64,
+                    tonnes_co2_sequestered: (cc.tonnes_co2_sequestered as f64)
+                        / crate::Q_SCALE as f64,
                     project_id: cc.project_id.clone(),
                     vintage_year: cc.vintage_year,
                     verification_signature: cc.verification_signature.clone(),
                     additionality_proof_hash: cc.additionality_proof_hash.clone(),
-                    issuer_reputation_score: (cc.issuer_reputation_score as f64) / crate::Q_SCALE as f64,
-                    geospatial_consistency_score: (cc.geospatial_consistency_score as f64) / crate::Q_SCALE as f64,
+                    issuer_reputation_score: (cc.issuer_reputation_score as f64)
+                        / crate::Q_SCALE as f64,
+                    geospatial_consistency_score: (cc.geospatial_consistency_score as f64)
+                        / crate::Q_SCALE as f64,
                 };
                 (proto::P2pPayloadType::Credential as i32, pc.encode_to_vec())
             }
@@ -1329,85 +1711,7 @@ impl P2PServer {
             NetworkMessageData::State(ref blocks_map, ref utxos_map) => {
                 let blocks = blocks_map
                     .values()
-                    .map(|b| {
-                        let transactions = b
-                            .transactions
-                            .iter()
-                            .map(convert_internal_tx_to_proto)
-                            .collect::<Vec<_>>();
-                        let cross_chain_references = b
-                            .cross_chain_references
-                            .iter()
-                            .map(|(cid, bid)| proto::CrossChainReference {
-                                chain_id: *cid,
-                                block_id: bid.clone(),
-                            })
-                            .collect::<Vec<_>>();
-                        let cross_chain_swaps = vec![];
-                        let signature = Some(proto::QuantumResistantSignature {
-                            signer_public_key: b.signature.signer_public_key.clone(),
-                            signature: b.signature.signature.clone(),
-                        });
-                        let homomorphic_encrypted = b
-                            .homomorphic_encrypted
-                            .iter()
-                            .map(|he| proto::HomomorphicEncrypted {
-                                ciphertext: he.ciphertext.clone(),
-                                public_key: he.public_key.clone(),
-                            })
-                            .collect::<Vec<_>>();
-                        let smart_contracts = b
-                            .smart_contracts
-                            .iter()
-                            .map(|sc| proto::SmartContract {
-                                contract_id: sc.contract_id.clone(),
-                                code: sc.code.clone(),
-                                storage: sc.storage.clone(),
-                                owner: sc.owner.clone(),
-                                gas_balance: sc.gas_balance as u64,
-                            })
-                            .collect::<Vec<_>>();
-                        let carbon_credentials = b
-                            .carbon_credentials
-                            .iter()
-                            .map(|cc| proto::CarbonOffsetCredential {
-                                id: cc.id.clone(),
-                                issuer_id: cc.issuer_id.clone(),
-                                beneficiary_node: cc.beneficiary_node.clone(),
-                                tonnes_co2_sequestered: cc.tonnes_co2_sequestered as f64,
-                                project_id: cc.project_id.clone(),
-                                vintage_year: cc.vintage_year,
-                                verification_signature: cc.verification_signature.clone(),
-                                additionality_proof_hash: cc.additionality_proof_hash.clone(),
-                                issuer_reputation_score: cc.issuer_reputation_score as f64,
-                                geospatial_consistency_score: cc.geospatial_consistency_score as f64,
-                            })
-                            .collect::<Vec<_>>();
-                        proto::QantoBlock {
-                            chain_id: b.chain_id,
-                            id: b.id.clone(),
-                            parents: b.parents.clone(),
-                            transactions,
-                            difficulty: b.difficulty as f64,
-                            validator: b.validator.clone(),
-                            miner: b.miner.clone(),
-                            nonce: b.nonce,
-                            timestamp: b.timestamp,
-                            height: b.height,
-                            reward: b.reward as u64,
-                            effort: b.effort as u64,
-                            cross_chain_references,
-                            cross_chain_swaps,
-                            merkle_root: b.merkle_root.clone(),
-                            signature,
-                            homomorphic_encrypted,
-                            smart_contracts,
-                            carbon_credentials,
-                            epoch: b.epoch,
-                            finality_proof: b.finality_proof.clone(),
-                            reservation_miner_id: b.reservation_miner_id.clone(),
-                        }
-                    })
+                    .map(convert_internal_block_to_proto)
                     .collect::<Vec<_>>();
                 let utxos = utxos_map
                     .values()
@@ -1461,7 +1765,122 @@ impl P2PServer {
     }
 }
 
-fn convert_proto_block(pb: proto::QantoBlock) -> Result<crate::qantodag::QantoBlock, String> {
+pub(crate) fn convert_internal_block_to_proto(
+    b: &crate::qantodag::QantoBlock,
+) -> proto::QantoBlock {
+    let transactions = b
+        .transactions
+        .iter()
+        .map(convert_internal_tx_to_proto)
+        .collect::<Vec<_>>();
+
+    let cross_chain_references = b
+        .cross_chain_references
+        .iter()
+        .map(|(cid, bid)| proto::CrossChainReference {
+            chain_id: *cid,
+            block_id: bid.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    let cross_chain_swaps = b
+        .cross_chain_swaps
+        .iter()
+        .map(|s| proto::CrossChainSwap {
+            swap_id: s.swap_id.clone(),
+            source_chain: s.source_chain,
+            target_chain: s.target_chain,
+            amount: format_monetary_value(s.amount),
+            initiator: s.initiator.clone(),
+            responder: s.responder.clone(),
+            timelock: s.timelock,
+            state: match s.state {
+                crate::qantodag::SwapState::Initiated => proto::SwapState::Initiated as i32,
+                crate::qantodag::SwapState::Redeemed => proto::SwapState::Redeemed as i32,
+                crate::qantodag::SwapState::Refunded => proto::SwapState::Refunded as i32,
+            },
+            secret_hash: s.secret_hash.clone(),
+            secret: s.secret.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    let signature = Some(proto::QuantumResistantSignature {
+        signer_public_key: b.signature.signer_public_key.clone(),
+        signature: b.signature.signature.clone(),
+    });
+
+    let homomorphic_encrypted = b
+        .homomorphic_encrypted
+        .iter()
+        .map(|he| proto::HomomorphicEncrypted {
+            ciphertext: he.ciphertext.clone(),
+            public_key: he.public_key.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    let smart_contracts = b
+        .smart_contracts
+        .iter()
+        .map(|sc| proto::SmartContract {
+            contract_id: sc.contract_id.clone(),
+            code: sc.code.clone(),
+            storage: sc
+                .storage
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+            owner: sc.owner.clone(),
+            gas_balance: format_monetary_value(sc.gas_balance),
+        })
+        .collect::<Vec<_>>();
+
+    let carbon_credentials = b
+        .carbon_credentials
+        .iter()
+        .map(|cc| proto::CarbonOffsetCredential {
+            id: cc.id.clone(),
+            issuer_id: cc.issuer_id.clone(),
+            beneficiary_node: cc.beneficiary_node.clone(),
+            tonnes_co2_sequestered: (cc.tonnes_co2_sequestered as f64) / crate::Q_SCALE as f64,
+            project_id: cc.project_id.clone(),
+            vintage_year: cc.vintage_year,
+            verification_signature: cc.verification_signature.clone(),
+            additionality_proof_hash: cc.additionality_proof_hash.clone(),
+            issuer_reputation_score: (cc.issuer_reputation_score as f64) / crate::Q_SCALE as f64,
+            geospatial_consistency_score: (cc.geospatial_consistency_score as f64)
+                / crate::Q_SCALE as f64,
+        })
+        .collect::<Vec<_>>();
+
+    proto::QantoBlock {
+        chain_id: b.chain_id,
+        id: b.id.clone(),
+        parents: b.parents.clone(),
+        transactions,
+        difficulty: b.difficulty as f64,
+        validator: b.validator.clone(),
+        miner: b.miner.clone(),
+        nonce: b.nonce,
+        timestamp: b.timestamp,
+        height: b.height,
+        reward: format_monetary_value(b.reward),
+        effort: b.effort as u64,
+        cross_chain_references,
+        cross_chain_swaps,
+        merkle_root: b.merkle_root.clone(),
+        signature,
+        homomorphic_encrypted,
+        smart_contracts,
+        carbon_credentials,
+        epoch: b.epoch,
+        finality_proof: b.finality_proof.clone(),
+        reservation_miner_id: b.reservation_miner_id.clone(),
+    }
+}
+
+pub(crate) fn convert_proto_block(
+    pb: proto::QantoBlock,
+) -> Result<crate::qantodag::QantoBlock, String> {
     use crate::qantodag::{CrossChainSwap, SmartContract, SwapState};
     use crate::types::{HomomorphicEncrypted, QuantumResistantSignature};
 
@@ -1494,7 +1913,7 @@ fn convert_proto_block(pb: proto::QantoBlock) -> Result<crate::qantodag::QantoBl
                 swap_id: s.swap_id,
                 source_chain: s.source_chain,
                 target_chain: s.target_chain,
-                amount: s.amount as u128,
+                amount: parse_monetary_value("block.cross_chain_swaps.amount", &s.amount)?,
                 initiator: s.initiator,
                 responder: s.responder,
                 timelock: s.timelock,
@@ -1528,14 +1947,19 @@ fn convert_proto_block(pb: proto::QantoBlock) -> Result<crate::qantodag::QantoBl
     let smart_contracts = pb
         .smart_contracts
         .into_iter()
-        .map(|sc| SmartContract {
-            contract_id: sc.contract_id,
-            code: sc.code,
-            storage: sc.storage,
-            owner: sc.owner,
-            gas_balance: sc.gas_balance as u128,
+        .map(|sc| {
+            Ok(SmartContract {
+                contract_id: sc.contract_id,
+                code: sc.code,
+                storage: sc.storage.into_iter().collect(),
+                owner: sc.owner,
+                gas_balance: parse_monetary_value(
+                    "block.smart_contracts.gas_balance",
+                    &sc.gas_balance,
+                )?,
+            })
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, String>>()?;
 
     // Carbon credentials
     let carbon_credentials = pb
@@ -1555,7 +1979,7 @@ fn convert_proto_block(pb: proto::QantoBlock) -> Result<crate::qantodag::QantoBl
         nonce: pb.nonce,
         timestamp: pb.timestamp,
         height: pb.height,
-        reward: pb.reward as u128,
+        reward: parse_monetary_value("block.reward", &pb.reward)?,
         effort: pb.effort as u128,
         cross_chain_references,
         cross_chain_swaps,
@@ -1568,6 +1992,16 @@ fn convert_proto_block(pb: proto::QantoBlock) -> Result<crate::qantodag::QantoBl
         reservation_miner_id: pb.reservation_miner_id,
         finality_proof: pb.finality_proof,
     })
+}
+
+fn format_monetary_value(value: u128) -> String {
+    value.to_string()
+}
+
+fn parse_monetary_value(field: &str, value: &str) -> Result<u128, String> {
+    value
+        .parse::<u128>()
+        .map_err(|err| format!("Invalid monetary value for {field}: '{value}' ({err})"))
 }
 
 fn convert_proto_credential(
@@ -1583,19 +2017,20 @@ fn convert_proto_credential(
         verification_signature: pc.verification_signature,
         additionality_proof_hash: pc.additionality_proof_hash,
         issuer_reputation_score: (pc.issuer_reputation_score * crate::Q_SCALE as f64) as u64,
-        geospatial_consistency_score: (pc.geospatial_consistency_score * crate::Q_SCALE as f64) as u64,
+        geospatial_consistency_score: (pc.geospatial_consistency_score * crate::Q_SCALE as f64)
+            as u64,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ahash::AHashSet as HashSet;
     use libp2p::gossipsub::IdentTopic;
     use libp2p::{gossipsub, identity, PeerId};
     use prost::Message;
     use qanto_rpc::server::generated as proto;
     use serial_test::serial;
-    use std::collections::HashSet;
     use std::sync::Arc;
     use tokio::sync::mpsc;
 
@@ -1889,5 +2324,40 @@ mod tests {
         } else {
             std::env::remove_var("HMAC_SECRET");
         }
+    }
+
+    #[test]
+    fn transaction_proto_monetary_fields_round_trip_as_strings() {
+        let mut tx = crate::transaction::Transaction::new_dummy();
+        let large_value = (u64::MAX as u128) + 123_456_789;
+        tx.amount = large_value;
+        tx.fee = large_value + 1;
+        tx.gas_price = large_value + 2;
+        tx.priority_fee = large_value + 3;
+        tx.outputs[0].amount = large_value + 4;
+
+        let proto_tx = convert_internal_tx_to_proto(&tx);
+        assert_eq!(proto_tx.amount, large_value.to_string());
+        assert_eq!(proto_tx.fee, (large_value + 1).to_string());
+        assert_eq!(proto_tx.gas_price, (large_value + 2).to_string());
+        assert_eq!(proto_tx.priority_fee, (large_value + 3).to_string());
+        assert_eq!(proto_tx.outputs[0].amount, (large_value + 4).to_string());
+
+        let decoded = convert_proto_tx(proto_tx).expect("transaction should decode");
+        assert_eq!(decoded.amount, large_value);
+        assert_eq!(decoded.fee, large_value + 1);
+        assert_eq!(decoded.gas_price, large_value + 2);
+        assert_eq!(decoded.priority_fee, large_value + 3);
+        assert_eq!(decoded.outputs[0].amount, large_value + 4);
+    }
+
+    #[test]
+    fn invalid_transaction_amount_string_is_rejected() {
+        let mut proto_tx =
+            convert_internal_tx_to_proto(&crate::transaction::Transaction::new_dummy());
+        proto_tx.amount = "not-a-number".to_string();
+
+        let err = convert_proto_tx(proto_tx).expect_err("invalid amount should fail");
+        assert!(err.contains("transaction.amount"));
     }
 }

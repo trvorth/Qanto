@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { useAccount, useWriteContract, useReadContract } from 'wagmi';
+import { useAccount, useSendTransaction } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { formatEther } from 'viem';
+import { useQuery } from '@tanstack/react-query';
+import { request, gql } from 'graphql-request';
 
 const TGE_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000009';
+const GRAPHQL_ENDPOINT = 'https://trvorth-qanto-testnet.hf.space/graphql';
 const RATE = 10000; // 1 ETH = 10,000 QNTO
 
 /**
@@ -14,46 +16,43 @@ const TOTAL_SUPPLY_QNTO = 21_000_000_000;
 const COMMUNITY_ALLOCATION_QNTO = TOTAL_SUPPLY_QNTO * 0.80; // 16,800,000,000
 const MAX_PURCHASABLE_QNTO = COMMUNITY_ALLOCATION_QNTO; // Hard ceiling for TGE
 
-const QantoTgeAbi = [
-  {
-    type: 'function',
-    name: 'buyTokens',
-    stateMutability: 'payable',
-    inputs: [],
-    outputs: []
-  },
-  {
-    type: 'function',
-    name: 'totalRaised',
-    stateMutability: 'view',
-    inputs: [],
-    outputs: [{ name: '', type: 'uint256' }]
-  }
-] as const;
-
 export function TokenSale() {
   const { isConnected, address } = useAccount();
   const [ethAmount, setEthAmount] = useState('0.1');
-  const { writeContract, isPending, isSuccess, error, data: txHash } = useWriteContract();
+  const { sendTransaction, isPending, isSuccess, error, data: txHash } = useSendTransaction();
 
-  const { data: totalRaised } = useReadContract({
-    abi: QantoTgeAbi,
-    address: TGE_CONTRACT_ADDRESS,
-    functionName: 'totalRaised',
-    query: {
-      refetchInterval: 5000,
-    }
+  // Query actual TGE Raised balance on-chain via GraphQL
+  const { data: totalRaised } = useQuery<number>({
+    queryKey: ['tgeTotalRaised'],
+    queryFn: async () => {
+      try {
+        const query = gql`
+          query GetTgeBalance($address: String!) {
+            balance(address: $address) {
+              amount
+            }
+          }
+        `;
+        const res = await request<{ balance: { amount: number } }>(
+          GRAPHQL_ENDPOINT,
+          query,
+          { address: TGE_CONTRACT_ADDRESS }
+        );
+        return res.balance?.amount || 0;
+      } catch (err) {
+        return 0;
+      }
+    },
+    refetchInterval: 5000,
   });
 
   const handleBuy = () => {
     if (!ethAmount || parseFloat(ethAmount) <= 0 || isNaN(parseFloat(ethAmount))) return;
     
-    writeContract({
-      abi: QantoTgeAbi,
-      address: TGE_CONTRACT_ADDRESS,
-      functionName: 'buyTokens',
+    sendTransaction({
+      to: TGE_CONTRACT_ADDRESS as `0x${string}`,
       value: BigInt(Math.floor(parseFloat(ethAmount) * 10 ** 18)),
-    } as any);
+    });
   };
 
   const rawQnto = ethAmount && !isNaN(parseFloat(ethAmount))
@@ -84,10 +83,10 @@ export function TokenSale() {
           {/* Progress bar or info */}
           <div className="bg-black/40 border border-white/5 rounded-2xl p-6 mb-8 text-center">
             <div className="text-[10px] md:text-xs font-mono uppercase tracking-wider text-slate-500 mb-1">
-              Total Raised
+              Total Raised (QNTO Received)
             </div>
             <div className="text-3xl font-extrabold text-white font-mono mb-2">
-              {totalRaised ? `${parseFloat(formatEther(totalRaised)).toFixed(4)} ETH` : '0.0000 ETH'}
+              {totalRaised ? `${totalRaised.toLocaleString()} QNTO` : '0 QNTO'}
             </div>
             <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
               <div className="bg-gradient-to-r from-cyan-400 to-violet-500 h-full w-[12%]" />

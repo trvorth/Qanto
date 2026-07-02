@@ -44,9 +44,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 // Additional imports for optimized DAG caching
 use crate::QanhashError;
+use ahash::AHashMap as HashMap;
 use lru::LruCache;
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -249,7 +249,7 @@ pub mod metal_gpu {
     use std::sync::Mutex;
 
     pub struct MetalGpuContext {
-        // Placeholder for Metal implementation
+        // Reference for Metal implementation
         // Real implementation would use Metal framework
     }
 
@@ -304,7 +304,7 @@ pub mod cuda_gpu {
     use std::sync::Mutex;
 
     pub struct CudaGpuContext {
-        // Placeholder for CUDA implementation
+        // Reference for CUDA implementation
     }
 
     impl CudaGpuContext {

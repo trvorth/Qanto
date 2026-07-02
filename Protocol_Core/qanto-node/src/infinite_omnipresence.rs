@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use ahash::AHashMap as HashMap;
+use serde::{Deserialize, Serialize};
 
 /**
  * @title Infinite Omnipresence (TIO)
@@ -32,21 +32,40 @@ impl InfiniteOmnipresence {
      * @dev Synchronizes universal agentic identity based on unity.
      * Weights: 0.95 * Unity_Density + 0.05 * Historical_Stability.
      */
-    pub fn synchronize_universal_identity(&mut self, claim_id: [u8; 32], density: f64, pou: f64) -> bool {
-        println!("TIO: Synchronizing Universal Agentic Identity for Claim {:X?}...", claim_id);
-        
-        let isUnityVerified = pou >= self.unity_threshold && density >= 0.95;
-        
-        self.unity_registry.insert(claim_id, UnityPulse {
-            claim_id,
-            unity_density: density,
-            participants: 8192, // 8192 unity nodes
-            unity_gain: density * 2.0,
-            pou_score: pou,
-        });
+    pub fn synchronize_universal_identity(
+        &mut self,
+        claim_id: [u8; 32],
+        density: f64,
+        pou: f64,
+    ) -> bool {
+        println!(
+            "TIO: Synchronizing Universal Agentic Identity for Claim {:X?}...",
+            claim_id
+        );
 
-        println!("TIO: Unity Pulse Outcome: {} (Unity Density: {}%)", if isUnityVerified { "UNIFIED" } else { "STABLE" }, density * 100.0);
-        isUnityVerified
+        let is_unity_verified = pou >= self.unity_threshold && density >= 0.95;
+
+        self.unity_registry.insert(
+            claim_id,
+            UnityPulse {
+                claim_id,
+                unity_density: density,
+                participants: 8192, // 8192 unity nodes
+                unity_gain: density * 2.0,
+                pou_score: pou,
+            },
+        );
+
+        println!(
+            "TIO: Unity Pulse Outcome: {} (Unity Density: {}%)",
+            if is_unity_verified {
+                "UNIFIED"
+            } else {
+                "STABLE"
+            },
+            density * 100.0
+        );
+        is_unity_verified
     }
 }
 
@@ -59,8 +78,11 @@ mod tests {
     fn test_infinite_omnipresence_unity() {
         let mut tio = InfiniteOmnipresence::new();
         let unified = tio.synchronize_universal_identity([0xEE; 32], 0.98, 0.999); // Unity EE (High Density)
-        
+
         assert!(unified);
-        assert_eq!(tio.unity_registry.get(&[0xEE; 32]).unwrap().unity_density, 0.98);
+        assert_eq!(
+            tio.unity_registry.get(&[0xEE; 32]).unwrap().unity_density,
+            0.98
+        );
     }
 }

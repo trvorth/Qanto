@@ -1,0 +1,5 @@
+# Copy this file to .dev.vars for local development.
+# Do not commit .dev.vars with real secret values.
+WAITLIST_IP_HASH_SALT=replace-with-random-long-string
+ADMIN_WEBHOOK_URL=https://discord.com/api/webhooks/replace/me
+ADMIN_API_TOKEN=replace-with-long-admin-token

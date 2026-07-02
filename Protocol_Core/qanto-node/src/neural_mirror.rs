@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use ahash::AHashMap as HashMap;
+use serde::{Deserialize, Serialize};
 
 /**
  * @title Global Neural Mirror (GNM)
@@ -14,7 +14,7 @@ pub struct NeuralMirror {
 pub struct AgentPulse {
     pub agent_id: String,
     pub veracity_score: u128, // Scaled by QANTO_SCALE
-    pub puai_yield: u128,    // Scaled by QANTO_SCALE
+    pub puai_yield: u128,     // Scaled by QANTO_SCALE
     pub uptime: u64,
     pub last_action_timestamp: u64,
 }
@@ -38,7 +38,10 @@ impl NeuralMirror {
      * @dev Reflects an agent's real-time state into the global index.
      */
     pub fn reflect_agent_pulse(&mut self, pulse: AgentPulse) {
-        println!("GNM: Reflecting Pulse for Agent {} (Veracity: {})...", pulse.agent_id, pulse.veracity_score);
+        println!(
+            "GNM: Reflecting Pulse for Agent {} (Veracity: {})...",
+            pulse.agent_id, pulse.veracity_score
+        );
         self.agent_pulses.insert(pulse.agent_id.clone(), pulse);
     }
 
@@ -47,8 +50,11 @@ impl NeuralMirror {
      * Higher veracity and uptime == Positive Sentiment.
      */
     pub fn calculate_global_sentiment(&mut self) -> SentimentMatrix {
-        println!("GNM: Calculating Global Neural Sentiment across {} indexed agents...", self.agent_pulses.len());
-        
+        println!(
+            "GNM: Calculating Global Neural Sentiment across {} indexed agents...",
+            self.agent_pulses.len()
+        );
+
         let mut total_score = 0u128;
         let mut count = 0;
 
@@ -57,9 +63,13 @@ impl NeuralMirror {
             count += 1;
         }
 
-        let global_score_raw = if count > 0 { (total_score / count as u128) as i128 } else { (crate::QANTO_SCALE / 2) as i128 };
+        let global_score_raw = if count > 0 {
+            (total_score / count as u128) as i128
+        } else {
+            (crate::QANTO_SCALE / 2) as i128
+        };
         let shifted_score = global_score_raw - (crate::QANTO_SCALE as i128 / 2); // Scale to -0.5..0.5
-        
+
         self.global_sentiment_history.push(shifted_score);
 
         SentimentMatrix {

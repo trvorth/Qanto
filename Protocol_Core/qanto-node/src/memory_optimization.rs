@@ -4,11 +4,11 @@
 
 use crate::mempool::PrioritizedTransaction;
 use crate::transaction::Transaction;
+use ahash::AHashMap as HashMap;
 use dashmap::DashMap;
 use log::{debug, info};
 use memmap2::{MmapMut, MmapOptions};
 use std::alloc::{alloc, dealloc, Layout};
-use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::path::Path;
 use std::ptr::NonNull;
@@ -343,8 +343,7 @@ impl TransactionArena {
         let total_allocated = self.stats.total_bytes_allocated.load(Ordering::Relaxed);
         let total_capacity = self.chunks.len() as u64 * self.chunk_size as u64;
 
-        if total_capacity > 0 {
-            let efficiency = (total_allocated * 100) / total_capacity;
+        if let Some(efficiency) = (total_allocated * 100).checked_div(total_capacity) {
             self.stats
                 .memory_efficiency
                 .store(efficiency, Ordering::Relaxed);
@@ -431,20 +430,25 @@ impl ArenaMempool {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let start_time = Instant::now();
 
+        let tx_id1 = transaction.id.clone();
+        let tx_id2 = transaction.id.clone();
+        let tx_id_log = transaction.id.clone();
+
+        let fee_per_byte = {
+            // Calculate fee per byte using serialized transaction size
+            let serialized_size = bincode::serialize(&transaction)
+                .map_err(|e| format!("Failed to serialize transaction: {e}"))?
+                .len() as u128;
+            transaction
+                .fee
+                .checked_div(serialized_size)
+                .unwrap_or(0u128)
+        };
+
         // Create prioritized transaction
         let prioritized_tx = PrioritizedTransaction {
-            tx: transaction.clone(),
-            fee_per_byte: {
-                // Calculate fee per byte using serialized transaction size
-                let serialized_size = bincode::serialize(&transaction)
-                    .map_err(|e| format!("Failed to serialize transaction: {e}"))?
-                    .len() as u128;
-                if serialized_size > 0 {
-                    transaction.fee / serialized_size
-                } else {
-                    0u128
-                }
-            },
+            tx: transaction,
+            fee_per_byte,
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
@@ -459,13 +463,12 @@ impl ArenaMempool {
         }
 
         // Store transaction
-        self.transactions
-            .insert(transaction.id.clone(), prioritized_tx);
+        self.transactions.insert(tx_id1, prioritized_tx);
 
         // Update priority queue
         {
             let mut queue = self.priority_queue.write().unwrap();
-            queue.push(transaction.id.clone());
+            queue.push(tx_id2);
             // Keep queue sorted by fee (simple insertion sort for now)
             queue.sort_by_key(|id| {
                 if let Some(tx_ref) = self.transactions.get(id) {
@@ -491,7 +494,7 @@ impl ArenaMempool {
 
         debug!(
             "MEMORY OPTIMIZATION: Added transaction {} to mempool",
-            transaction.id
+            tx_id_log
         );
 
         Ok(())

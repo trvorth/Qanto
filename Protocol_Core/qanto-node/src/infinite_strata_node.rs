@@ -106,7 +106,7 @@ pub struct Heartbeat {
     pub node_id: String,
     pub epoch: u64,
     pub timestamp: u64,
-    pub cpu_usage: u64, // Scaled u64 (scale Q_SCALE)
+    pub cpu_usage: u64,       // Scaled u64 (scale Q_SCALE)
     pub memory_usage_mb: u64, // Scaled u64 (scale Q_SCALE)
     pub signature: Vec<u8>,
     pub public_key_hash: Vec<u8>, // For key rotation verification
@@ -742,36 +742,37 @@ impl InfiniteStrataNode {
 
         // Calculate aggregated metrics
         let sample_count = epoch_samples.len() as u64;
-        let avg_cpu_usage =
-            epoch_samples.iter().map(|s| s.cpu_usage).sum::<u64>() / sample_count;
+        let avg_cpu_usage = epoch_samples.iter().map(|s| s.cpu_usage).sum::<u64>() / sample_count;
         let avg_memory_usage_mb =
             epoch_samples.iter().map(|s| s.memory_usage_mb).sum::<u64>() / sample_count;
-        let max_cpu_usage = epoch_samples
-            .iter()
-            .map(|s| s.cpu_usage)
-            .max().unwrap_or(0);
+        let max_cpu_usage = epoch_samples.iter().map(|s| s.cpu_usage).max().unwrap_or(0);
         let max_memory_usage_mb = epoch_samples
             .iter()
             .map(|s| s.memory_usage_mb)
-            .max().unwrap_or(0);
+            .max()
+            .unwrap_or(0);
         let min_cpu_usage = epoch_samples
             .iter()
             .map(|s| s.cpu_usage)
-            .min().unwrap_or(u64::MAX);
+            .min()
+            .unwrap_or(u64::MAX);
         let min_memory_usage_mb = epoch_samples
             .iter()
             .map(|s| s.memory_usage_mb)
-            .min().unwrap_or(u64::MAX);
+            .min()
+            .unwrap_or(u64::MAX);
 
         // Calculate performance score based on resource efficiency
         let config = self.config.read().await;
         // 100% in scaled units is 100 * Q_SCALE
         let cpu_limit = 100 * crate::QANTO_SCALE as u64;
-        let cpu_efficiency = crate::QANTO_SCALE as u64 - (avg_cpu_usage.min(cpu_limit) * crate::QANTO_SCALE as u64 / cpu_limit);
-        
+        let cpu_efficiency = crate::QANTO_SCALE as u64
+            - (avg_cpu_usage.min(cpu_limit) * crate::QANTO_SCALE as u64 / cpu_limit);
+
         let mem_limit = config.performance_target_memory_mb.max(1);
-        let memory_efficiency = crate::QANTO_SCALE as u64 - (avg_memory_usage_mb.min(mem_limit) * crate::QANTO_SCALE as u64 / mem_limit);
-        
+        let memory_efficiency = crate::QANTO_SCALE as u64
+            - (avg_memory_usage_mb.min(mem_limit) * crate::QANTO_SCALE as u64 / mem_limit);
+
         // performance_score scaled by QANTO_SCALE
         let performance_score = (cpu_efficiency as u128 + memory_efficiency as u128) / 2;
         drop(config);
@@ -891,7 +892,8 @@ impl InfiniteStrataNode {
         let mut system = System::new_all();
         system.refresh_all();
 
-        let cpu_usage = (system.global_cpu_info().cpu_usage() as u128 * crate::QANTO_SCALE / 100) as u64;
+        let cpu_usage =
+            (system.global_cpu_info().cpu_usage() as u128 * crate::QANTO_SCALE / 100) as u64;
         let memory_usage_mb = (system.used_memory() * crate::QANTO_SCALE as u64) / (1024 * 1024);
         let current_epoch = self.get_current_epoch().await;
 
@@ -980,7 +982,8 @@ impl InfiniteStrataNode {
                 performance_history.iter().sum::<u128>() / performance_history.len() as u128;
             let mut cached_multiplier = self.cached_reward_multiplier.write().await;
             // Clamp between 0.1 and 2.0 (scaled)
-            *cached_multiplier = avg_performance.clamp(crate::QANTO_SCALE / 10, crate::QANTO_SCALE * 2);
+            *cached_multiplier =
+                avg_performance.clamp(crate::QANTO_SCALE / 10, crate::QANTO_SCALE * 2);
         }
 
         Ok(())
@@ -990,7 +993,8 @@ impl InfiniteStrataNode {
     pub async fn get_rewards(&self) -> Result<(u128, u128)> {
         let multiplier = *self.cached_reward_multiplier.read().await;
         let base_reward = 100 * crate::QANTO_SCALE; // Base reward amount
-        let redistributed_reward = base_reward.checked_mul(multiplier)
+        let redistributed_reward = base_reward
+            .checked_mul(multiplier)
             .and_then(|r| r.checked_div(crate::QANTO_SCALE))
             .unwrap_or(0);
 
@@ -1096,14 +1100,15 @@ impl InfiniteStrataNode {
             } else {
                 expected_mean - overall_mean
             };
-            
+
             let avg_variance = challenge_variance.iter().sum::<u128>() / 64;
             let variance_diff = if avg_variance > expected_variance {
                 avg_variance - expected_variance
             } else {
                 expected_variance - avg_variance
             };
-            let variance_deviation_scaled = (variance_diff * crate::QANTO_SCALE) / expected_variance;
+            let variance_deviation_scaled =
+                (variance_diff * crate::QANTO_SCALE) / expected_variance;
 
             // Enhanced anomaly detection thresholds
             let mean_threshold = 15 * crate::QANTO_SCALE; // 15.0
@@ -1341,7 +1346,8 @@ impl InfiniteStrataNode {
             };
         }
 
-        let validity_percentage_scaled = (valid_count as u64 * crate::QANTO_SCALE as u64) / total_proofs;
+        let validity_percentage_scaled =
+            (valid_count as u64 * crate::QANTO_SCALE as u64) / total_proofs;
         info!(
             "Network quantum state validation: {} units valid ({}/{} nodes)",
             validity_percentage_scaled, valid_count, total_proofs

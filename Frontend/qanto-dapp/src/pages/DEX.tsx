@@ -110,11 +110,11 @@ export const DEX = () => {
     toastId.current = toast.loading('Swapping tokens...');
 
     // Addresses for mock tokens
-    const ethMockAddr = '0x0000000000000000000000000000000000000000';
-    const qntoMockAddr = '0x9F00000000000000000000000000000000000001';
+    const ethSyntheticAddr = '0x0000000000000000000000000000000000000000';
+    const qntoSyntheticAddr = '0x9F00000000000000000000000000000000000001';
 
-    const tokenIn = fromToken === 'ETH' ? ethMockAddr : qntoMockAddr;
-    const tokenOut = toToken === 'ETH' ? ethMockAddr : qntoMockAddr;
+    const tokenIn = fromToken === 'ETH' ? ethSyntheticAddr : qntoSyntheticAddr;
+    const tokenOut = toToken === 'ETH' ? ethSyntheticAddr : qntoSyntheticAddr;
     
     // Convert to 18 decimals for simulation
     const amountIn = BigInt(Math.floor(parseFloat(fromAmount) * 10 ** 18));

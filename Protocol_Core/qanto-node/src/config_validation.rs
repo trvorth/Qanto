@@ -1,6 +1,4 @@
-use std::collections::HashMap;
 use thiserror::Error;
-use tracing::{debug, info, warn};
 
 /// Configuration validation errors
 #[derive(Error, Debug)]
@@ -81,25 +79,18 @@ pub struct AdjustedConfig {
 
 /// Configuration validator with comprehensive checks
 pub struct ConfigValidator {
-    strict_mode: bool,
     auto_adjust: bool,
 }
 
 impl Default for ConfigValidator {
     fn default() -> Self {
-        Self {
-            strict_mode: false,
-            auto_adjust: true,
-        }
+        Self { auto_adjust: true }
     }
 }
 
 impl ConfigValidator {
-    pub fn new(strict_mode: bool, auto_adjust: bool) -> Self {
-        Self {
-            strict_mode,
-            auto_adjust,
-        }
+    pub fn new(_strict_mode: bool, auto_adjust: bool) -> Self {
+        Self { auto_adjust }
     }
 
     /// Validate complete configuration
@@ -121,10 +112,22 @@ impl ConfigValidator {
         self.validate_memory_config(memory, &mut errors, &mut warnings, &mut recommendations);
 
         // Validate performance configuration
-        self.validate_performance_config(performance, &mut errors, &mut warnings, &mut recommendations);
+        self.validate_performance_config(
+            performance,
+            &mut errors,
+            &mut warnings,
+            &mut recommendations,
+        );
 
         // Cross-validate configurations
-        self.cross_validate_configs(timing, memory, performance, &mut errors, &mut warnings, &mut recommendations);
+        self.cross_validate_configs(
+            timing,
+            memory,
+            performance,
+            &mut errors,
+            &mut warnings,
+            &mut recommendations,
+        );
 
         // Apply auto-adjustments if enabled
         let adjusted_config = if self.auto_adjust && !errors.is_empty() {
@@ -170,7 +173,8 @@ impl ConfigValidator {
                 errors.push(ConfigValidationError::InvalidTiming {
                     parameter: param.to_string(),
                     value,
-                    reason: "cannot be zero (would cause panic in tokio::time::interval)".to_string(),
+                    reason: "cannot be zero (would cause panic in tokio::time::interval)"
+                        .to_string(),
                 });
             }
         }
@@ -257,13 +261,17 @@ impl ConfigValidator {
         if config.cache_size > config.memory_soft_limit / 4 {
             warnings.push(format!(
                 "cache_size ({}) > 25% of memory_soft_limit ({}), may cause memory pressure",
-                config.cache_size, config.memory_soft_limit / 4
+                config.cache_size,
+                config.memory_soft_limit / 4
             ));
         }
 
         // Recommendations
         if config.mempool_max_size_bytes < 1_000_000 {
-            recommendations.push("Consider increasing mempool_max_size_bytes for better transaction throughput".to_string());
+            recommendations.push(
+                "Consider increasing mempool_max_size_bytes for better transaction throughput"
+                    .to_string(),
+            );
         }
     }
 
@@ -320,7 +328,8 @@ impl ConfigValidator {
 
         // Recommendations
         if config.dummy_tx_per_cycle > 1000 {
-            recommendations.push("Consider reducing dummy_tx_per_cycle to avoid mempool flooding".to_string());
+            recommendations
+                .push("Consider reducing dummy_tx_per_cycle to avoid mempool flooding".to_string());
         }
     }
 
@@ -335,7 +344,8 @@ impl ConfigValidator {
         _recommendations: &mut Vec<String>,
     ) {
         // Check if transaction generation rate is sustainable
-        let tx_per_second = (performance.dummy_tx_per_cycle as f64) / (timing.dummy_tx_interval_ms as f64 / 1000.0);
+        let tx_per_second =
+            (performance.dummy_tx_per_cycle as f64) / (timing.dummy_tx_interval_ms as f64 / 1000.0);
         let estimated_tx_size = 500; // bytes per transaction estimate
         let tx_memory_per_second = (tx_per_second * estimated_tx_size as f64) as usize;
 
@@ -402,7 +412,9 @@ impl ConfigValidator {
         // Fix precision loss issues
         if adjusted_timing.dummy_tx_interval_ms < 1000 && adjusted_timing.dummy_tx_interval_ms > 0 {
             adjusted_timing.dummy_tx_interval_ms = 1000;
-            adjustments.push("Increased dummy_tx_interval_ms to 1000ms to avoid precision loss".to_string());
+            adjustments.push(
+                "Increased dummy_tx_interval_ms to 1000ms to avoid precision loss".to_string(),
+            );
         }
 
         // Fix memory configuration issues
@@ -414,8 +426,10 @@ impl ConfigValidator {
             ));
         }
 
-        if adjusted_memory.mempool_backpressure_threshold >= adjusted_memory.mempool_max_size_bytes {
-            adjusted_memory.mempool_backpressure_threshold = adjusted_memory.mempool_max_size_bytes * 3 / 4;
+        if adjusted_memory.mempool_backpressure_threshold >= adjusted_memory.mempool_max_size_bytes
+        {
+            adjusted_memory.mempool_backpressure_threshold =
+                adjusted_memory.mempool_max_size_bytes * 3 / 4;
             adjustments.push(format!(
                 "Set mempool_backpressure_threshold to {} (75% of mempool_max_size_bytes)",
                 adjusted_memory.mempool_backpressure_threshold
@@ -433,7 +447,9 @@ impl ConfigValidator {
             adjustments.push("Set parallel_validation_batch_size to 1000 (was 0)".to_string());
         }
 
-        if adjusted_performance.adaptive_batch_threshold < 0.1 || adjusted_performance.adaptive_batch_threshold > 1.0 {
+        if adjusted_performance.adaptive_batch_threshold < 0.1
+            || adjusted_performance.adaptive_batch_threshold > 1.0
+        {
             adjusted_performance.adaptive_batch_threshold = 0.8;
             adjustments.push("Set adaptive_batch_threshold to 0.8 (was out of range)".to_string());
         }
@@ -531,9 +547,9 @@ impl ConfigValidator {
     /// Generate configuration report
     pub fn generate_report(&self, result: &ValidationResult) -> String {
         let mut report = String::new();
-        
+
         report.push_str("=== Configuration Validation Report ===\n\n");
-        
+
         if result.is_valid {
             report.push_str("✅ Configuration is VALID\n\n");
         } else {

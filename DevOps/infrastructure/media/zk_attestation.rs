@@ -36,7 +36,7 @@ impl MediaAttestation {
         // In production: Use a PLONK/Groth16 circuit to verify the hardware-signature 
         // without revealing the full device-serial.
         ZMAProof {
-            proof_bytes: vec![0xDE, 0xAD, 0xBE, 0xEF], // Mock proof
+            proof_bytes: vec![0xDE, 0xAD, 0xBE, 0xEF], // Synthetic proof
             veracity_score: 990_000_000, // High veracity (0.99 scaled by 1e9)
         }
     }

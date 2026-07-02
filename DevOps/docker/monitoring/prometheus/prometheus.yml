@@ -28,9 +28,9 @@ scrape_configs:
   # Qanto node metrics
   - job_name: 'qanto-node'
     static_configs:
-      - targets: ['qanto-node:9090']
+      - targets: ['qanto-node:8081']
     scrape_interval: 15s
-    metrics_path: /metrics
+    metrics_path: /metrics/prometheus
     scrape_timeout: 10s
     honor_labels: true
     params:
@@ -41,7 +41,7 @@ scrape_configs:
       - source_labels: [__param_target]
         target_label: instance
       - target_label: __address__
-        replacement: qanto-node:9090
+        replacement: qanto-node:8081
     metric_relabel_configs:
       - source_labels: [__name__]
         regex: 'qanto_.*'

@@ -107,7 +107,7 @@ function checkRateLimit(address) {
  * Generate a mock transaction hash.
  * @returns {string}
  */
-function generateMockTxHash() {
+function generateSyntheticTxHash() {
     const hex = Array.from({ length: 64 }, () =>
         Math.floor(Math.random() * 16).toString(16)
     ).join('');
@@ -184,7 +184,7 @@ async function requestTestnetFunds(address) {
     saveClaimHistory(history);
 
     // 5. Build success response
-    const txHash = generateMockTxHash();
+    const txHash = generateSyntheticTxHash();
     const timestamp = new Date().toISOString();
 
     return {

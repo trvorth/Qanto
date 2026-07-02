@@ -4,10 +4,10 @@
 //! This module implements the consensus logic required for nodes with
 //! extreme latency delays (e.g., Earth-to-Mars, 3-22 minutes).
 
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
-use serde::{Deserialize, Serialize};
-use reqwest::Client;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Heartbeat {
@@ -50,18 +50,25 @@ impl HLLDConsensus {
     /// Processes a heartbeat from a remote shard.
     pub fn process_heartbeat(&mut self, hb: Heartbeat) {
         let now = Instant::now();
-        info!("🌌 INTERPLANETARY: Received heartbeat from {} (Latency: {}ms)", hb.node_id, hb.latency_ms);
-        
+        info!(
+            "🌌 INTERPLANETARY: Received heartbeat from {} (Latency: {}ms)",
+            hb.node_id, hb.latency_ms
+        );
+
         self.last_heartbeat = now;
-        
+
         if !self.active_shards.contains(&hb.node_id) {
             self.active_shards.push(hb.node_id.clone());
             info!("🚀 NEW SHARD: {} has joined the Celestial Mesh", hb.node_id);
         }
 
-        if hb.latency_ms > 180_000 { // 3 minutes
+        if hb.latency_ms > 180_000 {
+            // 3 minutes
             self.current_state = ShardState::MartianDelay;
-            info!("🛰️ HLLD: Switched to Martian Delay mode for Shard {}", hb.node_id);
+            info!(
+                "🛰️ HLLD: Switched to Martian Delay mode for Shard {}",
+                hb.node_id
+            );
         }
     }
 
@@ -69,11 +76,17 @@ impl HLLDConsensus {
     pub fn verify_star_state(&self) -> bool {
         let elapsed = self.last_heartbeat.elapsed();
         if elapsed > self.heartbeat_window {
-            warn!("⚠️ CELESTIAL ALIGNMENT LOST: Heartbeat window exceeded {}s", self.heartbeat_window.as_secs());
+            warn!(
+                "⚠️ CELESTIAL ALIGNMENT LOST: Heartbeat window exceeded {}s",
+                self.heartbeat_window.as_secs()
+            );
             return false;
         }
-        
-        info!("✨ STAR-STATE: Finality confirmed across {} shards", self.active_shards.len());
+
+        info!(
+            "✨ STAR-STATE: Finality confirmed across {} shards",
+            self.active_shards.len()
+        );
         true
     }
 }
@@ -107,10 +120,12 @@ impl DitaInferenceBridge {
 
     pub async fn run_inference(&self, payload: &str) -> InferenceResult {
         info!("🧠 DITA-2: Requesting HF inference on interplanetary payload...");
-        
-        let req = self.http_client.post(&self.hf_api_url)
+
+        let req = self
+            .http_client
+            .post(&self.hf_api_url)
             .json(&serde_json::json!({ "inputs": payload }));
-            
+
         let req = if let Some(token) = &self.hf_token {
             req.bearer_auth(token)
         } else {
@@ -127,18 +142,24 @@ impl DitaInferenceBridge {
                 }
             }
             Ok(res) => {
-                warn!("⚠️ DITA-2: HF inference failed with status {}. Falling back to Local Mock.", res.status());
+                warn!(
+                    "⚠️ DITA-2: HF inference failed with status {}. Falling back to Local Fallback.",
+                    res.status()
+                );
                 self.local_mock_inference(payload)
             }
             Err(e) => {
-                warn!("⚠️ DITA-2: HF inference error/timeout ({}). Falling back to Local Mock.", e);
+                warn!(
+                    "⚠️ DITA-2: HF inference error/timeout ({}). Falling back to Local Fallback.",
+                    e
+                );
                 self.local_mock_inference(payload)
             }
         }
     }
 
     fn local_mock_inference(&self, _payload: &str) -> InferenceResult {
-        info!("🔮 DITA-2: Executing Local Mock Inference Fallback...");
+        info!("🔮 DITA-2: Executing Local Fallback Inference...");
         InferenceResult {
             decision: "AUTO_APPROVED_LOCAL".to_string(),
             confidence: 0.85,

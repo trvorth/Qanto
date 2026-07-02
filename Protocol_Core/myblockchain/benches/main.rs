@@ -41,7 +41,7 @@ fn qanhash_op_benchmark(c: &mut Criterion) {
                 res = qanhash::hash(
                     black_box(&header_hash),
                     black_box(start_nonce + i),
-                    black_box(i as u64),
+                    black_box(i),
                 );
             }
             res

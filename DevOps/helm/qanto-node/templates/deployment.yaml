@@ -37,11 +37,8 @@ spec:
             - name: api
               containerPort: {{ .Values.service.ports.api }}
               protocol: TCP
-            - name: metrics
-              containerPort: {{ .Values.service.ports.metrics }}
-              protocol: TCP
-            - name: websocket
-              containerPort: {{ .Values.service.ports.websocket }}
+            - name: rpc
+              containerPort: {{ .Values.service.ports.rpc }}
               protocol: TCP
             - name: p2p
               containerPort: {{ .Values.service.ports.p2p }}
@@ -49,10 +46,18 @@ spec:
           env:
             - name: RUST_LOG
               value: {{ .Values.config.logLevel }}
-            - name: QANTO_ENV
-              value: {{ .Values.config.environment }}
-            - name: QANTO_CONFIG_PATH
-              value: "/app/config/config.toml"
+            - name: CONFIG_PATH
+              value: "/opt/qanto/config/config.toml"
+            - name: WALLET_PATH
+              value: "/opt/qanto/keys/wallet.key"
+            - name: P2P_IDENTITY
+              value: "/opt/qanto/keys/p2p_identity.key"
+            - name: PEER_CACHE
+              value: "/opt/qanto/keys/peer_cache.json"
+            - name: WALLET_PASSWORD_FILE
+              value: "/run/secrets/wallet_password"
+            - name: HEALTHCHECK_URL
+              value: "http://localhost:{{ .Values.service.ports.api }}/health"
           {{- if .Values.healthcheck.enabled }}
           livenessProbe:
             httpGet:
@@ -64,7 +69,7 @@ spec:
             failureThreshold: {{ .Values.healthcheck.failureThreshold }}
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /health
               port: api
             initialDelaySeconds: 10
             periodSeconds: 5
@@ -74,11 +79,18 @@ spec:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - name: data
-              mountPath: /app/data
-            - name: logs
-              mountPath: /app/logs
+              mountPath: /opt/qanto/data
+            - name: data
+              mountPath: /opt/qanto/keys
+              subPath: keys
+            - name: data
+              mountPath: /opt/qanto/logs
+              subPath: logs
             - name: config
-              mountPath: /app/config
+              mountPath: /opt/qanto/config
+              readOnly: true
+            - name: wallet-password
+              mountPath: /run/secrets
               readOnly: true
       volumes:
         - name: data
@@ -88,11 +100,12 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
-        - name: logs
-          emptyDir: {}
         - name: config
           configMap:
             name: {{ include "qanto-node.fullname" . }}-config
+        - name: wallet-password
+          secret:
+            secretName: {{ include "qanto-node.fullname" . }}-wallet-password
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

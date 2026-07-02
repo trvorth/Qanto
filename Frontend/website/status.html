@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QANTO | Network Operations Center (NOC)</title>
+    <link rel="stylesheet" href="assets/css/main.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#030712">
+    <link rel="apple-touch-icon" href="/assets/images/icon-192.png">
+    <style>
+        body { padding-top: 100px; }
+        .noc-container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .header-section { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+        .toggle-container { display: flex; align-items: center; gap: 12px; }
+        .mode-switch {
+            position: relative; display: inline-block; width: 60px; height: 34px;
+        }
+        .mode-switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(255,255,255,0.1); border: 1px solid var(--glass-border);
+            transition: .4s; border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute; content: ""; height: 26px; width: 26px; left: 3px; bottom: 3px;
+            background-color: #fff; transition: .4s; border-radius: 50%;
+        }
+        input:checked + .slider { background-color: var(--cyber-cyan); }
+        input:checked + .slider:before { transform: translateX(26px); }
+
+        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 24px; margin-bottom: 40px; }
+        .metric-card { padding: 24px; text-align: center; position: relative; overflow: hidden; }
+        .metric-value { font-size: 2.2rem; font-weight: 700; color: #fff; margin-top: 12px; font-family: var(--font-family-sans); }
+        .metric-label { font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+        
+        .pulse-indicator { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+        .pulse-green { background-color: #10b981; box-shadow: 0 0 10px #10b981; animation: pulse 2s infinite; }
+        .pulse-yellow { background-color: #f59e0b; box-shadow: 0 0 10px #f59e0b; animation: pulse 2s infinite; }
+        .pulse-red { background-color: #ef4444; box-shadow: 0 0 10px #ef4444; animation: pulse 2s infinite; }
+
+        @keyframes pulse { 0% { transform: scale(0.95); opacity: 0.8; } 50% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(0.95); opacity: 0.8; } }
+
+        .operator-panel { display: none; }
+        .operator-panel.active { display: block; animation: fadeIn 0.4s ease; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 0.9rem; }
+        th, td { padding: 16px; text-align: left; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+        th { font-family: var(--font-family-mono); color: var(--text-muted); text-transform: uppercase; font-size: 0.75rem; letter-spacing: 1px; }
+        tr:hover td { background: rgba(255,255,255,0.02); }
+
+        .badge { padding: 4px 10px; border-radius: 8px; font-size: 0.75rem; font-family: var(--font-family-mono); }
+        .badge-success { background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); }
+        .badge-warning { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2); }
+        .badge-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); }
+
+        .progress-bar-container { width: 100px; height: 6px; background: rgba(255,255,255,0.05); border-radius: 3px; overflow: hidden; display: inline-block; vertical-align: middle; }
+        .progress-bar { height: 100%; background: var(--cyber-cyan); }
+
+        .section-card { padding: 30px; margin-bottom: 40px; }
+        .section-card h2 { margin-bottom: 24px; font-size: 1.5rem; display: flex; align-items: center; gap: 10px; }
+
+        .alarm-item { display: flex; justify-content: space-between; align-items: center; padding: 16px; border-radius: 12px; background: rgba(239, 68, 68, 0.05); border: 1px solid rgba(239, 68, 68, 0.15); margin-bottom: 12px; }
+        .alarm-msg { display: flex; align-items: center; gap: 12px; }
+        .btn-resolve { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 0.8rem; cursor: pointer; transition: 0.2s; }
+        .btn-resolve:hover { background: var(--cyber-cyan); border-color: var(--cyber-cyan); }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="brand-link">
+                <span class="brand-text">QANTO</span>
+            </a>
+            <div class="nav-menu">
+                <a href="explorer.html" class="nav-link">Explorer</a>
+                <a href="staking.html" class="nav-link">Staking</a>
+                <a href="bridge.html" class="nav-link">Bridge</a>
+                <a href="faucet.html" class="nav-link">Faucet</a>
+                <a href="analytics.html" class="nav-link">Analytics</a>
+                <a href="status.html" class="nav-link active">NOC Status</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="noc-container">
+        <div class="header-section">
+            <div>
+                <h1 style="font-size: 2.5rem; background: linear-gradient(135deg, #fff, var(--text-muted)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Network Operations Center</h1>
+                <p style="color: var(--text-muted); margin-top: 4px;">Real-time network consensus state and health telemetry</p>
+            </div>
+            <div class="toggle-container">
+                <span style="font-size: 0.95rem; font-weight: 500;" id="mode-text">Public Mode</span>
+                <label class="mode-switch">
+                    <input type="checkbox" id="mode-toggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- PUBLIC HEALTH PANELS -->
+        <div class="metrics-grid">
+            <div class="glass-panel metric-card">
+                <div class="metric-label">Network Height</div>
+                <div class="metric-value" id="pub-height">---</div>
+            </div>
+            <div class="glass-panel metric-card">
+                <div class="metric-label">Validators Online</div>
+                <div class="metric-value" id="pub-validators">---</div>
+            </div>
+            <div class="glass-panel metric-card">
+                <div class="metric-label">Network TPS</div>
+                <div class="metric-value" id="pub-tps">---</div>
+            </div>
+            <div class="glass-panel metric-card">
+                <div class="metric-label">Network Agreement</div>
+                <div class="metric-value" id="pub-consensus">---</div>
+            </div>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="glass-panel metric-card">
+                <div class="metric-label">Faucet Status</div>
+                <div class="metric-value" id="pub-faucet" style="font-size: 1.5rem; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 18px;">
+                    <span class="pulse-indicator"></span><span>Unknown</span>
+                </div>
+            </div>
+            <div class="glass-panel metric-card">
+                <div class="metric-label">Bridge Status</div>
+                <div class="metric-value" id="pub-bridge" style="font-size: 1.5rem; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 18px;">
+                    <span class="pulse-indicator"></span><span>Unknown</span>
+                </div>
+            </div>
+            <div class="glass-panel metric-card">
+                <div class="metric-label">Active Release</div>
+                <div class="metric-value" id="pub-release" style="font-size: 1.5rem; margin-top: 18px;">---</div>
+            </div>
+        </div>
+
+        <!-- OPERATOR DETAILED PANELS -->
+        <div class="operator-panel" id="operator-view">
+            <!-- ACTIVE ALARMS -->
+            <div class="glass-panel section-card" style="border-color: rgba(239, 68, 68, 0.3);">
+                <h2 style="color: #ef4444;"><span class="pulse-indicator pulse-red" style="width: 12px; height: 12px;"></span>Active Alarms</h2>
+                <div id="alarms-list">
+                    <p style="color: var(--text-muted); font-style: italic;">No active alarms observed on the network.</p>
+                </div>
+            </div>
+
+            <!-- VALIDATOR DETAIL TABLE -->
+            <div class="glass-panel section-card">
+                <h2>Validator Health Matrix</h2>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Validator Name / Address</th>
+                                <th>Status</th>
+                                <th>Height Lag</th>
+                                <th>Peers</th>
+                                <th>CPU</th>
+                                <th>RAM (MB)</th>
+                                <th>FDs</th>
+                                <th>Uptime</th>
+                                <th>Version</th>
+                            </tr>
+                        </thead>
+                        <tbody id="validators-table-body">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+                <!-- CONSENSUS METRICS -->
+                <div class="glass-panel section-card">
+                    <h2>Consensus Health Details</h2>
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px;">
+                            <span style="color: var(--text-muted);">Avg Block Interval:</span>
+                            <span id="op-block-interval" style="font-family: var(--font-family-mono); font-weight: bold;">---</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px;">
+                            <span style="color: var(--text-muted);">Blocks (Last Minute):</span>
+                            <span id="op-blocks-min" style="font-family: var(--font-family-mono); font-weight: bold;">---</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px;">
+                            <span style="color: var(--text-muted);">Latest Block Hash:</span>
+                            <span id="op-latest-hash" style="font-family: var(--font-family-mono); font-size: 0.8rem;">---</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: var(--text-muted);">Genesis Hash:</span>
+                            <span id="op-genesis-hash" style="font-family: var(--font-family-mono); font-size: 0.8rem;">---</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BRIDGE DETAILED HEALTH -->
+                <div class="glass-panel section-card">
+                    <h2>Bridge Monitoring</h2>
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px;">
+                            <span style="color: var(--text-muted);">Pending Bridge Locks:</span>
+                            <span id="op-bridge-locks" style="font-family: var(--font-family-mono); font-weight: bold;">0</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px;">
+                            <span style="color: var(--text-muted);">Pending Bridge Claims:</span>
+                            <span id="op-bridge-claims" style="font-family: var(--font-family-mono); font-weight: bold;">0</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 10px;">
+                            <span style="color: var(--text-muted);">Bridge Relayers Online:</span>
+                            <span id="op-bridge-relayers" style="font-family: var(--font-family-mono); font-weight: bold;">3</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between;">
+                            <span style="color: var(--text-muted);">Bridge Collateral Ratio:</span>
+                            <span id="op-bridge-collateral" style="font-family: var(--font-family-mono); font-weight: bold; color: #10b981;">1.20</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VALIDATOR SAGA REPUTATION -->
+            <div class="glass-panel section-card" style="margin-top: 30px;">
+                <h2>Validator SAGA Reputation</h2>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Validator ID</th>
+                                <th>Validator Stake</th>
+                                <th>SAGA Score</th>
+                                <th>Blocks Produced</th>
+                                <th>Blocks Missed</th>
+                                <th>Slash Events</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reputation-table-body">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- STATE GROWTH & BENCHMARKING PANEL -->
+            <div class="glass-panel section-card" style="margin-top: 30px;">
+                <h2>Ledger Capacity Planning & Sync Benchmarks</h2>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 30px;">
+                    <!-- Current Storage Metrics -->
+                    <div style="background: rgba(255,255,255,0.02); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                        <h3 style="font-size: 1rem; color: var(--cyber-cyan); margin-bottom: 16px; font-family: var(--font-family-mono);">CURRENT STORAGE STATE</h3>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Database Size:</span>
+                                <span id="storage-db-size" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Data Dir Size:</span>
+                                <span id="storage-dir-size" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Active UTXO Count:</span>
+                                <span id="storage-active-utxos" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Logical UTXO Set Size:</span>
+                                <span id="storage-logical-utxo-set-size" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Inputs Consumed:</span>
+                                <span id="storage-inputs-consumed" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Avg Inputs / Tx:</span>
+                                <span id="storage-avg-inputs-tx" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Avg Outputs / Tx:</span>
+                                <span id="storage-avg-outputs-tx" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Net UTXO Growth:</span>
+                                <span id="storage-net-utxo-growth" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Avg UTXO Size:</span>
+                                <span id="storage-avg-utxo-size" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Raw Tx Data Size:</span>
+                                <span id="storage-raw-tx-data" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">State Amp. Ratio:</span>
+                                <span id="storage-state-amp" style="font-weight: bold; font-family: var(--font-family-mono); color: #10b981;">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Bytes / Tx:</span>
+                                <span id="storage-bytes-tx" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Bytes / Block:</span>
+                                <span id="storage-bytes-block" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Growth Forecasting -->
+                    <div style="background: rgba(255,255,255,0.02); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                        <h3 style="font-size: 1rem; color: #10b981; margin-bottom: 16px; font-family: var(--font-family-mono);">GROWTH & FORECASTING</h3>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Growth / Day:</span>
+                                <span id="forecast-growth-day" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Growth / Week:</span>
+                                <span id="forecast-growth-week" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">UTXO Growth / Day:</span>
+                                <span id="forecast-utxo-growth-day" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Logical UTXO Growth / Day:</span>
+                                <span id="forecast-logical-utxo-growth-day" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Projected 90-Day:</span>
+                                <span id="forecast-90-day" style="font-weight: bold; font-family: var(--font-family-mono); color: #f59e0b;">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Projected 365-Day:</span>
+                                <span id="forecast-365-day" style="font-weight: bold; font-family: var(--font-family-mono); color: #ef4444;">---</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sync Benchmark Health -->
+                    <div style="background: rgba(255,255,255,0.02); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05);">
+                        <h3 style="font-size: 1rem; color: #a855f7; margin-bottom: 16px; font-family: var(--font-family-mono);">SYNC ESTIMATES</h3>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Latest Sync Estimate:</span>
+                                <span id="sync-latest" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Average Sync Estimate:</span>
+                                <span id="sync-avg" style="font-weight: bold; font-family: var(--font-family-mono);">---</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: var(--text-muted);">Worst Sync Estimate:</span>
+                                <span id="sync-worst" style="font-weight: bold; font-family: var(--font-family-mono); color: #ef4444;">---</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Display Grid -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 20px;">
+                    <div style="background: rgba(0,0,0,0.2); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.03);">
+                        <h4 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px;">Ledger Size Trend & Forecasts (GB)</h4>
+                        <div style="height: 250px; position: relative;">
+                            <canvas id="ledgerChart"></canvas>
+                        </div>
+                    </div>
+                    <div style="background: rgba(0,0,0,0.2); padding: 20px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.03);">
+                        <h4 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px;">Fresh Sync Time Estimate (Seconds)</h4>
+                        <div style="height: 250px; position: relative;">
+                            <canvas id="syncChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000/api';
+        
+        let operatorViewActive = false;
+        let ledgerChartRef = null;
+        let syncChartRef = null;
+
+        function formatBytes(bytes) {
+            if (bytes === 0 || !bytes) return '0 Bytes';
+            const isNegative = bytes < 0;
+            const absBytes = Math.abs(bytes);
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(absBytes) / Math.log(k));
+            const formatted = parseFloat((absBytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            return isNegative ? `-${formatted}` : formatted;
+        }
+
+        function updateCharts(benchmarks, forecasting) {
+            const ledgerCtx = document.getElementById('ledgerChart').getContext('2d');
+            const ledgerLabels = benchmarks.map(b => new Date(b.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+            const ledgerData = benchmarks.map(b => (b.database_size_bytes / (1024 * 1024 * 1024)).toFixed(4));
+            
+            if (ledgerChartRef) {
+                ledgerChartRef.data.labels = ledgerLabels;
+                ledgerChartRef.data.datasets[0].data = ledgerData;
+                ledgerChartRef.update();
+            } else {
+                ledgerChartRef = new Chart(ledgerCtx, {
+                    type: 'line',
+                    data: {
+                        labels: ledgerLabels,
+                        datasets: [{
+                            label: 'Database Size (GB)',
+                            data: ledgerData,
+                            borderColor: '#06b6d4',
+                            backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#9ca3af' } },
+                            y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#9ca3af' } }
+                        },
+                        plugins: {
+                            legend: { display: false }
+                        }
+                    }
+                });
+            }
+
+            const syncCtx = document.getElementById('syncChart').getContext('2d');
+            const syncLabels = benchmarks.map(b => new Date(b.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+            const syncData = benchmarks.map(b => b.sync_time_seconds);
+            
+            if (syncChartRef) {
+                syncChartRef.data.labels = syncLabels;
+                syncChartRef.data.datasets[0].data = syncData;
+                syncChartRef.update();
+            } else {
+                syncChartRef = new Chart(syncCtx, {
+                    type: 'line',
+                    data: {
+                        labels: syncLabels,
+                        datasets: [{
+                            label: 'Sync Time (Seconds)',
+                            data: syncData,
+                            borderColor: '#a855f7',
+                            backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#9ca3af' } },
+                            y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#9ca3af' } }
+                        },
+                        plugins: {
+                            legend: { display: false }
+                        }
+                    }
+                });
+            }
+        }
+
+        document.getElementById('mode-toggle').addEventListener('change', (e) => {
+            operatorViewActive = e.target.checked;
+            document.getElementById('mode-text').innerText = operatorViewActive ? 'Operator Console' : 'Public Mode';
+            const opView = document.getElementById('operator-view');
+            if (operatorViewActive) {
+                opView.classList.add('active');
+            } else {
+                opView.classList.remove('active');
+            }
+            fetchData();
+        });
+
+        function formatUptime(seconds) {
+            if (!seconds) return '---';
+            const d = Math.floor(seconds / (3600*24));
+            const h = Math.floor((seconds % (3600*24)) / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const parts = [];
+            if (d > 0) parts.push(`${d}d`);
+            if (h > 0) parts.push(`${h}h`);
+            if (m > 0) parts.push(`${m}m`);
+            return parts.join(' ') || '< 1m';
+        }
+
+        async function resolveAlert(id) {
+            try {
+                await fetch(`${API_BASE}/resolve-alert`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id })
+                });
+                fetchData();
+            } catch (err) {
+                console.error('Failed to resolve alert:', err);
+            }
+        }
+
+        async function fetchData() {
+            try {
+                // Public Health call
+                const netRes = await fetch(`${API_BASE}/network-status`);
+                if (!netRes.ok) throw new Error('API down');
+                const netData = await netRes.json();
+
+                document.getElementById('pub-height').innerText = netData.network_height.toLocaleString();
+                document.getElementById('pub-validators').innerText = `${netData.validators_online} / ${netData.total_validators}`;
+                document.getElementById('pub-consensus').innerText = netData.consensus_agreement ? 'Optimal' : 'Diverged';
+                document.getElementById('pub-consensus').style.color = netData.consensus_agreement ? '#10b981' : '#ef4444';
+                document.getElementById('pub-release').innerText = `v${netData.network_majority_version}`;
+                document.getElementById('pub-tps').innerText = `${netData.tps_current ? netData.tps_current.toFixed(2) : '0.00'} TPS`;
+
+                // Faucet Status indicator
+                const faucetIndicator = document.getElementById('pub-faucet').querySelector('.pulse-indicator');
+                const faucetText = document.getElementById('pub-faucet').querySelector('span:nth-child(2)');
+                faucetIndicator.className = 'pulse-indicator ' + (netData.faucet_status === 'Healthy' ? 'pulse-green' : 'pulse-red');
+                faucetText.innerText = netData.faucet_status;
+
+                // Bridge Status indicator
+                const bridgeIndicator = document.getElementById('pub-bridge').querySelector('.pulse-indicator');
+                const bridgeText = document.getElementById('pub-bridge').querySelector('span:nth-child(2)');
+                bridgeIndicator.className = 'pulse-indicator ' + (netData.bridge_status === 'Healthy' ? 'pulse-green' : 'pulse-red');
+                bridgeText.innerText = netData.bridge_status;
+
+                // Operator specific details
+                if (operatorViewActive) {
+                    const opRes = await fetch(`${API_BASE}/operator-status`);
+                    const opData = await opRes.json();
+
+                    // Table
+                    const tbody = document.getElementById('validators-table-body');
+                    tbody.innerHTML = '';
+                    
+                    const repBody = document.getElementById('reputation-table-body');
+                    repBody.innerHTML = '';
+
+                    let avgTpsSum = 0;
+
+                    opData.validators.forEach(v => {
+                        // Health row
+                        const tr = document.createElement('tr');
+                        
+                        const nameTd = document.createElement('td');
+                        nameTd.innerHTML = `<span style="font-weight: 600;">${v.name}</span><br><span style="font-family: var(--font-family-mono); font-size: 0.75rem; color: var(--text-muted);">${v.validator_id.substring(0, 16)}...</span>`;
+                        tr.appendChild(nameTd);
+
+                        const statusTd = document.createElement('td');
+                        const statusBadge = v.status === 'online' ? 'badge-success' : 'badge-danger';
+                        statusTd.innerHTML = `<span class="badge ${statusBadge}">${v.status.toUpperCase()}</span>`;
+                        tr.appendChild(statusTd);
+
+                        const lagTd = document.createElement('td');
+                        lagTd.innerText = v.status === 'online' ? `${v.height_lag} blocks` : '---';
+                        if (v.height_lag > 0) lagTd.style.color = '#f59e0b';
+                        tr.appendChild(lagTd);
+
+                        const peersTd = document.createElement('td');
+                        peersTd.innerText = v.status === 'online' ? v.peer_count : '---';
+                        tr.appendChild(peersTd);
+
+                        const cpuTd = document.createElement('td');
+                        if (v.status === 'online') {
+                            cpuTd.innerHTML = `
+                                <div class="progress-bar-container">
+                                    <div class="progress-bar" style="width: ${v.cpu}%; background: ${v.cpu > 80 ? '#ef4444' : '#06b6d4'}"></div>
+                                </div>
+                                <span style="font-size: 0.8rem; margin-left: 8px;">${v.cpu.toFixed(1)}%</span>
+                            `;
+                        } else {
+                            cpuTd.innerText = '---';
+                        }
+                        tr.appendChild(cpuTd);
+
+                        const memTd = document.createElement('td');
+                        memTd.innerText = v.status === 'online' ? v.memory_mb : '---';
+                        tr.appendChild(memTd);
+
+                        const fdTd = document.createElement('td');
+                        fdTd.innerText = v.status === 'online' ? v.fd_count : '---';
+                        tr.appendChild(fdTd);
+
+                        const uptimeTd = document.createElement('td');
+                        uptimeTd.innerText = v.status === 'online' ? formatUptime(v.uptime) : '---';
+                        tr.appendChild(uptimeTd);
+
+                        const verTd = document.createElement('td');
+                        verTd.innerText = v.status === 'online' ? v.version : '---';
+                        tr.appendChild(verTd);
+
+                        tbody.appendChild(tr);
+
+                        // Reputation row
+                        if (v.status === 'online') {
+                            const repTr = document.createElement('tr');
+                            repTr.innerHTML = `
+                                <td style="font-family: var(--font-family-mono); font-size: 0.8rem;">${v.validator_id.substring(0, 16)}...</td>
+                                <td style="font-weight: 500;">10,000 QNTO</td>
+                                <td>
+                                    <div class="progress-bar-container" style="width: 80px;">
+                                        <div class="progress-bar" style="width: ${v.saga_score}%; background: #10b981"></div>
+                                    </div>
+                                    <span style="font-size: 0.8rem; margin-left: 6px; font-weight: 600; color: #10b981;">${v.saga_score}</span>
+                                </td>
+                                <td>${v.blocks_produced}</td>
+                                <td>${v.blocks_missed}</td>
+                                <td style="color: ${v.slash_events > 0 ? '#ef4444' : 'var(--text-muted)'}">${v.slash_events}</td>
+                            `;
+                            repBody.appendChild(repTr);
+                        }
+                    });
+
+                    // Consensus panel metrics
+                    const onlineV = opData.validators.find(v => v.status === 'online');
+                    if (onlineV) {
+                        document.getElementById('op-block-interval').innerText = `${onlineV.avg_block_interval.toFixed(2)}s`;
+                        document.getElementById('op-blocks-min').innerText = onlineV.blocks_last_minute;
+                        document.getElementById('op-latest-hash').innerText = onlineV.latest_block_hash ? onlineV.latest_block_hash.substring(0, 32) + '...' : '---';
+                        document.getElementById('op-genesis-hash').innerText = onlineV.genesis_hash ? onlineV.genesis_hash : '---';
+                    }
+
+                    // State breakdown fetch
+                    try {
+                        const breakdownRes = await fetch(`${API_BASE}/state-breakdown`);
+                        if (breakdownRes.ok) {
+                            const breakdown = await breakdownRes.json();
+                            document.getElementById('storage-db-size').innerText = formatBytes(breakdown.database_size_bytes);
+                            document.getElementById('storage-dir-size').innerText = formatBytes(breakdown.data_dir_size_bytes);
+                            document.getElementById('storage-active-utxos').innerText = breakdown.active_utxos.toLocaleString();
+                            document.getElementById('storage-logical-utxo-set-size').innerText = formatBytes(breakdown.logical_utxo_set_size_bytes || breakdown.utxo_set_size_bytes || 0);
+                            document.getElementById('storage-inputs-consumed').innerText = (breakdown.historical_inputs_consumed || breakdown.spent_utxos || 0).toLocaleString();
+                            document.getElementById('storage-avg-inputs-tx').innerText = (breakdown.avg_inputs_per_tx || 0).toFixed(2);
+                            document.getElementById('storage-avg-outputs-tx').innerText = (breakdown.avg_outputs_per_tx || 0).toFixed(2);
+                            document.getElementById('storage-net-utxo-growth').innerText = (breakdown.net_utxo_growth || 0).toLocaleString();
+                            document.getElementById('storage-avg-utxo-size').innerText = formatBytes(breakdown.average_utxo_size_bytes || 0);
+                            document.getElementById('storage-raw-tx-data').innerText = formatBytes(breakdown.raw_transaction_data_bytes);
+                            document.getElementById('storage-state-amp').innerText = (breakdown.state_amplification_ratio || 0).toFixed(2) + "x";
+                            document.getElementById('storage-bytes-tx').innerText = (breakdown.bytes_per_transaction || 0).toFixed(1) + " B";
+                            document.getElementById('storage-bytes-block').innerText = formatBytes(breakdown.bytes_per_block);
+                        }
+                    } catch (e) {
+                        console.error('Error fetching state breakdown:', e);
+                    }
+
+                    // Benchmarks & Forecasting fetch
+                    try {
+                        const benchmarksRes = await fetch(`${API_BASE}/state-benchmarks`);
+                        if (benchmarksRes.ok) {
+                            const bData = await benchmarksRes.json();
+                            const fore = bData.forecasting || {};
+                            const bench = bData.benchmarks || [];
+                            
+                            const growthDay = (fore && typeof fore.growth_per_day_gb === 'number') ? fore.growth_per_day_gb : 0;
+                            const growthWeek = growthDay * 7;
+                            const utxoGrowth = (fore && typeof fore.utxo_growth_per_day === 'number') ? fore.utxo_growth_per_day : 0;
+                            const logicalUtxoGrowth = (fore && typeof fore.logical_utxo_growth_per_day_bytes === 'number') ? fore.logical_utxo_growth_per_day_bytes : 0;
+                            const proj90 = (fore && typeof fore.projected_90_day_gb === 'number') ? fore.projected_90_day_gb : 0;
+                            const proj365 = (fore && typeof fore.projected_365_day_gb === 'number') ? fore.projected_365_day_gb : 0;
+
+                            document.getElementById('forecast-growth-day').innerText = `${growthDay.toFixed(4)} GB`;
+                            document.getElementById('forecast-growth-week').innerText = `${growthWeek.toFixed(3)} GB`;
+                            document.getElementById('forecast-utxo-growth-day').innerText = `${utxoGrowth > 0 ? '+' : ''}${utxoGrowth.toLocaleString()} UTXOs`;
+                            document.getElementById('forecast-logical-utxo-growth-day').innerText = `${logicalUtxoGrowth > 0 ? '+' : ''}${formatBytes(logicalUtxoGrowth)}`;
+                            document.getElementById('forecast-90-day').innerText = `${proj90.toFixed(2)} GB`;
+                            document.getElementById('forecast-365-day').innerText = `${proj365.toFixed(2)} GB`;
+                            
+                            if (bench && bench.length > 0) {
+                                const latestBench = bench[bench.length - 1];
+                                const times = bench.map(b => b.sync_time_seconds);
+                                const avgTime = times.reduce((s, x) => s + x, 0) / times.length;
+                                const worstTime = Math.max(...times);
+                                
+                                document.getElementById('sync-latest').innerText = `${latestBench.sync_time_seconds}s (${formatUptime(latestBench.sync_time_seconds)})`;
+                                document.getElementById('sync-avg').innerText = `${avgTime.toFixed(1)}s (${formatUptime(Math.round(avgTime))})`;
+                                document.getElementById('sync-worst').innerText = `${worstTime}s (${formatUptime(worstTime)})`;
+                                
+                                updateCharts(bench, fore);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Error fetching state benchmarks:', e);
+                    }
+
+                    // Alerts
+                    const alertsRes = await fetch(`${API_BASE}/alerts`);
+                    const alertsData = await alertsRes.json();
+                    const alarmsContainer = document.getElementById('alarms-list');
+                    if (alertsData.alerts.length === 0) {
+                        alarmsContainer.innerHTML = '<p style="color: var(--text-muted); font-style: italic;">No active alarms observed on the network.</p>';
+                    } else {
+                        alarmsContainer.innerHTML = '';
+                        alertsData.alerts.forEach(a => {
+                            const div = document.createElement('div');
+                            div.className = 'alarm-item';
+                            div.innerHTML = `
+                                <div class="alarm-msg">
+                                    <span class="badge badge-danger">${a.type}</span>
+                                    <span>${a.message}</span>
+                                </div>
+                                <button class="btn-resolve" onclick="resolveAlert(${a.id})">Acknowledge</button>
+                            `;
+                            alarmsContainer.appendChild(div);
+                        });
+                    }
+                }
+
+            } catch (err) {
+                document.getElementById('pub-height').innerText = '---';
+                document.getElementById('pub-validators').innerText = '---';
+                document.getElementById('pub-tps').innerText = '---';
+                document.getElementById('pub-consensus').innerText = 'Offline';
+                document.getElementById('pub-consensus').style.color = '#ef4444';
+            }
+        }
+
+        // Polling intervals
+        setInterval(fetchData, 5000);
+        fetchData();
+    </script>
+</body>
+</html>

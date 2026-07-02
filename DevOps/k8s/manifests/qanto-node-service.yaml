@@ -6,19 +6,30 @@ metadata:
   labels:
     app: qanto-node
     component: api
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
 spec:
   type: LoadBalancer
   ports:
   - name: api
-    port: 8080
-    targetPort: 8080
+    port: 8081
+    targetPort: 8081
     protocol: TCP
-  - name: websocket
-    port: 9944
-    targetPort: 9944
+  selector:
+    app: qanto-node
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qanto-node-rpc
+  namespace: qanto
+  labels:
+    app: qanto-node
+    component: rpc
+spec:
+  type: ClusterIP
+  ports:
+  - name: rpc
+    port: 50051
+    targetPort: 50051
     protocol: TCP
   selector:
     app: qanto-node
@@ -31,63 +42,12 @@ metadata:
   labels:
     app: qanto-node
     component: p2p
-  annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
 spec:
   type: LoadBalancer
   ports:
   - name: p2p
-    port: 30333
-    targetPort: 30333
-    protocol: TCP
-  selector:
-    app: qanto-node
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: qanto-node-metrics
-  namespace: qanto
-  labels:
-    app: qanto-node
-    component: metrics
-  annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "8081"
-    prometheus.io/path: "/metrics"
-spec:
-  type: ClusterIP
-  ports:
-  - name: metrics
-    port: 8081
-    targetPort: 8081
-    protocol: TCP
-  selector:
-    app: qanto-node
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: qanto-node-internal
-  namespace: qanto
-  labels:
-    app: qanto-node
-    component: internal
-spec:
-  type: ClusterIP
-  ports:
-  - name: api
-    port: 8080
-    targetPort: 8080
-    protocol: TCP
-  - name: websocket
-    port: 9944
-    targetPort: 9944
-    protocol: TCP
-  - name: metrics
-    port: 8081
-    targetPort: 8081
+    port: 30303
+    targetPort: 30303
     protocol: TCP
   selector:
     app: qanto-node

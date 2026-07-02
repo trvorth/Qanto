@@ -1,14 +1,15 @@
 // post_quantum_crypto.rs
-// Qanto's post-quantum cryptography module using native qanhash implementation
+// Qanto's post-quantum cryptography module
 
 pub use qanto_core::qanto_native_crypto::{
-    QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature, QantoSignatureAlgorithm,
+    HybridSignature, PostQuantumEngine, PqcScheme, QantoCryptoEngine, QantoPQPrivateKey,
+    QantoPQPublicKey, QantoPQSignature, QantoSignatureAlgorithm,
 };
 use rand::rngs::OsRng;
 use rand::RngCore;
 use rand::SeedableRng;
 use std::error::Error;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 /// Error type for post-quantum operations
 #[derive(Debug)]
@@ -31,7 +32,7 @@ impl std::fmt::Display for PQError {
 impl Error for PQError {}
 
 pub const QANTO_PQ_PUBLIC_KEY_BYTES: usize = 1952;
-pub const QANTO_PQ_PRIVATE_KEY_BYTES: usize = 4000;
+pub const QANTO_PQ_PRIVATE_KEY_BYTES: usize = 4032;
 
 /// Generate a post-quantum key pair using native Qanto implementation
 pub fn generate_pq_keypair(
@@ -47,6 +48,10 @@ pub fn generate_pq_keypair(
     let private_key = QantoPQPrivateKey::generate(&mut rng);
     let public_key = private_key.public_key();
     Ok((public_key, private_key))
+}
+
+pub fn generate_hybrid_keypair(scheme: PqcScheme) -> Result<(Vec<u8>, Vec<u8>), PQError> {
+    Ok(PostQuantumEngine::generate_keypair(scheme))
 }
 
 /// Sign a message using post-quantum private key
@@ -67,6 +72,51 @@ pub fn pq_verify(
         .verify(message, signature)
         .map(|_| true)
         .map_err(|_| PQError::VerificationError)
+}
+
+/// Verify a hybrid post-quantum signature
+pub fn hybrid_verify(
+    public_key: &[u8],
+    message: &[u8],
+    signature: &HybridSignature,
+) -> Result<bool, PQError> {
+    let mut telemetry = PqcTelemetry::new();
+    let is_valid = telemetry.record_verification(|| {
+        PostQuantumEngine::verify_state_proof(
+            public_key,
+            message,
+            &signature.raw_bytes,
+            signature.scheme.clone(),
+        )
+    });
+
+    if is_valid {
+        Ok(true)
+    } else {
+        Err(PQError::VerificationError)
+    }
+}
+
+/// Performance telemetry module for Post-Quantum scaling limits
+pub struct PqcTelemetry {
+    pub verification_time_ns: u128,
+    pub formula: &'static str,
+}
+
+impl PqcTelemetry {
+    pub fn new() -> Self {
+        Self {
+            verification_time_ns: 0,
+            formula: r#"T_{\text{verify}} = \mathcal{O}(|sig| + |pk|)"#,
+        }
+    }
+
+    pub fn record_verification<F: FnOnce() -> bool>(&mut self, verify_fn: F) -> bool {
+        let start = Instant::now();
+        let result = verify_fn();
+        self.verification_time_ns = start.elapsed().as_nanos();
+        result
+    }
 }
 
 /// Post-Quantum Signature Key Pair

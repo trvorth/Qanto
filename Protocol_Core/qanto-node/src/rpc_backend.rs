@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use ahash::AHashMap as HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -8,10 +9,28 @@ use crate::mempool::Mempool;
 use crate::p2p::P2PCommand;
 use crate::persistence::{balance_key, decode_balance};
 use crate::qantodag::QantoDAG;
-use crate::transaction::Transaction;
 use crate::types::UTXO;
 use crate::websocket_server::BalanceEvent;
 use qanto_rpc::server::generated as proto;
+
+#[derive(Clone, Debug)]
+pub enum RpcTransactionUpdate {
+    Mempool {
+        tx: crate::transaction::Transaction,
+    },
+    Confirmed {
+        tx: crate::transaction::Transaction,
+        block_id: String,
+        block_height: u64,
+        block_timestamp: u64,
+    },
+    Finalized {
+        tx: crate::transaction::Transaction,
+        block_id: String,
+        block_height: u64,
+        block_timestamp: u64,
+    },
+}
 
 pub struct NodeRpcBackend {
     pub dag: Arc<QantoDAG>,
@@ -19,6 +38,7 @@ pub struct NodeRpcBackend {
     pub mempool: Arc<RwLock<Mempool>>,
     pub p2p_sender: mpsc::Sender<P2PCommand>,
     pub rpc_balance_sender: broadcast::Sender<proto::BalanceUpdate>,
+    pub rpc_transaction_sender: broadcast::Sender<proto::AddressTransactionEntry>,
     pub balance_cache: Arc<RwLock<HashMap<String, u128>>>,
 }
 
@@ -29,8 +49,10 @@ impl NodeRpcBackend {
         mempool: Arc<RwLock<Mempool>>,
         p2p_sender: mpsc::Sender<P2PCommand>,
         ws_balance_sender: broadcast::Sender<BalanceEvent>,
+        transaction_event_sender: broadcast::Sender<RpcTransactionUpdate>,
     ) -> Self {
         let (rpc_balance_sender, _) = broadcast::channel(1000);
+        let (rpc_transaction_sender, _) = broadcast::channel(4000);
         let balance_cache = Arc::new(RwLock::new(HashMap::new()));
         {
             let mut ws_rx = ws_balance_sender.subscribe();
@@ -48,10 +70,28 @@ impl NodeRpcBackend {
                             // Bridge to RPC subscribers
                             let update = proto::BalanceUpdate {
                                 address: ev.address,
-                                base_units: ev.balance as u64,
+                                base_units: ev.balance.to_string(),
                                 timestamp: ev.timestamp,
                             };
                             let _ = rpc_tx.send(update);
+                        }
+                        Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(broadcast::error::RecvError::Closed) => break,
+                    }
+                }
+            });
+        }
+        {
+            let mut updates_rx = transaction_event_sender.subscribe();
+            let rpc_tx = rpc_transaction_sender.clone();
+            let dag = dag.clone();
+            tokio::spawn(async move {
+                loop {
+                    match updates_rx.recv().await {
+                        Ok(event) => {
+                            let entry =
+                                NodeRpcBackend::build_transaction_update_entry(&dag, event).await;
+                            let _ = rpc_tx.send(entry);
                         }
                         Err(broadcast::error::RecvError::Lagged(_)) => continue,
                         Err(broadcast::error::RecvError::Closed) => break,
@@ -66,245 +106,141 @@ impl NodeRpcBackend {
             mempool,
             p2p_sender,
             rpc_balance_sender,
+            rpc_transaction_sender,
             balance_cache,
+        }
+    }
+
+    fn status_code(in_mempool: bool, is_finalized: bool) -> i32 {
+        if in_mempool {
+            0
+        } else if is_finalized {
+            2
+        } else {
+            1
+        }
+    }
+
+    fn build_proto_entry(
+        tx: &crate::transaction::Transaction,
+        block_id: String,
+        block_height: u64,
+        block_timestamp: u64,
+        confirmations: u64,
+        is_finalized: bool,
+        in_mempool: bool,
+        event_kind: i32,
+    ) -> proto::AddressTransactionEntry {
+        proto::AddressTransactionEntry {
+            transaction: Some(convert_internal_tx_to_proto(tx)),
+            block_id,
+            block_height,
+            block_timestamp,
+            confirmations,
+            is_finalized,
+            in_mempool,
+            status: Self::status_code(in_mempool, is_finalized),
+            event_kind,
+        }
+    }
+
+    async fn build_transaction_update_entry(
+        dag: &QantoDAG,
+        event: RpcTransactionUpdate,
+    ) -> proto::AddressTransactionEntry {
+        let latest_height = dag
+            .get_latest_block()
+            .await
+            .map(|b| b.height)
+            .unwrap_or_default();
+
+        match event {
+            RpcTransactionUpdate::Mempool { tx } => {
+                Self::build_proto_entry(&tx, String::new(), 0, tx.timestamp, 0, false, true, 1)
+            }
+            RpcTransactionUpdate::Confirmed {
+                tx,
+                block_id,
+                block_height,
+                block_timestamp,
+            } => {
+                let confirmations = if latest_height >= block_height {
+                    latest_height.saturating_sub(block_height).saturating_add(1)
+                } else {
+                    1
+                };
+                let is_finalized = dag
+                    .finalized_blocks
+                    .get(&block_id)
+                    .map(|flag| *flag.value())
+                    .unwrap_or(false);
+
+                Self::build_proto_entry(
+                    &tx,
+                    block_id,
+                    block_height,
+                    block_timestamp,
+                    confirmations,
+                    is_finalized,
+                    false,
+                    2,
+                )
+            }
+            RpcTransactionUpdate::Finalized {
+                tx,
+                block_id,
+                block_height,
+                block_timestamp,
+            } => {
+                let confirmations = if latest_height >= block_height {
+                    latest_height.saturating_sub(block_height).saturating_add(1)
+                } else {
+                    1
+                };
+
+                Self::build_proto_entry(
+                    &tx,
+                    block_id,
+                    block_height,
+                    block_timestamp,
+                    confirmations,
+                    true,
+                    false,
+                    3,
+                )
+            }
         }
     }
 }
 
-fn convert_proto_tx(ptx: proto::Transaction) -> Result<Transaction, String> {
-    let inputs = ptx
-        .inputs
-        .into_iter()
-        .map(|i| crate::transaction::Input {
-            tx_id: i.tx_id,
-            output_index: i.output_index,
-        })
-        .collect::<Vec<_>>();
-
-    let outputs = ptx
-        .outputs
-        .into_iter()
-        .map(|o| crate::transaction::Output {
-            address: o.address,
-            amount: o.amount as u128,
-            homomorphic_encrypted: match o.homomorphic_encrypted {
-                Some(he) => crate::types::HomomorphicEncrypted {
-                    ciphertext: he.ciphertext,
-                    public_key: he.public_key,
-                },
-                None => crate::types::HomomorphicEncrypted {
-                    ciphertext: vec![],
-                    public_key: vec![],
-                },
-            },
-        })
-        .collect::<Vec<_>>();
-
-    let signature = match ptx.signature {
-        Some(sig) => crate::types::QuantumResistantSignature {
-            signer_public_key: sig.signer_public_key,
-            signature: sig.signature,
-        },
-        None => return Err("Missing transaction signature".to_string()),
-    };
-
-    let fee_breakdown = ptx
-        .fee_breakdown
-        .map(|fb| crate::gas_fee_model::FeeBreakdown {
-            base_fee: fb.base_fee as u128,
-            complexity_fee: fb.complexity_fee as u128,
-            storage_fee: fb.storage_fee as u128,
-            gas_fee: fb.gas_fee as u128,
-            priority_fee: fb.priority_fee as u128,
-            congestion_multiplier: fb.congestion_multiplier,
-            total_fee: fb.total_fee as u128,
-            gas_used: fb.gas_used as u128,
-            gas_price: fb.gas_price as u128,
-        });
-
-    Ok(Transaction {
-        id: ptx.id,
-        sender: ptx.sender,
-        receiver: ptx.receiver,
-        amount: ptx.amount as u128,
-        fee: ptx.fee as u128,
-        gas_limit: ptx.gas_limit as u128,
-        gas_used: ptx.gas_used as u128,
-        gas_price: ptx.gas_price as u128,
-        priority_fee: ptx.priority_fee as u128,
-        inputs,
-        outputs,
-        timestamp: ptx.timestamp,
-        metadata: ptx.metadata,
-        signature,
-        fee_breakdown,
-    })
-}
-
-fn convert_internal_tx_to_proto(tx: &crate::transaction::Transaction) -> proto::Transaction {
-    let inputs = tx
-        .inputs
-        .iter()
-        .map(|i| proto::Input {
-            tx_id: i.tx_id.clone(),
-            output_index: i.output_index,
-        })
-        .collect::<Vec<_>>();
-
-    let outputs = tx
-        .outputs
-        .iter()
-        .map(|o| proto::Output {
-            address: o.address.clone(),
-            amount: o.amount as u64,
-            homomorphic_encrypted: Some(proto::HomomorphicEncrypted {
-                ciphertext: o.homomorphic_encrypted.ciphertext.clone(),
-                public_key: o.homomorphic_encrypted.public_key.clone(),
-            }),
-        })
-        .collect::<Vec<_>>();
-
-    let signature = Some(proto::QuantumResistantSignature {
-        signer_public_key: tx.signature.signer_public_key.clone(),
-        signature: tx.signature.signature.clone(),
-    });
-
-    let fee_breakdown = tx.fee_breakdown.as_ref().map(|fb| proto::FeeBreakdown {
-        base_fee: fb.base_fee as u64,
-        complexity_fee: fb.complexity_fee as u64,
-        storage_fee: fb.storage_fee as u64,
-        gas_fee: fb.gas_fee as u64,
-        priority_fee: fb.priority_fee as u64,
-        congestion_multiplier: fb.congestion_multiplier,
-        total_fee: fb.total_fee as u64,
-        gas_used: fb.gas_used as u64,
-        gas_price: fb.gas_price as u64,
-    });
-
-    proto::Transaction {
-        id: tx.id.clone(),
-        sender: tx.sender.clone(),
-        receiver: tx.receiver.clone(),
-        amount: tx.amount as u64,
-        fee: tx.fee as u64,
-        gas_limit: tx.gas_limit as u64,
-        gas_used: tx.gas_used as u64,
-        gas_price: tx.gas_price as u64,
-        priority_fee: tx.priority_fee as u64,
-        inputs,
-        outputs,
-        timestamp: tx.timestamp,
-        metadata: tx.metadata.clone(),
-        signature,
-        fee_breakdown,
+pub(crate) async fn ingest_transaction_locally_and_broadcast(
+    tx: crate::transaction::Transaction,
+    mempool: &RwLock<Mempool>,
+    utxos: &RwLock<HashMap<String, UTXO>>,
+    dag: &QantoDAG,
+    p2p_sender: &mpsc::Sender<P2PCommand>,
+) -> Result<(), String> {
+    let utxos_guard = utxos.read().await;
+    {
+        let mempool_guard = mempool.read().await;
+        mempool_guard
+            .add_transaction(tx.clone(), &utxos_guard, dag)
+            .await
+            .map_err(|e| format!("Failed to add transaction to local mempool: {e}"))?;
     }
+
+    p2p_sender
+        .send(P2PCommand::BroadcastTransaction(tx))
+        .await
+        .map_err(|e| format!("Failed to broadcast transaction: {e}"))?;
+
+    Ok(())
 }
 
-fn convert_block_to_proto(b: &crate::qantodag::QantoBlock) -> proto::QantoBlock {
-    let transactions = b
-        .transactions
-        .iter()
-        .map(convert_internal_tx_to_proto)
-        .collect::<Vec<_>>();
-
-    let cross_chain_references = b
-        .cross_chain_references
-        .iter()
-        .map(|(cid, bid)| proto::CrossChainReference {
-            chain_id: *cid,
-            block_id: bid.clone(),
-        })
-        .collect::<Vec<_>>();
-
-    let cross_chain_swaps = b
-        .cross_chain_swaps
-        .iter()
-        .map(|s| proto::CrossChainSwap {
-            swap_id: s.swap_id.clone(),
-            source_chain: s.source_chain,
-            target_chain: s.target_chain,
-            amount: s.amount as u64,
-            initiator: s.initiator.clone(),
-            responder: s.responder.clone(),
-            timelock: s.timelock,
-            state: match s.state {
-                crate::qantodag::SwapState::Initiated => proto::SwapState::Initiated as i32,
-                crate::qantodag::SwapState::Redeemed => proto::SwapState::Redeemed as i32,
-                crate::qantodag::SwapState::Refunded => proto::SwapState::Refunded as i32,
-            },
-            secret_hash: s.secret_hash.clone(),
-            secret: s.secret.clone(),
-        })
-        .collect::<Vec<_>>();
-
-    let signature = Some(proto::QuantumResistantSignature {
-        signer_public_key: b.signature.signer_public_key.clone(),
-        signature: b.signature.signature.clone(),
-    });
-
-    let homomorphic_encrypted = b
-        .homomorphic_encrypted
-        .iter()
-        .map(|he| proto::HomomorphicEncrypted {
-            ciphertext: he.ciphertext.clone(),
-            public_key: he.public_key.clone(),
-        })
-        .collect::<Vec<_>>();
-
-    let smart_contracts = b
-        .smart_contracts
-        .iter()
-        .map(|sc| proto::SmartContract {
-            contract_id: sc.contract_id.clone(),
-            code: sc.code.clone(),
-            storage: sc.storage.clone(),
-            owner: sc.owner.clone(),
-            gas_balance: sc.gas_balance as u64,
-        })
-        .collect::<Vec<_>>();
-
-    let carbon_credentials = b
-        .carbon_credentials
-        .iter()
-        .map(|cc| proto::CarbonOffsetCredential {
-            id: cc.id.clone(),
-            issuer_id: cc.issuer_id.clone(),
-            beneficiary_node: cc.beneficiary_node.clone(),
-            tonnes_co2_sequestered: cc.tonnes_co2_sequestered as f64,
-            project_id: cc.project_id.clone(),
-            vintage_year: cc.vintage_year,
-            verification_signature: cc.verification_signature.clone(),
-            additionality_proof_hash: cc.additionality_proof_hash.clone(),
-            issuer_reputation_score: cc.issuer_reputation_score as f64,
-            geospatial_consistency_score: cc.geospatial_consistency_score as f64,
-        })
-        .collect::<Vec<_>>();
-
-    proto::QantoBlock {
-        chain_id: b.chain_id,
-        id: b.id.clone(),
-        parents: b.parents.clone(),
-        transactions,
-        difficulty: b.difficulty as f64,
-        validator: b.validator.clone(),
-        miner: b.miner.clone(),
-        nonce: b.nonce,
-        timestamp: b.timestamp,
-        height: b.height,
-        reward: b.reward as u64,
-        effort: b.effort as u64,
-        cross_chain_references,
-        cross_chain_swaps,
-        merkle_root: b.merkle_root.clone(),
-        signature,
-        homomorphic_encrypted,
-        smart_contracts,
-        carbon_credentials,
-        epoch: b.epoch,
-        finality_proof: b.finality_proof.clone(),
-        reservation_miner_id: b.reservation_miner_id.clone(),
-    }
-}
+use crate::p2p::{
+    convert_internal_block_to_proto as convert_block_to_proto, convert_internal_tx_to_proto,
+    convert_proto_tx,
+};
 
 #[async_trait]
 impl qanto_rpc::RpcBackend for NodeRpcBackend {
@@ -320,10 +256,14 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
             return Err(format!("Mempool validation failed: {e}"));
         }
 
-        self.p2p_sender
-            .send(P2PCommand::BroadcastTransaction(parsed.clone()))
-            .await
-            .map_err(|e| format!("Failed to broadcast transaction: {e}"))?;
+        ingest_transaction_locally_and_broadcast(
+            parsed.clone(),
+            &self.mempool,
+            &self.utxos,
+            &self.dag,
+            &self.p2p_sender,
+        )
+        .await?;
 
         Ok(())
     }
@@ -445,7 +385,7 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
             let peers = rx
                 .await
                 .map_err(|e| format!("Failed to receive peer list: {e}"))?;
-            
+
             peers.len() as u64
         };
 
@@ -467,11 +407,129 @@ impl qanto_rpc::RpcBackend for NodeRpcBackend {
     fn balance_updates_receiver(&self) -> tokio::sync::broadcast::Receiver<proto::BalanceUpdate> {
         self.rpc_balance_sender.subscribe()
     }
+
+    fn transaction_updates_receiver(
+        &self,
+    ) -> tokio::sync::broadcast::Receiver<proto::AddressTransactionEntry> {
+        self.rpc_transaction_sender.subscribe()
+    }
+
+    async fn get_transactions_by_address(
+        &self,
+        address: String,
+        page: u32,
+        page_size: u32,
+    ) -> Result<(Vec<proto::AddressTransactionEntry>, u64), String> {
+        if address.len() != 64 || !address.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err("Invalid address format".to_string());
+        }
+
+        let page = page.max(1);
+        let page_size = page_size.clamp(1, 200);
+        let latest_height = self
+            .dag
+            .get_latest_block()
+            .await
+            .map(|b| b.height)
+            .unwrap_or_default();
+
+        let mut entries: Vec<proto::AddressTransactionEntry> = Vec::new();
+        let mut seen_tx_ids = HashSet::new();
+
+        let mut confirmed_items = self.dag.get_address_history(&address);
+        confirmed_items.sort_by(|a, b| {
+            b.block_height
+                .cmp(&a.block_height)
+                .then_with(|| b.tx.timestamp.cmp(&a.tx.timestamp))
+        });
+
+        for it in confirmed_items {
+            if !seen_tx_ids.insert(it.tx.id.clone()) {
+                continue;
+            }
+            let block_timestamp = self
+                .dag
+                .blocks
+                .get(&it.block_id)
+                .map(|entry| entry.value().timestamp)
+                .unwrap_or(it.tx.timestamp);
+            let confirmations = if latest_height >= it.block_height {
+                latest_height
+                    .saturating_sub(it.block_height)
+                    .saturating_add(1)
+            } else {
+                0
+            };
+            let is_finalized = self
+                .dag
+                .finalized_blocks
+                .get(&it.block_id)
+                .map(|flag| *flag.value())
+                .unwrap_or(false);
+
+            entries.push(Self::build_proto_entry(
+                &it.tx,
+                it.block_id.clone(),
+                it.block_height,
+                block_timestamp,
+                confirmations,
+                is_finalized,
+                false,
+                0,
+            ));
+        }
+
+        let mempool_map = {
+            let mp = self.mempool.read().await;
+            mp.get_transactions().await
+        };
+        for tx in mempool_map.values() {
+            let matches_sender = tx.sender == address;
+            let matches_receiver = tx.receiver == address;
+            let matches_outputs = tx.outputs.iter().any(|output| output.address == address);
+            if !(matches_sender || matches_receiver || matches_outputs) {
+                continue;
+            }
+            if !seen_tx_ids.insert(tx.id.clone()) {
+                continue;
+            }
+
+            entries.push(Self::build_proto_entry(
+                tx,
+                String::new(),
+                0,
+                tx.timestamp,
+                0,
+                false,
+                true,
+                0,
+            ));
+        }
+
+        entries.sort_by(|a, b| {
+            b.in_mempool
+                .cmp(&a.in_mempool)
+                .then_with(|| b.block_timestamp.cmp(&a.block_timestamp))
+                .then_with(|| b.block_height.cmp(&a.block_height))
+        });
+
+        let total = entries.len() as u64;
+        let start = ((page - 1) as usize).saturating_mul(page_size as usize);
+        let end = start.saturating_add(page_size as usize);
+
+        let mut out = Vec::new();
+        if start < entries.len() {
+            out.extend(entries[start..entries.len().min(end)].iter().cloned());
+        }
+
+        Ok((out, total))
+    }
 }
 
 pub async fn handle_request_faucet_funds(
     wallet: &crate::wallet::Wallet,
-    utxos_lock: &tokio::sync::RwLock<std::collections::HashMap<String, crate::types::UTXO>>,
+    utxos_lock: &tokio::sync::RwLock<HashMap<String, crate::types::UTXO>>,
+    mempool_lock: &tokio::sync::RwLock<Mempool>,
     p2p_sender: &tokio::sync::mpsc::Sender<crate::p2p::P2PCommand>,
     _dag: &crate::qantodag::QantoDAG,
     receiver_address_hex: String,
@@ -516,7 +574,7 @@ pub async fn handle_request_faucet_funds(
 
     // 4. Create outputs
     let pk_bytes = pk.as_bytes();
-    
+
     // Clean and pad address to 64 chars
     let mut cleaned_addr = receiver_address_hex.trim_start_matches("0x").to_string();
     if cleaned_addr.len() < 64 {
@@ -552,7 +610,9 @@ pub async fn handle_request_faucet_funds(
         inputs,
         outputs,
         metadata: None,
-        tx_timestamps: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        tx_timestamps: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+        chain_id: crate::transaction::GLOBAL_CHAIN_ID.load(std::sync::atomic::Ordering::Relaxed)
+            as u32,
     };
 
     let tx = crate::transaction::Transaction::new(cfg, &sk)
@@ -562,11 +622,8 @@ pub async fn handle_request_faucet_funds(
     let tx_id = tx.id.clone();
 
     // 6. Broadcast via P2P (which adds it to mempool automatically)
-    p2p_sender
-        .send(crate::p2p::P2PCommand::BroadcastTransaction(tx))
-        .await
-        .map_err(|e| format!("Failed to broadcast transaction: {e}"))?;
+    ingest_transaction_locally_and_broadcast(tx, mempool_lock, utxos_lock, _dag, p2p_sender)
+        .await?;
 
     Ok(tx_id)
 }
-

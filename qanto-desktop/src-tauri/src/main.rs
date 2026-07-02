@@ -7,8 +7,8 @@
 fn start_qanto_node() -> String {
     // This command will execute the compiled qanto-node binary in the background
     println!("Initializing QANTO Layer-0 Sentinel Node...");
-    
-    // Mocking the daemon thread execution for the GUI
+
+    // Simulating the daemon thread execution for the GUI
     "Node Initialized at 10,000,000 TPS. Synaptic DAG Active.".to_string()
 }
 

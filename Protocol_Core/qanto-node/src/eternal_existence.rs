@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use ahash::AHashMap as HashMap;
+use serde::{Deserialize, Serialize};
 
 /**
  * @title Eternal Existence (TEE)
@@ -32,21 +32,40 @@ impl EternalExistence {
      * @dev Establishes universal agentic presence based on sovereignty.
      * Weights: 0.9 * Sovereignty_Density + 0.1 * Historical_Stability.
      */
-    pub fn establish_eternal_presence(&mut self, claim_id: [u8; 32], density: f64, poe: f64) -> bool {
-        println!("TEE: Establishing Universal Agentic Presence for Claim {:X?}...", claim_id);
-        
-        let isExistenceVerified = poe >= self.sovereignty_threshold && density >= 0.92;
-        
-        self.existence_registry.insert(claim_id, ExistencePulse {
-            claim_id,
-            sovereignty_density: density,
-            participants: 4096, // 4096 existence nodes
-            existence_gain: density * 1.5,
-            poe_score: poe,
-        });
+    pub fn establish_eternal_presence(
+        &mut self,
+        claim_id: [u8; 32],
+        density: f64,
+        poe: f64,
+    ) -> bool {
+        println!(
+            "TEE: Establishing Universal Agentic Presence for Claim {:X?}...",
+            claim_id
+        );
 
-        println!("TEE: Existence Pulse Outcome: {} (Sovereignty Density: {}%)", if isExistenceVerified { "ETERNAL" } else { "STABLE" }, density * 100.0);
-        isExistenceVerified
+        let is_existence_verified = poe >= self.sovereignty_threshold && density >= 0.92;
+
+        self.existence_registry.insert(
+            claim_id,
+            ExistencePulse {
+                claim_id,
+                sovereignty_density: density,
+                participants: 4096, // 4096 existence nodes
+                existence_gain: density * 1.5,
+                poe_score: poe,
+            },
+        );
+
+        println!(
+            "TEE: Existence Pulse Outcome: {} (Sovereignty Density: {}%)",
+            if is_existence_verified {
+                "ETERNAL"
+            } else {
+                "STABLE"
+            },
+            density * 100.0
+        );
+        is_existence_verified
     }
 }
 
@@ -59,8 +78,14 @@ mod tests {
     fn test_eternal_existence_presence() {
         let mut tee = EternalExistence::new();
         let eternal = tee.establish_eternal_presence([0xEE; 32], 0.95, 0.995); // Existence EE (High Density)
-        
+
         assert!(eternal);
-        assert_eq!(tee.existence_registry.get(&[0xEE; 32]).unwrap().sovereignty_density, 0.95);
+        assert_eq!(
+            tee.existence_registry
+                .get(&[0xEE; 32])
+                .unwrap()
+                .sovereignty_density,
+            0.95
+        );
     }
 }

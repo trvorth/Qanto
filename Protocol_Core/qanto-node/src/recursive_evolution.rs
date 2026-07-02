@@ -1,5 +1,6 @@
-use serde::{Deserialize, Serialize};
 use crate::metrics::QantoMetrics;
+use serde::{Deserialize, Serialize};
+use std::sync::atomic::Ordering;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /**
@@ -21,7 +22,10 @@ pub struct OptimizationProposal {
 
 impl RecursiveEvolution {
     pub fn new() -> Self {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         Self {
             last_optimization_timestamp: now,
             iteration_count: 0,
@@ -33,20 +37,30 @@ impl RecursiveEvolution {
      * Logic: If TPS > 80% capacity or latency increases by 20%, trigger optimization.
      */
     pub fn analyze_and_evolve(&mut self, metrics: &QantoMetrics) -> Option<OptimizationProposal> {
-        println!("RPE: Analyzing recursive metrics iteration {}...", self.iteration_count);
+        println!(
+            "RPE: Analyzing recursive metrics iteration {}...",
+            self.iteration_count
+        );
         self.iteration_count += 1;
 
-        if metrics.tps_current > 10000.0 && metrics.mempool_size > 500 {
+        if metrics.tps_current.load(Ordering::Relaxed) > 10000
+            && metrics.mempool_size.load(Ordering::Relaxed) > 500
+        {
             let proposal = OptimizationProposal {
                 parameter_name: "MAX_SHARD_COUNT".to_string(),
                 current_value: 32.0,
                 proposed_value: 64.0,
-                reasoning: "TPS sustained at >10k. Recursive split required for horizontal scaling.".to_string(),
+                reasoning:
+                    "TPS sustained at >10k. Recursive split required for horizontal scaling."
+                        .to_string(),
             };
-            println!("RPE: Generating Autonomous Optimization Proposal: [{}]", proposal.parameter_name);
+            println!(
+                "RPE: Generating Autonomous Optimization Proposal: [{}]",
+                proposal.parameter_name
+            );
             return Some(proposal);
         }
-        
+
         None
     }
 }

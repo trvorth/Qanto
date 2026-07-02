@@ -174,8 +174,9 @@ impl Wallet {
     pub fn from_mnemonic(mnemonic_phrase: &str) -> Result<Self, WalletError> {
         let mnemonic = Mnemonic::parse(mnemonic_phrase)?;
         let seed = mnemonic.to_seed("");
+        let seed_bytes: &[u8] = &seed;
 
-        let ed25519_seed: &[u8; 32] = seed.as_ref()[..32]
+        let ed25519_seed: &[u8; 32] = seed_bytes[..32]
             .try_into()
             .map_err(|_| WalletError::InvalidKeyLength)?;
         // FIX: Handle the Result from `from_bytes` before using the key.
@@ -183,7 +184,7 @@ impl Wallet {
             .map_err(|e| WalletError::Crypto(e.to_string()))?;
         let verifying_key = signing_key.verifying_key();
 
-        let pq_seed: &[u8; 32] = seed.as_ref()[32..]
+        let pq_seed: &[u8; 32] = seed_bytes[32..]
             .try_into()
             .map_err(|_| WalletError::InvalidKeyLength)?;
         let (pk, sk) = generate_pq_keypair(Some(*pq_seed))

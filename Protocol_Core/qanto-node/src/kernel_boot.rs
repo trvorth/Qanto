@@ -25,7 +25,10 @@ impl SagaBootloader {
 
     /// Executes the primary Secure Boot sequence.
     pub fn initiate_boot(&mut self) -> Result<()> {
-        info!("SAGA-KERNEL: Initiating Secure Boot for device {}...", self.device_id);
+        info!(
+            "SAGA-KERNEL: Initiating Secure Boot for device {}...",
+            self.device_id
+        );
 
         // 1. Verify Root of Trust (RoT)
         self.verify_rot()?;
@@ -67,17 +70,26 @@ impl SagaBootloader {
      * Pre-simulates violation-trajectories in T-minus 10 seconds.
      */
     pub fn execute_predictive_guardrail(&self, proposal_id: &str) -> Result<()> {
-        info!("🔮 KERNEL: Simulating trajectory for Proposal [{}]...", proposal_id);
-        
+        info!(
+            "🔮 KERNEL: Simulating trajectory for Proposal [{}]...",
+            proposal_id
+        );
+
         // Logical simulation of Zero-Law adherence
-        let probability_of_violation = 0.00001; 
-        
+        let probability_of_violation = 0.00001;
+
         if probability_of_violation > 0.01 {
-            warn!("🛑 KERNEL VETO: Proposal [{}] detected in violation-trajectory.", proposal_id);
+            warn!(
+                "🛑 KERNEL VETO: Proposal [{}] detected in violation-trajectory.",
+                proposal_id
+            );
             return Err(anyhow::anyhow!("Zero-Law Violation Probability High"));
         }
 
-        info!("✅ KERNEL: Proposal [{}] approved by Predictive Truth Engine.", proposal_id);
+        info!(
+            "✅ KERNEL: Proposal [{}] approved by Predictive Truth Engine.",
+            proposal_id
+        );
         Ok(())
     }
 }
@@ -88,7 +100,9 @@ pub struct PredictiveTruthEngine {
 
 impl PredictiveTruthEngine {
     pub fn new() -> Self {
-        Self { horizon_seconds: 10 }
+        Self {
+            horizon_seconds: 10,
+        }
     }
 }
 
@@ -100,7 +114,10 @@ impl Default for PredictiveTruthEngine {
 
 impl PredictiveTruthEngine {
     pub fn monitor_parliament_intent(&self) {
-        info!("👁️ KERNEL: Monitoring Parliament intent stream [T-{}s]...", self.horizon_seconds);
+        info!(
+            "👁️ KERNEL: Monitoring Parliament intent stream [T-{}s]...",
+            self.horizon_seconds
+        );
     }
 }
 

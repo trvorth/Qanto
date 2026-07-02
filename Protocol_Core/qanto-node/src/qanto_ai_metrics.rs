@@ -5,7 +5,7 @@
 //! replacing placeholder values with actual calculations based on network data.
 //! Optimized for blockchain analytics and cognitive engine monitoring.
 
-use std::collections::HashMap;
+use ahash::AHashMap as HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Error types for AI metrics calculations

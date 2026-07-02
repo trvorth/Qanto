@@ -17,7 +17,9 @@ pub fn prompt_for_password(confirm: bool, message: Option<&str>) -> Result<Secre
 
         // Allow empty passwords for seamless testnet/mining node operation
         if trimmed_password.is_empty() {
-            println!("WALLET_PASSWORD environment variable is set but empty. Using empty password.");
+            println!(
+                "WALLET_PASSWORD environment variable is set but empty. Using empty password."
+            );
         }
 
         println!("Using password from WALLET_PASSWORD environment variable.");

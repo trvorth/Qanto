@@ -21,6 +21,7 @@ use crate::saga::PalletSaga;
 use crate::transaction::Transaction;
 use crate::types::HomomorphicEncrypted;
 use crate::wallet::Wallet;
+use ahash::AHashMap as HashMap;
 
 /// Performance validation results
 #[derive(Debug, Clone)]
@@ -330,7 +331,7 @@ impl PerformanceValidator {
                 signature: vec![0u8; 64],
             };
             let timestamp = 1234567890u64;
-            let empty_metadata = std::collections::HashMap::new();
+            let empty_metadata = HashMap::new();
             let empty_inputs = Vec::new();
             let empty_outputs = Vec::new();
             let static_id = "tx".to_string(); // Use same ID for all transactions to avoid format! overhead
@@ -357,6 +358,8 @@ impl PerformanceValidator {
                             timestamp,
                             metadata: empty_metadata.clone(),
                             fee_breakdown: None,
+                            transaction_kind: crate::transaction::TransactionKind::Transfer,
+                            chain_id: 1234,
                         },
                     );
                 }
@@ -400,8 +403,10 @@ impl PerformanceValidator {
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_secs(),
-                    metadata: std::collections::HashMap::new(),
+                    metadata: HashMap::new(),
                     fee_breakdown: None,
+                    transaction_kind: crate::transaction::TransactionKind::Transfer,
+                    chain_id: 1234,
                 };
                 transactions.push(tx);
             }
@@ -447,8 +452,10 @@ impl PerformanceValidator {
                 priority_fee: 0,
                 inputs: vec![],
                 outputs: vec![],
-                tx_timestamps: Arc::new(AsyncRwLock::new(std::collections::HashMap::new())),
+                tx_timestamps: Arc::new(AsyncRwLock::new(HashMap::new())),
                 metadata: None,
+                chain_id: crate::transaction::GLOBAL_CHAIN_ID
+                    .load(std::sync::atomic::Ordering::Relaxed) as u32,
             };
 
             if let Ok(tx) = Transaction::new(
@@ -639,6 +646,7 @@ pub async fn validate_performance_targets(
     // Create QantoDAG config
     let dag_config = QantoDagConfig {
         initial_validator: crate::qantodag::DEV_ADDRESS.to_string(),
+        genesis_timestamp: 1_717_250_400,
         target_block_time: 30,
         num_chains: 4,
         dev_fee_rate: 100_000_000,

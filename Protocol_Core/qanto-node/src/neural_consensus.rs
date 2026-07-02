@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use ahash::AHashMap as HashMap;
+use serde::{Deserialize, Serialize};
 
 /**
  * @title Neural Consensus (TNC)
@@ -32,21 +32,40 @@ impl NeuralConsensus {
      * @dev Aggregates veracity scores for a high-fidelity truth claim.
      * Weights: 0.7 * Agentic_Consensus + 0.3 * Reputation_Weight.
      */
-    pub fn aggregate_veracity_scores(&mut self, claim_id: [u8; 32], agentic_consensus: f64, weights: Vec<f64>) -> f64 {
-        println!("TNC: Aggregating Veracity Consensus for Claim ID {:X?}...", claim_id);
-        
+    pub fn aggregate_veracity_scores(
+        &mut self,
+        claim_id: [u8; 32],
+        agentic_consensus: f64,
+        weights: Vec<f64>,
+    ) -> f64 {
+        println!(
+            "TNC: Aggregating Veracity Consensus for Claim ID {:X?}...",
+            claim_id
+        );
+
         let weight_avg: f64 = weights.iter().sum::<f64>() / weights.len() as f64;
         let final_score = (0.7 * agentic_consensus) + (0.3 * weight_avg);
 
-        self.consensus_registry.insert(claim_id, ConsensusPulse {
+        self.consensus_registry.insert(
             claim_id,
-            veracity_score: final_score,
-            participants: weights.len() as u32,
-            weight_distribution: weights,
-            veracity_history_depth: 120, // 120 recursive proof cycles
-        });
+            ConsensusPulse {
+                claim_id,
+                veracity_score: final_score,
+                participants: weights.len() as u32,
+                weight_distribution: weights,
+                veracity_history_depth: 120, // 120 recursive proof cycles
+            },
+        );
 
-        println!("TNC: Consensus Outcome: {} (Depth: {})", if final_score > self.min_threshold { "VERIFIED" } else { "UNCERTAIN" }, 120);
+        println!(
+            "TNC: Consensus Outcome: {} (Depth: {})",
+            if final_score > self.min_threshold {
+                "VERIFIED"
+            } else {
+                "UNCERTAIN"
+            },
+            120
+        );
         final_score
     }
 }
@@ -61,8 +80,14 @@ mod tests {
         let mut tnc = NeuralConsensus::new();
         let weights = vec![0.9, 0.85, 0.95, 0.88]; // Reputation weights
         let final_score = tnc.aggregate_veracity_scores([0xAA; 32], 0.92, weights);
-        
+
         assert!(final_score > 0.85);
-        assert_eq!(tnc.consensus_registry.get(&[0xAA; 32]).unwrap().participants, 4);
+        assert_eq!(
+            tnc.consensus_registry
+                .get(&[0xAA; 32])
+                .unwrap()
+                .participants,
+            4
+        );
     }
 }

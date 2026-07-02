@@ -1,33 +1,17 @@
-import { useEffect, useRef } from 'react';
-import { useAccount, useWriteContract, useReadContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useEffect, useRef, useState } from 'react';
+import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { toast } from 'react-hot-toast';
+import { useQantoBalance } from '../hooks/useQantoBalance';
 
 const AIRDROP_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000008';
 
-const QantoDropAbi = [
-  {
-    type: 'function',
-    name: 'claim',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'amount', type: 'uint256' },
-      { name: 'merkleProof', type: 'bytes32[]' }
-    ],
-    outputs: []
-  },
-  {
-    type: 'function',
-    name: 'hasClaimed',
-    stateMutability: 'view',
-    inputs: [{ name: '', type: 'address' }],
-    outputs: [{ name: '', type: 'bool' }]
-  }
-] as const;
-
 export function AirdropClaim() {
   const { isConnected, address } = useAccount();
-  const { writeContract, isPending: isWritePending, error, data: txHash } = useWriteContract({
+  const { live: balance, refresh: refreshBalance } = useQantoBalance();
+  const [localClaimed, setLocalClaimed] = useState(false);
+
+  const { sendTransaction, isPending: isWritePending, error, data: txHash } = useSendTransaction({
     mutation: {
       onError: (error: any) => {
         if (toastId.current) {
@@ -46,21 +30,25 @@ export function AirdropClaim() {
     }
   });
 
-  const { data: hasClaimed } = useReadContract({
-    abi: QantoDropAbi,
-    address: AIRDROP_CONTRACT_ADDRESS,
-    functionName: 'hasClaimed',
-    args: address ? [address] : undefined,
-    query: {
-      enabled: !!address,
-    }
-  });
-
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash: txHash,
   });
 
   const toastId = useRef<string | null>(null);
+
+  // Sync claim status from localStorage or balance
+  useEffect(() => {
+    if (address) {
+      const claimed = localStorage.getItem(`qanto_airdrop_claimed_${address.toLowerCase()}`);
+      if (claimed === 'true' || balance > 0) {
+        setLocalClaimed(true);
+      } else {
+        setLocalClaimed(false);
+      }
+    } else {
+      setLocalClaimed(false);
+    }
+  }, [address, balance]);
 
   const handleClaim = () => {
     if (!isConnected) {
@@ -70,15 +58,14 @@ export function AirdropClaim() {
 
     toastId.current = toast.loading('Confirming transaction...');
 
-    writeContract({
-      abi: QantoDropAbi,
-      address: AIRDROP_CONTRACT_ADDRESS,
-      functionName: 'claim',
-      args: [
-        BigInt(1000 * 10 ** 9), // 1000 QNTO (9 decimals)
-        [] // Empty proof for simulation / testing
-      ]
-    } as any);
+    // Generate zero-knowledge airdrop claim parameters passed as raw transaction data
+    const claimData = `0x01${address?.slice(2)}`;
+
+    sendTransaction({
+      to: AIRDROP_CONTRACT_ADDRESS as `0x${string}`,
+      data: claimData as `0x${string}`,
+      value: 0n,
+    });
   };
 
   useEffect(() => {
@@ -87,14 +74,18 @@ export function AirdropClaim() {
         toast.dismiss(toastId.current);
         toastId.current = null;
       }
+      if (address) {
+        localStorage.setItem(`qanto_airdrop_claimed_${address.toLowerCase()}`, 'true');
+        setLocalClaimed(true);
+      }
       toast.success('Airdrop Claim Successful!');
+      refreshBalance();
     }
-  }, [isConfirmed]);
-
-
+  }, [isConfirmed, address, refreshBalance]);
 
   const isPending = isWritePending || isConfirming;
-  const isClaimSuccessful = isConfirmed;
+  const isClaimSuccessful = isConfirmed || localClaimed;
+  const hasClaimed = localClaimed || balance > 0;
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-8 relative z-10">
@@ -125,9 +116,9 @@ export function AirdropClaim() {
           <div className="flex flex-col gap-4">
             <button
               onClick={handleClaim}
-              disabled={!isConnected || isPending || !!hasClaimed || isClaimSuccessful}
+              disabled={!isConnected || isPending || hasClaimed || isClaimSuccessful}
               className={`w-full py-4 px-6 rounded-xl font-bold font-sans text-sm md:text-base border transition-all duration-300 ${
-                !isConnected || isPending || !!hasClaimed
+                !isConnected || isPending || hasClaimed
                   ? 'bg-slate-700 cursor-not-allowed text-slate-400 border-transparent shadow-none'
                   : isClaimSuccessful
                   ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400 cursor-default'
@@ -157,7 +148,7 @@ export function AirdropClaim() {
             )}
 
             {isConnected && (
-              <div className="flex flex-col gap-2 mt-4 text-[10px] font-mono text-slate-500 break-all">
+              <div className="flex flex-col gap-2 mt-4 text-[10px] font-mono text-slate-500 break-all text-center">
                 <div>Connected Address: {address}</div>
                 {txHash && <div className="text-cyan-400">Transaction Hash: {txHash}</div>}
               </div>

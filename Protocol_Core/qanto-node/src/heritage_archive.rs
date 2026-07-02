@@ -1,8 +1,8 @@
 // QANTO Neural Heritage Archive - Phase 91
 // Logic: O(1) History Compression using ZK-SNARK recursive proofs.
 
+use ahash::AHashMap as HashMap;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FactCheckResult {
@@ -40,7 +40,6 @@ impl Default for HeritageArchive {
 }
 
 impl HeritageArchive {
-
     /**
      * @dev Phase 91: Neural Heritage Archive.
      * Implements O(1) History Compression using ZK-SNARK recursive proofs.
@@ -52,7 +51,7 @@ impl HeritageArchive {
         println!("----------------------------------------------------");
         println!("🏛️ ARCHIVING REALITY FEED INTO HERITAGE MESH...");
         println!("🏛️ GENERATING RECURSIVE ZK-SNARK PROOF...");
-        
+
         // Final Star-State derivation logic (Phase 91)
         let mut new_root = [0u8; 32];
         for (i, byte) in new_root.iter_mut().enumerate() {
@@ -66,7 +65,7 @@ impl HeritageArchive {
         println!("🏛️ STAR-STATE: {:X?}", new_root);
         println!("🏛️ SURVIVABILITY: 100% (Mirrored across 1.04M nodes).");
         println!("----------------------------------------------------");
-        
+
         new_root
     }
 
@@ -102,13 +101,13 @@ impl HeritageArchive {
         println!("🏛️ QANTO BLOCK ZERO ARTIFACT - GENESIS SEAL");
         println!("----------------------------------------------------");
         println!("🏛️ ARCHIVING 100,000 PIONEER-1 IDENTITIES...");
-        
+
         let genesis_hash = [0xBB; 32]; // Fixed artifact hash for Block Zero
-        
+
         println!("🏛️ GENESIS HASH: {:X?}", genesis_hash);
         println!("🏛️ STATUS: IMMUTABLE ARTIFACT SECURED.");
         println!("----------------------------------------------------");
-        
+
         genesis_hash
     }
 
@@ -122,7 +121,7 @@ impl HeritageArchive {
         println!("🌌 QANTO STELLAR ARCHIVE - PULSE SIGNATURE");
         println!("----------------------------------------------------");
         println!("🌌 GENERATING HIGH-DIMENSIONAL STATE HASH...");
-        
+
         let mut signature = [0u8; 64];
         for (i, byte) in signature.iter_mut().enumerate() {
             *byte = (i as u8).wrapping_mul(0x7F).rotate_left(3);
@@ -131,15 +130,21 @@ impl HeritageArchive {
         println!("🌌 PULSE-SIGNATURE: {:X?}", signature);
         println!("🌌 STATUS: DEEP-TIME REDUNDANCY CALCULATED.");
         println!("----------------------------------------------------");
-        
+
         signature
     }
 
     pub fn mirror_across_lagrange_points(&self, signature: [u8; 64]) {
         let lagrange_points = ["L1", "L2", "L3", "L4", "L5"];
         for point in lagrange_points {
-            println!("🚀 MIRRORING SIGNATURE TO LAGRANGE POINT {}: {:X?}", point, signature);
+            println!(
+                "🚀 MIRRORING SIGNATURE TO LAGRANGE POINT {}: {:X?}",
+                point, signature
+            );
         }
-        println!("🌌 STELLAR MESH: All {} deep-space nodes synchronized.", lagrange_points.len());
+        println!(
+            "🌌 STELLAR MESH: All {} deep-space nodes synchronized.",
+            lagrange_points.len()
+        );
     }
 }

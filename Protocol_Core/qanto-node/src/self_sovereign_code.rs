@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use ahash::AHashMap as HashMap;
+use serde::{Deserialize, Serialize};
 
 /**
  * @title Self-Sovereign Code (TSC)
@@ -35,20 +35,27 @@ impl SelfSovereignCode {
      */
     pub fn propose_code_mutation(&mut self, mutation_id: u32, gain: f64, poa: f64) -> bool {
         println!("TSC: Proposing Agentic Code Mutation {}...", mutation_id);
-        
-        let isAutonomous = poa >= self.autonomy_threshold && gain >= 0.15;
-        
-        self.mutation_registry.insert(mutation_id, AutonomyPulse {
-            mutation_id,
-            original_hash: [0xBB; 32], // Mock original hash
-            mutated_hash: [0xCC; 32],  // Mock mutated hash
-            performance_gain: gain,
-            poa_score: poa,
-            autonomous: isAutonomous,
-        });
 
-        println!("TSC: Autonomy Pulse Outcome: {} (Performance Gain: {}%)", if isAutonomous { "EVOLVED" } else { "STABLE" }, gain * 100.0);
-        isAutonomous
+        let is_autonomous = poa >= self.autonomy_threshold && gain >= 0.15;
+
+        self.mutation_registry.insert(
+            mutation_id,
+            AutonomyPulse {
+                mutation_id,
+                original_hash: [0xBB; 32], // Synthetic original hash
+                mutated_hash: [0xCC; 32],  // Synthetic mutated hash
+                performance_gain: gain,
+                poa_score: poa,
+                autonomous: is_autonomous,
+            },
+        );
+
+        println!(
+            "TSC: Autonomy Pulse Outcome: {} (Performance Gain: {}%)",
+            if is_autonomous { "EVOLVED" } else { "STABLE" },
+            gain * 100.0
+        );
+        is_autonomous
     }
 }
 
@@ -61,8 +68,11 @@ mod tests {
     fn test_self_sovereign_mutation() {
         let mut tsc = SelfSovereignCode::new();
         let evolved = tsc.propose_code_mutation(501, 0.22, 0.99); // Mutation 501 (High Gain)
-        
+
         assert!(evolved);
-        assert_eq!(tsc.mutation_registry.get(&501).unwrap().performance_gain, 0.22);
+        assert_eq!(
+            tsc.mutation_registry.get(&501).unwrap().performance_gain,
+            0.22
+        );
     }
 }

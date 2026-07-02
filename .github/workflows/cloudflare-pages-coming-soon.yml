@@ -1,0 +1,45 @@
+name: Cloudflare Pages Coming Soon
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Frontend/website/**"
+      - "Frontend/package.json"
+      - ".github/workflows/cloudflare-pages-coming-soon.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    env:
+      CLOUDFLARE_PAGES_PROJECT: qanto-org
+      CLOUDFLARE_PAGES_BRANCH: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: Frontend/website
+        run: npm install
+
+      - name: Build website
+        working-directory: Frontend/website
+        run: npm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: Frontend/website
+          command: pages deploy dist --project-name=${{ env.CLOUDFLARE_PAGES_PROJECT }} --branch=${{ env.CLOUDFLARE_PAGES_BRANCH }}

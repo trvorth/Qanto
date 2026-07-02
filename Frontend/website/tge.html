@@ -64,23 +64,56 @@
     
     <script type="module">
         import { ethers } from "ethers";
-        import { connectWallet } from './assets/js/web3-provider.js';
+        import { connectWallet, getSigner, getProvider } from './assets/js/web3-provider.js';
+
+        let walletConnected = false;
 
         document.getElementById('btn-connect').addEventListener('click', async () => {
             const wallet = await connectWallet();
             if (wallet) {
+                walletConnected = true;
                 document.getElementById('btn-connect').innerText = wallet.address.substring(0, 6) + '...' + wallet.address.slice(-4);
             }
         });
 
-        document.getElementById('btn-buy').addEventListener('click', () => {
+        document.getElementById('btn-buy').addEventListener('click', async () => {
+            const ethVal = document.getElementById('eth-amount').value;
+            if (!walletConnected) {
+                alert("Please connect your wallet first.");
+                return;
+            }
+            if (!ethVal || parseFloat(ethVal) <= 0) {
+                alert("Please enter a valid amount.");
+                return;
+            }
             const btn = document.getElementById('btn-buy');
-            btn.innerText = "Awaiting Signature...";
-            setTimeout(() => {
+            btn.disabled = true;
+            btn.innerText = "Awaiting MetaMask Signature...";
+            
+            try {
+                const signer = await getSigner();
+                const provider = getProvider();
+                
+                const amountWei = ethers.parseUnits(ethVal, 9);
+                
+                const txResponse = await signer.sendTransaction({
+                    to: '0x9F00000000000000000000000000000000000004',
+                    value: amountWei
+                });
+                
+                btn.innerText = "Confirming on Qanto consensus...";
+                await provider.waitForTransaction(txResponse.hash);
+                
                 btn.innerText = "Purchase Successful ✅";
                 btn.style.background = "#10b981";
                 btn.style.boxShadow = "0 0 15px rgba(16, 185, 129, 0.4)";
-            }, 2000);
+                alert(`Successfully purchased QNTO! Tx Hash: ${txResponse.hash}`);
+            } catch (err) {
+                console.error(err);
+                btn.disabled = false;
+                btn.innerText = "Purchase $QNTO";
+                alert("Purchase failed: " + err.message);
+            }
         });
     </script>
 </body>

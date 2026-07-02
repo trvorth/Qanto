@@ -6,8 +6,9 @@ services:
       context: .
       dockerfile: Dockerfile.bootnode
     ports:
-      - "8080:8080"
-      - "7860:7860"
+      - "8081:8081"
+      - "50051:50051"
+      - "30303:30303"
     environment:
       - WALLET_PASSWORD=""
       - RUST_LOG="info"

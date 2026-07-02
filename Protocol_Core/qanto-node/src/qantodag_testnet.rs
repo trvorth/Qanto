@@ -1,15 +1,16 @@
-use anyhow::Result;
+use crate::config::Config;
+use crate::node::Node;
 use crate::qanto_compat::ed25519_dalek::SigningKey;
+use crate::wallet::Wallet;
+use anyhow::Result;
 use log::info;
-use qanto::config::Config;
-use qanto::node::Node;
-use qanto::wallet::Wallet;
 use rand::rngs::OsRng;
 use std::env;
 use std::fs;
 use std::sync::Arc;
 
 #[tokio::main]
+#[allow(dead_code)]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
@@ -20,7 +21,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         hex::encode(signing_key.to_bytes())
     });
     let wallet = Wallet::from_private_key(&private_key_hex)?;
-    info!("Testnet node wallet address: {address}", address = wallet.address());
+    info!(
+        "Testnet node wallet address: {address}",
+        address = wallet.address()
+    );
 
     let config = Config {
         p2p_address: "/ip4/127.0.0.1/tcp/0".to_string(),
@@ -37,13 +41,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mining_threads: 1,
         num_chains: 1,
         mining_chain_id: 0,
-        logging: qanto::config::LoggingConfig {
+        logging: crate::config::LoggingConfig {
             level: "info".to_string(),
             enable_block_celebrations: true, // Enable celebrations in testnet
             celebration_log_level: "info".to_string(),
             celebration_throttle_per_min: None,
         },
-        p2p: qanto::config::P2pConfig::default(),
+        p2p: crate::config::P2pConfig::default(),
+        ..Config::default()
     };
     config.validate()?;
 

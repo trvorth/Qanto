@@ -1,0 +1,249 @@
+version: "3.9"
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "5"
+
+services:
+  bootnode:
+    build:
+      context: ../..
+      dockerfile: DevOps/docker/Dockerfile
+    image: qanto/qanto-node:${QANTO_NODE_TAG:-public-testnet}
+    container_name: qanto-bootnode
+    hostname: bootnode
+    restart: unless-stopped
+    init: true
+    environment:
+      CONFIG_PATH: /opt/qanto/config/config.toml
+      WALLET_PATH: /opt/qanto/keys/wallet.key
+      P2P_IDENTITY: /opt/qanto/keys/p2p_identity.key
+      PEER_CACHE: /opt/qanto/keys/peer_cache.json
+      LOG_DIR: /opt/qanto/logs
+      DATA_DIR: /opt/qanto/data
+      HEALTHCHECK_URL: http://127.0.0.1:8081/health
+      WALLET_PASSWORD_FILE: /run/secrets/qanto_wallet_password
+      RUST_LOG: ${QANTO_RUST_LOG:-info}
+    ports:
+      - "${QANTO_BOOTNODE_P2P_PORT:-30303}:30303/tcp"
+      - "${QANTO_BOOTNODE_P2P_PORT:-30303}:30303/udp"
+    volumes:
+      - type: bind
+        source: ${QANTO_BOOTNODE_CONFIG_PATH:?set QANTO_BOOTNODE_CONFIG_PATH}
+        target: /opt/qanto/config/config.toml
+        read_only: true
+      - bootnode_keys:/opt/qanto/keys
+      - bootnode_data:/opt/qanto/data
+      - bootnode_logs:/opt/qanto/logs
+    secrets:
+      - qanto_wallet_password
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8081/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - qanto_core
+    cpus: 1.50
+    mem_limit: 2g
+    mem_reservation: 1g
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    logging: *default-logging
+    labels:
+      com.qanto.role: bootnode
+      com.qanto.volume.warn: "80"
+      com.qanto.volume.critical: "90"
+
+  rpcnode:
+    build:
+      context: ../..
+      dockerfile: DevOps/docker/Dockerfile
+    image: qanto/qanto-node:${QANTO_NODE_TAG:-public-testnet}
+    container_name: qanto-rpcnode
+    hostname: rpcnode
+    restart: unless-stopped
+    init: true
+    depends_on:
+      bootnode:
+        condition: service_healthy
+    environment:
+      CONFIG_PATH: /opt/qanto/config/config.toml
+      WALLET_PATH: /opt/qanto/keys/wallet.key
+      P2P_IDENTITY: /opt/qanto/keys/p2p_identity.key
+      PEER_CACHE: /opt/qanto/keys/peer_cache.json
+      LOG_DIR: /opt/qanto/logs
+      DATA_DIR: /opt/qanto/data
+      HEALTHCHECK_URL: http://127.0.0.1:8081/publish-readiness
+      WALLET_PASSWORD_FILE: /run/secrets/qanto_wallet_password
+      RUST_LOG: ${QANTO_RUST_LOG:-info}
+    ports:
+      - "${QANTO_RPC_HTTP_PORT:-8081}:8081"
+      - "${QANTO_RPC_GRPC_PORT:-50051}:50051"
+    expose:
+      - "30304"
+    volumes:
+      - type: bind
+        source: ${QANTO_RPCNODE_CONFIG_PATH:?set QANTO_RPCNODE_CONFIG_PATH}
+        target: /opt/qanto/config/config.toml
+        read_only: true
+      - rpcnode_keys:/opt/qanto/keys
+      - rpcnode_data:/opt/qanto/data
+      - rpcnode_logs:/opt/qanto/logs
+    secrets:
+      - qanto_wallet_password
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS http://127.0.0.1:8081/publish-readiness | grep -q '\"is_ready\":true' || exit 1",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+    networks:
+      - qanto_core
+      - qanto_app
+    cpus: 4.00
+    mem_limit: 8g
+    mem_reservation: 4g
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    logging: *default-logging
+    labels:
+      com.qanto.role: rpcnode
+      com.qanto.volume.warn: "80"
+      com.qanto.volume.critical: "90"
+
+  qantoscan:
+    build:
+      context: ../..
+      dockerfile: Frontend/qantoscan/Dockerfile
+      args:
+        VITE_QANTO_NODE_URL: /api
+    image: qanto/qantoscan:${QANTOSCAN_TAG:-public-testnet}
+    container_name: qantoscan
+    hostname: qantoscan
+    restart: unless-stopped
+    depends_on:
+      rpcnode:
+        condition: service_healthy
+    environment:
+      QANTO_API_UPSTREAM: http://rpcnode:8081
+    expose:
+      - "80"
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=64m
+      - /var/run:size=16m
+      - /tmp:size=16m
+      - /etc/nginx/conf.d:size=16m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/healthz >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - qanto_app
+    cpus: 1.00
+    mem_limit: 512m
+    mem_reservation: 256m
+    logging: *default-logging
+    labels:
+      com.qanto.role: explorer
+
+  caddy:
+    image: caddy:2.8-alpine
+    container_name: qanto-edge
+    hostname: qanto-edge
+    restart: unless-stopped
+    depends_on:
+      qantoscan:
+        condition: service_healthy
+    environment:
+      QANTO_DOMAIN: ${QANTO_DOMAIN:?set QANTO_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+      - caddy_data:/data
+      - caddy_config:/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1/healthz >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - qanto_app
+      - qanto_edge
+    cpus: 1.00
+    mem_limit: 512m
+    mem_reservation: 256m
+    logging: *default-logging
+    labels:
+      com.qanto.role: edge
+
+secrets:
+  qanto_wallet_password:
+    file: ${QANTO_WALLET_PASSWORD_FILE:-./secrets/wallet_password.txt}
+
+volumes:
+  bootnode_keys:
+    labels:
+      com.qanto.volume.warn: "80"
+      com.qanto.volume.critical: "90"
+  bootnode_data:
+    labels:
+      com.qanto.volume.warn: "80"
+      com.qanto.volume.critical: "90"
+  bootnode_logs:
+    labels:
+      com.qanto.volume.warn: "80"
+      com.qanto.volume.critical: "90"
+  rpcnode_keys:
+    labels:
+      com.qanto.volume.warn: "80"
+      com.qanto.volume.critical: "90"
+  rpcnode_data:
+    labels:
+      com.qanto.volume.warn: "80"
+      com.qanto.volume.critical: "90"
+  rpcnode_logs:
+    labels:
+      com.qanto.volume.warn: "80"
+      com.qanto.volume.critical: "90"
+  caddy_data:
+    labels:
+      com.qanto.volume.warn: "80"
+      com.qanto.volume.critical: "90"
+  caddy_config:
+    labels:
+      com.qanto.volume.warn: "80"
+      com.qanto.volume.critical: "90"
+
+networks:
+  qanto_core:
+    driver: bridge
+    name: qanto_core
+  qanto_app:
+    driver: bridge
+    internal: true
+    name: qanto_app
+  qanto_edge:
+    driver: bridge
+    name: qanto_edge

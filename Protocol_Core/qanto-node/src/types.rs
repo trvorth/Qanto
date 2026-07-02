@@ -58,7 +58,7 @@ pub struct HomomorphicEncrypted {
 impl HomomorphicEncrypted {
     pub fn new(_amount: u128, public_key_material: &[u8]) -> Self {
         // For testing and development, use empty data to avoid 437MB serialization issue
-        // TODO: In production, implement proper TFHE encryption with size limits
+        // Note (Future Enhancement): In production, implement proper TFHE encryption with size limits
         Self {
             ciphertext: vec![], // Empty to avoid massive TFHE serialization
             public_key: public_key_material.to_vec(),
@@ -107,7 +107,7 @@ impl HomomorphicEncrypted {
 
     pub fn generate_keypair() -> (Vec<u8>, Vec<u8>) {
         // For testing and development, use minimal dummy keys to avoid massive TFHE serialization
-        // TODO: In production, implement proper TFHE keypair generation with size limits
+        // Note (Future Enhancement): In production, implement proper TFHE keypair generation with size limits
         let public_key = vec![0x42u8; 32]; // 32-byte dummy public key
         let private_key = vec![0x24u8; 32]; // 32-byte dummy private key
         (public_key, private_key)

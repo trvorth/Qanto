@@ -20,19 +20,30 @@ use crate::gas_fee_model::{FeeBreakdown, GasFeeError, GasFeeModel, StorageDurati
 use crate::omega;
 use crate::qantodag::QantoDAG;
 use crate::types::{HomomorphicEncrypted, QuantumResistantSignature, UTXO};
+use bincode::Options;
 use my_blockchain::qanto_hash;
 use rayon::prelude::*;
+
+use ahash::AHashMap as HashMap;
+use ahash::AHashSet as HashSet;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 use tokio::sync::{RwLock, Semaphore};
 use zeroize::Zeroize;
 
+use k256::ecdsa::{RecoveryId, Signature as K256Signature, VerifyingKey};
+use sha3::{Digest, Keccak256};
+
 // --- Performance & Fee Constants ---
 /// The maximum number of transactions allowed per minute to align with the 10M+ TPS goal.
 const MAX_TRANSACTIONS_PER_MINUTE: u64 = 600_000_000;
+/// The minimum gas limit required for any transaction to prevent dust spam (C-H1).
+pub const MIN_TX_GAS: u128 = 21_000;
+/// The minimum fee required for any transaction to prevent dust spam (C-H1).
+pub const MIN_TX_FEE: u128 = 100;
 /// The maximum number of key-value pairs allowed in a transaction's metadata.
 const MAX_METADATA_PAIRS: usize = 16;
 /// The maximum length of a metadata key.
@@ -69,6 +80,8 @@ pub enum TransactionError {
     InvalidAddress,
     #[error("Quantum-resistant signature verification failed")]
     QuantumSignatureVerification,
+    #[error("Invalid transaction signature")]
+    InvalidTransactionSignature,
     #[error("Insufficient funds")]
     InsufficientFunds,
     #[error("Invalid transaction structure: {0}")]
@@ -91,6 +104,8 @@ pub enum TransactionError {
     PqCrypto(String),
     #[error("Gas fee error: {0}")]
     GasFee(#[from] GasFeeError),
+    #[error("Legacy ECDSA schemes are deprecated. Please use a Hybrid Signature.")]
+    LegacySchemeDeprecated,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
@@ -118,18 +133,69 @@ pub struct TransactionConfig {
     pub outputs: Vec<Output>,
     pub metadata: Option<HashMap<String, String>>,
     pub tx_timestamps: Arc<RwLock<HashMap<String, u64>>>,
+    pub chain_id: u32,
 }
 
-#[derive(Debug)]
-struct TransactionSigningPayload {
+#[derive(Debug, Serialize)]
+struct TransactionIdPayload {
     sender: String,
     receiver: String,
     amount: u128,
     fee: u128,
+    gas_limit: u128,
+    gas_used: u128,
+    gas_price: u128,
+    priority_fee: u128,
     inputs: Vec<Input>,
     outputs: Vec<Output>,
-    metadata: HashMap<String, String>,
+    metadata: BTreeMap<String, String>,
     timestamp: u64,
+    transaction_kind: TransactionKind,
+    chain_id: u32,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct TransactionSigningPayload {
+    pub(crate) id: String,
+    pub(crate) sender: String,
+    pub(crate) receiver: String,
+    pub(crate) amount: u128,
+    pub(crate) fee: u128,
+    pub(crate) gas_limit: u128,
+    pub(crate) gas_used: u128,
+    pub(crate) gas_price: u128,
+    pub(crate) priority_fee: u128,
+    pub(crate) inputs: Vec<Input>,
+    pub(crate) outputs: Vec<Output>,
+    pub(crate) metadata: BTreeMap<String, String>,
+    pub(crate) timestamp: u64,
+    pub(crate) transaction_kind: TransactionKind,
+    pub(crate) chain_id: u32,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum TransactionKind {
+    Transfer,
+    Stake,
+    Unstake,
+    Delegate,
+    Vote,
+    Proposal,
+    BridgeLock,
+    BridgeObserve,
+    BridgeClaim,
+    AirdropClaim,
+}
+
+impl Default for TransactionKind {
+    fn default() -> Self {
+        TransactionKind::Transfer
+    }
+}
+
+fn metadata_is_empty(m: &HashMap<String, String>) -> bool {
+    m.is_empty()
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Default)]
@@ -146,11 +212,15 @@ pub struct Transaction {
     pub inputs: Vec<Input>,
     pub outputs: Vec<Output>,
     pub timestamp: u64,
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[serde(default, skip_serializing_if = "metadata_is_empty")]
     pub metadata: HashMap<String, String>,
     pub signature: QuantumResistantSignature,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fee_breakdown: Option<FeeBreakdown>,
+    #[serde(default)]
+    pub transaction_kind: TransactionKind,
+    #[serde(default)]
+    pub chain_id: u32,
 }
 
 /// Calculates the transaction fee based on the new tiered structure.
@@ -167,10 +237,145 @@ pub fn calculate_dynamic_fee(amount: u128) -> u128 {
 
     // Calculate fee using fixed-point integer arithmetic (scale 1e9)
     // multiplication before division to maintain precision
-    amount.checked_mul(rate).and_then(|r| r.checked_div(crate::QANTO_SCALE)).unwrap_or(0)
+    amount
+        .checked_mul(rate)
+        .and_then(|r| r.checked_div(crate::QANTO_SCALE))
+        .unwrap_or(0)
 }
 
 impl Transaction {
+    fn canonical_metadata(metadata: &HashMap<String, String>) -> BTreeMap<String, String> {
+        metadata
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect::<BTreeMap<_, _>>()
+    }
+
+    fn canonical_serialize<T: Serialize>(value: &T) -> Result<Vec<u8>, TransactionError> {
+        bincode::DefaultOptions::new()
+            .with_fixint_encoding()
+            .with_little_endian()
+            .serialize(value)
+            .map_err(|e| {
+                TransactionError::InvalidStructure(format!(
+                    "canonical transaction serialization failed: {e}"
+                ))
+            })
+    }
+
+    fn id_payload(
+        sender: String,
+        receiver: String,
+        amount: u128,
+        fee: u128,
+        gas_limit: u128,
+        gas_used: u128,
+        gas_price: u128,
+        priority_fee: u128,
+        inputs: Vec<Input>,
+        outputs: Vec<Output>,
+        metadata: HashMap<String, String>,
+        timestamp: u64,
+        transaction_kind: TransactionKind,
+        chain_id: u32,
+    ) -> TransactionIdPayload {
+        TransactionIdPayload {
+            sender,
+            receiver,
+            amount,
+            fee,
+            gas_limit,
+            gas_used,
+            gas_price,
+            priority_fee,
+            inputs,
+            outputs,
+            metadata: Self::canonical_metadata(&metadata),
+            timestamp,
+            transaction_kind,
+            chain_id,
+        }
+    }
+
+    fn derive_transaction_id(payload: &TransactionIdPayload) -> Result<String, TransactionError> {
+        let bytes = Self::canonical_serialize(payload)?;
+        Ok(hex::encode(qanto_hash(&bytes).as_bytes()))
+    }
+
+    fn signing_payload_from_id_payload(
+        id: String,
+        payload: TransactionIdPayload,
+    ) -> TransactionSigningPayload {
+        TransactionSigningPayload {
+            id,
+            sender: payload.sender,
+            receiver: payload.receiver,
+            amount: payload.amount,
+            fee: payload.fee,
+            gas_limit: payload.gas_limit,
+            gas_used: payload.gas_used,
+            gas_price: payload.gas_price,
+            priority_fee: payload.priority_fee,
+            inputs: payload.inputs,
+            outputs: payload.outputs,
+            metadata: payload.metadata,
+            timestamp: payload.timestamp,
+            transaction_kind: payload.transaction_kind,
+            chain_id: payload.chain_id,
+        }
+    }
+
+    pub(crate) fn signing_payload_for_transaction(&self) -> TransactionSigningPayload {
+        let payload = Self::id_payload(
+            self.sender.clone(),
+            self.receiver.clone(),
+            self.amount,
+            self.fee,
+            self.gas_limit,
+            self.gas_used,
+            self.gas_price,
+            self.priority_fee,
+            self.inputs.clone(),
+            self.outputs.clone(),
+            self.metadata.clone(),
+            self.timestamp,
+            self.transaction_kind,
+            self.chain_id,
+        );
+        Self::signing_payload_from_id_payload(self.id.clone(), payload)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn rebuild_canonical_signature(
+        &mut self,
+        signing_key: &crate::qanto_native_crypto::QantoPQPrivateKey,
+    ) -> Result<(), TransactionError> {
+        let id_payload = Self::id_payload(
+            self.sender.clone(),
+            self.receiver.clone(),
+            self.amount,
+            self.fee,
+            self.gas_limit,
+            self.gas_used,
+            self.gas_price,
+            self.priority_fee,
+            self.inputs.clone(),
+            self.outputs.clone(),
+            self.metadata.clone(),
+            self.timestamp,
+            self.transaction_kind,
+            self.chain_id,
+        );
+        let tx_id = Self::derive_transaction_id(&id_payload)?;
+        let signing_payload = Self::signing_payload_from_id_payload(tx_id.clone(), id_payload);
+        let signature_data = Self::serialize_for_signing(&signing_payload)?;
+
+        self.id = tx_id;
+        self.signature = QuantumResistantSignature::sign(signing_key, &signature_data)
+            .map_err(|_| TransactionError::InvalidTransactionSignature)?;
+        Ok(())
+    }
+
     /// Creates a new dummy transaction for testing purposes.
     pub fn new_dummy() -> Self {
         use rand::Rng;
@@ -208,6 +413,8 @@ impl Transaction {
                 signature: vec![],
             },
             fee_breakdown: None,
+            transaction_kind: TransactionKind::Transfer,
+            chain_id: 1234,
         }
     }
 
@@ -218,7 +425,6 @@ impl Transaction {
     ) -> Result<Self, TransactionError> {
         use rand::Rng;
         let mut rng = rand::thread_rng();
-        let dummy_id: [u8; 32] = rng.gen();
         let dummy_sender: [u8; 32] = rng.gen();
         let dummy_receiver: [u8; 32] = rng.gen();
         let timestamp = SystemTime::now()
@@ -229,24 +435,31 @@ impl Transaction {
         let sender_str = hex::encode(dummy_sender);
         let receiver_str = hex::encode(dummy_receiver);
 
-        let signing_payload = TransactionSigningPayload {
-            sender: sender_str.clone(),
-            receiver: receiver_str.clone(),
-            amount: 100,
-            fee: 0,
-            inputs: vec![],
-            outputs: vec![],
-            metadata: HashMap::new(),
+        let id_payload = Self::id_payload(
+            sender_str.clone(),
+            receiver_str.clone(),
+            100,
+            0,
+            50000,
+            0,
+            1,
+            0,
+            vec![],
+            vec![],
+            HashMap::new(),
             timestamp,
-        };
-
+            TransactionKind::Transfer,
+            1234,
+        );
+        let tx_id = Self::derive_transaction_id(&id_payload)?;
+        let signing_payload = Self::signing_payload_from_id_payload(tx_id.clone(), id_payload);
         let signature_data = Self::serialize_for_signing(&signing_payload)?;
 
         let signature_obj = QuantumResistantSignature::sign(signing_key, &signature_data)
-            .map_err(|_| TransactionError::QuantumSignatureVerification)?;
+            .map_err(|_| TransactionError::InvalidTransactionSignature)?;
 
         Ok(Self {
-            id: hex::encode(dummy_id),
+            id: tx_id,
             sender: sender_str,
             receiver: receiver_str,
             amount: 100,
@@ -268,29 +481,61 @@ impl Transaction {
             metadata: HashMap::new(),
             signature: signature_obj,
             fee_breakdown: None,
+            transaction_kind: TransactionKind::Transfer,
+            chain_id: 1234,
         })
     }
 
-    /// Verifies the quantum-resistant signature of the transaction.
+    /// Verifies the signature of the transaction (supports both post-quantum and EVM).
     pub fn verify_signature(
         &self,
-        _public_key: &crate::qanto_native_crypto::QantoPQPublicKey,
+        public_key: &crate::qanto_native_crypto::QantoPQPublicKey,
     ) -> Result<(), TransactionError> {
-        let signing_payload = TransactionSigningPayload {
-            sender: self.sender.clone(),
-            receiver: self.receiver.clone(),
-            amount: self.amount,
-            fee: self.fee,
-            inputs: self.inputs.clone(),
-            outputs: self.outputs.clone(),
-            metadata: self.metadata.clone(),
-            timestamp: self.timestamp,
-        };
+        let expected_chain_id = GLOBAL_CHAIN_ID.load(std::sync::atomic::Ordering::Relaxed) as u32;
+        if self.chain_id != expected_chain_id {
+            return Err(TransactionError::InvalidStructure(format!(
+                "Chain ID mismatch: expected {}, got {}",
+                expected_chain_id, self.chain_id
+            )));
+        }
 
-        let signature_data = Self::serialize_for_signing(&signing_payload)?;
+        if self.id != self.compute_hash() {
+            return Err(TransactionError::InvalidStructure(
+                "transaction id does not match canonical payload".to_string(),
+            ));
+        }
+
+        if self.signature.signer_public_key != public_key.as_bytes() {
+            return Err(TransactionError::InvalidTransactionSignature);
+        }
+
+        if let Some(raw_tx_hex) = self.metadata.get("evm_raw_tx") {
+            let raw_bytes = hex::decode(raw_tx_hex).map_err(|_| {
+                TransactionError::InvalidStructure("Invalid evm_raw_tx hex".to_string())
+            })?;
+            let (recovered_sender, recovered_receiver, recovered_amount, _tx_data) =
+                Self::recover_evm_sender(&raw_bytes).map_err(|e| {
+                    TransactionError::InvalidStructure(format!("EVM recovery failed: {}", e))
+                })?;
+
+            if recovered_sender != self.sender {
+                return Err(TransactionError::InvalidAddress);
+            }
+            if recovered_receiver != self.receiver {
+                return Err(TransactionError::InvalidAddress);
+            }
+            if recovered_amount != self.amount {
+                return Err(TransactionError::InvalidStructure(
+                    "Amount mismatch".to_string(),
+                ));
+            }
+            return Ok(());
+        }
+
+        let signature_data = Self::serialize_for_signing(&self.signing_payload_for_transaction())?;
 
         if !QuantumResistantSignature::verify(&self.signature, &signature_data) {
-            return Err(TransactionError::QuantumSignatureVerification);
+            return Err(TransactionError::InvalidTransactionSignature);
         }
         Ok(())
     }
@@ -306,21 +551,35 @@ impl Transaction {
             config.amount,
             config.inputs.clone(),
             config.metadata.clone(),
+            config.fee,
+            config.gas_limit,
         )?;
         Self::check_rate_limit(&config.tx_timestamps, MAX_TRANSACTIONS_PER_MINUTE).await?;
-        Self::validate_addresses(config.sender.clone(), config.receiver.clone(), config.outputs.clone())?;
+        Self::validate_addresses(
+            config.sender.clone(),
+            config.receiver.clone(),
+            config.outputs.clone(),
+        )?;
         let timestamp = Self::get_current_timestamp()?;
         let metadata = config.metadata.unwrap_or_default();
-        let signing_payload = TransactionSigningPayload {
-            sender: config.sender.clone(),
-            receiver: config.receiver.clone(),
-            amount: config.amount,
-            fee: config.fee,
-            inputs: config.inputs.clone(),
-            outputs: config.outputs.clone(),
-            metadata: metadata.clone(),
+        let id_payload = Self::id_payload(
+            config.sender.clone(),
+            config.receiver.clone(),
+            config.amount,
+            config.fee,
+            config.gas_limit,
+            0,
+            config.gas_price,
+            config.priority_fee,
+            config.inputs.clone(),
+            config.outputs.clone(),
+            metadata.clone(),
             timestamp,
-        };
+            TransactionKind::Transfer,
+            config.chain_id,
+        );
+        let tx_id = Self::derive_transaction_id(&id_payload)?;
+        let signing_payload = Self::signing_payload_from_id_payload(tx_id.clone(), id_payload);
         let signature_data = Self::serialize_for_signing(&signing_payload)?;
         let hash_bytes = qanto_hash(&signature_data).as_bytes().to_vec();
         let action_hash: [u8; 32] = hash_bytes[..32.min(hash_bytes.len())]
@@ -339,8 +598,8 @@ impl Transaction {
             return Err(TransactionError::OmegaRejection);
         }
 
-        let mut tx = Self {
-            id: String::new(),
+        let tx = Self {
+            id: tx_id,
             sender: config.sender,
             receiver: config.receiver,
             amount: config.amount,
@@ -354,10 +613,11 @@ impl Transaction {
             timestamp,
             metadata,
             signature: QuantumResistantSignature::sign(signing_key, &signature_data)
-                .map_err(|_| TransactionError::QuantumSignatureVerification)?,
+                .map_err(|_| TransactionError::InvalidTransactionSignature)?,
             fee_breakdown: None, // Will be calculated by gas fee model
+            transaction_kind: TransactionKind::Transfer,
+            chain_id: config.chain_id,
         };
-        tx.id = tx.compute_hash();
         let mut timestamps_guard = config.tx_timestamps.write().await;
         timestamps_guard.insert(tx.id.clone(), timestamp);
         if timestamps_guard.len() > (MAX_TRANSACTIONS_PER_MINUTE * 2) as usize {
@@ -373,6 +633,8 @@ impl Transaction {
         receiver: String,
         _reward: u128,
         outputs: Vec<Output>,
+        signing_key: &crate::qanto_native_crypto::QantoPQPrivateKey,
+        chain_id: u32,
     ) -> Result<Self, TransactionError> {
         let sender = "0000000000000000000000000000000000000000000000000000000000000000".to_string();
         let timestamp = Self::get_current_timestamp()?;
@@ -381,24 +643,31 @@ impl Transaction {
         // Calculate the actual amount as sum of outputs
         let actual_amount = outputs.iter().map(|output| output.amount).sum::<u128>();
 
-        let signing_payload = TransactionSigningPayload {
-            sender: sender.clone(),
-            receiver: receiver.clone(),
-            amount: actual_amount,
-            fee: 0,
-            inputs: vec![],
-            outputs: outputs.clone(),
-            metadata: metadata.clone(),
+        let id_payload = Self::id_payload(
+            sender.clone(),
+            receiver.clone(),
+            actual_amount,
+            0,
+            0,
+            0,
+            0,
+            0,
+            vec![],
+            outputs.clone(),
+            metadata.clone(),
             timestamp,
-        };
+            TransactionKind::Transfer,
+            chain_id,
+        );
+        let tx_id = Self::derive_transaction_id(&id_payload)?;
+        let signing_payload = Self::signing_payload_from_id_payload(tx_id.clone(), id_payload);
         let signature_data = Self::serialize_for_signing(&signing_payload)?;
 
-        let sk = crate::qanto_native_crypto::QantoPQPrivateKey::new_dummy(); // Placeholder for actual key
-        let signature_obj = QuantumResistantSignature::sign(&sk, &signature_data)
-            .map_err(|_| TransactionError::QuantumSignatureVerification)?;
+        let signature_obj = QuantumResistantSignature::sign(signing_key, &signature_data)
+            .map_err(|_| TransactionError::InvalidTransactionSignature)?;
 
-        let mut tx = Self {
-            id: String::new(),
+        let tx = Self {
+            id: tx_id,
             sender,
             receiver,
             amount: actual_amount,
@@ -413,8 +682,9 @@ impl Transaction {
             metadata,
             signature: signature_obj,
             fee_breakdown: None,
+            transaction_kind: TransactionKind::Transfer,
+            chain_id,
         };
-        tx.id = tx.compute_hash();
         Ok(tx)
     }
 
@@ -435,6 +705,8 @@ impl Transaction {
         amount: u128,
         inputs: Vec<Input>,
         metadata: Option<HashMap<String, String>>,
+        fee: u128,
+        gas_limit: u128,
     ) -> Result<(), TransactionError> {
         if sender.is_empty() {
             return Err(TransactionError::InvalidStructure(
@@ -451,6 +723,21 @@ impl Transaction {
                 "Amount cannot be zero for regular transactions".to_string(),
             ));
         }
+
+        // --- CRITICAL: Enforce Min Fee and Gas to block dust attacks (C-H1) ---
+        if fee < MIN_TX_FEE {
+            return Err(TransactionError::InvalidStructure(format!(
+                "Transaction fee {} is below minimum required fee {}",
+                fee, MIN_TX_FEE
+            )));
+        }
+        if gas_limit < MIN_TX_GAS {
+            return Err(TransactionError::InvalidStructure(format!(
+                "Gas limit {} is below minimum required gas {}",
+                gas_limit, MIN_TX_GAS
+            )));
+        }
+
         if let Some(md) = metadata {
             if md.len() > MAX_METADATA_PAIRS {
                 let mut error_msg = String::with_capacity(50);
@@ -494,7 +781,9 @@ impl Transaction {
     ) -> Result<(), TransactionError> {
         if !Self::is_valid_address(sender)
             || !Self::is_valid_address(receiver)
-            || outputs.iter().any(|o| !Self::is_valid_address(o.address.clone()))
+            || outputs
+                .iter()
+                .any(|o| !Self::is_valid_address(o.address.clone()))
         {
             Err(TransactionError::InvalidAddress)
         } else {
@@ -516,56 +805,31 @@ impl Transaction {
     }
 
     /// Serializes the transaction data for signing.
-    fn serialize_for_signing(
+    pub(crate) fn serialize_for_signing(
         payload: &TransactionSigningPayload,
     ) -> Result<Vec<u8>, TransactionError> {
-        let mut data = Vec::new();
-        data.extend_from_slice(payload.sender.as_bytes());
-        data.extend_from_slice(payload.receiver.as_bytes());
-        data.extend_from_slice(&payload.amount.to_be_bytes());
-        data.extend_from_slice(&payload.fee.to_be_bytes());
-        payload.inputs.iter().for_each(|i| {
-            data.extend_from_slice(i.tx_id.as_bytes());
-            data.extend_from_slice(&i.output_index.to_be_bytes());
-        });
-        payload.outputs.iter().for_each(|o| {
-            data.extend_from_slice(o.address.as_bytes());
-            data.extend_from_slice(&o.amount.to_be_bytes());
-        });
-        let mut sorted_metadata: Vec<_> = payload.metadata.iter().collect();
-        sorted_metadata.sort_by_key(|(k, _)| *k);
-        sorted_metadata.iter().for_each(|(k, v)| {
-            data.extend_from_slice(k.as_bytes());
-            data.extend_from_slice(v.as_bytes());
-        });
-        data.extend_from_slice(&payload.timestamp.to_be_bytes());
-        Ok(qanto_hash(&data).as_bytes().to_vec())
+        Self::canonical_serialize(payload)
     }
 
     /// Computes the hash of the transaction.
-    fn compute_hash(&self) -> String {
-        let mut data = Vec::new();
-        data.extend_from_slice(self.sender.as_bytes());
-        data.extend_from_slice(self.receiver.as_bytes());
-        data.extend_from_slice(&self.amount.to_be_bytes());
-        data.extend_from_slice(&self.fee.to_be_bytes());
-        self.inputs.iter().for_each(|i| {
-            data.extend_from_slice(i.tx_id.as_bytes());
-            data.extend_from_slice(&i.output_index.to_be_bytes());
-        });
-        self.outputs.iter().for_each(|o| {
-            data.extend_from_slice(o.address.as_bytes());
-            data.extend_from_slice(&o.amount.to_be_bytes());
-        });
-        let mut sorted_metadata: Vec<_> = self.metadata.iter().collect();
-        sorted_metadata.sort_by_key(|(k, _)| *k);
-        sorted_metadata.iter().for_each(|(k, v)| {
-            data.extend_from_slice(k.as_bytes());
-            data.extend_from_slice(v.as_bytes());
-        });
-        data.extend_from_slice(&self.timestamp.to_be_bytes());
-        let hash = qanto_hash(&data);
-        hex::encode(hash.as_bytes())
+    pub(crate) fn compute_hash(&self) -> String {
+        let payload = Self::id_payload(
+            self.sender.clone(),
+            self.receiver.clone(),
+            self.amount,
+            self.fee,
+            self.gas_limit,
+            self.gas_used,
+            self.gas_price,
+            self.priority_fee,
+            self.inputs.clone(),
+            self.outputs.clone(),
+            self.metadata.clone(),
+            self.timestamp,
+            self.transaction_kind,
+            self.chain_id,
+        );
+        Self::derive_transaction_id(&payload).unwrap_or_default()
     }
 
     /// Memory-optimized verification using a shared UTXO reference.
@@ -574,17 +838,11 @@ impl Transaction {
         _dag: &QantoDAG,
         utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
     ) -> Result<(), TransactionError> {
-        let signing_payload = TransactionSigningPayload {
-            sender: self.sender.clone(),
-            receiver: self.receiver.clone(),
-            amount: self.amount,
-            fee: self.fee,
-            inputs: self.inputs.clone(),
-            outputs: self.outputs.clone(),
-            metadata: self.metadata.clone(),
-            timestamp: self.timestamp,
-        };
-        let _data_to_verify = Self::serialize_for_signing(&signing_payload)?;
+        let public_key = crate::qanto_native_crypto::QantoPQPublicKey::from_bytes(
+            &self.signature.signer_public_key,
+        )
+        .map_err(|_| TransactionError::InvalidTransactionSignature)?;
+        self.verify_signature(&public_key)?;
 
         if self.is_coinbase() {
             if self.fee != 0 {
@@ -641,17 +899,11 @@ impl Transaction {
         _dag: &QantoDAG,
         utxos: &HashMap<String, UTXO>,
     ) -> Result<(), TransactionError> {
-        let signing_payload = TransactionSigningPayload {
-            sender: self.sender.clone(),
-            receiver: self.receiver.clone(),
-            amount: self.amount,
-            fee: self.fee,
-            inputs: self.inputs.clone(),
-            outputs: self.outputs.clone(),
-            metadata: self.metadata.clone(),
-            timestamp: self.timestamp,
-        };
-        let _data_to_verify = Self::serialize_for_signing(&signing_payload)?;
+        let public_key = crate::qanto_native_crypto::QantoPQPublicKey::from_bytes(
+            &self.signature.signer_public_key,
+        )
+        .map_err(|_| TransactionError::InvalidTransactionSignature)?;
+        self.verify_signature(&public_key)?;
 
         if self.is_coinbase() {
             if self.fee != 0 {
@@ -722,20 +974,27 @@ impl Transaction {
         tx: &Transaction,
         utxos: &HashMap<String, UTXO>,
     ) -> Result<(), TransactionError> {
-        let signing_payload = TransactionSigningPayload {
-            sender: tx.sender.clone(),
-            receiver: tx.receiver.clone(),
-            amount: tx.amount,
-            fee: tx.fee,
-            inputs: tx.inputs.clone(),
-            outputs: tx.outputs.clone(),
-            metadata: tx.metadata.clone(),
-            timestamp: tx.timestamp,
-        };
-        let _data_to_verify = Self::serialize_for_signing(&signing_payload)?;
+        let public_key = crate::qanto_native_crypto::QantoPQPublicKey::from_bytes(
+            &tx.signature.signer_public_key,
+        )
+        .map_err(|_| TransactionError::InvalidTransactionSignature)?;
+        tx.verify_signature(&public_key)?;
 
-        // Signature verification is removed from this batch helper for performance.
-        // It's assumed to be done separately.
+        // --- CRITICAL: Enforce Min Fee and Gas in validation path (C-H1) ---
+        if !tx.is_coinbase() {
+            if tx.fee < MIN_TX_FEE {
+                return Err(TransactionError::InvalidStructure(format!(
+                    "Transaction fee {} is below minimum required fee {}",
+                    tx.fee, MIN_TX_FEE
+                )));
+            }
+            if tx.gas_limit < MIN_TX_GAS {
+                return Err(TransactionError::InvalidStructure(format!(
+                    "Gas limit {} is below minimum required gas {}",
+                    tx.gas_limit, MIN_TX_GAS
+                )));
+            }
+        }
 
         if tx.is_coinbase() {
             if tx.fee != 0 {
@@ -784,6 +1043,52 @@ impl Transaction {
 
     /// Lightweight transaction validation for mempool admission.
     pub fn validate_for_mempool(&self) -> Result<(), TransactionError> {
+        // DoS Protection: size limits check
+        let serialized_len = serde_json::to_vec(self)
+            .map_err(TransactionError::Serialization)?
+            .len();
+        if serialized_len > 128 * 1024 {
+            return Err(TransactionError::InvalidStructure(format!(
+                "Transaction size exceeds limit of 128KB: got {}",
+                serialized_len
+            )));
+        }
+
+        if let Some(proof) = self.metadata.get("bridge_merkle_proof") {
+            if proof.len() > 64 * 1024 {
+                return Err(TransactionError::InvalidStructure(format!(
+                    "Bridge Merkle proof size exceeds limit of 64KB: got {}",
+                    proof.len()
+                )));
+            }
+        }
+        if let Some(proof) = self.metadata.get("bridge_receipt_proof") {
+            if proof.len() > 64 * 1024 {
+                return Err(TransactionError::InvalidStructure(format!(
+                    "Bridge receipt proof size exceeds limit of 64KB: got {}",
+                    proof.len()
+                )));
+            }
+        }
+
+        if let Some(desc) = self.metadata.get("proposal_description") {
+            if desc.len() > 16 * 1024 {
+                return Err(TransactionError::InvalidStructure(format!(
+                    "Proposal description size exceeds limit of 16KB: got {}",
+                    desc.len()
+                )));
+            }
+        }
+
+        if let Some(cid) = self.metadata.get("proposal_cid") {
+            if cid.len() > 256 {
+                return Err(TransactionError::InvalidStructure(format!(
+                    "Proposal CID size exceeds limit of 256 bytes: got {}",
+                    cid.len()
+                )));
+            }
+        }
+
         // Basic structure validation
         if self.id.is_empty() {
             return Err(TransactionError::InvalidStructure(
@@ -800,7 +1105,8 @@ impl Transaction {
 
         // Validate that the fee is reasonable (not zero for non-coinbase)
         if !self.inputs.is_empty() && self.fee == 0 {
-            let network_load = crate::saga_ai::NETWORK_THROTTLE_BPS.load(std::sync::atomic::Ordering::Relaxed);
+            let network_load =
+                crate::saga_ai::NETWORK_THROTTLE_BPS.load(std::sync::atomic::Ordering::Relaxed);
             if !crate::saga_ai::authorize_gasless_transaction(&self.sender, network_load) {
                 return Err(TransactionError::InvalidStructure(
                     "Non-coinbase transaction must have a fee".to_string(),
@@ -809,7 +1115,7 @@ impl Transaction {
         }
 
         // Check for duplicate inputs
-        let mut input_set = std::collections::HashSet::new();
+        let mut input_set = HashSet::new();
         for input in &self.inputs {
             let mut input_key = String::with_capacity(input.tx_id.len() + 10);
             input_key.push_str(&input.tx_id);
@@ -906,12 +1212,9 @@ impl Transaction {
     ) -> Result<(), TransactionError> {
         let storage_duration = StorageDuration::ShortTerm; // Default to short-term storage
 
-        let fee_breakdown = gas_fee_model.calculate_transaction_fee(
-            self,
-            self.gas_limit,
-            self.priority_fee,
-            storage_duration,
-        ).await?;
+        let fee_breakdown = gas_fee_model
+            .calculate_transaction_fee(self, self.gas_limit, self.priority_fee, storage_duration)
+            .await?;
 
         self.fee = fee_breakdown.total_fee;
         self.fee_breakdown = Some(fee_breakdown);
@@ -941,7 +1244,8 @@ impl Transaction {
         }
 
         if self.gas_price == 0 && !self.is_coinbase() {
-            let network_load = crate::saga_ai::NETWORK_THROTTLE_BPS.load(std::sync::atomic::Ordering::Relaxed);
+            let network_load =
+                crate::saga_ai::NETWORK_THROTTLE_BPS.load(std::sync::atomic::Ordering::Relaxed);
             if !crate::saga_ai::authorize_gasless_transaction(&self.sender, network_load) {
                 return Err(TransactionError::InvalidStructure(
                     "Gas price cannot be zero for non-coinbase transactions".to_string(),
@@ -981,29 +1285,360 @@ impl Drop for Transaction {
     }
 }
 
+use std::sync::atomic::{AtomicU64, Ordering};
+pub static GLOBAL_CHAIN_ID: AtomicU64 = AtomicU64::new(1234);
+
+pub fn pad_ethereum_address(eth_addr_hex: &str) -> String {
+    let mut cleaned = eth_addr_hex.trim_start_matches("0x").to_string();
+    if cleaned.len() < 64 {
+        cleaned = format!("{:0<64}", cleaned);
+    } else if cleaned.len() > 64 {
+        cleaned = cleaned[..64].to_string();
+    }
+    cleaned.to_lowercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::performance_optimizations::QantoDAGOptimizations;
+    use crate::post_quantum_crypto::generate_pq_keypair;
+    use ahash::AHashMap as HashMap;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    fn sample_output() -> Output {
+        Output {
+            address: "b".repeat(64),
+            amount: 42,
+            homomorphic_encrypted: HomomorphicEncrypted::default(),
+        }
+    }
+
+    #[test]
+    fn canonical_serialization_is_deterministic_across_metadata_order() {
+        let mut metadata_a = HashMap::new();
+        metadata_a.insert("z".to_string(), "last".to_string());
+        metadata_a.insert("a".to_string(), "first".to_string());
+
+        let mut metadata_b = HashMap::new();
+        metadata_b.insert("a".to_string(), "first".to_string());
+        metadata_b.insert("z".to_string(), "last".to_string());
+
+        let payload_a = Transaction::id_payload(
+            "a".repeat(64),
+            "b".repeat(64),
+            42,
+            0,
+            50_000,
+            0,
+            1,
+            0,
+            vec![],
+            vec![sample_output()],
+            metadata_a,
+            123456789,
+            TransactionKind::Transfer,
+            1234,
+        );
+        let payload_b = Transaction::id_payload(
+            "a".repeat(64),
+            "b".repeat(64),
+            42,
+            0,
+            50_000,
+            0,
+            1,
+            0,
+            vec![],
+            vec![sample_output()],
+            metadata_b,
+            123456789,
+            TransactionKind::Transfer,
+            1234,
+        );
+
+        let id_a = Transaction::derive_transaction_id(&payload_a).expect("id a");
+        let id_b = Transaction::derive_transaction_id(&payload_b).expect("id b");
+        let signing_a = Transaction::signing_payload_from_id_payload(id_a.clone(), payload_a);
+        let signing_b = Transaction::signing_payload_from_id_payload(id_b.clone(), payload_b);
+
+        let bytes_a = Transaction::serialize_for_signing(&signing_a).expect("bytes a");
+        let bytes_b = Transaction::serialize_for_signing(&signing_b).expect("bytes b");
+
+        assert_eq!(id_a, id_b);
+        assert_eq!(bytes_a, bytes_b);
+    }
+
+    #[tokio::test]
+    async fn verify_paths_fail_fast_on_invalid_signature() {
+        let dag = QantoDAG::new_dummy_for_verification();
+        let (_pk, sk) = generate_pq_keypair(None).expect("keypair");
+        let mut tx = Transaction::new_dummy_signed(&sk, &sk.public_key()).expect("signed tx");
+        tx.signature.signature[0] ^= 0x01;
+
+        let shared_utxos = Arc::new(RwLock::new(HashMap::new()));
+        let direct_utxos = HashMap::new();
+
+        let shared_err = tx
+            .verify_with_shared_utxos(&dag, &shared_utxos)
+            .await
+            .expect_err("shared verification should fail");
+        let direct_err = tx
+            .verify(&dag, &direct_utxos)
+            .await
+            .expect_err("direct verification should fail");
+
+        assert!(matches!(
+            shared_err,
+            TransactionError::InvalidTransactionSignature
+        ));
+        assert!(matches!(
+            direct_err,
+            TransactionError::InvalidTransactionSignature
+        ));
+    }
+}
+
 impl Transaction {
     pub fn verify_signatures_batch_parallel(transactions: &[Transaction]) -> Vec<bool> {
+        let expected_chain_id = GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32;
         use rayon::prelude::*;
         transactions
             .par_iter()
             .map(|tx| {
-                // Construct signing payload like verify_signature does
-                let signing_payload = TransactionSigningPayload {
-                    sender: tx.sender.clone(),
-                    receiver: tx.receiver.clone(),
-                    amount: tx.amount,
-                    fee: tx.fee,
-                    inputs: tx.inputs.clone(),
-                    outputs: tx.outputs.clone(),
-                    metadata: tx.metadata.clone(),
-                    timestamp: tx.timestamp,
-                };
+                if tx.chain_id != expected_chain_id {
+                    return false;
+                }
+                if let Some(raw_tx_hex) = tx.metadata.get("evm_raw_tx") {
+                    if let Ok(raw_bytes) = hex::decode(raw_tx_hex) {
+                        if let Ok((
+                            recovered_sender,
+                            recovered_receiver,
+                            recovered_amount,
+                            _tx_data,
+                        )) = Self::recover_evm_sender(&raw_bytes)
+                        {
+                            return recovered_sender == tx.sender
+                                && recovered_receiver == tx.receiver
+                                && recovered_amount == tx.amount;
+                        }
+                    }
+                    return false;
+                }
 
-                match Self::serialize_for_signing(&signing_payload) {
+                match Self::serialize_for_signing(&tx.signing_payload_for_transaction()) {
                     Ok(bytes) => QuantumResistantSignature::verify(&tx.signature, &bytes),
                     Err(_) => false,
                 }
             })
             .collect()
+    }
+
+    pub fn recover_evm_sender(
+        raw_tx_bytes: &[u8],
+    ) -> Result<(String, String, u128, Vec<u8>), String> {
+        if raw_tx_bytes.is_empty() {
+            return Err("Empty transaction bytes".to_string());
+        }
+
+        let expected_chain_id = GLOBAL_CHAIN_ID.load(Ordering::Relaxed);
+
+        let mut tx_to_hash: Vec<u8>;
+        let rec_id: u8;
+        let r_bytes: Vec<u8>;
+        let s_bytes: Vec<u8>;
+        let to_addr_bytes: Vec<u8>;
+        let transfer_value: u128;
+        let tx_data: Vec<u8>;
+
+        if raw_tx_bytes[0] == 2 {
+            // EIP-1559 (Type 2) transaction
+            let payload = &raw_tx_bytes[1..];
+            let rlp = rlp::Rlp::new(payload);
+            if !rlp.is_list() {
+                return Err("Invalid RLP payload for EIP-1559".to_string());
+            }
+            let count = rlp.item_count().unwrap_or(0);
+            if count < 12 {
+                return Err(format!(
+                    "Insufficient items in EIP-1559 RLP: got {}, expected at least 12",
+                    count
+                ));
+            }
+
+            let chain_id: u64 = rlp.val_at(0).map_err(|e| e.to_string())?;
+            if chain_id != expected_chain_id {
+                return Err(format!(
+                    "Chain ID mismatch: expected {}, got {}",
+                    expected_chain_id, chain_id
+                ));
+            }
+
+            let nonce: u64 = rlp.val_at(1).map_err(|e| e.to_string())?;
+            let max_priority_fee: Vec<u8> = rlp.val_at(2).map_err(|e| e.to_string())?;
+            let max_fee: Vec<u8> = rlp.val_at(3).map_err(|e| e.to_string())?;
+            let gas_limit: Vec<u8> = rlp.val_at(4).map_err(|e| e.to_string())?;
+            to_addr_bytes = rlp.val_at::<Vec<u8>>(5).map_err(|e| e.to_string())?;
+            transfer_value = rlp.val_at::<u128>(6).map_err(|e| e.to_string())?;
+            let data: Vec<u8> = rlp.val_at(7).map_err(|e| e.to_string())?;
+            tx_data = data.clone();
+            let access_list: rlp::Rlp = rlp.at(8).map_err(|e| e.to_string())?;
+            let y_parity: u8 = rlp.val_at(9).map_err(|e| e.to_string())?;
+            r_bytes = rlp.val_at(10).map_err(|e| e.to_string())?;
+            s_bytes = rlp.val_at(11).map_err(|e| e.to_string())?;
+
+            // Reconstruct signing payload
+            let mut stream = rlp::RlpStream::new_list(9);
+            stream.append(&chain_id);
+            stream.append(&nonce);
+            stream.append(&max_priority_fee);
+            stream.append(&max_fee);
+            stream.append(&gas_limit);
+            stream.append(&to_addr_bytes);
+            stream.append(&transfer_value);
+            stream.append(&data);
+            stream.append_raw(access_list.as_raw(), 1);
+
+            tx_to_hash = vec![2u8];
+            tx_to_hash.extend_from_slice(&stream.out());
+            rec_id = y_parity;
+        } else if raw_tx_bytes[0] >= 0xc0 {
+            // Legacy transaction
+            let rlp = rlp::Rlp::new(raw_tx_bytes);
+            if !rlp.is_list() {
+                return Err("Invalid RLP payload for Legacy transaction".to_string());
+            }
+            let count = rlp.item_count().unwrap_or(0);
+            if count < 9 {
+                return Err(format!(
+                    "Insufficient items in Legacy RLP: got {}, expected at least 9",
+                    count
+                ));
+            }
+
+            let nonce: u64 = rlp.val_at(0).map_err(|e| e.to_string())?;
+            let gas_price: Vec<u8> = rlp.val_at(1).map_err(|e| e.to_string())?;
+            let gas_limit: Vec<u8> = rlp.val_at(2).map_err(|e| e.to_string())?;
+            to_addr_bytes = rlp.val_at::<Vec<u8>>(3).map_err(|e| e.to_string())?;
+            transfer_value = rlp.val_at::<u128>(4).map_err(|e| e.to_string())?;
+            let data: Vec<u8> = rlp.val_at(5).map_err(|e| e.to_string())?;
+            tx_data = data.clone();
+            let v: u64 = rlp.val_at(6).map_err(|e| e.to_string())?;
+            r_bytes = rlp.val_at(7).map_err(|e| e.to_string())?;
+            s_bytes = rlp.val_at(8).map_err(|e| e.to_string())?;
+
+            if v >= 37 {
+                // EIP-155 replay protection
+                let chain_id = (v - 35) / 2;
+                if chain_id != expected_chain_id {
+                    return Err(format!(
+                        "Chain ID mismatch: expected {}, got {}",
+                        expected_chain_id, chain_id
+                    ));
+                }
+                rec_id = ((v - 35) % 2) as u8;
+
+                // Reconstruct signing payload: [nonce, gas_price, gas_limit, to, value, data, chain_id, 0, 0]
+                let mut stream = rlp::RlpStream::new_list(9);
+                stream.append(&nonce);
+                stream.append(&gas_price);
+                stream.append(&gas_limit);
+                stream.append(&to_addr_bytes);
+                stream.append(&transfer_value);
+                stream.append(&data);
+                stream.append(&chain_id);
+                stream.append(&0u8);
+                stream.append(&0u8);
+                tx_to_hash = stream.out().to_vec();
+            } else if v == 27 || v == 28 {
+                // No EIP-155 replay protection
+                rec_id = (v - 27) as u8;
+
+                // Reconstruct signing payload: [nonce, gas_price, gas_limit, to, value, data]
+                let mut stream = rlp::RlpStream::new_list(6);
+                stream.append(&nonce);
+                stream.append(&gas_price);
+                stream.append(&gas_limit);
+                stream.append(&to_addr_bytes);
+                stream.append(&transfer_value);
+                stream.append(&data);
+                tx_to_hash = stream.out().to_vec();
+            } else {
+                return Err(format!("Unsupported v value for Legacy transaction: {}", v));
+            }
+        } else {
+            return Err(format!(
+                "Unknown transaction type header: 0x{:02x}",
+                raw_tx_bytes[0]
+            ));
+        }
+
+        // Keccak256 hash of tx_to_hash
+        let mut hasher = Keccak256::new();
+        hasher.update(&tx_to_hash);
+        let msg_hash = hasher.finalize();
+
+        // Standardize r and s to 32 bytes
+        let mut r_32 = [0u8; 32];
+        let mut s_32 = [0u8; 32];
+        if r_bytes.len() <= 32 {
+            r_32[32 - r_bytes.len()..].copy_from_slice(&r_bytes);
+        } else {
+            return Err("Invalid r length".to_string());
+        }
+        if s_bytes.len() <= 32 {
+            s_32[32 - s_bytes.len()..].copy_from_slice(&s_bytes);
+        } else {
+            return Err("Invalid s length".to_string());
+        }
+
+        // Canonical Low-S check to prevent malleability (EIP-2)
+        let half_order = [
+            0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff, 0x5d, 0x57, 0x6e, 0x73, 0x57, 0xa4, 0x50, 0x1d, 0xdf, 0xe9, 0x2f, 0x46,
+            0x68, 0x1b, 0x20, 0xa0,
+        ];
+        if s_32 > half_order {
+            return Err("Non-canonical signature (high-S value rejected)".to_string());
+        }
+
+        // Recover public key
+        let mut sig_bytes = [0u8; 64];
+        sig_bytes[..32].copy_from_slice(&r_32);
+        sig_bytes[32..].copy_from_slice(&s_32);
+
+        let signature = K256Signature::from_slice(&sig_bytes).map_err(|e| e.to_string())?;
+        let recovery_id = RecoveryId::try_from(rec_id).map_err(|e| e.to_string())?;
+
+        let recovered_key =
+            VerifyingKey::recover_from_prehash(msg_hash.as_ref(), &signature, recovery_id)
+                .map_err(|e| e.to_string())?;
+
+        // SEC1 compression verification
+        let binding = recovered_key.to_encoded_point(false);
+        let pub_bytes = binding.as_bytes();
+        if pub_bytes.len() != 65 || pub_bytes[0] != 4 {
+            return Err("Failed to obtain uncompressed public key".to_string());
+        }
+
+        // Keccak256 skip first byte
+        let mut pub_hasher = Keccak256::new();
+        pub_hasher.update(&pub_bytes[1..]);
+        let pub_hash = pub_hasher.finalize();
+
+        let eth_addr = &pub_hash[12..];
+        let eth_addr_hex = format!("0x{}", hex::encode(eth_addr));
+
+        let receiver_addr_hex = if to_addr_bytes.is_empty() {
+            "0x0000000000000000000000000000000000000000".to_string()
+        } else {
+            format!("0x{}", hex::encode(&to_addr_bytes))
+        };
+
+        let padded_sender = pad_ethereum_address(&eth_addr_hex);
+        let padded_receiver = pad_ethereum_address(&receiver_addr_hex);
+
+        Ok((padded_sender, padded_receiver, transfer_value, tx_data))
     }
 }

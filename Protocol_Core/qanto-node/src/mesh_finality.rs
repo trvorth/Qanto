@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use ahash::AHashMap as HashMap;
+use serde::{Deserialize, Serialize};
 
 /**
  * @title Mesh Finality (TMF)
@@ -32,20 +32,32 @@ impl MeshFinality {
      * @dev Checkpoints a shard's state and achieves protocol finality.
      * Weights: 0.9 * Multi_Agent_ZK + 0.1 * Sentinel_Agreement.
      */
-    pub fn checkpoint_shard_state(&mut self, shard_id: u32, aggregation_time: u64, agreement: f64) -> bool {
+    pub fn checkpoint_shard_state(
+        &mut self,
+        shard_id: u32,
+        aggregation_time: u64,
+        agreement: f64,
+    ) -> bool {
         println!("TMF: Checkpointing Shard {} State...", shard_id);
-        
-        let is_finalized = aggregation_time <= self.finality_threshold_ms && agreement >= 0.99;
-        
-        self.checkpoint_registry.insert(shard_id, FinalityPulse {
-            shard_id,
-            checkpoint_hash: [0xAA; 32], // Mock checkpoint hash
-            aggregation_time_ms: aggregation_time,
-            state_root: [0x55; 32], // Mock state root from aggregation
-            finalized: is_finalized,
-        });
 
-        println!("TMF: Finality Pulse Outcome: {} (Settlement Time: {}ms)", if is_finalized { "FINALIZED" } else { "PENDING" }, aggregation_time);
+        let is_finalized = aggregation_time <= self.finality_threshold_ms && agreement >= 0.99;
+
+        self.checkpoint_registry.insert(
+            shard_id,
+            FinalityPulse {
+                shard_id,
+                checkpoint_hash: [0xAA; 32], // Synthetic checkpoint hash
+                aggregation_time_ms: aggregation_time,
+                state_root: [0x55; 32], // Synthetic state root from aggregation
+                finalized: is_finalized,
+            },
+        );
+
+        println!(
+            "TMF: Finality Pulse Outcome: {} (Settlement Time: {}ms)",
+            if is_finalized { "FINALIZED" } else { "PENDING" },
+            aggregation_time
+        );
         is_finalized
     }
 }
@@ -59,8 +71,11 @@ mod tests {
     fn test_mesh_finality_settlement() {
         let mut tmf = MeshFinality::new();
         let finalized = tmf.checkpoint_shard_state(0, 420, 0.995); // Shard 0 (Whole Range)
-        
+
         assert!(finalized);
-        assert_eq!(tmf.checkpoint_registry.get(&0).unwrap().aggregation_time_ms, 420);
+        assert_eq!(
+            tmf.checkpoint_registry.get(&0).unwrap().aggregation_time_ms,
+            420
+        );
     }
 }

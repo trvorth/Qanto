@@ -79,10 +79,13 @@ impl Emission {
         // Perform reward calculation using deterministic fixed-point arithmetic
         let mut reward = self.initial_reward;
         let scale = SCALE;
-        
+
         // Apply halving factors iteratively
         for _ in 0..elapsed_periods {
-            reward = reward.checked_mul(self.halving_factor_fixed).and_then(|r| r.checked_div(scale)).unwrap_or(0);
+            reward = reward
+                .checked_mul(self.halving_factor_fixed)
+                .and_then(|r| r.checked_div(scale))
+                .unwrap_or(0);
         }
 
         let mut per_chain_reward = reward

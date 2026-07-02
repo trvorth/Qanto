@@ -57,7 +57,6 @@ pub fn ipc_tcp_fallback_addr(config: &Config) -> SocketAddr {
     let api_port = api_addr.map(|addr| addr.port()).unwrap_or(8_080);
     let fallback_port = api_port
         .checked_add(IPC_TCP_PORT_OFFSET)
-        .filter(|port| *port <= u16::MAX)
         .unwrap_or(IPC_TCP_DEFAULT_PORT);
 
     SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), fallback_port)
@@ -237,7 +236,10 @@ impl IpcServer {
                     }
                 }
             }
-            Err(err) => error!("Failed to bind fallback TCP IPC server {}: {}", bind_addr, err),
+            Err(err) => error!(
+                "Failed to bind fallback TCP IPC server {}: {}",
+                bind_addr, err
+            ),
         }
     }
 
@@ -278,20 +280,18 @@ impl IpcServer {
 
                 match serde_json::from_slice::<BalanceRequest>(&request.body) {
                     Ok(req) => {
-                        let balance = dag.account_state_cache.get_balance(&req.address).unwrap_or(0);
+                        let balance = dag
+                            .account_state_cache
+                            .get_balance(&req.address)
+                            .unwrap_or(0);
                         let height = dag.get_block_count().await;
                         let response = IpcResponse { balance, height };
                         info!(
                             "IPC_QUERY endpoint=/balance transport={} address={} balance={} height={}",
                             endpoint, req.address, balance, height
                         );
-                        if let Err(err) = write_http_json_response(
-                            &mut stream,
-                            200,
-                            "OK",
-                            &response,
-                        )
-                        .await
+                        if let Err(err) =
+                            write_http_json_response(&mut stream, 200, "OK", &response).await
                         {
                             error!("Failed to write IPC response on {}: {}", endpoint, err);
                         }

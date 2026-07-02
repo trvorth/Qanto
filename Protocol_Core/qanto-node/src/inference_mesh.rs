@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use ahash::AHashMap as HashMap;
+use serde::{Deserialize, Serialize};
 
 /**
  * @title Global Inference Mesh (TIM)
@@ -34,20 +34,36 @@ impl InferenceMesh {
      */
     pub fn route_agentic_task(&mut self, task_id: u32, latency: u64, reputation: f64) -> bool {
         println!("TIM: Routing Agentic Task {} Globally...", task_id);
-        
-        let isValidRouting = latency <= self.max_latency_threshold_ms && reputation >= 0.95;
-        let sentinel = if isValidRouting { "SENTINEL_NODE_GLOBAL_01" } else { "SENTINEL_NODE_LOCAL_01" };
-        
-        self.task_registry.insert(task_id, InferencePulse {
-            task_id,
-            sentinel_node: sentinel.to_string(),
-            latency_ms: latency,
-            poi_score: reputation,
-            routed: isValidRouting,
-        });
 
-        println!("TIM: Inference Pulse Outcome: {} (Sentinel: {}, Latency: {}ms)", if isValidRouting { "GLOBAL_OPTIMIZED" } else { "LOCAL_BACKUP" }, sentinel, latency);
-        isValidRouting
+        let is_valid_routing = latency <= self.max_latency_threshold_ms && reputation >= 0.95;
+        let sentinel = if is_valid_routing {
+            "SENTINEL_NODE_GLOBAL_01"
+        } else {
+            "SENTINEL_NODE_LOCAL_01"
+        };
+
+        self.task_registry.insert(
+            task_id,
+            InferencePulse {
+                task_id,
+                sentinel_node: sentinel.to_string(),
+                latency_ms: latency,
+                poi_score: reputation,
+                routed: is_valid_routing,
+            },
+        );
+
+        println!(
+            "TIM: Inference Pulse Outcome: {} (Sentinel: {}, Latency: {}ms)",
+            if is_valid_routing {
+                "GLOBAL_OPTIMIZED"
+            } else {
+                "LOCAL_BACKUP"
+            },
+            sentinel,
+            latency
+        );
+        is_valid_routing
     }
 }
 
@@ -60,8 +76,11 @@ mod tests {
     fn test_inference_mesh_routing() {
         let mut tim = InferenceMesh::new();
         let routed = tim.route_agentic_task(101, 85, 0.98); // Task 101 (Low Latency)
-        
+
         assert!(routed);
-        assert_eq!(tim.task_registry.get(&101).unwrap().sentinel_node, "SENTINEL_NODE_GLOBAL_01");
+        assert_eq!(
+            tim.task_registry.get(&101).unwrap().sentinel_node,
+            "SENTINEL_NODE_GLOBAL_01"
+        );
     }
 }

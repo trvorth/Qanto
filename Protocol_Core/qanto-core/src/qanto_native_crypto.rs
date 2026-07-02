@@ -6,8 +6,20 @@
 //! fix for the post-quantum signature scheme and introduces security enhancements
 //! like constant-time comparisons to mitigate side-channel attacks.
 
-#[allow(unused_imports)]
-use getrandom::getrandom;
+use dilithium::{
+    packing,
+    params::{K_MAX, SEEDBYTES, TRBYTES},
+    polyvec::{
+        matrix_expand, matrix_pointwise_montgomery, polyveck_add, polyveck_caddq,
+        polyveck_invntt_tomont, polyveck_power2round, polyveck_reduce, polyvecl_ntt, PolyVecK,
+        PolyVecL,
+    },
+    DilithiumKeyPair, ML_DSA_65,
+};
+use ed25519_dalek::{
+    Signature as DalekEd25519Signature, Signer as DalekSigner, SigningKey as DalekSigningKey,
+    Verifier as DalekVerifier, VerifyingKey as DalekVerifyingKey,
+};
 use my_blockchain::qanto_hash;
 use rand::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -67,6 +79,55 @@ impl From<()> for QantoNativeCryptoError {
 /// Result type for cryptographic operations
 pub type CryptoResult<T> = std::result::Result<T, QantoNativeCryptoError>;
 
+fn derive_dilithium3_public_key(secret_key: &[u8]) -> CryptoResult<Vec<u8>> {
+    if secret_key.len() != QANTO_PQ_PRIVATE_KEY_LENGTH {
+        return Err(QantoNativeCryptoError::InvalidKeyLength {
+            expected: QANTO_PQ_PRIVATE_KEY_LENGTH,
+            actual: secret_key.len(),
+        });
+    }
+
+    let mode = ML_DSA_65;
+    let mut rho = [0u8; SEEDBYTES];
+    let mut tr = [0u8; TRBYTES];
+    let mut key = [0u8; SEEDBYTES];
+    let mut t0 = PolyVecK::default();
+    let mut s1 = PolyVecL::default();
+    let mut s2 = PolyVecK::default();
+
+    packing::unpack_sk(
+        mode, &mut rho, &mut tr, &mut key, &mut t0, &mut s1, &mut s2, secret_key,
+    );
+
+    let mut mat = vec![PolyVecL::default(); K_MAX];
+    matrix_expand(mode, &mut mat, &rho);
+
+    let mut s1hat = s1.clone();
+    polyvecl_ntt(mode, &mut s1hat);
+
+    let mut t = PolyVecK::default();
+    matrix_pointwise_montgomery(mode, &mut t, &mat, &s1hat);
+    polyveck_reduce(mode, &mut t);
+    polyveck_invntt_tomont(mode, &mut t);
+
+    let t_copy = t.clone();
+    polyveck_add(mode, &mut t, &t_copy, &s2);
+    polyveck_caddq(mode, &mut t);
+
+    let mut t1 = PolyVecK::default();
+    let mut t0_discard = PolyVecK::default();
+    polyveck_power2round(mode, &mut t1, &mut t0_discard, &t);
+
+    let mut public_key = vec![0u8; QANTO_PQ_PUBLIC_KEY_LENGTH];
+    packing::pack_pk(mode, &mut public_key, &rho, &t1);
+
+    tr.zeroize();
+    key.zeroize();
+    rho.zeroize();
+
+    Ok(public_key)
+}
+
 /// Ed25519 public key length in bytes
 pub const ED25519_PUBLIC_KEY_LENGTH: usize = 32;
 /// Ed25519 private key length in bytes
@@ -74,12 +135,12 @@ pub const ED25519_PRIVATE_KEY_LENGTH: usize = 32;
 /// Ed25519 signature length in bytes
 pub const ED25519_SIGNATURE_LENGTH: usize = 64;
 
-/// Post-quantum public key length in bytes (Dilithium5-like)
-pub const QANTO_PQ_PUBLIC_KEY_LENGTH: usize = 1952; // Dilithium5-like
-/// Post-quantum private key length in bytes (Dilithium5-like)
-pub const QANTO_PQ_PRIVATE_KEY_LENGTH: usize = 4000; // Dilithium5-like
-/// Post-quantum signature length in bytes
-pub const QANTO_PQ_SIGNATURE_LENGTH: usize = 64;
+/// Post-quantum public key length in bytes (Dilithium3 / ML-DSA-65).
+pub const QANTO_PQ_PUBLIC_KEY_LENGTH: usize = 1952;
+/// Post-quantum private key length in bytes (Dilithium3 / ML-DSA-65).
+pub const QANTO_PQ_PRIVATE_KEY_LENGTH: usize = 4032;
+/// Post-quantum detached signature length in bytes (Dilithium3 / ML-DSA-65).
+pub const QANTO_PQ_SIGNATURE_LENGTH: usize = 3309;
 
 /// P256 public key length in bytes (uncompressed)
 pub const P256_PUBLIC_KEY_LENGTH: usize = 64; // Uncompressed
@@ -348,24 +409,12 @@ impl QantoEd25519PublicKey {
 
     /// Verify Ed25519 signature against message
     pub fn verify(&self, message: &[u8], signature: &QantoEd25519Signature) -> CryptoResult<()> {
-        let message_hash = qanto_hash(message);
-
-        let r_component = &signature.0[..32]; // This is the R component
-        let s_component = &signature.0[32..]; // This is the S component
-
-        let mut s_input = Vec::new();
-        s_input.extend_from_slice(r_component);
-        s_input.extend_from_slice(&self.0); // Public key
-        s_input.extend_from_slice(message_hash.as_bytes());
-        let expected_s_hash = qanto_hash(&s_input);
-        let expected_s_component = &expected_s_hash.as_bytes()[..32]; // Take first 32 bytes as S
-
-        // SECURITY: Use constant-time equality check to prevent timing attacks.
-        if s_component.ct_eq(expected_s_component).unwrap_u8() == 1 {
-            Ok(())
-        } else {
-            Err(QantoNativeCryptoError::SignatureVerificationFailed)
-        }
+        let verifying_key = DalekVerifyingKey::from_bytes(&self.0)
+            .map_err(|_| QantoNativeCryptoError::InvalidPublicKey)?;
+        let dalek_signature = DalekEd25519Signature::from_bytes(&signature.0);
+        verifying_key
+            .verify(message, &dalek_signature)
+            .map_err(|_| QantoNativeCryptoError::SignatureVerificationFailed)
     }
 }
 
@@ -410,31 +459,14 @@ impl QantoEd25519PrivateKey {
 
     /// Derive public key from private key
     pub fn public_key(&self) -> QantoEd25519PublicKey {
-        let public_key_hash = qanto_hash(&self.0);
-        QantoEd25519PublicKey(*public_key_hash.as_bytes())
+        let signing_key = DalekSigningKey::from_bytes(&self.0);
+        QantoEd25519PublicKey(signing_key.verifying_key().to_bytes())
     }
 
     /// Sign message with Ed25519 private key
     pub fn sign(&self, message: &[u8]) -> CryptoResult<QantoEd25519Signature> {
-        let message_hash = qanto_hash(message);
-        let public_key = self.public_key();
-
-        let mut nonce_input = Vec::with_capacity(self.0.len() + message_hash.as_bytes().len());
-        nonce_input.extend_from_slice(&self.0);
-        nonce_input.extend_from_slice(message_hash.as_bytes());
-        let nonce_hash = qanto_hash(&nonce_input);
-
-        let mut signature = [0u8; ED25519_SIGNATURE_LENGTH];
-        signature[..32].copy_from_slice(nonce_hash.as_bytes()); // R component
-
-        let mut s_input = Vec::with_capacity(32 + ED25519_PUBLIC_KEY_LENGTH + 32);
-        s_input.extend_from_slice(&signature[..32]);
-        s_input.extend_from_slice(public_key.as_bytes());
-        s_input.extend_from_slice(message_hash.as_bytes());
-        let s_hash = qanto_hash(&s_input);
-        signature[32..].copy_from_slice(s_hash.as_bytes());
-
-        Ok(QantoEd25519Signature(signature))
+        let signing_key = DalekSigningKey::from_bytes(&self.0);
+        Ok(QantoEd25519Signature(signing_key.sign(message).to_bytes()))
     }
 
     /// Generate new post-quantum private key using cryptographically secure RNG
@@ -488,42 +520,12 @@ impl QantoPQPublicKey {
     /// provided in the signature itself. This replaces the flawed "reconstruction" method.
     /// Verify post-quantum signature against message
     pub fn verify(&self, message: &[u8], signature: &QantoPQSignature) -> CryptoResult<()> {
-        // 1. Validate the signature length.
-        if signature.0.len() != QANTO_PQ_SIGNATURE_LENGTH {
-            return Err(QantoNativeCryptoError::InvalidSignatureLength {
-                expected: QANTO_PQ_SIGNATURE_LENGTH,
-                actual: signature.0.len(),
-            });
-        }
-        let message_hash = qanto_hash(message);
-        // 2. Extract the R value and the actual S portion from the provided signature.
-        let r_value = &signature.0[..32];
-        let actual_s_portion = &signature.0[32..];
-        // 3. Re-calculate the base 'S' hash using public data (R, public key, message).
-        let mut s_input = Vec::with_capacity(32 + self.0.len() + 32);
-        s_input.extend_from_slice(r_value);
-        s_input.extend_from_slice(&self.0);
-        s_input.extend_from_slice(message_hash.as_bytes());
-        let base_s_hash = qanto_hash(&s_input);
-        // 4. Re-generate the expected S portion using the same deterministic method as the `sign` function.
-        let mut expected_s_portion = vec![0u8; QANTO_PQ_SIGNATURE_LENGTH - 32];
-        let mut current_hash = base_s_hash;
-        let mut offset = 0;
-        while offset < expected_s_portion.len() {
-            let bytes_to_copy = std::cmp::min(32, expected_s_portion.len() - offset);
-            expected_s_portion[offset..offset + bytes_to_copy]
-                .copy_from_slice(&current_hash.as_bytes()[..bytes_to_copy]);
-            offset += bytes_to_copy;
-            if offset < expected_s_portion.len() {
-                current_hash = qanto_hash(current_hash.as_bytes());
-            }
-        }
-        // 5. Compare the re-generated S portion with the actual one from the signature.
-        if actual_s_portion.ct_eq(&expected_s_portion).unwrap_u8() == 1 {
-            Ok(())
-        } else {
-            Err(QantoNativeCryptoError::SignatureVerificationFailed)
-        }
+        let pub_key = dilithium3::PublicKey::from_bytes(&self.0)
+            .map_err(|_| QantoNativeCryptoError::InvalidPublicKey)?;
+        let detached_signature = dilithium3::DetachedSignature::from_bytes(&signature.0)
+            .map_err(|_| QantoNativeCryptoError::InvalidFormat)?;
+        dilithium3::verify_detached_signature(&detached_signature, message, &pub_key)
+            .map_err(|_| QantoNativeCryptoError::SignatureVerificationFailed)
     }
 }
 
@@ -546,83 +548,28 @@ impl QantoPQPrivateKey {
 
     /// Derive public key from private key
     pub fn public_key(&self) -> QantoPQPublicKey {
-        let mut public_key_data = vec![0u8; QANTO_PQ_PUBLIC_KEY_LENGTH];
-        let num_chunks = QANTO_PQ_PUBLIC_KEY_LENGTH.div_ceil(32);
-        let sk_len = self.0.len();
-
-        for i in 0..num_chunks {
-            let mut input = Vec::new();
-            let mut sk_chunk = Vec::with_capacity(32);
-            let current_offset = i * 32;
-
-            for j in 0..32 {
-                let actual_idx = (current_offset + j) % sk_len;
-                sk_chunk.push(self.0[actual_idx]);
-            }
-            input.extend_from_slice(&sk_chunk);
-            input.push(i as u8);
-            let hash = qanto_hash(&input);
-            let start_idx = i * 32;
-            let end_idx = (i + 1) * 32;
-            let chunk_len = if end_idx > QANTO_PQ_PUBLIC_KEY_LENGTH {
-                QANTO_PQ_PUBLIC_KEY_LENGTH - start_idx
-            } else {
-                32
-            };
-            public_key_data[start_idx..start_idx + chunk_len]
-                .copy_from_slice(&hash.as_bytes()[..chunk_len]);
-        }
-
-        QantoPQPublicKey(public_key_data)
+        let public_key =
+            derive_dilithium3_public_key(&self.0).expect("stored Dilithium3 key must be valid");
+        QantoPQPublicKey(public_key)
     }
 
     /// Creates a post-quantum signature using a correct hash-based `R | S` scheme.
     /// This replaces the previously flawed signing logic.
     /// Sign message with post-quantum private key
     pub fn sign(&self, message: &[u8]) -> CryptoResult<QantoPQSignature> {
-        // Native post-quantum signing using lattice-based approach with qanhash
-        let message_hash = qanto_hash(message);
-        let public_key = self.public_key();
-
-        // Generate a random R value
-        let mut r_value = [0u8; 32];
-        getrandom::getrandom(&mut r_value)
-            .map_err(|_| QantoNativeCryptoError::RandomGenerationFailed)?;
-
-        // Calculate the base 'S' hash
-        let mut s_input = Vec::with_capacity(32 + public_key.0.len() + 32);
-        s_input.extend_from_slice(&r_value);
-        s_input.extend_from_slice(&public_key.0);
-        s_input.extend_from_slice(message_hash.as_bytes());
-        let base_s_hash = qanto_hash(&s_input);
-
-        // Deterministically generate the S portion of the signature
-        let mut s_portion = vec![0u8; QANTO_PQ_SIGNATURE_LENGTH - 32];
-        let mut current_hash = base_s_hash;
-        let mut offset = 0;
-        while offset < s_portion.len() {
-            let bytes_to_copy = std::cmp::min(32, s_portion.len() - offset);
-            s_portion[offset..offset + bytes_to_copy]
-                .copy_from_slice(&current_hash.as_bytes()[..bytes_to_copy]);
-            offset += bytes_to_copy;
-            if offset < s_portion.len() {
-                current_hash = qanto_hash(current_hash.as_bytes());
-            }
-        }
-
-        // Combine R and S to form the full signature
-        let mut signature_data = Vec::with_capacity(QANTO_PQ_SIGNATURE_LENGTH);
-        signature_data.extend_from_slice(&r_value);
-        signature_data.extend_from_slice(&s_portion);
-
-        Ok(QantoPQSignature(signature_data))
+        let secret_key = dilithium3::SecretKey::from_bytes(&self.0)
+            .map_err(|_| QantoNativeCryptoError::InvalidPrivateKey)?;
+        let signature = dilithium3::detached_sign(message, &secret_key);
+        Ok(QantoPQSignature(signature.as_bytes().to_vec()))
     }
 
     /// Generate new post-quantum private key using cryptographically secure RNG
     pub fn generate<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
-        let mut key = vec![0u8; QANTO_PQ_PRIVATE_KEY_LENGTH];
-        rng.fill_bytes(&mut key);
-        Self(key)
+        let mut seed = [0u8; SEEDBYTES];
+        rng.fill_bytes(&mut seed);
+        let keypair = DilithiumKeyPair::generate_deterministic(ML_DSA_65, &seed);
+        seed.zeroize();
+        Self(keypair.private_key().to_vec())
     }
 }
 
@@ -798,6 +745,79 @@ impl QantoKeyPair {
 /// Main cryptographic operations provider for Qanto blockchain
 pub struct QantoNativeCrypto;
 
+// --- Hybrid Post-Quantum Crypto Engine ---
+
+use pqcrypto_dilithium::dilithium3;
+use pqcrypto_sphincsplus::sphincssha2128fsimple;
+use pqcrypto_traits::sign::{
+    DetachedSignature, PublicKey as PqPublicKey, SecretKey as PqSecretKey,
+}; // Fast stateless variants
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PqcScheme {
+    Dilithium3,
+    SphincsPlus,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct HybridSignature {
+    pub scheme: PqcScheme,
+    pub raw_bytes: Vec<u8>,
+}
+
+pub trait QantoCryptoEngine: Send + Sync {
+    fn generate_keypair(scheme: PqcScheme) -> (Vec<u8>, Vec<u8>);
+    fn verify_state_proof(pk: &[u8], msg: &[u8], sig: &[u8], scheme: PqcScheme) -> bool;
+}
+
+pub struct PostQuantumEngine;
+
+impl QantoCryptoEngine for PostQuantumEngine {
+    fn generate_keypair(scheme: PqcScheme) -> (Vec<u8>, Vec<u8>) {
+        // Enforce safe FFI boundary
+        std::panic::catch_unwind(|| match scheme {
+            PqcScheme::Dilithium3 => {
+                let (pk, sk) = dilithium3::keypair();
+                (pk.as_bytes().to_vec(), sk.as_bytes().to_vec())
+            }
+            PqcScheme::SphincsPlus => {
+                let (pk, sk) = sphincssha2128fsimple::keypair();
+                (pk.as_bytes().to_vec(), sk.as_bytes().to_vec())
+            }
+        })
+        .unwrap_or_else(|_| panic!("Fatal FFI error during PQC key generation"))
+    }
+
+    fn verify_state_proof(pk: &[u8], msg: &[u8], sig: &[u8], scheme: PqcScheme) -> bool {
+        // Enforce safe FFI boundary
+        std::panic::catch_unwind(|| match scheme {
+            PqcScheme::Dilithium3 => {
+                let pub_key = match dilithium3::PublicKey::from_bytes(pk) {
+                    Ok(k) => k,
+                    Err(_) => return false,
+                };
+                let signature = match dilithium3::DetachedSignature::from_bytes(sig) {
+                    Ok(s) => s,
+                    Err(_) => return false,
+                };
+                dilithium3::verify_detached_signature(&signature, msg, &pub_key).is_ok()
+            }
+            PqcScheme::SphincsPlus => {
+                let pub_key = match sphincssha2128fsimple::PublicKey::from_bytes(pk) {
+                    Ok(k) => k,
+                    Err(_) => return false,
+                };
+                let signature = match sphincssha2128fsimple::DetachedSignature::from_bytes(sig) {
+                    Ok(s) => s,
+                    Err(_) => return false,
+                };
+                sphincssha2128fsimple::verify_detached_signature(&signature, msg, &pub_key).is_ok()
+            }
+        })
+        .unwrap_or(false)
+    }
+}
+
 impl QantoNativeCrypto {
     /// Create new instance of QantoNativeCrypto
     pub fn new() -> Self {
@@ -916,3 +936,61 @@ impl fmt::Debug for QantoP256Signature {
 }
 
 // --- Unit Tests ---
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    #[test]
+    fn ed25519_standard_round_trip_works() {
+        let mut rng = StdRng::from_seed([0x11; 32]);
+        let private_key = QantoEd25519PrivateKey::generate(&mut rng);
+        let public_key = private_key.public_key();
+        let message = b"qanto-ed25519-standard-roundtrip";
+
+        let signature = private_key.sign(message).expect("ed25519 sign");
+
+        public_key
+            .verify(message, &signature)
+            .expect("ed25519 verify");
+    }
+
+    #[test]
+    fn pq_standard_round_trip_works() {
+        let mut rng = StdRng::from_seed([0x22; 32]);
+        let private_key = QantoPQPrivateKey::generate(&mut rng);
+        let public_key = private_key.public_key();
+        let message = b"qanto-dilithium3-standard-roundtrip";
+
+        let signature = private_key.sign(message).expect("pq sign");
+
+        public_key.verify(message, &signature).expect("pq verify");
+    }
+
+    #[test]
+    fn legacy_hash_forgery_formula_is_rejected() {
+        let mut rng = StdRng::from_seed([0x33; 32]);
+        let private_key = QantoPQPrivateKey::generate(&mut rng);
+        let public_key = private_key.public_key();
+        let message = b"forgery-attempt";
+
+        let mut forged = vec![0u8; QANTO_PQ_SIGNATURE_LENGTH];
+        forged[..32].copy_from_slice(&[0x42; 32]);
+
+        let mut legacy_formula_input = Vec::new();
+        legacy_formula_input.extend_from_slice(&forged[..32]);
+        legacy_formula_input.extend_from_slice(public_key.as_bytes());
+        legacy_formula_input.extend_from_slice(qanto_hash(message).as_bytes());
+        let repeated = qanto_hash(&legacy_formula_input);
+
+        for chunk in forged[32..].chunks_mut(32) {
+            let len = chunk.len();
+            chunk.copy_from_slice(&repeated.as_bytes()[..len]);
+        }
+
+        let forged_signature = QantoPQSignature::from_bytes(&forged).expect("forged sig shape");
+        assert!(public_key.verify(message, &forged_signature).is_err());
+    }
+}

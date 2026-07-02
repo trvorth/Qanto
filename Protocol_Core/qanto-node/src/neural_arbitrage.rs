@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use ahash::AHashMap as HashMap;
 
 /**
  * @title Neural Arbitrage Engine (RNE)
@@ -21,12 +21,15 @@ impl NeuralArbitrageEngine {
         let mut energy_costs = HashMap::new();
         energy_costs.insert("SHARD_TEXAS_SOLAR".to_string(), 0.02); // 2c/kWh
         energy_costs.insert("SHARD_EUROPE_GRID".to_string(), 0.18); // 18c/kWh
-        
+
         let mut shard_energy_source = HashMap::new();
         shard_energy_source.insert("SHARD_TEXAS_SOLAR".to_string(), "Solar".to_string());
         shard_energy_source.insert("SHARD_EUROPE_GRID".to_string(), "Grid".to_string());
 
-        Self { energy_costs, shard_energy_source }
+        Self {
+            energy_costs,
+            shard_energy_source,
+        }
     }
 
     /**
@@ -34,8 +37,11 @@ impl NeuralArbitrageEngine {
      * Logic: Inference-Follows-Energy.
      */
     pub fn route_non_critical_task(&self, task_id: [u8; 32]) -> ArbitrageRoute {
-        println!("RNE: Finding optimal arbitrage route for Task ID {:X?}...", task_id);
-        
+        println!(
+            "RNE: Finding optimal arbitrage route for Task ID {:X?}...",
+            task_id
+        );
+
         // Simple logic: Find shard with minimum energy cost.
         let mut min_cost = f64::MAX;
         let mut best_shard = String::new();
@@ -49,8 +55,12 @@ impl NeuralArbitrageEngine {
 
         let expected_savings = 0.18 - min_cost; // Savings relative to expensive grid
 
-        println!("RNE: Task routed to {} via {} energy. Savings: ${:.2}/1k PUAI", 
-            best_shard, self.shard_energy_source.get(&best_shard).unwrap(), expected_savings);
+        println!(
+            "RNE: Task routed to {} via {} energy. Savings: ${:.2}/1k PUAI",
+            best_shard,
+            self.shard_energy_source.get(&best_shard).unwrap(),
+            expected_savings
+        );
 
         ArbitrageRoute {
             task_id,

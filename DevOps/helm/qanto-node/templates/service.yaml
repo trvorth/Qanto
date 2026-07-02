@@ -11,14 +11,10 @@ spec:
       targetPort: api
       protocol: TCP
       name: api
-    - port: {{ .Values.service.ports.metrics }}
-      targetPort: metrics
+    - port: {{ .Values.service.ports.rpc }}
+      targetPort: rpc
       protocol: TCP
-      name: metrics
-    - port: {{ .Values.service.ports.websocket }}
-      targetPort: websocket
-      protocol: TCP
-      name: websocket
+      name: rpc
     - port: {{ .Values.service.ports.p2p }}
       targetPort: p2p
       protocol: TCP

@@ -29,7 +29,7 @@ fi
 echo -e "${BLUE}Initializing Local Data Directory...${NC}"
 mkdir -p data
 
-# Key Generation (Mock for Phase 39 CLI)
+# Key Generation (Synthetic for Phase 39 CLI)
 if [ ! -f "data/node.key" ]; then
     echo -e "${BLUE}Generating Sentinel Private Key...${NC}"
     # In production: node-cli generate-key --output data/node.key
@@ -68,4 +68,4 @@ echo -e "${GREEN}===============================================================
 echo -e "${GREEN}   SENTINEL SUCCESSFUL | NODE IS NOW GLOBAL & VERIFIED          ${NC}"
 echo -e "${BLUE}================================================================${NC}"
 echo -e "Logs: docker-compose logs -f qanto-sentinel"
-echo -e "Status: http://localhost:8545/status"
+echo -e "Status: http://localhost:8081/status"

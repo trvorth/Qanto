@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /root/
 COPY --from=builder /app/target/release/qanto-node /usr/local/bin/qanto-node
 
-EXPOSE 30303 30303/udp 8545
+EXPOSE 30303 30303/udp 8081
 
 ENTRYPOINT ["qanto-node"]
 CMD ["--network", "mainnet"]

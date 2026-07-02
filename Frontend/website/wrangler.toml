@@ -1,0 +1,16 @@
+name = "qanto-org"
+compatibility_date = "2026-06-30"
+pages_build_output_dir = "./dist"
+
+[vars]
+QANTO_SITE_MODE = "coming-soon"
+QANTO_WAITLIST_SOURCE = "coming-soon"
+ADMIN_WEBHOOK_FORMAT = "auto"
+
+# Replace these placeholder IDs after running:
+#   npx wrangler d1 create qanto-waitlist
+[[d1_databases]]
+binding = "DB"
+database_name = "qanto-waitlist"
+database_id = "08d79078-f5f4-417c-9240-7b6cabe57e7f"
+preview_database_id = "08d79078-f5f4-417c-9240-7b6cabe57e7f"

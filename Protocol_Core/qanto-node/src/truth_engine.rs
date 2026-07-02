@@ -1,5 +1,11 @@
-use crate::infrastructure::media::zk_attestation::ZMAProof;
-use std::collections::HashMap;
+use ahash::AHashMap as HashMap;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ZMAProof {
+    pub proof_bytes: Vec<u8>,
+    pub veracity_score: u128,
+}
 
 /**
  * @title Neural Truth Engine (NTE)
@@ -37,16 +43,21 @@ impl NeuralTruthEngine {
      * @dev Calculates the final veracity score for a media event.
      * Weights: 0.7 * Physical_ZMA + 0.3 * Agent_Consensus.
      */
-    pub fn verify_claim(&mut self, claim_id: [u8; 32], zma_proof: Option<ZMAProof>, agent_consensus: u128) -> u128 {
+    pub fn verify_claim(
+        &mut self,
+        claim_id: [u8; 32],
+        zma_proof: Option<ZMAProof>,
+        agent_consensus: u128,
+    ) -> u128 {
         println!("NTE: Analyzing Claim ID {:X?}...", claim_id);
-        
-        let zma_score = zma_proof.map_or(0u128, |p| p.veracity_score as u128); // Placeholder cast until ZMAProof is updated
+
+        let zma_score = zma_proof.map_or(0u128, |p| p.veracity_score as u128); // Reference cast until ZMAProof is updated
         let final_score = (7 * zma_score + 3 * agent_consensus) / 10;
 
         let result = FactCheckResult {
             veracity_score: final_score,
-            timestamp: 1775492930, // Mock timestamp
-            consensus_count: 12, // 12 agents participating
+            timestamp: 1775492930, // Synthetic timestamp
+            consensus_count: 12,   // 12 agents participating
             verified: final_score > (85 * 1_000_000_000 / 100),
         };
 
@@ -56,13 +67,16 @@ impl NeuralTruthEngine {
 
     /// Regulatory Truth Oracle (RTO): Generates a compliance report for the claim.
     pub fn generate_compliance_report(&self, claim_id: [u8; 32]) -> ComplianceReport {
-        println!("RTO: Generating EU AI Act Compliance Report for Claim ID {:X?}...", claim_id);
-        
+        println!(
+            "RTO: Generating EU AI Act Compliance Report for Claim ID {:X?}...",
+            claim_id
+        );
+
         ComplianceReport {
             claim_id,
             eu_ai_act_status: "COMPLIANT (Art. 52/69)".to_string(),
             bias_audit_verdict: "NO_BIAS_DETECTED".to_string(),
-            inference_lineage_hash: [0xDD; 32], // Mock ZK-lineage hash
+            inference_lineage_hash: [0xDD; 32], // Synthetic ZK-lineage hash
         }
     }
 

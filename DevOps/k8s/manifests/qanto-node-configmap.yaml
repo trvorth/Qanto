@@ -8,155 +8,79 @@ metadata:
     component: config
 data:
   config.toml: |
-    # Qanto Node Configuration
-    
-    [network]
-    name = "qanto-mainnet"
-    chain_spec = "mainnet"
-    bootnodes = [
-      "/dns4/bootnode-1.qanto.network/tcp/30333/p2p/12D3KooWBootnode1",
-      "/dns4/bootnode-2.qanto.network/tcp/30333/p2p/12D3KooWBootnode2"
+    p2p_address = "/ip4/0.0.0.0/tcp/30303/ws"
+    api_address = "0.0.0.0:8081"
+    peers = [
+      "/dns4/bootnode-1.qanto.network/tcp/30303/ws/p2p/12D3KooWBootnode1",
+      "/dns4/bootnode-2.qanto.network/tcp/30303/ws/p2p/12D3KooWBootnode2"
     ]
-    
+    local_full_p2p_address = ""
+    network_id = "qanto-mainnet"
+    chain_id = 1234
+    genesis_validator = "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3"
+    contract_address = "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"
+    target_block_time = 1000
+    difficulty = 1
+    max_amount = 21000000000
+    use_gpu = false
+    zk_enabled = true
+    mining_threads = 4
+    mining_enabled = true
+    adaptive_mining_enabled = false
+    num_chains = 1
+    mining_chain_id = 0
+    mining_interval_ms = 1000
+    dummy_tx_interval_ms = 250
+    dummy_tx_per_cycle = 10
+    mempool_max_age_secs = 3600
+    mempool_max_size_bytes = 67108864
+    mempool_max_size = 100000
+    mempool_batch_size = 1000
+    mempool_backpressure_threshold = 800000000
+    tx_batch_size = 500
+    adaptive_batch_threshold = 700000000
+    memory_soft_limit = 8388608
+    memory_hard_limit = 10485760
+    dev_fee_rate = 100000000
+    data_dir = "/data"
+    db_path = "/data/qanto.db"
+    wallet_path = "/data/wallet.key"
+    p2p_identity_path = "/data/p2p_identity.key"
+    log_file_path = "/data/logs/qanto.log"
+
     [rpc]
-    host = "0.0.0.0"
-    port = 8080
-    cors = ["*"]
-    max_connections = 100
-    max_request_size = 15728640  # 15MB
-    max_response_size = 15728640  # 15MB
-    
-    [websocket]
-    host = "0.0.0.0"
-    port = 9944
-    max_connections = 100
-    
-    [p2p]
-    port = 30333
-    max_peers = 50
-    discovery_enabled = true
-    mdns_enabled = false
-    
-    [metrics]
-    enabled = true
-    host = "0.0.0.0"
-    port = 8081
-    
-    [storage]
-    path = "/data"
-    cache_size = 1024  # MB
-    state_pruning = "archive"
-    blocks_pruning = "archive"
-    
+    address = "0.0.0.0:50051"
+
     [logging]
     level = "info"
-    targets = [
-      "qanto=info",
-      "runtime=info",
-      "consensus=info",
-      "network=info"
-    ]
-    
-    [consensus]
-    algorithm = "proof-of-stake"
-    block_time = 6000  # 6 seconds
-    epoch_duration = 2400  # blocks
-    
-    [telemetry]
-    enabled = true
-    endpoints = [
-      "wss://telemetry.qanto.network/submit 0"
-    ]
-    
-    [database]
-    backend = "rocksdb"
-    cache_size = 512  # MB
-    
-    [transaction_pool]
-    max_transactions = 8192
-    max_per_sender = 16
-    
-    [offchain_worker]
-    enabled = true
-    indexing_enabled = true
-  
+    enable_block_celebrations = false
+    celebration_log_level = "info"
+
+    [p2p]
+    heartbeat_interval = 2000
+    mesh_n_low = 2
+    mesh_n = 4
+    mesh_n_high = 8
+    mesh_outbound_min = 2
+
+    [mempool]
+    parallel_verification_threads = 4
+    capacity = 100000
+
   genesis.json: |
     {
       "name": "Qanto Mainnet",
       "id": "qanto-mainnet",
       "chainType": "Live",
       "bootNodes": [
-        "/dns4/bootnode-1.qanto.network/tcp/30333/p2p/12D3KooWBootnode1",
-        "/dns4/bootnode-2.qanto.network/tcp/30333/p2p/12D3KooWBootnode2"
-      ],
-      "telemetryEndpoints": [
-        ["wss://telemetry.qanto.network/submit", 0]
+        "/dns4/bootnode-1.qanto.network/tcp/30303/ws/p2p/12D3KooWBootnode1",
+        "/dns4/bootnode-2.qanto.network/tcp/30303/ws/p2p/12D3KooWBootnode2"
       ],
       "protocolId": "qanto",
       "properties": {
-        "tokenDecimals": 18,
-        "tokenSymbol": "QANTO"
-      },
-      "consensusEngine": "qanto-pos",
-      "genesis": {
-        "runtime": {
-          "system": {
-            "code": "0x"
-          },
-          "balances": {
-            "balances": []
-          },
-          "session": {
-            "keys": []
-          },
-          "staking": {
-            "validatorCount": 100,
-            "minimumValidatorCount": 4,
-            "stakers": [],
-            "invulnerables": [],
-            "forceEra": "NotForcing",
-            "slashRewardFraction": 1000000000,
-            "canceledPayout": 0,
-            "historyDepth": 84,
-            "currentEra": 0,
-            "currentPlannedSession": 0,
-            "offendingValidators": []
-          }
-        }
+        "tokenDecimals": 9,
+        "tokenSymbol": "QNTO",
+        "maxSupply": 21000000000,
+        "smallestUnitsPerQanto": 1000000000
       }
     }
-  
-  logging.yml: |
-    # Logging configuration
-    appenders:
-      stdout:
-        kind: console
-        encoder:
-          pattern: "{d(%Y-%m-%d %H:%M:%S)} [{l}] {M} - {m}{n}"
-      
-      file:
-        kind: file
-        path: "/data/logs/qanto.log"
-        encoder:
-          pattern: "{d(%Y-%m-%d %H:%M:%S)} [{l}] {t} {M} - {m}{n}"
-        append: true
-        
-      metrics:
-        kind: file
-        path: "/data/logs/metrics.log"
-        encoder:
-          pattern: "{d(%Y-%m-%d %H:%M:%S)} {m}{n}"
-        append: true
-    
-    root:
-      level: info
-      appenders:
-        - stdout
-        - file
-    
-    loggers:
-      qanto::metrics:
-        level: debug
-        appenders:
-          - metrics
-        additive: false

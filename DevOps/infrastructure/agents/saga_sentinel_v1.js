@@ -11,7 +11,7 @@ const { ethers } = require("ethers");
  * CONFIGURATION
  * In a real environment, these would be in a .env file
  */
-const RPC_URL = "http://localhost:8545";
+const RPC_URL = "http://localhost:8081/rpc";
 const ORACLE_ADDR = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const STAKING_ADDR = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
 const PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"; // Localhost PK
@@ -38,7 +38,7 @@ async function runSentinel() {
     console.log(`⚖️ Decision: ${action}`);
 
     if (action !== "HOLD") {
-        // 3. Generate Mock ZK-Proof of 'Rational Decision Tree'
+        // 3. Generate Synthetic ZK-Proof of 'Rational Decision Tree'
         const modelHash = ethers.id("STAKING_STRATEGY_v1");
         const proof = ethers.hexlify(ethers.randomBytes(64)); // Simulated ZK-Proof
         const decisionData = ethers.toUtf8Bytes(action);

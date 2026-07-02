@@ -6,8 +6,8 @@ use crate::p2p::P2PCommand;
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError};
 use crate::types::UTXO;
 use crate::wallet::Wallet;
+use ahash::AHashMap as HashMap;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::{mpsc, RwLock};
@@ -171,8 +171,8 @@ impl Default for TestnetMiningConfig {
             target_block_time_ms: 5000, // Adjusted to 5 seconds target block time for testnet, promoting more stable mining cycles while maintaining network responsiveness
             stall_threshold_secs: 3,    // Reduced from 10 to 3 for faster recovery
             difficulty_reduction_factor: 700_000_000, // 0.7 represented as fixed-point u64
-            min_difficulty: 100_000,     // 0.0001 represented as fixed-point u64
-            max_difficulty: 100_000_000_000,      // 100.0 represented as fixed-point u64
+            min_difficulty: 100_000,    // 0.0001 represented as fixed-point u64
+            max_difficulty: 100_000_000_000, // 100.0 represented as fixed-point u64
             enable_retry_logic: true,
             max_retries: 2,     // Reduced from 3 to 2 for faster cycles
             retry_delay_ms: 50, // Reduced from 100 to 50ms
@@ -272,7 +272,8 @@ impl AdaptiveMiningLoop {
             );
             self.state.degraded_mode = true;
             // Reduce difficulty to ease computational load
-            self.state.current_difficulty = (self.state.current_difficulty as u128 * 500_000_000 / 1_000_000_000) as u64;
+            self.state.current_difficulty =
+                (self.state.current_difficulty as u128 * 500_000_000 / 1_000_000_000) as u64;
         } else if !should_degrade && self.state.degraded_mode {
             info!(
                 "🚀 Disabling graceful degradation mode (memory recovered: {}MB)",
@@ -550,8 +551,8 @@ impl AdaptiveMiningLoop {
                 utxos,
                 chain_id,
                 miner,
-                None, // homomorphic_public_key
-                None, // parents_override
+                None,                                // homomorphic_public_key
+                None,                                // parents_override
                 Some(self.state.current_difficulty), // override difficulty
             )
             .await?;
@@ -713,8 +714,9 @@ impl AdaptiveMiningLoop {
                 Ok(true) => {
                     info!("✅ Block #{} successfully added to DAG", block_height);
                     if let Some(tx) = p2p_broadcast_tx {
-                        if let Err(err) =
-                            tx.send(P2PCommand::BroadcastBlock(mined_block.clone())).await
+                        if let Err(err) = tx
+                            .send(P2PCommand::BroadcastBlock(mined_block.clone()))
+                            .await
                         {
                             warn!(
                                 "Failed to broadcast adaptive-mined block {}: {}",
@@ -882,7 +884,9 @@ impl AdaptiveMiningLoop {
         if delta > one_percent {
             // Only adjust if the change is significant (> 1%)
             let old_difficulty = self.state.current_difficulty;
-            self.state.current_difficulty = ((old_difficulty as u128 * difficulty_adjustment_factor as u128 / crate::QANTO_SCALE) as u64)
+            self.state.current_difficulty = ((old_difficulty as u128
+                * difficulty_adjustment_factor as u128
+                / crate::QANTO_SCALE) as u64)
                 .max(self.config.min_difficulty)
                 .min(self.config.max_difficulty);
 
@@ -919,7 +923,7 @@ impl AdaptiveMiningLoop {
         stall_threshold: Duration,
     ) -> u64 {
         const SCALE: u128 = 1_000_000_000;
-        
+
         // Emergency stall protection (immediate difficulty reduction)
         if time_since_last_block > stall_threshold || self.state.consecutive_failures > 3 {
             return self.config.difficulty_reduction_factor;
@@ -946,7 +950,7 @@ impl AdaptiveMiningLoop {
         } else {
             SCALE - (SCALE - clamped_factor) / 2
         };
-        
+
         adjustment as u64
     }
 

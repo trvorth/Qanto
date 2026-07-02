@@ -1,5 +1,5 @@
+use ahash::AHashMap as HashMap;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -74,7 +74,7 @@ impl Default for NetworkConfig {
     fn default() -> Self {
         Self {
             listen_address: Some("0.0.0.0".to_string()),
-            port: Some(8333),
+            port: Some(30303),
             bootstrap_peers: Some(vec![]),
             max_peers: Some(50),
             enable_discovery: Some(true),
@@ -97,7 +97,7 @@ impl Default for RpcConfig {
         Self {
             enabled: Some(true),
             address: Some("127.0.0.1".to_string()),
-            port: Some(8545), // Default to 8545 instead of 3030
+            port: Some(50051), // Canonical QANTO gRPC port
             allowed_origins: Some(vec!["*".to_string()]),
             max_connections: Some(100),
         }
@@ -397,8 +397,8 @@ impl ConfigValidator {
             if port < 1024 {
                 issues.push("Network port < 1024 may require root privileges".to_string());
             }
-            if port == 8545 {
-                issues.push("Network port conflicts with default RPC port (8545)".to_string());
+            if port == 50051 {
+                issues.push("Network port conflicts with canonical gRPC port (50051)".to_string());
             }
         }
 
@@ -421,10 +421,10 @@ impl ConfigValidator {
         }
 
         if let Some(port) = rpc.port {
-            if port == 3030 {
-                issues.push(
-                    "RPC port is 3030 but should be 8545 for Ethereum compatibility".to_string(),
-                );
+            if port != 50051 {
+                issues.push(format!(
+                    "RPC port is {port} but canonical QANTO gRPC port is 50051"
+                ));
             }
             if port < 1024 {
                 issues.push("RPC port < 1024 may require root privileges".to_string());
@@ -641,9 +641,9 @@ impl ConfigValidator {
             if result
                 .config_issues
                 .iter()
-                .any(|issue| issue.contains("3030"))
+                .any(|issue| issue.contains("canonical QANTO gRPC port is 50051"))
             {
-                suggestions.push("Change RPC port to 8545: [rpc] port = 8545".to_string());
+                suggestions.push("Change RPC port to 50051: [rpc] port = 50051".to_string());
             }
         }
 
@@ -751,9 +751,10 @@ impl ConfigValidator {
         }
 
         if let Some(ref mut rpc) = config.rpc {
-            if rpc.port == Some(3030) {
-                rpc.port = Some(8545);
-                fixes_applied.push("Changed RPC port from 3030 to 8545".to_string());
+            if rpc.port != Some(50051) {
+                let previous = rpc.port.unwrap_or(0);
+                rpc.port = Some(50051);
+                fixes_applied.push(format!("Aligned RPC port from {previous} to 50051"));
             }
         }
 

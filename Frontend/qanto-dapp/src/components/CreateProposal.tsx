@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAccount, useWriteContract } from 'wagmi';
+import { useAccount, useSendTransaction } from 'wagmi';
 import { request, gql } from 'graphql-request';
 
 const GOVERNANCE_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000010';
@@ -12,7 +12,7 @@ interface CreateProposalProps {
 
 export function CreateProposal({ onSuccess, onCancel }: CreateProposalProps) {
   const { isConnected } = useAccount();
-  const { writeContract, isSuccess: isTxSuccess, error: txError, data: txHash } = useWriteContract();
+  const { sendTransaction, isSuccess: isTxSuccess, error: txError, data: txHash } = useSendTransaction();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -20,7 +20,7 @@ export function CreateProposal({ onSuccess, onCancel }: CreateProposalProps) {
   const [errorMessage, setErrorMessage] = useState('');
   const [generatedCid, setGeneratedCid] = useState('');
 
-  const generateMockCid = (proposalData: { title: string; description: string; timestamp: number }) => {
+  const generateSyntheticCid = (proposalData: { title: string; description: string; timestamp: number }) => {
     const jsonStr = JSON.stringify(proposalData);
     let hash = 0;
     for (let i = 0; i < jsonStr.length; i++) {
@@ -50,7 +50,7 @@ export function CreateProposal({ onSuccess, onCancel }: CreateProposalProps) {
       // Simulate IPFS uploading latency
       await new Promise((resolve) => setTimeout(resolve, 1500));
       
-      const cid = generateMockCid({
+      const cid = generateSyntheticCid({
         title,
         description,
         timestamp: Date.now()
@@ -58,20 +58,24 @@ export function CreateProposal({ onSuccess, onCancel }: CreateProposalProps) {
       setGeneratedCid(cid);
 
       setStatus('contract');
-      // Submit proposal CID to the smart contract via Wagmi
-      writeContract({
-        abi: [
-          {
-            type: 'function',
-            name: 'submitProposal',
-            stateMutability: 'nonpayable',
-            inputs: [{ name: 'cid', type: 'string' }],
-            outputs: []
-          }
-        ] as const,
-        address: GOVERNANCE_CONTRACT_ADDRESS,
-        functionName: 'submitProposal',
-        args: [cid],
+      
+      const jsonStr = JSON.stringify({
+        title,
+        description,
+        proposal_type: 'Signal',
+        cid
+      });
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(jsonStr);
+      let hexData = '0x02';
+      for (let i = 0; i < bytes.length; i++) {
+        hexData += bytes[i].toString(16).padStart(2, '0');
+      }
+
+      sendTransaction({
+        to: GOVERNANCE_CONTRACT_ADDRESS,
+        value: 0n,
+        data: hexData as `0x${string}`,
       });
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to submit proposal.');

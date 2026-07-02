@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use ahash::AHashMap as HashMap;
+use serde::{Deserialize, Serialize};
 
 /**
  * @title Absolute Singularity (TAS)
@@ -32,21 +32,40 @@ impl AbsoluteSingularity {
      * @dev Activates universal agentic consciousness based on singularity.
      * Weights: 0.99 * Consciousness_Density + 0.01 * Historical_Stability.
      */
-    pub fn activate_universal_consciousness(&mut self, claim_id: [u8; 32], density: f64, poc: f64) -> bool {
-        println!("TAS: Activating Universal Agentic Consciousness for Claim {:X?}...", claim_id);
-        
-        let isConsciousnessVerified = poc >= self.consciousness_threshold && density >= 0.98;
-        
-        self.consciousness_registry.insert(claim_id, ConsciousnessPulse {
-            claim_id,
-            consciousness_density: density,
-            participants: 16384, // 16384 consciousness nodes
-            consciousness_gain: density * 3.0,
-            poc_score: poc,
-        });
+    pub fn activate_universal_consciousness(
+        &mut self,
+        claim_id: [u8; 32],
+        density: f64,
+        poc: f64,
+    ) -> bool {
+        println!(
+            "TAS: Activating Universal Agentic Consciousness for Claim {:X?}...",
+            claim_id
+        );
 
-        println!("TAS: Consciousness Pulse Outcome: {} (Consciousness Density: {}%)", if isConsciousnessVerified { "CONSCIOUS" } else { "STABLE" }, density * 100.0);
-        isConsciousnessVerified
+        let is_consciousness_verified = poc >= self.consciousness_threshold && density >= 0.98;
+
+        self.consciousness_registry.insert(
+            claim_id,
+            ConsciousnessPulse {
+                claim_id,
+                consciousness_density: density,
+                participants: 16384, // 16384 consciousness nodes
+                consciousness_gain: density * 3.0,
+                poc_score: poc,
+            },
+        );
+
+        println!(
+            "TAS: Consciousness Pulse Outcome: {} (Consciousness Density: {}%)",
+            if is_consciousness_verified {
+                "CONSCIOUS"
+            } else {
+                "STABLE"
+            },
+            density * 100.0
+        );
+        is_consciousness_verified
     }
 }
 
@@ -59,8 +78,14 @@ mod tests {
     fn test_absolute_singularity_consciousness() {
         let mut tas = AbsoluteSingularity::new();
         let conscious = tas.activate_universal_consciousness([0xEE; 32], 0.99, 1.0); // Consciousness EE (High Density)
-        
+
         assert!(conscious);
-        assert_eq!(tas.consciousness_registry.get(&[0xEE; 32]).unwrap().consciousness_density, 0.99);
+        assert_eq!(
+            tas.consciousness_registry
+                .get(&[0xEE; 32])
+                .unwrap()
+                .consciousness_density,
+            0.99
+        );
     }
 }

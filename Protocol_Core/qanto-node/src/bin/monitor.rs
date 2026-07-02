@@ -1,7 +1,7 @@
+use ahash::AHashMap as HashMap;
 use qanto::decentralization::PeerDiscoveryService;
 use qanto::qanto_net::{PeerId, PeerInfo};
 use qanto::qanto_p2p::QantoP2P;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;

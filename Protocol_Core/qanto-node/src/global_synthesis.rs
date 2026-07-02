@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use ahash::AHashMap as HashMap;
+use serde::{Deserialize, Serialize};
 
 /**
  * @title Global Synthesis (TGS)
@@ -16,8 +16,8 @@ pub struct SynthesisPulse {
     pub claim_id: [u8; 32],
     pub intelligence_density: u128, // Scaled by QANTO_SCALE
     pub participants: u32,
-    pub synthesis_gain: u128,      // Scaled by QANTO_SCALE
-    pub poi_v2_score: u128,        // Scaled by QANTO_SCALE
+    pub synthesis_gain: u128, // Scaled by QANTO_SCALE
+    pub poi_v2_score: u128,   // Scaled by QANTO_SCALE
 }
 
 impl GlobalSynthesis {
@@ -32,20 +32,40 @@ impl GlobalSynthesis {
      * @dev Synthesizes agentic results based on planetary intelligence.
      * Weights: 0.8 * Intelligence_Density + 0.2 * Historical_Stability.
      */
-    pub fn synthesize_agentic_results(&mut self, claim_id: [u8; 32], density: u128, poi: u128) -> bool {
-        println!("TGS: Synthesizing Global Agentic Results for Claim {:X?}...", claim_id);
-        
-        let is_synthesized = poi >= self.intelligence_threshold && density >= (85 * crate::QANTO_SCALE / 100);
-        
-        self.synthesis_registry.insert(claim_id, SynthesisPulse {
-            claim_id,
-            intelligence_density: density,
-            participants: 1024, // 1024 synthesis nodes
-            synthesis_gain: (density * 125) / 100,
-            poi_v2_score: poi,
-        });
+    pub fn synthesize_agentic_results(
+        &mut self,
+        claim_id: [u8; 32],
+        density: u128,
+        poi: u128,
+    ) -> bool {
+        println!(
+            "TGS: Synthesizing Global Agentic Results for Claim {:X?}...",
+            claim_id
+        );
 
-        println!("TGS: Synthesis Pulse Outcome: {} (Density: {} scaled units)", if is_synthesized { "SYNTHESIZED" } else { "STABLE" }, density);
+        let is_synthesized =
+            poi >= self.intelligence_threshold && density >= (85 * crate::QANTO_SCALE / 100);
+
+        self.synthesis_registry.insert(
+            claim_id,
+            SynthesisPulse {
+                claim_id,
+                intelligence_density: density,
+                participants: 1024, // 1024 synthesis nodes
+                synthesis_gain: (density * 125) / 100,
+                poi_v2_score: poi,
+            },
+        );
+
+        println!(
+            "TGS: Synthesis Pulse Outcome: {} (Density: {} scaled units)",
+            if is_synthesized {
+                "SYNTHESIZED"
+            } else {
+                "STABLE"
+            },
+            density
+        );
         is_synthesized
     }
 }
@@ -59,9 +79,16 @@ mod tests {
     fn test_global_intelligence_synthesis() {
         let mut tgs = GlobalSynthesis::new();
         let scale = crate::QANTO_SCALE;
-        let synthesized = tgs.synthesize_agentic_results([0xDD; 32], (92 * scale) / 100, (98 * scale) / 100); // Synthesis DD (High Density)
-        
+        let synthesized =
+            tgs.synthesize_agentic_results([0xDD; 32], (92 * scale) / 100, (98 * scale) / 100); // Synthesis DD (High Density)
+
         assert!(synthesized);
-        assert_eq!(tgs.synthesis_registry.get(&[0xDD; 32]).unwrap().intelligence_density, (92 * scale) / 100);
+        assert_eq!(
+            tgs.synthesis_registry
+                .get(&[0xDD; 32])
+                .unwrap()
+                .intelligence_density,
+            (92 * scale) / 100
+        );
     }
 }

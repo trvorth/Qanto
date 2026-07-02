@@ -6,13 +6,17 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:pages": "wrangler pages dev ./dist",
+    "test:waitlist": "node --test ./tests/**/*.test.mjs",
+    "deploy:pages": "vite build && wrangler pages deploy ./dist --project-name ${CLOUDFLARE_PAGES_PROJECT:-primary} --branch ${CLOUDFLARE_PAGES_BRANCH:-production}"
   },
   "dependencies": {
     "ethers": "^6.16.0",
     "lucide-static": "^0.344.0"
   },
   "devDependencies": {
-    "vite": "^8.0.14"
+    "vite": "^8.0.14",
+    "wrangler": "^4.22.0"
   }
 }

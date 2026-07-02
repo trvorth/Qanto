@@ -30,9 +30,10 @@ use crate::saga::{GovernanceProposal, PalletSaga};
 use crate::transaction::Transaction;
 use crate::zkp::{ZKProof, ZKProofSystem};
 
+use ahash::{AHashMap as HashMap, AHashSet as HashSet};
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -243,7 +244,7 @@ pub enum RecoveryStatus {
 pub struct RecoveryStrategy {
     pub strategy_id: String,
     pub strategy_type: RecoveryStrategyType,
-    pub success_rate: u128,          // Scaled by 1e9
+    pub success_rate: u128,           // Scaled by 1e9
     pub estimated_recovery_time: u64, // ms
 }
 
@@ -866,7 +867,7 @@ impl DecentralizationEngine {
         for validator in all_validators {
             let performance_score =
                 self.calculate_individual_performance_score(&validator.performance_metrics);
-            
+
             // Deterministic logarithmic stake scoring: (log2(stake) * SCALE) / 30
             // Approximates ln(stake) / 20.0
             let stake_bits = 128 - validator.stake.leading_zeros() as u128;
@@ -968,7 +969,8 @@ impl DecentralizationEngine {
         if selected.len() > 1 {
             let total_selected_stake =
                 selected.iter().map(|v| v.stake).sum::<u128>() + validator.stake;
-            let stake_concentration = crate::math::div_scale_u128(validator.stake, total_selected_stake);
+            let stake_concentration =
+                crate::math::div_scale_u128(validator.stake, total_selected_stake);
 
             if stake_concentration > MAX_STAKE_CONCENTRATION {
                 return Ok(false);
@@ -1373,16 +1375,17 @@ impl DecentralizationEngine {
         }
 
         let shard_balance = if !shard_validator_counts.is_empty() {
-            let avg_validators_per_shard = (validators.len() as u128 * crate::QANTO_SCALE) / SHARD_COUNT as u128;
+            let avg_validators_per_shard =
+                (validators.len() as u128 * crate::QANTO_SCALE) / SHARD_COUNT as u128;
             let variance = self.calculate_variance(&shard_validator_counts);
             let std_dev = crate::math::integer_sqrt(variance * crate::QANTO_SCALE);
-            
+
             let dev_ratio = if avg_validators_per_shard > 0 {
                 (std_dev * crate::QANTO_SCALE) / avg_validators_per_shard
             } else {
                 crate::QANTO_SCALE
             };
-            
+
             crate::QANTO_SCALE.saturating_sub(dev_ratio.min(crate::QANTO_SCALE))
         } else {
             0
@@ -1414,7 +1417,7 @@ impl DecentralizationEngine {
         } else {
             0
         };
-        
+
         let density_threshold = crate::QANTO_SCALE / 10;
         let connection_risk = if connection_density < density_threshold {
             (density_threshold - connection_density) * 10
@@ -1491,9 +1494,14 @@ impl DecentralizationEngine {
         // 5. Byzantine fault risk
         let byzantine_validators = validators
             .values()
-            .filter(|v| v.performance_metrics.byzantine_faults.load(Ordering::Relaxed) > 0)
+            .filter(|v| {
+                v.performance_metrics
+                    .byzantine_faults
+                    .load(Ordering::Relaxed)
+                    > 0
+            })
             .count() as u128;
-        
+
         let byzantine_risk = if val_len > 0 {
             (byzantine_validators * crate::QANTO_SCALE * 3) / val_len // Assuming 1/3 limit
         } else {
@@ -1677,11 +1685,13 @@ impl DecentralizationEngine {
 
         let top_10_percent_count = validator_count.div_ceil(10);
         let top_10_percent_stake: u128 = sorted_stakes.iter().take(top_10_percent_count).sum();
-        let top_10_percent_concentration = (top_10_percent_stake * crate::QANTO_SCALE) / total_stake;
+        let top_10_percent_concentration =
+            (top_10_percent_stake * crate::QANTO_SCALE) / total_stake;
 
         let top_33_percent_count = (validator_count * 33).div_ceil(100);
         let top_33_percent_stake: u128 = sorted_stakes.iter().take(top_33_percent_count).sum();
-        let top_33_percent_concentration = (top_33_percent_stake * crate::QANTO_SCALE) / total_stake;
+        let top_33_percent_concentration =
+            (top_33_percent_stake * crate::QANTO_SCALE) / total_stake;
 
         (top_10_percent_concentration, top_33_percent_concentration)
     }
@@ -1704,7 +1714,7 @@ impl DecentralizationEngine {
                 underperforming_validators: 0,
             };
         }
-        
+
         let underperforming_count = self.count_underperforming_validators(&performance_scores);
 
         ValidatorPerformanceMetrics {
@@ -1807,7 +1817,8 @@ impl DecentralizationEngine {
             return ShardBalance::default();
         }
 
-        let average_shard_size = (total_validators as u128 * crate::QANTO_SCALE) / shard_sizes.len() as u128;
+        let average_shard_size =
+            (total_validators as u128 * crate::QANTO_SCALE) / shard_sizes.len() as u128;
         let shard_size_variance = self.calculate_shard_size_variance(&shard_sizes);
         let load_balance_coefficient = self.calculate_load_balance_coefficient(shards);
 
@@ -1822,7 +1833,10 @@ impl DecentralizationEngine {
 
     /// Calculate variance in shard sizes
     fn calculate_shard_size_variance(&self, shard_sizes: &[usize]) -> u128 {
-        let shard_sizes_u128: Vec<u128> = shard_sizes.iter().map(|&s| s as u128 * crate::QANTO_SCALE).collect();
+        let shard_sizes_u128: Vec<u128> = shard_sizes
+            .iter()
+            .map(|&s| s as u128 * crate::QANTO_SCALE)
+            .collect();
         self.calculate_variance(&shard_sizes_u128)
     }
 
@@ -1911,10 +1925,10 @@ impl DecentralizationEngine {
                 // proportion = c / total
                 // diversity -= (c/total) * ln(c/total)
                 // diversity -= (c/total) * (ln(c) - ln(total))
-                
+
                 let ln_c = ((128 - c.leading_zeros() as u128) * crate::QANTO_SCALE) / 30;
                 let ln_total = ((128 - total.leading_zeros() as u128) * crate::QANTO_SCALE) / 30;
-                
+
                 // term = (c * (ln_c - ln_total)) / total
                 // Note: ln_c - ln_total will be negative or zero.
                 if ln_total > ln_c {
@@ -1980,7 +1994,9 @@ impl DecentralizationEngine {
             self.calculate_response_score(metrics.response_time_ms.load(Ordering::Relaxed));
         let reliability_score =
             self.calculate_reliability_score(metrics.byzantine_faults.load(Ordering::Relaxed));
-        let participation_score = (metrics.governance_participation.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE) / 10000; // Assuming 100.00% is 10000
+        let participation_score =
+            (metrics.governance_participation.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE)
+                / 10000; // Assuming 100.00% is 10000
 
         // Weighted average of performance factors
         // 0.3 * U + 0.3 * R + 0.2 * B + 0.2 * P
@@ -2025,7 +2041,7 @@ impl DecentralizationEngine {
         let n = values.len() as u128;
         let sum: u128 = values.iter().sum();
         let mean = sum / n;
-        
+
         let mut variance_sum = 0;
         for &value in values {
             let diff = value.abs_diff(mean);
@@ -2061,7 +2077,8 @@ impl DecentralizationEngine {
             }
 
             if possible_triangles > 0 {
-                total_clustering += (triangles as u128 * crate::QANTO_SCALE) / possible_triangles as u128;
+                total_clustering +=
+                    (triangles as u128 * crate::QANTO_SCALE) / possible_triangles as u128;
                 node_count += 1;
             }
         }
@@ -2083,7 +2100,7 @@ impl DecentralizationEngine {
 
         let total_connections: usize = topology.connections.values().map(|conns| conns.len()).sum();
         // average_degree = total_connections / node_count
-        
+
         if total_connections > 0 {
             // L ~ ln(N) / ln(k)
             let ln_n = ((128 - node_count.leading_zeros() as u128) * crate::QANTO_SCALE) / 30;
@@ -2092,7 +2109,7 @@ impl DecentralizationEngine {
                 let ln_k = ((128 - k.leading_zeros() as u128) * crate::QANTO_SCALE) / 30;
                 (ln_n * crate::QANTO_SCALE) / ln_k
             } else {
-                crate::QANTO_SCALE * 10 // Mock high value for low connectivity
+                crate::QANTO_SCALE * 10 // Synthetic high value for low connectivity
             }
         } else {
             u128::MAX // Infinity replacement
@@ -2139,7 +2156,7 @@ impl DecentralizationEngine {
 pub struct NetworkHealthMetrics {
     pub validator_count: u64,
     pub total_connections: u64,
-    pub average_latency: u128, // Scaled by 1e9
+    pub average_latency: u128,  // Scaled by 1e9
     pub network_coverage: u128, // Scaled by 1e9
     pub partition_risk: u128,   // Scaled by 1e9
 }
@@ -2153,8 +2170,8 @@ pub struct DecentralizationMetrics {
     pub network_decentralization: NetworkDecentralization,
     pub shard_balance: ShardBalance,
     pub governance_participation: u128, // Scaled by 1e9
-    pub delegation_ratio: u128,          // Scaled by 1e9
-    pub decentralization_score: u128,    // Scaled by 1e9
+    pub delegation_ratio: u128,         // Scaled by 1e9
+    pub decentralization_score: u128,   // Scaled by 1e9
     pub timestamp: u64,
 }
 
@@ -2164,7 +2181,7 @@ struct SystemState {
     validators: HashMap<PeerId, ValidatorInfo>,
     topology: NetworkTopology,
     governance_participation: u128, // Scaled by 1e9
-    delegation_ratio: u128,          // Scaled by 1e9
+    delegation_ratio: u128,         // Scaled by 1e9
     shards: HashMap<usize, ShardInfo>,
 }
 
@@ -2177,7 +2194,7 @@ struct MetricsComponents {
     network_decentralization: NetworkDecentralization,
     shard_balance: ShardBalance,
     governance_participation: u128, // Scaled by 1e9
-    delegation_ratio: u128,          // Scaled by 1e9
+    delegation_ratio: u128,         // Scaled by 1e9
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2185,8 +2202,8 @@ pub struct GeographicDistribution {
     pub country_counts: HashMap<String, usize>,
     pub region_counts: HashMap<String, usize>,
     pub continent_counts: HashMap<String, usize>,
-    pub country_diversity_index: u128, // Scaled by 1e9
-    pub region_diversity_index: u128,  // Scaled by 1e9
+    pub country_diversity_index: u128,   // Scaled by 1e9
+    pub region_diversity_index: u128,    // Scaled by 1e9
     pub continent_diversity_index: u128, // Scaled by 1e9
 }
 
@@ -2197,13 +2214,13 @@ pub struct StakeDistribution {
     pub median_stake: u128,
     pub top_10_percent_concentration: u128, // Scaled by 1e9
     pub top_33_percent_concentration: u128, // Scaled by 1e9
-    pub gini_coefficient: u128,              // Scaled by 1e9
+    pub gini_coefficient: u128,             // Scaled by 1e9
     pub nakamoto_coefficient: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidatorPerformanceMetrics {
-    pub average_uptime: u128, // Scaled by 1e9
+    pub average_uptime: u128,        // Scaled by 1e9
     pub average_response_time: u128, // Scaled by 1e9
     pub total_blocks_produced: u64,
     pub total_byzantine_faults: u64,
@@ -2224,15 +2241,15 @@ pub struct NetworkDecentralization {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ShardBalance {
     pub shard_count: usize,
-    pub average_shard_size: u128,         // Scaled by 1e9
-    pub shard_size_variance: u128,        // Scaled by 1e9
-    pub load_balance_coefficient: u128,   // Scaled by 1e9
+    pub average_shard_size: u128,              // Scaled by 1e9
+    pub shard_size_variance: u128,             // Scaled by 1e9
+    pub load_balance_coefficient: u128,        // Scaled by 1e9
     pub cross_shard_communication_ratio: u128, // Scaled by 1e9
 }
 
 #[derive(Debug, Default)]
 struct AggregatedMetrics {
-    total_uptime: u128,         // Scaled by 1e9
+    total_uptime: u128,        // Scaled by 1e9
     total_response_time: u128, // Scaled by 1e9
     total_blocks_produced: u64,
     total_byzantine_faults: u64,

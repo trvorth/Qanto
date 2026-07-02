@@ -1,6 +1,9 @@
 # QANTO Master .gitignore - Monorepo Institutional Hardened
 # [RUST / CARGO]
 target/
+.cargo-target/
+.cargo-target-debug/
+.cargo/
 **/*.rs.bk
 debug/
 release/
@@ -90,6 +93,10 @@ venv/
 qanto-testnet/
 qanto_hf_release/
 build_timestamp.txt
+logs/
+.dbg/
+.testnet/
+keystore.json
 Infrastructure/node-operator/keys/.gitignore
 Infrastructure/node-operator/keys/README.md
 

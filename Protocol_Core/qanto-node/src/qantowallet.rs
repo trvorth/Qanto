@@ -7,6 +7,8 @@ use crate::{
     transaction::Transaction,
     wallet::Wallet,
 };
+use ahash::AHashMap as HashMap;
+use ahash::AHashSet as HashSet;
 use anyhow::{anyhow, Context, Result};
 use bincode::deserialize;
 use bytes::Bytes;
@@ -23,12 +25,10 @@ use libp2p::{
     yamux, Multiaddr, Swarm, SwarmBuilder,
 };
 use my_blockchain::qanto_standalone::hash::QantoHash;
+use qanto_core::balance_stream::{BalanceSubscribe, BalanceUpdate};
 use reqwest::Client;
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
-use qanto_core::balance_stream::{BalanceSubscribe, BalanceUpdate};
-use std::collections::HashMap;
-use std::collections::HashSet;
 use std::future::pending;
 use std::io;
 use std::net::SocketAddr;
@@ -99,7 +99,7 @@ struct Cli {
     #[arg(
         long,
         global = true,
-        help = "Libp2p multiaddr of a Qanto node supporting QDS (e.g., /ip4/127.0.0.1/tcp/30333/p2p/<peerid>)"
+        help = "Libp2p multiaddr of a Qanto node supporting QDS (e.g., /ip4/127.0.0.1/tcp/30303/ws/p2p/<peerid>)"
     )]
     qds_multiaddr: Option<String>,
 }
@@ -566,6 +566,12 @@ struct BalanceResponse {
     balance: u128,
 }
 
+fn parse_monetary_string(field: &str, value: &str) -> Result<u128> {
+    value
+        .parse::<u128>()
+        .map_err(|e| anyhow!("Invalid monetary value for {field}: '{value}' ({e})"))
+}
+
 // Similarly for send_transaction_p2p
 async fn send_transaction_p2p(
     p2p_client: &Option<Arc<QantoP2P>>,
@@ -604,6 +610,9 @@ async fn send_transaction_p2p(
                 .as_secs(),
             metadata: HashMap::new(),
             fee_breakdown: None,
+            transaction_kind: crate::transaction::TransactionKind::Transfer,
+            chain_id: crate::transaction::GLOBAL_CHAIN_ID.load(std::sync::atomic::Ordering::Relaxed)
+                as u32,
         };
 
         let payload = bincode::serialize(&tx)?;
@@ -736,6 +745,11 @@ async fn get_balance_qds_with_timeout(
                                         );
                                         return Ok(());
                                     }
+                                    QDSResponse::Ack { accepted, detail } => {
+                                        return Err(anyhow!(
+                                            "Unexpected QDS ack while querying balance (accepted={accepted}): {detail}"
+                                        ));
+                                    }
                                 }
                             }
                         }
@@ -789,10 +803,13 @@ async fn get_wallet_balance_grpc(rpc_address: &str, address: &str) -> Result<()>
         Ok(resp) => {
             let payload = resp.into_inner();
             let qan_base = crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
-            let confirmed_qan = (payload.balance as f64) / qan_base;
-            let unconfirmed_qan = (payload.unconfirmed_balance as f64) / qan_base;
+            let confirmed_base_units = parse_monetary_string("wallet.balance", &payload.balance)?;
+            let unconfirmed_base_units =
+                parse_monetary_string("wallet.unconfirmed_balance", &payload.unconfirmed_balance)?;
+            let confirmed_qan = (confirmed_base_units as f64) / qan_base;
+            let unconfirmed_qan = (unconfirmed_base_units as f64) / qan_base;
             println!("📊 Balance for {address}: {confirmed_qan:.6} QANTO");
-            if payload.unconfirmed_balance > 0 {
+            if unconfirmed_base_units > 0 {
                 println!("⏳ Pending: +{unconfirmed_qan:.6} QANTO (mempool)");
             }
             Ok(())
@@ -871,19 +888,23 @@ async fn send_transaction_grpc(
             .as_secs(),
         metadata: HashMap::new(),
         fee_breakdown: None,
+        transaction_kind: crate::transaction::TransactionKind::Transfer,
+        chain_id: crate::transaction::GLOBAL_CHAIN_ID.load(std::sync::atomic::Ordering::Relaxed)
+            as u32,
     };
 
     // Convert to typed protobuf Transaction
     let proto_tx = ProtoTransaction {
         id: tx.id.clone(),
+        chain_id: tx.chain_id,
         sender: tx.sender.clone(),
         receiver: tx.receiver.clone(),
-        amount: tx.amount as u64,
-        fee: tx.fee as u64,
+        amount: tx.amount.to_string(),
+        fee: tx.fee.to_string(),
         gas_limit: tx.gas_limit as u64,
         gas_used: tx.gas_used as u64,
-        gas_price: tx.gas_price as u64,
-        priority_fee: tx.priority_fee as u64,
+        gas_price: tx.gas_price.to_string(),
+        priority_fee: tx.priority_fee.to_string(),
         inputs: tx
             .inputs
             .iter()
@@ -897,7 +918,7 @@ async fn send_transaction_grpc(
             .iter()
             .map(|o| ProtoOutput {
                 address: o.address.clone(),
-                amount: o.amount as u64,
+                amount: o.amount.to_string(),
                 homomorphic_encrypted: Some(ProtoHE {
                     ciphertext: o.homomorphic_encrypted.ciphertext.clone(),
                     public_key: o.homomorphic_encrypted.public_key.clone(),
@@ -905,21 +926,21 @@ async fn send_transaction_grpc(
             })
             .collect(),
         timestamp: tx.timestamp,
-        metadata: tx.metadata.clone(),
+        metadata: tx.metadata.clone().into_iter().collect(),
         signature: Some(ProtoSigMsg {
             signer_public_key: tx.signature.signer_public_key.clone(),
             signature: tx.signature.signature.clone(),
         }),
         fee_breakdown: tx.fee_breakdown.as_ref().map(|fb| ProtoFeeBreakdown {
-            base_fee: fb.base_fee as u64,
-            complexity_fee: fb.complexity_fee as u64,
-            storage_fee: fb.storage_fee as u64,
-            gas_fee: fb.gas_fee as u64,
-            priority_fee: fb.priority_fee as u64,
+            base_fee: fb.base_fee.to_string(),
+            complexity_fee: fb.complexity_fee.to_string(),
+            storage_fee: fb.storage_fee.to_string(),
+            gas_fee: fb.gas_fee.to_string(),
+            priority_fee: fb.priority_fee.to_string(),
             congestion_multiplier: fb.congestion_multiplier,
-            total_fee: fb.total_fee as u64,
+            total_fee: fb.total_fee.to_string(),
             gas_used: fb.gas_used as u64,
-            gas_price: fb.gas_price as u64,
+            gas_price: fb.gas_price.to_string(),
         }),
     };
 
@@ -1129,10 +1150,7 @@ async fn subscribe_balance_ws(api_address: &str, address: &str) -> Result<()> {
 /// Executor: runs under the Tokio runtime initialized by the wallet CLI.
 /// Registers a message handler for `MessageType::BalanceUpdate` and broadcasts a
 /// `BalanceSubscribe` request for the provided address.
-async fn subscribe_balance_p2p(
-    p2p_client: &Option<Arc<QantoP2P>>,
-    address: &str,
-) -> Result<()> {
+async fn subscribe_balance_p2p(p2p_client: &Option<Arc<QantoP2P>>, address: &str) -> Result<()> {
     let p2p = p2p_client
         .as_ref()
         .ok_or_else(|| anyhow!("P2P node is not running; start the node and retry"))?;
@@ -1300,8 +1318,14 @@ pub async fn run() -> anyhow::Result<()> {
     };
 
     // Lightweight QDS mode: skip P2P init when querying balance via QDS
-    let qds_balance_mode = matches!(cli.command, Commands::Balance { follow: false, live: false, .. })
-        && cli.qds_multiaddr.is_some();
+    let qds_balance_mode = matches!(
+        cli.command,
+        Commands::Balance {
+            follow: false,
+            live: false,
+            ..
+        }
+    ) && cli.qds_multiaddr.is_some();
 
     // Initialize P2P client if discovery is enabled and not in QDS lightweight mode; fall back to HTTP on failure
     let p2p_client = if !qds_balance_mode && cli.p2p_discovery.unwrap_or(true) {
@@ -1367,12 +1391,16 @@ pub async fn run() -> anyhow::Result<()> {
                 match subscribe_balance_p2p(&p2p_client, &address).await {
                     Ok(()) => Ok(()),
                     Err(p2p_err) => {
-                        eprintln!("⚠️ P2P live subscribe failed ({p2p_err}). Falling back to WebSocket.");
+                        eprintln!(
+                            "⚠️ P2P live subscribe failed ({p2p_err}). Falling back to WebSocket."
+                        );
                         let api_addr = config.api_address.clone();
                         match subscribe_balance_ws(&api_addr, &address).await {
                             Ok(()) => Ok(()),
                             Err(ws_err) => {
-                                eprintln!("⚠️ WebSocket not available ({ws_err}). Falling back to gRPC.");
+                                eprintln!(
+                                    "⚠️ WebSocket not available ({ws_err}). Falling back to gRPC."
+                                );
                                 get_wallet_balance_grpc(&rpc_addr, &address).await
                             }
                         }
@@ -1630,7 +1658,7 @@ mod tests {
             "balance",
             "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3",
             "--qds-multiaddr",
-            "/ip4/127.0.0.1/tcp/30333/p2p/12D3KooWAbCdEfGhijkLmNoPqrStuVwxyz1234567890AbCdE",
+            "/ip4/127.0.0.1/tcp/30303/ws/p2p/12D3KooWAbCdEfGhijkLmNoPqrStuVwxyz1234567890AbCdE",
         ];
         let cli = Cli::parse_from(&args);
 
@@ -1654,8 +1682,14 @@ mod tests {
         assert!(cli.qds_multiaddr.is_some(), "qds_multiaddr should be set");
 
         // Lightweight mode should be active
-        let qds_balance_mode = matches!(cli.command, Commands::Balance { follow: false, live: false, .. })
-            && cli.qds_multiaddr.is_some();
+        let qds_balance_mode = matches!(
+            cli.command,
+            Commands::Balance {
+                follow: false,
+                live: false,
+                ..
+            }
+        ) && cli.qds_multiaddr.is_some();
         assert!(qds_balance_mode, "QDS lightweight mode should be detected");
     }
 

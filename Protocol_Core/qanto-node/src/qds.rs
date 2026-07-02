@@ -1,13 +1,16 @@
+use crate::qantodag::QantoBlock;
 use async_trait::async_trait;
 use futures::io::{AsyncReadExt, AsyncWriteExt};
 use libp2p::request_response::Codec;
 use serde::{Deserialize, Serialize};
 
 pub const QDS_PROTOCOL: &str = "/qanto/qds/1";
+pub const MAX_QDS_PAYLOAD_SIZE: usize = 4 * 1024 * 1024; // 4MB limit to prevent OOM (D-C1)
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum QDSRequest {
     GetBalance { address: String },
+    PushBlock { block: Box<QantoBlock> },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,6 +18,10 @@ pub enum QDSResponse {
     Balance {
         address: String,
         confirmed_balance: u64,
+    },
+    Ack {
+        accepted: bool,
+        detail: String,
     },
 }
 
@@ -36,7 +43,10 @@ impl Codec for QDSCodec {
         T: futures::io::AsyncRead + Unpin + Send,
     {
         let mut buf = Vec::new();
-        io.read_to_end(&mut buf).await?;
+        // Limit reading to MAX_QDS_PAYLOAD_SIZE to prevent memory bombs (D-C1)
+        io.take(MAX_QDS_PAYLOAD_SIZE as u64)
+            .read_to_end(&mut buf)
+            .await?;
         serde_json::from_slice(&buf)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
@@ -50,7 +60,10 @@ impl Codec for QDSCodec {
         T: futures::io::AsyncRead + Unpin + Send,
     {
         let mut buf = Vec::new();
-        io.read_to_end(&mut buf).await?;
+        // Limit reading to MAX_QDS_PAYLOAD_SIZE to prevent memory bombs (D-C1)
+        io.take(MAX_QDS_PAYLOAD_SIZE as u64)
+            .read_to_end(&mut buf)
+            .await?;
         serde_json::from_slice(&buf)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }

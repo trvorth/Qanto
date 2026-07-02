@@ -14,6 +14,7 @@ use crate::qantodag::{QantoBlock, QantoDAG};
 use crate::saga::{AnalyticsDashboardData, PalletSaga};
 use crate::transaction::Transaction;
 
+use ahash::AHashMap as HashMap;
 use anyhow::Result;
 use axum::{
     extract::{ws::WebSocket, State, WebSocketUpgrade},
@@ -23,7 +24,6 @@ use axum::{
 };
 use futures_util::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 use tokio::time::{interval, Duration};
@@ -398,7 +398,8 @@ async fn handle_websocket(socket: WebSocket, state: WebSocketServerState) {
     let (pong_tx, mut pong_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
 
     // Create a channel for telemetry stream updates
-    let (telemetry_tx, mut telemetry_rx) = tokio::sync::mpsc::unbounded_channel::<axum::extract::ws::Message>();
+    let (telemetry_tx, mut telemetry_rx) =
+        tokio::sync::mpsc::unbounded_channel::<axum::extract::ws::Message>();
 
     // Track last seen activity
     let last_seen = Arc::new(RwLock::new(std::time::Instant::now()));
@@ -411,7 +412,10 @@ async fn handle_websocket(socket: WebSocket, state: WebSocketServerState) {
             telemetry_interval.tick().await;
             let metrics = crate::telemetry::get_live_metrics();
             if let Ok(json) = serde_json::to_string(&metrics) {
-                if telemetry_tx_clone.send(axum::extract::ws::Message::Text(json.into())).is_err() {
+                if telemetry_tx_clone
+                    .send(axum::extract::ws::Message::Text(json.into()))
+                    .is_err()
+                {
                     break;
                 }
             }

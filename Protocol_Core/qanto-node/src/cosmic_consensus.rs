@@ -5,14 +5,19 @@
 //! enabling nodes positioned at Earth-Moon Lagrange points (L1-L5)
 //! to participate in consensus despite light-speed latency.
 
-use anyhow::Result;
+use ahash::AHashMap as HashMap;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 /// Lagrange Point identifier (L1-L5)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub enum LagrangePoint { L1, L2, L3, L4, L5 }
+pub enum LagrangePoint {
+    L1,
+    L2,
+    L3,
+    L4,
+    L5,
+}
 
 /// Deep Space Sentinel Node
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,7 +31,7 @@ pub struct LagrangeSentinel {
 /// High-Latency Sharding (HLS) Configuration
 pub struct HLSConfig {
     pub heartbeat_window_ms: u64, // Default 3000ms for Deep Space
-    pub quorum_threshold: u64,    // Percentage of L-nodes required for cosmic finality (scale Q_SCALE)
+    pub quorum_threshold: u64, // Percentage of L-nodes required for cosmic finality (scale Q_SCALE)
 }
 
 /// The Cosmic Consensus Engine
@@ -54,32 +59,52 @@ impl CosmicConsensus {
             last_heartbeat: 0,
             latency_ms,
         };
+        info!(
+            "🌌 REGISTERED DEEP SPACE SENTINEL: [{:?}] ID: {}",
+            point, id
+        );
         self.sentinels.insert(id, sentinel);
-        info!("🌌 REGISTERED DEEP SPACE SENTINEL: [{:?}] ID: {}", point, id);
     }
 
     /// Implement Deep Space Finality (Phase 97)
     /// HLS allows nodes with significant latency to contribute to terminal finality
     /// without slowing down the terrestrial "Pioneers" shard.
     pub fn verify_deep_space_finality(&self, shard_id: &str, block_height: u64) -> bool {
-        let active_sentinels = self.sentinels.values()
-            .filter(|s| s.last_heartbeat > (std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() * 1000 - self.hls_config.heartbeat_window_ms))
+        let active_sentinels = self
+            .sentinels
+            .values()
+            .filter(|s| {
+                s.last_heartbeat
+                    > (std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs()
+                        * 1000
+                        - self.hls_config.heartbeat_window_ms)
+            })
             .count() as u64;
 
         let total_sentinels = self.sentinels.len() as u64;
-        if total_sentinels == 0 { return true; } // No L-nodes, skip cosmic check
+        if total_sentinels == 0 {
+            return true;
+        } // No L-nodes, skip cosmic check
+
+        let active_sentinels = active_sentinels as u128;
+        let total_sentinels = total_sentinels as u128;
 
         // Use integer math: (active * SCALE) / total >= threshold
         let quorum_scaled = active_sentinels
             .checked_mul(crate::Q_SCALE)
             .and_then(|a| a.checked_div(total_sentinels))
-            .unwrap_or(0);
-            
+            .unwrap_or(0) as u64;
+
         let is_final = quorum_scaled >= self.hls_config.quorum_threshold;
 
         if is_final {
-            debug!("✨ DEEP SPACE FINALITY ACHIEVED: Shard {} Height {}", shard_id, block_height);
+            debug!(
+                "✨ DEEP SPACE FINALITY ACHIEVED: Shard {} Height {}",
+                shard_id, block_height
+            );
         } else {
             debug!("⚠️ COSMIC CONSENSUS LAG: Quorum at {} units", quorum_scaled);
         }

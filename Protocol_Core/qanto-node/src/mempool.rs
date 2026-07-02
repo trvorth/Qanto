@@ -9,9 +9,12 @@ use crate::transaction::{Transaction, TransactionError};
 use crate::types::UTXO;
 use dashmap::DashMap;
 // use rayon::prelude::*; // Removed unused import
+use ahash::{AHashMap as HashMap, AHashSet as HashSet};
+use bumpalo::Bump;
+use crossbeam_queue::SegQueue;
 use parking_lot::RwLock as ParkingRwLock;
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
+use std::collections::{BTreeMap, BinaryHeap};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -585,9 +588,7 @@ impl OptimizedMempool {
         // Remove old transactions
         for tx_id in old_txs {
             if let Some((_, prioritized_tx)) = self.transactions.remove(&tx_id) {
-                let tx_size = serde_json::to_vec(&prioritized_tx.tx)
-                    .map(|data| data.len())
-                    .unwrap_or(0);
+                let tx_size = bincode::serialized_size(&prioritized_tx.tx).unwrap_or(0) as usize;
                 self.current_size_bytes
                     .fetch_sub(tx_size, std::sync::atomic::Ordering::Relaxed);
                 info!("Pruned old transaction: {}", tx_id);
@@ -782,9 +783,7 @@ impl OptimizedMempool {
 
             // Check if transaction still exists (might have been removed)
             if let Some((_, removed_tx)) = self.transactions.remove(&tx_id) {
-                let tx_size = serde_json::to_vec(&removed_tx.tx)
-                    .map(|data| data.len())
-                    .unwrap_or(0);
+                let tx_size = bincode::serialized_size(&removed_tx.tx).unwrap_or(0) as usize;
                 self.current_size_bytes
                     .fetch_sub(tx_size, std::sync::atomic::Ordering::Relaxed);
                 // Update global metric for mempool size
@@ -1127,9 +1126,7 @@ impl OptimizedMempool {
     pub async fn remove_transactions(&self, transaction_ids: &[String]) {
         for tx_id in transaction_ids {
             if let Some((_, removed_tx)) = self.transactions.remove(tx_id) {
-                let tx_size = serde_json::to_vec(&removed_tx.tx)
-                    .map(|data| data.len())
-                    .unwrap_or(0);
+                let tx_size = bincode::serialized_size(&removed_tx.tx).unwrap_or(0) as usize;
                 self.current_size_bytes
                     .fetch_sub(tx_size, std::sync::atomic::Ordering::Relaxed);
                 info!("Removed transaction: {}", tx_id);
@@ -1281,9 +1278,8 @@ impl OptimizedMempool {
             // Remove old transactions
             for tx_id in old_txs {
                 if let Some((_, prioritized_tx)) = self.transactions.remove(&tx_id) {
-                    let tx_size = serde_json::to_vec(&prioritized_tx.tx)
-                        .map(|data| data.len())
-                        .unwrap_or(0);
+                    let tx_size =
+                        bincode::serialized_size(&prioritized_tx.tx).unwrap_or(0) as usize;
                     self.current_size_bytes
                         .fetch_sub(tx_size, std::sync::atomic::Ordering::Relaxed);
                 }
@@ -1342,7 +1338,8 @@ impl Mempool {
             .as_secs();
         let max_age_secs = self.max_age.as_secs();
 
-        let ids_to_prune: Vec<String> = self.transactions
+        let ids_to_prune: Vec<String> = self
+            .transactions
             .iter()
             .filter(|entry| now.saturating_sub(entry.value().timestamp) > max_age_secs)
             .map(|entry| entry.key().clone())
@@ -1360,9 +1357,7 @@ impl Mempool {
 
         for id in ids_to_prune {
             if let Some((_, removed_ptx)) = self.transactions.remove(&id) {
-                let tx_size = serde_json::to_vec(&removed_ptx.tx)
-                    .unwrap_or_default()
-                    .len();
+                let tx_size = bincode::serialized_size(&removed_ptx.tx).unwrap_or(0) as usize;
                 self.current_size_bytes
                     .fetch_sub(tx_size, Ordering::Relaxed);
 
@@ -1514,7 +1509,8 @@ impl Mempool {
                     "Duplicate transaction".to_string(),
                 ));
             }
-            self.transactions.insert(tx_id.clone(), prioritized_tx.clone());
+            self.transactions
+                .insert(tx_id.clone(), prioritized_tx.clone());
         }
 
         // Add to priority queue (BTreeMap keyed by fee per byte)
@@ -1563,8 +1559,11 @@ impl Mempool {
             let capacity_percentage = (current_size as f64 / self.max_size_bytes as f64) * 100.0;
             let transactions_count = self.transactions.len();
             let avg_fee_per_byte = if transactions_count > 0 {
-                let total_fee_per_byte: u128 =
-                    self.transactions.iter().map(|entry| entry.value().fee_per_byte).sum();
+                let total_fee_per_byte: u128 = self
+                    .transactions
+                    .iter()
+                    .map(|entry| entry.value().fee_per_byte)
+                    .sum();
                 total_fee_per_byte as f64 / transactions_count as f64
             } else {
                 0.0
@@ -1616,16 +1615,24 @@ impl Mempool {
         let mut result: Vec<Transaction> = Vec::with_capacity(max_txs);
 
         // Snapshot current transaction IDs to detect in-flight dependencies without awaiting inside loops
-        let tx_ids_snapshot: HashSet<String> = self.transactions.iter().map(|entry| entry.key().clone()).collect();
+        let tx_ids_snapshot: HashSet<String> = self
+            .transactions
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect();
 
         // Fallback to single heap when sharding is not active
         if self.shard_count <= 1 || self.sharded_heaps.is_empty() {
             let mut heap = self.priority_heap.write();
-            let take = max_txs.min(heap.len());
-            let mut extracted: Vec<PrioritizedTransaction> = Vec::with_capacity(take);
+            let mut extracted: Vec<PrioritizedTransaction> = Vec::with_capacity(max_txs);
 
-            for _ in 0..take {
+            while result.len() < max_txs && !heap.is_empty() {
                 if let Some(ptx) = heap.pop() {
+                    // Skip if the transaction was already removed from the mempool (mined or pruned)
+                    if !self.transactions.contains_key(&ptx.tx.id) {
+                        continue;
+                    }
+
                     // Skip if reserved by another miner or if any input UTXO is reserved by another miner
                     if !self.is_transaction_reserved(&ptx.tx.id, &miner_id) {
                         let mut utxo_conflict = false;
@@ -1656,7 +1663,7 @@ impl Mempool {
                             result.push(ptx.tx.clone());
                         }
                     }
-                    // Always keep track to restore heap state
+                    // Always keep track to restore heap state (for non-stale transactions)
                     extracted.push(ptx);
                 }
             }
@@ -1704,6 +1711,13 @@ impl Mempool {
             match best_idx {
                 Some(i) => {
                     let ptx = current[i].take().unwrap();
+                    // Skip if the transaction was already removed from the mempool (mined or pruned)
+                    if !self.transactions.contains_key(&ptx.tx.id) {
+                        // Load next item from this shard
+                        current[i] = heap_guards[i].pop();
+                        continue;
+                    }
+
                     // Check reservation and UTXO conflicts before adding
                     if !self.is_transaction_reserved(&ptx.tx.id, &miner_id) {
                         let mut utxo_conflict = false;
@@ -1791,6 +1805,83 @@ impl Mempool {
         }
     }
 
+    /// Evict all transactions from the mempool whose inputs reference any of the
+    /// provided spent UTXO IDs. This is called after a block is accepted to prevent
+    /// stale transactions (whose inputs were consumed by the accepted block) from
+    /// being re-included in subsequent blocks.
+    ///
+    /// This method is idempotent: calling it multiple times with the same set is safe.
+    /// Returns the number of evicted transactions.
+    pub async fn evict_transactions_spending_utxos(
+        &self,
+        spent_utxo_ids: &HashSet<String>,
+    ) -> usize {
+        if spent_utxo_ids.is_empty() {
+            return 0;
+        }
+
+        // Collect tx IDs to evict by scanning all mempool transactions
+        let mut tx_ids_to_evict: Vec<String> = Vec::new();
+        for entry in self.transactions.iter() {
+            let ptx = entry.value();
+            let conflicts = ptx.tx.inputs.iter().any(|input| {
+                let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
+                spent_utxo_ids.contains(&utxo_id)
+            });
+            if conflicts {
+                tx_ids_to_evict.push(entry.key().clone());
+            }
+        }
+
+        if tx_ids_to_evict.is_empty() {
+            return 0;
+        }
+
+        let mut priority_queue = self.priority_queue.write().await;
+        let mut reserved = self.reserved_transactions.write();
+        let mut res_timestamps = self.reservation_timestamps.write();
+        let mut utxo_reserved = self.reserved_utxos.write();
+        let mut utxo_res_timestamps = self.utxo_reservation_timestamps.write();
+
+        let mut evicted_count = 0usize;
+        for tx_id in &tx_ids_to_evict {
+            if let Some((_, removed_ptx)) = self.transactions.remove(tx_id) {
+                let tx_size = Self::calculate_transaction_size(&removed_ptx.tx);
+                self.current_size_bytes
+                    .fetch_sub(tx_size, Ordering::Relaxed);
+
+                if let Some(ids) = priority_queue.get_mut(&removed_ptx.fee_per_byte) {
+                    ids.retain(|id| id != tx_id);
+                    if ids.is_empty() {
+                        priority_queue.remove(&removed_ptx.fee_per_byte);
+                    }
+                }
+
+                // Clean up any reservations for the evicted transaction
+                reserved.remove(tx_id);
+                res_timestamps.remove(tx_id);
+
+                // Clean up UTXO reservations for the evicted transaction's inputs
+                for input in &removed_ptx.tx.inputs {
+                    let utxo_id = format!("{}_{}", input.tx_id, input.output_index);
+                    utxo_reserved.remove(&utxo_id);
+                    utxo_res_timestamps.remove(&utxo_id);
+                }
+
+                evicted_count += 1;
+            }
+        }
+
+        if evicted_count > 0 {
+            info!(
+                "Evicted {} stale transactions from mempool (spent-UTXO conflict sweep)",
+                evicted_count
+            );
+        }
+
+        evicted_count
+    }
+
     /// Get the number of transactions in the mempool
     pub async fn len(&self) -> usize {
         self.transactions.len()
@@ -1802,7 +1893,10 @@ impl Mempool {
 
     /// Get the total fees of all transactions in the mempool
     pub async fn get_total_fees(&self) -> u128 {
-        self.transactions.iter().map(|entry| entry.value().tx.fee).sum::<u128>()
+        self.transactions
+            .iter()
+            .map(|entry| entry.value().tx.fee)
+            .sum::<u128>()
     }
 
     /// Get all pending transactions
@@ -1817,13 +1911,9 @@ impl Mempool {
     /// Accurate transaction size calculation using serialization
     fn calculate_transaction_size(tx: &Transaction) -> usize {
         // Use actual serialization for accurate size calculation
-        match serde_json::to_vec(tx) {
-            Ok(serialized) => serialized.len(),
-            Err(_) => {
-                // Fallback to improved estimation if serialization fails
-                Self::estimate_transaction_size_improved(tx)
-            }
-        }
+        bincode::serialized_size(tx)
+            .map(|s| s as usize)
+            .unwrap_or_else(|_| Self::estimate_transaction_size_improved(tx))
     }
 
     /// Improved transaction size estimation with more accurate field calculations
@@ -2065,5 +2155,54 @@ impl Mempool {
                 expired_utxo_ids.len()
             );
         }
+    }
+}
+
+pub struct SigVerificationTask {
+    pub public_key: Vec<u8>,
+    pub message: Vec<u8>,
+    pub signature: Vec<u8>,
+}
+
+pub struct LockFreePqcMempool {
+    queue: Arc<SegQueue<SigVerificationTask>>,
+}
+
+impl LockFreePqcMempool {
+    pub fn new() -> Self {
+        Self {
+            queue: Arc::new(SegQueue::new()),
+        }
+    }
+
+    pub fn push_task(&self, task: SigVerificationTask) {
+        self.queue.push(task);
+    }
+
+    pub fn process_batch_with_prefetch(&self) {
+        let mut arena = Bump::new(); // Thread-local arena
+
+        while let Some(task) = self.queue.pop() {
+            #[cfg(target_arch = "x86_64")]
+            unsafe {
+                use std::arch::x86_64::_mm_prefetch;
+                // Prefetch the large signature payload into L1 cache (T0 hint)
+                _mm_prefetch(
+                    task.signature.as_ptr() as *const i8,
+                    std::arch::x86_64::_MM_HINT_T0,
+                );
+                _mm_prefetch(
+                    task.public_key.as_ptr() as *const i8,
+                    std::arch::x86_64::_MM_HINT_T0,
+                );
+            }
+
+            // Allocate buffer within the thread-local arena space
+            let _verify_buf = arena.alloc_slice_clone(&task.signature);
+
+            // Execute validation through crypto engine here...
+            // PostQuantumEngine::verify_state_proof(...)
+        }
+        arena.reset(); // Instant O(1) cleanup without heap fragmentation
     }
 }

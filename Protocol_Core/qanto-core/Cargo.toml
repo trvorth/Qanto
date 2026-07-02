@@ -22,6 +22,8 @@ subtle = "2.6.1"
 lazy_static = "1.5.0"
 anyhow = "1.0.93"
 log = "0.4.21"
+ed25519-dalek = "2.2.0"
+dilithium = { package = "dilithium-rs", version = "=0.2.0" }
 
 # Async and networking
 tokio = { version = "1.38.0", features = ["full", "rt-multi-thread", "time"] }
@@ -41,6 +43,11 @@ colored = "2.1.0"
 async-trait = "0.1.83"
 my-blockchain = { path = "../myblockchain" }
 zstd = "0.12"
+ahash.workspace = true
+pqcrypto-traits = "0.3.5"
+pqcrypto-dilithium = "0.5.0"
+pqcrypto-sphincsplus = "0.7.2"
+ml-kem = "0.2"
 
 [dev-dependencies]
 mockall = "0.12"

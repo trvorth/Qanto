@@ -150,7 +150,8 @@ pub struct UTXO {
 use crate::qanto_native_crypto::QantoKeyPair;
 use my_blockchain::qanto_hash;
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use ahash::{AHashMap as HashMap, AHashSet as HashSet};
+use std::collections::VecDeque;
 use std::fmt;
 use std::io::Cursor;
 use std::net::SocketAddr;

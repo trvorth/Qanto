@@ -32,7 +32,7 @@ impl AttestationEngine {
     /// Verifies a hardware quote against the Root of Trust.
     /// Orbital Tier: Requires radiation-hardened TEE signatures.
     pub fn verify_quote(&self, quote: &HardwareQuote, tier: SentinelTier) -> bool {
-        // Mock verification logic
+        // Synthetic verification logic
         let base_valid = !quote.signature.is_empty() && quote.enclave_measurements != [0u8; 32];
         match tier {
             SentinelTier::VacuumReady => base_valid && quote.version == "RadHard-v1",

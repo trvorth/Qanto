@@ -9,7 +9,8 @@ use anyhow::{anyhow, Result};
 use bincode::{deserialize, serialize};
 use bytes::Bytes;
 use dashmap::DashMap;
-use rand::{thread_rng, Rng};
+use ml_kem::{EncodedSizeUser, KemCore, MlKem768};
+use rand::{rngs::OsRng, thread_rng, Rng};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -22,9 +23,9 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Mutex, Semaphore};
 use tokio::time::{interval, timeout};
 
+use crate::balance_stream::{BalanceBroadcaster, BalanceSubscribe, BalanceUpdate};
 use my_blockchain::qanto_hash;
 use my_blockchain::qanto_standalone::hash::QantoHash;
-use crate::balance_stream::{BalanceBroadcaster, BalanceSubscribe, BalanceUpdate};
 
 const ZSTD_MAGIC: [u8; 4] = *b"ZSTD";
 /// P2P-specific error types
@@ -253,6 +254,8 @@ pub struct HandshakeMessage {
     pub timestamp: u64,
     /// List of capabilities supported by the peer
     pub capabilities: Vec<String>,
+    /// Kyber768 public key for hybrid encryption
+    pub kyber768_public_key: Vec<u8>,
 }
 
 /// Message for peer discovery and network topology sharing
@@ -488,6 +491,8 @@ impl QantoP2P {
     )> {
         let (mut reader, mut writer) = stream.into_split();
 
+        let (_kyber_dk, kyber_ek) = MlKem768::generate(&mut OsRng);
+
         let handshake = HandshakeMessage {
             version: PROTOCOL_VERSION,
             node_id,
@@ -496,8 +501,10 @@ impl QantoP2P {
                 let mut caps = vec!["qanto-v1".to_string()];
                 // Always advertise zstd frame support for Block/Transaction payloads
                 caps.push("compression:zstd".to_string());
+                caps.push("encryption:kyber768".to_string());
                 caps
             },
+            kyber768_public_key: kyber_ek.as_bytes().to_vec(),
         };
 
         let message = NetworkMessage {
@@ -902,7 +909,9 @@ impl QantoP2P {
         if let Some(subs) = self.balance_subscribers.get(&update.address) {
             for peer_id in subs.iter() {
                 // Fire-and-forget per peer; track errors but proceed
-                if let Err(e) = self.send_to_peer(*peer_id, MessageType::BalanceUpdate, payload.clone()) {
+                if let Err(e) =
+                    self.send_to_peer(*peer_id, MessageType::BalanceUpdate, payload.clone())
+                {
                     eprintln!(
                         "Failed to send BalanceUpdate to peer {}: {}",
                         hex::encode(&peer_id.as_bytes()[..8]),

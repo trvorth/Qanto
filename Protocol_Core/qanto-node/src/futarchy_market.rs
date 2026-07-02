@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use ahash::AHashMap as HashMap;
+use serde::{Deserialize, Serialize};
 
 /**
  * @title Decentralized Futarchy Market (DFM)
@@ -40,14 +40,20 @@ impl FutarchyMarket {
      * @dev Synchronizes a prediction for a governance proposal.
      */
     pub fn record_prediction(&mut self, proposal_id: u32, p_pass: u128, p_fail: u128) {
-        println!("DFM: Recording Futarchy Prediction for Proposal {}...", proposal_id);
-        self.active_proposals.insert(proposal_id, ProposalPrediction {
+        println!(
+            "DFM: Recording Futarchy Prediction for Proposal {}...",
+            proposal_id
+        );
+        self.active_proposals.insert(
             proposal_id,
-            p_pass,
-            p_fail,
-            volume: 1200, // Mock volume
-            resolution_timestamp: 1775492930,
-        });
+            ProposalPrediction {
+                proposal_id,
+                p_pass,
+                p_fail,
+                volume: 1200, // Synthetic volume
+                resolution_timestamp: 1775492930,
+            },
+        );
     }
 
     /**
@@ -55,17 +61,24 @@ impl FutarchyMarket {
      * Rule: Pass if P_Pass > P_Fail * 1.02 (2% premium).
      */
     pub fn resolve_market_outcome(&mut self, proposal_id: u32) -> MarketOutcome {
-        println!("DFM: Resolving Futarchy Market for Proposal {}...", proposal_id);
-        
-        let prediction = self.active_proposals.get(&proposal_id).expect("Proposal not in market");
+        println!(
+            "DFM: Resolving Futarchy Market for Proposal {}...",
+            proposal_id
+        );
+
+        let prediction = self
+            .active_proposals
+            .get(&proposal_id)
+            .expect("Proposal not in market");
         // Rule: Pass if P_Pass > P_Fail * 1.02 (2% premium)
-        let pass_threshold = prediction.p_fail
+        let pass_threshold = prediction
+            .p_fail
             .checked_mul(102)
             .and_then(|v| v.checked_div(100))
             .unwrap_or(u128::MAX);
-            
+
         let passed = prediction.p_pass > pass_threshold;
-        
+
         let price_delta = if prediction.p_pass >= prediction.p_fail {
             (prediction.p_pass - prediction.p_fail) as i128
         } else {
@@ -74,7 +87,11 @@ impl FutarchyMarket {
 
         let outcome = MarketOutcome {
             proposal_id,
-            decision: if passed { "PASS".to_string() } else { "FAIL".to_string() },
+            decision: if passed {
+                "PASS".to_string()
+            } else {
+                "FAIL".to_string()
+            },
             price_delta,
             veracity_score: (98 * crate::QANTO_SCALE) / 100, // 0.98 accuracy
         };

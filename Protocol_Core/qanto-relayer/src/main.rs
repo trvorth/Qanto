@@ -10,8 +10,8 @@ use tokio::time::{sleep, Duration};
 const ETH_WSS_URL: &str = "wss://ethereum-sepolia.publicnode.com";
 // Qanto HF Node RPC
 const QANTO_RPC_URL: &str = "https://trvorth-qanto-testnet.hf.space/rpc";
-// Mock Ethereum Bridge Contract Address
-const ETH_BRIDGE_ADDR: &str = "0x0000000000000000000000000000000000000000"; 
+// Synthetic Ethereum Bridge Contract Address
+const ETH_BRIDGE_ADDR: &str = "0x0000000000000000000000000000000000000000";
 
 abigen!(
     BridgeContract,
@@ -54,7 +54,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("    [+] Proof Generated Successfully.");
 
         // 5. Transmit to QANTO Layer-0
-        transmit_to_qanto(&qanto_client, format!("{:?}", log.user), log.amount.as_u128()).await;
+        transmit_to_qanto(
+            &qanto_client,
+            format!("{:?}", log.user),
+            log.amount.as_u128(),
+        )
+        .await;
     }
 
     Ok(())
@@ -77,7 +82,10 @@ async fn transmit_to_qanto(client: &Client, user: String, amount: u128) {
             if res.status().is_success() {
                 println!("    [+] Bridged Assets Successfully Minted on QANTO!");
             } else {
-                println!("    [-] Failed to mint on Qanto Layer-0: {:?}", res.status());
+                println!(
+                    "    [-] Failed to mint on Qanto Layer-0: {:?}",
+                    res.status()
+                );
             }
         }
         Err(e) => println!("    [-] RPC Connection Error: {}", e),

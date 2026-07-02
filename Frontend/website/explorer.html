@@ -23,7 +23,7 @@
 
         .explorer-container { 
             max-width: 1200px; 
-            margin: 40px auto 50px; 
+            margin: 20px auto 50px; 
             padding: 20px; 
         }
 
@@ -44,6 +44,145 @@
             letter-spacing: 1px;
             border: 1px solid rgba(6, 182, 212, 0.3);
             box-shadow: 0 0 15px rgba(6, 182, 212, 0.2);
+        }
+
+        /* Search styling */
+        .search-section {
+            margin-bottom: 40px;
+            width: 100%;
+        }
+
+        .search-bar {
+            display: flex;
+            gap: 15px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 16px;
+            padding: 8px 12px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            transition: all 0.3s ease;
+        }
+
+        .search-bar:focus-within {
+            border-color: #06b6d4;
+            box-shadow: 0 0 20px rgba(6, 182, 212, 0.25);
+        }
+
+        .search-input {
+            flex-grow: 1;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #fff;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.05rem;
+            padding: 10px 15px;
+        }
+
+        .search-btn {
+            background: linear-gradient(135deg, #06b6d4, #8b5cf6);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            padding: 12px 28px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 8px 20px -5px rgba(6, 182, 212, 0.4);
+        }
+
+        .search-btn:hover {
+            box-shadow: 0 12px 25px -5px rgba(139, 92, 246, 0.5);
+            transform: scale(1.02);
+        }
+
+        /* Results Panel styling */
+        .results-panel {
+            display: none;
+            animation: fadeIn 0.4s ease forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 15px;
+        }
+
+        .btn-back {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 10px;
+            color: #94A3B8;
+            padding: 8px 18px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .btn-back:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+        }
+
+        .results-card {
+            padding: 30px;
+            margin-bottom: 30px;
+            text-align: left;
+        }
+
+        .result-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #06b6d4;
+            margin-top: 0;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .result-grid {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 15px 20px;
+            font-size: 0.98rem;
+        }
+
+        .result-label {
+            color: #94A3B8;
+            font-weight: 500;
+        }
+
+        .result-value {
+            color: #F8FAFC;
+            font-family: 'JetBrains Mono', monospace;
+            word-break: break-all;
+        }
+
+        .result-json {
+            margin-top: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.88rem;
+            color: #38bdf8;
+            overflow-x: auto;
+            max-height: 400px;
+            white-space: pre-wrap;
         }
 
         .block-list {
@@ -105,6 +244,30 @@
             letter-spacing: 1px;
             margin-bottom: 8px;
         }
+
+        .tab-section {
+            margin-top: 25px;
+        }
+
+        .tab-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        .tab-table th {
+            text-align: left;
+            padding: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: #94A3B8;
+            font-size: 0.85rem;
+        }
+
+        .tab-table td {
+            padding: 12px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 0.9rem;
+        }
     </style>
 </head>
 <body>
@@ -112,36 +275,72 @@
         <div class="container" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 0;">
             <a href="index.html" class="logo" style="font-size: 1.5rem; font-weight: bold; text-decoration: none; color: #fff; font-family: 'JetBrains Mono', monospace;">QANTO</a>
             <div>
+                <a href="faucet.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px; font-weight: 500;">Faucet</a>
+                <a href="staking.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px; font-weight: 500;">Staking</a>
+                <a href="bridge.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px; font-weight: 500;">Bridge</a>
                 <a href="airdrop.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px; font-weight: 500;">Airdrop</a>
+                <a href="whitepaper.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px; font-weight: 500;">Codex</a>
+                <a href="analytics.html" class="nav-link" style="text-decoration: none; color: #fff; margin-right: 20px; font-weight: 500;">Analytics</a>
                 <a href="index.html" class="btn-premium" style="text-decoration: none; font-size: 0.9rem; padding: 10px 20px; border-radius: 8px;">Back to Network</a>
             </div>
         </div>
     </nav>
 
     <main class="explorer-container">
-        <div class="explorer-header">
-            <h2 style="font-size: 2rem; font-weight: 700; margin: 0; background: linear-gradient(to right, #fff, #94A3B8); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">Latest Blocks</h2>
-            <div class="status-badge">🟢 NETWORK SYNCED</div>
-        </div>
+        <!-- Interactive Search Section -->
+        <section class="search-section">
+            <div class="search-bar">
+                <input type="text" id="search-query" class="search-input" placeholder="Search by Txn Hash, Address, Block ID, Height, Proposal ID, or Bridge Claim..." autocomplete="off" spellcheck="false">
+                <button id="search-trigger" class="search-btn">Search</button>
+            </div>
+        </section>
 
-        <div class="header-row">
-            <div>Block Height</div>
-            <div>Hash</div>
-            <div>Validator</div>
-            <div>Txns</div>
-            <div>Age</div>
-        </div>
+        <!-- Search Results Panel -->
+        <section id="search-results" class="results-panel">
+            <div class="results-header">
+                <h3 id="results-headline" style="font-size: 1.6rem; font-weight: 700; margin: 0; background: linear-gradient(to right, #fff, #94A3B8); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">Search Results</h3>
+                <button id="close-search-btn" class="btn-back">Close Search</button>
+            </div>
+            
+            <div class="glass-panel results-card" id="results-content">
+                <!-- Injected dynamically -->
+            </div>
+        </section>
 
-        <div id="block-feed" class="block-list">
-            <!-- Live block feed will slide in here -->
+        <!-- Standard Block Feed -->
+        <div id="block-feed-section">
+            <div class="explorer-header">
+                <h2 style="font-size: 2rem; font-weight: 700; margin: 0; background: linear-gradient(to right, #fff, #94A3B8); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;">Latest Blocks</h2>
+                <div class="status-badge">🟢 NETWORK SYNCED</div>
+            </div>
+
+            <div class="header-row">
+                <div>Block Height</div>
+                <div>Hash</div>
+                <div>Validator</div>
+                <div>Txns</div>
+                <div>Age</div>
+            </div>
+
+            <div id="block-feed" class="block-list">
+                <!-- Live block feed will slide in here -->
+            </div>
         </div>
     </main>
 
     <script>
         const feed = document.getElementById('block-feed');
-        const RPC_BASE = 'https://trvorth-qanto-testnet.hf.space';
+        const feedSection = document.getElementById('block-feed-section');
+        const resultsPanel = document.getElementById('search-results');
+        const resultsContent = document.getElementById('results-content');
+        const searchInput = document.getElementById('search-query');
+        const searchBtn = document.getElementById('search-trigger');
+        const closeSearchBtn = document.getElementById('close-search-btn');
+
+        const RPC_BASE = window.location.origin;
         let currentHeight = 0;
         let isLive = false;
+        let activeSearch = false;
 
         function timeAgo(ts) {
             const diff = Math.floor(Date.now() / 1000) - ts;
@@ -152,6 +351,7 @@
         }
 
         function renderBlock(block) {
+            if (activeSearch) return; // Don't disrupt view during active search
             const card = document.createElement('div');
             card.className = 'glass-panel block-card';
             const height = block.height || currentHeight;
@@ -249,18 +449,280 @@
             }
         }
 
+        // --- SEARCH ROUTINES ---
+        async function runSearch() {
+            const query = searchInput.value.trim();
+            if (!query) {
+                closeSearch();
+                return;
+            }
+
+            activeSearch = true;
+            feedSection.style.display = 'none';
+            resultsPanel.style.display = 'block';
+            resultsContent.innerHTML = `<div style="text-align: center; color: #94A3B8; padding: 40px;"><p>Searching synaptic DAG database...</p></div>`;
+
+            try {
+                // Determine entity type and execute corresponding endpoint fetch
+                let data = null;
+                let type = '';
+
+                if (query.startsWith('saga-proposal-')) {
+                    type = 'proposal';
+                    data = await fetchJson(`${RPC_BASE}/proposal/${query}`);
+                } else if (query.startsWith('bridge-')) {
+                    type = 'bridge';
+                    data = await fetchJson(`${RPC_BASE}/bridge/${query}`);
+                } else if (query.startsWith('0x') && query.length === 42) {
+                    // Try address, then fallback to validator details
+                    type = 'address';
+                    try {
+                        data = await fetchJson(`${RPC_BASE}/address/${query}`);
+                    } catch {
+                        type = 'validator';
+                        data = await fetchJson(`${RPC_BASE}/validator/${query}`);
+                    }
+                } else if (/^\d+$/.test(query)) {
+                    // Number search: Block Height
+                    type = 'block';
+                    const heightNum = parseInt(query);
+                    const blocksObj = await fetchJson(`${RPC_BASE}/blocks?full=true&limit=500`);
+                    const blocks = Array.isArray(blocksObj) ? blocksObj : (blocksObj.blocks || []);
+                    const found = blocks.find(b => b.height === heightNum || b.block_height === heightNum);
+                    if (found) {
+                        data = await fetchJson(`${RPC_BASE}/block/${found.id || found.block_id}`);
+                        data.height = found.height;
+                    } else {
+                        throw new Error('Block height not found');
+                    }
+                } else if (query.length === 64 || query.length === 66) {
+                    // 64-char Hash: Could be Tx Hash or Block Hash
+                    try {
+                        type = 'transaction';
+                        data = await fetchJson(`${RPC_BASE}/tx/${query}`);
+                    } catch {
+                        try {
+                            type = 'block';
+                            data = await fetchJson(`${RPC_BASE}/block/${query}`);
+                        } catch {
+                            // Fallback to Address
+                            type = 'address';
+                            data = await fetchJson(`${RPC_BASE}/address/${query}`);
+                        }
+                    }
+                } else {
+                    // Generic fallback search try
+                    try {
+                        type = 'transaction';
+                        data = await fetchJson(`${RPC_BASE}/tx/${query}`);
+                    } catch {
+                        throw new Error("No entities found matching the query criteria");
+                    }
+                }
+
+                if (!data) throw new Error("Entity data not resolved");
+                renderSearchResults(type, data);
+
+            } catch (err) {
+                resultsContent.innerHTML = `
+                    <div style="text-align: center; color: #EF4444; padding: 40px;">
+                        <h3 style="margin-top:0;">No Entities Found</h3>
+                        <p>${err.message || 'The queried hash, address, or ID could not be found on the network.'}</p>
+                    </div>
+                `;
+            }
+        }
+
+        async function fetchJson(url) {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Fetch error: status ${res.status}`);
+            return await res.json();
+        }
+
+        function renderSearchResults(type, data) {
+            let html = '';
+            
+            if (type === 'transaction') {
+                html = `
+                    <h4 class="result-title">🔍 Transaction Details</h4>
+                    <div class="result-grid">
+                        <div class="result-label">Tx ID:</div>
+                        <div class="result-value" style="color:#06b6d4;">${data.id || data.id}</div>
+                        <div class="result-label">Sender:</div>
+                        <div class="result-value">${data.sender}</div>
+                        <div class="result-label">Receiver:</div>
+                        <div class="result-value">${data.receiver}</div>
+                        <div class="result-label">Amount:</div>
+                        <div class="result-value" style="font-weight:bold; color:#43e97b;">${(Number(data.amount) / 1e9).toLocaleString()} QNTO</div>
+                        <div class="result-label">Fee:</div>
+                        <div class="result-value">${(Number(data.fee) / 1e9).toFixed(6)} QNTO</div>
+                        <div class="result-label">Gas Limit:</div>
+                        <div class="result-value">${data.gas_limit}</div>
+                        <div class="result-label">Gas Used:</div>
+                        <div class="result-value">${data.gas_used}</div>
+                        <div class="result-label">Kind:</div>
+                        <div class="result-value"><span style="background:rgba(139,92,246,0.2); color:#a78bfa; padding:3px 8px; border-radius:6px; font-size:0.85rem;">${data.transaction_kind}</span></div>
+                        <div class="result-label">Included in Block:</div>
+                        <div class="result-value">Height #${data.block_height} (Hash: ${data.block_id})</div>
+                        <div class="result-label">Timestamp:</div>
+                        <div class="result-value">${new Date(data.timestamp * 1000).toLocaleString()}</div>
+                    </div>
+                `;
+            } else if (type === 'address') {
+                const recentTxRows = (data.transactions || []).map(tx => `
+                    <tr>
+                        <td class="hash" title="${tx.id}">${tx.id.substring(0, 16)}...</td>
+                        <td>${tx.sender === data.address ? 'OUT' : 'IN'}</td>
+                        <td>${(Number(tx.amount) / 1e9).toLocaleString()} QNTO</td>
+                        <td>${new Date(tx.timestamp * 1000).toLocaleDateString()}</td>
+                    </tr>
+                `).join('');
+
+                html = `
+                    <h4 class="result-title">👤 Account Address Details</h4>
+                    <div class="result-grid">
+                        <div class="result-label">Address:</div>
+                        <div class="result-value">${data.address}</div>
+                        <div class="result-label">Balance:</div>
+                        <div class="result-value" style="font-weight:bold; color:#43e97b; font-size:1.2rem;">${data.balance.balance} QNTO</div>
+                        <div class="result-label">Base Units:</div>
+                        <div class="result-value">${data.balance.base_units}</div>
+                        <div class="result-label">UTXO Count:</div>
+                        <div class="result-value">${(data.utxos || []).length}</div>
+                    </div>
+                    
+                    <div class="tab-section">
+                        <h5 style="color:#94A3B8; margin-bottom:10px;">Recent Transaction History</h5>
+                        <table class="tab-table">
+                            <thead>
+                                <tr>
+                                    <th>Tx Hash</th>
+                                    <th>Type</th>
+                                    <th>Amount</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${recentTxRows || '<tr><td colspan="4" style="text-align:center; color:#64748B;">No transactions recorded</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            } else if (type === 'validator') {
+                html = `
+                    <h4 class="result-title">🛡️ Validator Details</h4>
+                    <div class="result-grid">
+                        <div class="result-label">Validator Address:</div>
+                        <div class="result-value">${data.address || query}</div>
+                        <div class="result-label">Effective Stake:</div>
+                        <div class="result-value" style="font-weight:bold; color:#a78bfa; font-size:1.1rem;">${(Number(data.stake || 0) / 1e9).toLocaleString()} QNTO</div>
+                        <div class="result-label">Blocks Proposed:</div>
+                        <div class="result-value">${(data.proposed_blocks || []).length}</div>
+                    </div>
+                `;
+            } else if (type === 'block') {
+                html = `
+                    <h4 class="result-title">📦 Block Details</h4>
+                    <div class="result-grid">
+                        <div class="result-label">Block Height:</div>
+                        <div class="result-value" style="font-weight:bold;">#${(data.height || 0).toLocaleString()}</div>
+                        <div class="result-label">Block ID:</div>
+                        <div class="result-value" style="color:#06b6d4;">${data.id || data.hash}</div>
+                        <div class="result-label">Validator:</div>
+                        <div class="result-value">${data.validator}</div>
+                        <div class="result-label">Miner:</div>
+                        <div class="result-value">${data.miner}</div>
+                        <div class="result-label">Epoch:</div>
+                        <div class="result-value">${data.epoch || 0}</div>
+                        <div class="result-label">Difficulty:</div>
+                        <div class="result-value">${data.difficulty}</div>
+                        <div class="result-label">Transaction Count:</div>
+                        <div class="result-value">${data.transactions ? data.transactions.length : (data.tx_count || 0)}</div>
+                        <div class="result-label">Block Reward:</div>
+                        <div class="result-value" style="color:#43e97b;">2.5 QNTO</div>
+                        <div class="result-label">Timestamp:</div>
+                        <div class="result-value">${new Date(data.timestamp * 1000).toLocaleString()}</div>
+                    </div>
+                `;
+            } else if (type === 'proposal') {
+                html = `
+                    <h4 class="result-title">🏛️ Governance Proposal Details</h4>
+                    <div class="result-grid">
+                        <div class="result-label">Proposal ID:</div>
+                        <div class="result-value" style="color:#8b5cf6;">${data.id}</div>
+                        <div class="result-label">Proposer:</div>
+                        <div class="result-value">${data.proposer}</div>
+                        <div class="result-label">Title:</div>
+                        <div class="result-value" style="font-weight:bold;">${data.title || 'Signal Proposal'}</div>
+                        <div class="result-label">Description:</div>
+                        <div class="result-value">${data.description || 'N/A'}</div>
+                        <div class="result-label">Votes For:</div>
+                        <div class="result-value" style="color:#10B981;">${(Number(data.votes_for) / 1e9).toLocaleString()} QNTO</div>
+                        <div class="result-label">Votes Against:</div>
+                        <div class="result-value" style="color:#EF4444;">${(Number(data.votes_against) / 1e9).toLocaleString()} QNTO</div>
+                        <div class="result-label">Status:</div>
+                        <div class="result-value"><span style="background:rgba(6,182,212,0.2); color:#06b6d4; padding:3px 8px; border-radius:6px; font-size:0.85rem;">${data.status}</span></div>
+                    </div>
+                `;
+            } else if (type === 'bridge') {
+                html = `
+                    <h4 class="result-title">🌉 Bridge Claim Details</h4>
+                    <div class="result-grid">
+                        <div class="result-label">Claim Key:</div>
+                        <div class="result-value" style="color:#38bdf8;">${data.claim_key}</div>
+                        <div class="result-label">Source Chain:</div>
+                        <div class="result-value">${data.source_chain || 'N/A'}</div>
+                        <div class="result-label">Source Tx Hash:</div>
+                        <div class="result-value">${data.source_tx_hash || 'N/A'}</div>
+                        <div class="result-label">Recipient:</div>
+                        <div class="result-value">${data.recipient}</div>
+                        <div class="result-label">Amount:</div>
+                        <div class="result-value" style="color:#43e97b; font-weight:bold;">${(Number(data.amount || 0) / 1e9).toLocaleString()} QNTO</div>
+                        <div class="result-label">Mint Tx ID:</div>
+                        <div class="result-value">${data.mint_tx_id || 'PENDING'}</div>
+                        <div class="result-label">Status:</div>
+                        <div class="result-value"><span style="background:rgba(16,185,129,0.2); color:#10B981; padding:3px 8px; border-radius:6px; font-size:0.85rem;">${data.status}</span></div>
+                    </div>
+                `;
+            }
+
+            // Expose the raw JSON payload in a collapsible/pre-code view at the bottom
+            html += `
+                <div style="margin-top:30px; border-top:1px solid rgba(255,255,255,0.05); padding-top:20px;">
+                    <h5 style="color:#94A3B8; margin-top:0; margin-bottom:12px;">Raw Synaptic JSON Data</h5>
+                    <pre class="result-json">${JSON.stringify(data, null, 4)}</pre>
+                </div>
+            `;
+
+            resultsContent.innerHTML = html;
+        }
+
+        function closeSearch() {
+            activeSearch = false;
+            resultsPanel.style.display = 'none';
+            feedSection.style.display = 'block';
+            searchInput.value = '';
+        }
+
+        // Event Listeners
+        searchBtn.addEventListener('click', runSearch);
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') runSearch();
+        });
+        closeSearchBtn.addEventListener('click', closeSearch);
+
         // Initial simulated blocks while RPC connects
         currentHeight = 252034;
         for (let i = 0; i < 5; i++) generateSimulatedBlock();
 
         // Start live polling (every 2s)
         fetchLiveData();
-        setInterval(fetchLiveData, 31);
+        setInterval(fetchLiveData, 2000);
 
         // Simulated fallback ticker for visual continuity (31ms = 32 BPS)
         setInterval(() => {
-            if (!isLive) generateSimulatedBlock();
-        }, 31);
+            if (!isLive && !activeSearch) generateSimulatedBlock();
+        }, 1500); // Slower fallback for less visual clutter
     </script>
 </body>
 </html>

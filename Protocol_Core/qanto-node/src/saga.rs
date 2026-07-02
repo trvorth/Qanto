@@ -20,9 +20,11 @@ use crate::infinite_strata_node::InfiniteStrataNode;
 use crate::omega;
 use crate::qantodag::{QantoBlock, QantoDAG, MAX_TRANSACTIONS_PER_BLOCK};
 use crate::transaction::Transaction;
+use ahash::AHashMap as HashMap;
+use ahash::AHashSet as HashSet;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -930,7 +932,7 @@ impl CognitiveAnalyticsEngine {
 
     fn initialize_security_classifier() -> SecurityClassifier {
         // DEVELOPMENT OPTIMIZATION: Cache security classifier to speed up startup
-        // TODO: Remove this caching for production deployment
+        // Note (Future Enhancement): Remove this caching for production deployment
         let threat_detection_network = Self::initialize_deep_network();
         let mut threat_patterns = HashMap::new();
 
@@ -2255,7 +2257,10 @@ impl SecurityMonitor {
             };
         }
 
-        let mut stakes: Vec<u64> = validators.iter().map(|entry| *entry.value() as u64).collect();
+        let mut stakes: Vec<u64> = validators
+            .iter()
+            .map(|entry| *entry.value() as u64)
+            .collect();
         stakes.sort_unstable();
 
         let n = stakes.len() as f64;
@@ -2333,7 +2338,7 @@ impl SecurityMonitor {
 
         let zero_fee_txs: usize = recent_blocks
             .iter()
-            .flat_map(|b| &b.transactions[1..])
+            .flat_map(|b| b.transactions.iter().skip(1))
             .filter(|tx| tx.fee == 0)
             .count();
 
@@ -3110,12 +3115,12 @@ impl SecurityMonitor {
         // and they share inputs, it might be a failed front-run attempt.
         // A successful one is harder to spot without mempool state.
         // This simplified check looks for fee-bumped replacements in the same block.
-        let tx1_inputs: std::collections::HashSet<_> = tx1
+        let tx1_inputs: HashSet<_> = tx1
             .inputs
             .iter()
             .map(|i| (i.tx_id.clone(), i.output_index))
             .collect();
-        let tx2_inputs: std::collections::HashSet<_> = tx2
+        let tx2_inputs: HashSet<_> = tx2
             .inputs
             .iter()
             .map(|i| (i.tx_id.clone(), i.output_index))
@@ -3180,22 +3185,28 @@ pub struct EpochRule {
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct VoterInfo {
-    address: String,
-    voted_for: bool,
-    voting_power: f64,
+    pub address: String,
+    pub voted_for: bool,
+    pub voting_power: u128,
 }
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GovernanceProposal {
     pub id: String,
     pub proposer: String,
     pub proposal_type: ProposalType,
-    pub votes_for: f64,
-    pub votes_against: f64,
+    pub votes_for: u128,
+    pub votes_against: u128,
     pub status: ProposalStatus,
     pub voters: Vec<VoterInfo>,
     pub creation_epoch: u64,
     #[serde(default)] // For compatibility with older formats
     pub justification: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub cid: Option<String>,
 }
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct CouncilMember {
@@ -3816,7 +3827,8 @@ impl PalletSaga {
         let subtotal = final_reward_float; // dynamic reward before fees
         let block_reward_total_u128 = subtotal as u128 + total_fees;
         let dev_fee_rate = dag_arc.dev_fee_rate;
-        let dev_fee_u128 = block_reward_total_u128.saturating_mul(dev_fee_rate) / crate::QANTO_SCALE;
+        let dev_fee_u128 =
+            block_reward_total_u128.saturating_mul(dev_fee_rate) / crate::QANTO_SCALE;
         let miner_reward_u128 = block_reward_total_u128.saturating_sub(dev_fee_u128);
         let subtotal_qan = subtotal / crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
         let dev_fee_qan = dev_fee_u128 as f64 / crate::transaction::SMALLEST_UNITS_PER_QAN as f64;
@@ -4134,7 +4146,8 @@ impl PalletSaga {
 
         for proposal in proposals.values_mut() {
             if proposal.status == ProposalStatus::Voting {
-                if proposal.votes_for >= vote_threshold {
+                let vote_threshold_u128 = (vote_threshold * 1_000_000_000.0) as u128;
+                if proposal.votes_for >= vote_threshold_u128 {
                     proposal.status = ProposalStatus::Enacted;
                     info!(proposal_id = %proposal.id, "Proposal has been enacted.");
                     if let ProposalType::UpdateRule(rule_name, new_value) = &proposal.proposal_type
@@ -4494,12 +4507,15 @@ impl PalletSaga {
             id: format!("saga-proposal-{}", Uuid::new_v4()),
             proposer: "SAGA_AUTONOMOUS_AGENT".to_string(),
             proposal_type: ProposalType::UpdateRule(min_stake_rule, new_stake_req),
-            votes_for: 1.0,
-            votes_against: 0.0,
+            votes_for: 1_000_000_000,
+            votes_against: 0,
             status: ProposalStatus::Voting,
             voters: vec![],
             creation_epoch: current_epoch,
-            justification: Some(justification),
+            justification: Some(justification.clone()),
+            title: Some("Lower Minimum Validator Stake".to_string()),
+            description: Some(justification),
+            cid: None,
         };
 
         info!(proposal_id = %proposal.id, "SAGA is proposing to lower minimum stake to {new_stake_req} to attract validators.");
@@ -4553,8 +4569,11 @@ impl PalletSaga {
                     id: format!("saga-proposal-{}", Uuid::new_v4()),
                     proposer: "SAGA_AUTONOMOUS_AGENT".to_string(),
                     proposal_type: ProposalType::UpdateRule(vote_threshold_rule.clone(), new_threshold),
-                    votes_for: 1.0, votes_against: 0.0, status: ProposalStatus::Voting, voters: vec![], creation_epoch: current_epoch,
-                    justification: Some(justification),
+                    votes_for: 1_000_000_000, votes_against: 0, status: ProposalStatus::Voting, voters: vec![], creation_epoch: current_epoch,
+                    justification: Some(justification.clone()),
+                    title: Some("Lower Governance Vote Threshold".to_string()),
+                    description: Some(justification),
+                    cid: None,
                 };
                 info!(proposal_id = %proposal.id, "SAGA detected a high proposal rejection rate and is proposing to lower the vote threshold to {new_threshold}.");
                 self.award_karma("SAGA_AUTONOMOUS_AGENT", KarmaSource::SagaAutonomousAction, 100).await;
@@ -4581,8 +4600,11 @@ impl PalletSaga {
                         id: format!("saga-proposal-{}", Uuid::new_v4()),
                         proposer: "SAGA_AUTONOMOUS_AGENT".to_string(),
                         proposal_type: ProposalType::UpdateRule(fee_rule.clone(), new_fee),
-                        votes_for: 1.0, votes_against: 0.0, status: ProposalStatus::Voting, voters: vec![], creation_epoch: current_epoch,
-                        justification: Some(justification),
+                        votes_for: 1_000_000_000, votes_against: 0, status: ProposalStatus::Voting, voters: vec![], creation_epoch: current_epoch,
+                        justification: Some(justification.clone()),
+                        title: Some("Increase Minimum Base Transaction Fee".to_string()),
+                        description: Some(justification),
+                        cid: None,
                     };
                     info!(proposal_id = %proposal.id, "SAGA detected a spam attack and is proposing to increase the minimum base transaction fee to {new_fee}.");
                     self.award_karma("SAGA_AUTONOMOUS_AGENT", KarmaSource::SagaAutonomousAction, 100).await;
@@ -4633,8 +4655,11 @@ impl PalletSaga {
                     id: format!("saga-proposal-{}", Uuid::new_v4()),
                     proposer: "SAGA_AUTONOMOUS_AGENT".to_string(),
                     proposal_type: ProposalType::UpdateRule(weight_rule.clone(), new_weight),
-                    votes_for: 1.0, votes_against: 0.0, status: ProposalStatus::Voting, voters: vec![], creation_epoch: current_epoch,
-                    justification: Some(justification),
+                    votes_for: 1_000_000_000, votes_against: 0, status: ProposalStatus::Voting, voters: vec![], creation_epoch: current_epoch,
+                    justification: Some(justification.clone()),
+                    title: Some("Increase SCS Environmental Weight".to_string()),
+                    description: Some(justification),
+                    cid: None,
                 };
                 info!(proposal_id = %proposal.id, "SAGA detected that environmental contributions may be undervalued and is proposing to increase the SCS environmental weight to {new_weight}.");
                 self.award_karma("SAGA_AUTONOMOUS_AGENT", KarmaSource::SagaAutonomousAction, 150).await;
@@ -4673,8 +4698,11 @@ impl PalletSaga {
                     id: format!("saga-proposal-{}", Uuid::new_v4()),
                     proposer: "SAGA_AUTONOMOUS_AGENT".to_string(),
                     proposal_type: ProposalType::UpdateRule(threshold_rule.clone(), new_threshold),
-                    votes_for: 1.0, votes_against: 0.0, status: ProposalStatus::Voting, voters: vec![], creation_epoch: current_epoch,
-                    justification: Some(justification),
+                    votes_for: 1_000_000_000, votes_against: 0, status: ProposalStatus::Voting, voters: vec![], creation_epoch: current_epoch,
+                    justification: Some(justification.clone()),
+                    title: Some("Lower AI Verification Threshold".to_string()),
+                    description: Some(justification),
+                    cid: None,
                 };
                 info!(proposal_id = %proposal.id, "SAGA detected a high credential failure rate and is proposing to lower the AI verification threshold to {new_threshold}.");
                 self.award_karma("SAGA_AUTONOMOUS_AGENT", KarmaSource::SagaAutonomousAction, 120).await;
@@ -4715,10 +4743,12 @@ impl PalletSaga {
             block_height: 0,
             tps_current: (network_health
                 .tps_current
-                .load(std::sync::atomic::Ordering::Relaxed) as i128 * 1_000_000),
+                .load(std::sync::atomic::Ordering::Relaxed) as i128
+                * 1_000_000),
             tps_peak: (network_health
                 .tps_peak_24h
-                .load(std::sync::atomic::Ordering::Relaxed) as i128 * 1_000_000),
+                .load(std::sync::atomic::Ordering::Relaxed) as i128
+                * 1_000_000),
         }
     }
 
@@ -4735,10 +4765,13 @@ impl PalletSaga {
         let latest_metrics = deep_network.training_history.last();
 
         let ai_performance = AIModelPerformance {
-            neural_network_accuracy: (latest_metrics.map(|m| m.accuracy).unwrap_or(0.85) * crate::SCORE_SCALE as f64) as i128,
+            neural_network_accuracy: (latest_metrics.map(|m| m.accuracy).unwrap_or(0.85)
+                * crate::SCORE_SCALE as f64) as i128,
             prediction_confidence: (0.92 * crate::SCORE_SCALE as f64) as i128,
-            training_loss: (latest_metrics.map(|m| m.loss).unwrap_or(0.1) * crate::SCORE_SCALE as f64) as i128,
-            validation_loss: (latest_metrics.map(|m| m.validation_loss).unwrap_or(0.12) * crate::SCORE_SCALE as f64) as i128,
+            training_loss: (latest_metrics.map(|m| m.loss).unwrap_or(0.1)
+                * crate::SCORE_SCALE as f64) as i128,
+            validation_loss: (latest_metrics.map(|m| m.validation_loss).unwrap_or(0.12)
+                * crate::SCORE_SCALE as f64) as i128,
             model_drift_score: (0.05 * crate::SCORE_SCALE as f64) as i128,
             inference_latency_ms: (50.0 * crate::SCORE_SCALE as f64) as i128,
             last_retrain_epoch: latest_metrics.map(|m| m.epoch).unwrap_or(0),
@@ -4778,9 +4811,11 @@ impl PalletSaga {
         let env_metrics = self.economy.environmental_metrics.read().await;
         let environmental_metrics = EnvironmentalDashboardMetrics {
             carbon_footprint_kg: (100.0 * crate::SCORE_SCALE as f64) as i128,
-            energy_efficiency_score: (env_metrics.network_green_score * crate::SCORE_SCALE as f64) as i128,
+            energy_efficiency_score: (env_metrics.network_green_score * crate::SCORE_SCALE as f64)
+                as i128,
             renewable_energy_percentage: (75.0 * crate::SCORE_SCALE as f64) as i128,
-            carbon_offset_credits: (env_metrics.total_co2_offset_epoch * crate::SCORE_SCALE as f64) as i128,
+            carbon_offset_credits: (env_metrics.total_co2_offset_epoch * crate::SCORE_SCALE as f64)
+                as i128,
             green_validator_ratio: (0.8 * crate::SCORE_SCALE as f64) as i128,
         };
         drop(env_metrics);

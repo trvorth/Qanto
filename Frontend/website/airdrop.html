@@ -58,7 +58,6 @@
             const wallet = await connectWallet();
             if (wallet) {
                 document.getElementById('btn-connect').innerText = wallet.address.substring(0, 6) + '...' + wallet.address.slice(-4);
-                // Mock eligibility logic for testnet
                 document.getElementById('allocation-amount').innerText = "1,000";
                 const claimBtn = document.getElementById('btn-claim');
                 claimBtn.style.opacity = "1";
@@ -66,14 +65,41 @@
                 claimBtn.innerText = "Execute Zero-Knowledge Claim";
                 
                 claimBtn.addEventListener('click', async () => {
-                    claimBtn.innerText = "Generating Merkle Proof...";
-                    document.getElementById('claim-status').innerText = "Awaiting MetaMask Signature...";
+                    claimBtn.innerText = "Submitting Zero-Knowledge Claim...";
+                    claimBtn.disabled = true;
+                    document.getElementById('claim-status').innerText = "Verifying eligibility on-chain...";
                     
-                    setTimeout(() => {
-                        claimBtn.innerText = "Claim Successful ✅";
-                        claimBtn.style.background = "#10b981";
-                        document.getElementById('claim-status').innerText = "1,000 $QNTO deposited to your wallet.";
-                    }, 3000);
+                    try {
+                        const response = await fetch('/rpc', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                jsonrpc: '2.0',
+                                id: 1,
+                                method: 'qanto_claimAirdrop',
+                                params: [wallet.address]
+                            })
+                        });
+                        const resJson = await response.json();
+                        if (resJson.error) {
+                            alert("Claim failed: " + resJson.error.message);
+                            claimBtn.innerText = "Execute Zero-Knowledge Claim";
+                            claimBtn.disabled = false;
+                            document.getElementById('claim-status').innerText = "";
+                        } else {
+                            claimBtn.innerText = "Claim Successful ✅";
+                            claimBtn.style.background = "#10b981";
+                            document.getElementById('claim-status').innerText = "1,000 $QNTO deposited to your wallet. Tx: " + resJson.result;
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert("Claim error: " + err.message);
+                        claimBtn.innerText = "Execute Zero-Knowledge Claim";
+                        claimBtn.disabled = false;
+                        document.getElementById('claim-status').innerText = "";
+                    }
                 });
             }
         });

@@ -2,13 +2,13 @@
 //! This module provides a centralized metrics collection and reporting system
 //! that eliminates duplication across the codebase.
 //! v0.1.0
+use ahash::AHashMap as HashMap;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::RwLock;
 use sysinfo::System;
+use tokio::sync::RwLock;
 
 /// Comprehensive performance metrics for the entire Qanto system
 #[derive(Debug, Serialize, Deserialize)]
@@ -162,6 +162,39 @@ pub struct QantoMetrics {
 
     // Timestamp for metrics collection
     pub last_updated: AtomicU64,
+
+    // New metrics for Cohort A fork and peer tracking
+    #[serde(with = "atomic_serde")]
+    pub parallel_tips_total: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub fork_events_total: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub forks_last_24h: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub max_fork_depth: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub last_fork_timestamp: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub height_divergence_events: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub chain_reconciliation_events: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub unique_peers_seen_24h: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub peer_session_duration_p50: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub peer_session_duration_p95: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub peer_disconnects_24h: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub tip_count: AtomicU64,
+    #[serde(with = "atomic_serde")]
+    pub tip_count_max_24h: AtomicU64,
+
+    #[serde(with = "rwlock_vec_u64_serde")]
+    pub fork_timestamps: Arc<RwLock<Vec<u64>>>,
+    #[serde(with = "rwlock_vec_tuple_serde")]
+    pub tip_count_timestamps: Arc<RwLock<Vec<(u64, u64)>>>,
 }
 
 impl Default for QantoMetrics {
@@ -291,6 +324,23 @@ impl Default for QantoMetrics {
 
             // Timestamp for metrics collection
             last_updated: AtomicU64::new(0),
+
+            // New metrics for Cohort A fork and peer tracking
+            parallel_tips_total: AtomicU64::new(0),
+            fork_events_total: AtomicU64::new(0),
+            forks_last_24h: AtomicU64::new(0),
+            max_fork_depth: AtomicU64::new(0),
+            last_fork_timestamp: AtomicU64::new(0),
+            height_divergence_events: AtomicU64::new(0),
+            chain_reconciliation_events: AtomicU64::new(0),
+            unique_peers_seen_24h: AtomicU64::new(0),
+            peer_session_duration_p50: AtomicU64::new(0),
+            peer_session_duration_p95: AtomicU64::new(0),
+            peer_disconnects_24h: AtomicU64::new(0),
+            tip_count: AtomicU64::new(0),
+            tip_count_max_24h: AtomicU64::new(0),
+            fork_timestamps: Arc::new(RwLock::new(Vec::new())),
+            tip_count_timestamps: Arc::new(RwLock::new(Vec::new())),
         }
     }
 }
@@ -458,6 +508,31 @@ impl Clone for QantoMetrics {
                 self.hash_rate_last_sample_ms.load(Ordering::Relaxed),
             ),
             last_updated: AtomicU64::new(self.last_updated.load(Ordering::Relaxed)),
+            parallel_tips_total: AtomicU64::new(self.parallel_tips_total.load(Ordering::Relaxed)),
+            fork_events_total: AtomicU64::new(self.fork_events_total.load(Ordering::Relaxed)),
+            forks_last_24h: AtomicU64::new(self.forks_last_24h.load(Ordering::Relaxed)),
+            max_fork_depth: AtomicU64::new(self.max_fork_depth.load(Ordering::Relaxed)),
+            last_fork_timestamp: AtomicU64::new(self.last_fork_timestamp.load(Ordering::Relaxed)),
+            height_divergence_events: AtomicU64::new(
+                self.height_divergence_events.load(Ordering::Relaxed),
+            ),
+            chain_reconciliation_events: AtomicU64::new(
+                self.chain_reconciliation_events.load(Ordering::Relaxed),
+            ),
+            unique_peers_seen_24h: AtomicU64::new(
+                self.unique_peers_seen_24h.load(Ordering::Relaxed),
+            ),
+            peer_session_duration_p50: AtomicU64::new(
+                self.peer_session_duration_p50.load(Ordering::Relaxed),
+            ),
+            peer_session_duration_p95: AtomicU64::new(
+                self.peer_session_duration_p95.load(Ordering::Relaxed),
+            ),
+            peer_disconnects_24h: AtomicU64::new(self.peer_disconnects_24h.load(Ordering::Relaxed)),
+            tip_count: AtomicU64::new(self.tip_count.load(Ordering::Relaxed)),
+            tip_count_max_24h: AtomicU64::new(self.tip_count_max_24h.load(Ordering::Relaxed)),
+            fork_timestamps: Arc::clone(&self.fork_timestamps),
+            tip_count_timestamps: Arc::clone(&self.tip_count_timestamps),
         }
     }
 }
@@ -486,7 +561,10 @@ impl QantoMetrics {
 
     /// Set TPS value (input value is scaled by 1e9)
     pub fn set_tps(&self, value_scaled: u128) {
-        self.tps.store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
+        self.tps.store(
+            (value_scaled / (crate::QANTO_SCALE / 1000)) as u64,
+            Ordering::Relaxed,
+        );
         self.touch();
     }
 
@@ -685,6 +763,35 @@ impl QantoMetrics {
                 let hps = QantoMetrics::compute_hash_rate(delta_attempts, interval_ms);
                 metrics.set_hash_rate_hps(hps);
 
+                // Prune 24h window for forks
+                if let Ok(mut fork_ts) = metrics.fork_timestamps.try_write() {
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+                    let limit_24h = 86400;
+                    fork_ts.retain(|ts| now.saturating_sub(*ts) < limit_24h);
+                    metrics
+                        .forks_last_24h
+                        .store(fork_ts.len() as u64, Ordering::Relaxed);
+                }
+
+                // Prune 24h window for tip count
+                if let Ok(mut tip_history) = metrics.tip_count_timestamps.try_write() {
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+                    let limit_24h = 86400;
+                    tip_history.retain(|(ts, _)| now.saturating_sub(*ts) < limit_24h);
+                    let max_tips = tip_history
+                        .iter()
+                        .map(|(_, count)| *count)
+                        .max()
+                        .unwrap_or(0);
+                    metrics.tip_count_max_24h.store(max_tips, Ordering::Relaxed);
+                }
+
                 std::thread::sleep(std::time::Duration::from_secs(1));
             }
         })
@@ -703,7 +810,10 @@ impl QantoMetrics {
             "qanto_transactions_processed_total {}\n",
             self.transactions_processed.load(Ordering::Relaxed)
         ));
-        output.push_str(&format!("qanto_bps {:.2}\n", self.get_bps() as f64 / crate::QANTO_SCALE as f64));
+        output.push_str(&format!(
+            "qanto_bps {:.2}\n",
+            self.get_bps() as f64 / crate::QANTO_SCALE as f64
+        ));
         output.push_str(&format!(
             "qanto_tps {:.2}\n",
             self.calculate_real_time_tps() as f64 / crate::QANTO_SCALE as f64
@@ -804,6 +914,60 @@ impl QantoMetrics {
             self.persistence_overflows.load(Ordering::Relaxed)
         ));
 
+        // Cohort A Prometheus metrics
+        output.push_str(&format!(
+            "qanto_parallel_tips_total {}\n",
+            self.parallel_tips_total.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_fork_events_total {}\n",
+            self.fork_events_total.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_forks_last_24h {}\n",
+            self.forks_last_24h.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_max_fork_depth {}\n",
+            self.max_fork_depth.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_last_fork_timestamp {}\n",
+            self.last_fork_timestamp.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_height_divergence_events {}\n",
+            self.height_divergence_events.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_chain_reconciliation_events {}\n",
+            self.chain_reconciliation_events.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_unique_peers_seen_24h {}\n",
+            self.unique_peers_seen_24h.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_peer_session_duration_p50 {}\n",
+            self.peer_session_duration_p50.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_peer_session_duration_p95 {}\n",
+            self.peer_session_duration_p95.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_peer_disconnects_24h {}\n",
+            self.peer_disconnects_24h.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_tip_count {}\n",
+            self.tip_count.load(Ordering::Relaxed)
+        ));
+        output.push_str(&format!(
+            "qanto_tip_count_max_24h {}\n",
+            self.tip_count_max_24h.load(Ordering::Relaxed)
+        ));
+
         output
     }
 
@@ -838,8 +1002,10 @@ impl QantoMetrics {
 
     /// Set the current hash rate in H/s (input value is scaled by 1e9)
     pub fn set_hash_rate_hps(&self, value_scaled: u128) {
-        self.hash_rate_thousandths
-            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
+        self.hash_rate_thousandths.store(
+            (value_scaled / (crate::QANTO_SCALE / 1000)) as u64,
+            Ordering::Relaxed,
+        );
         self.touch();
     }
 
@@ -861,8 +1027,10 @@ impl QantoMetrics {
 
     /// Set storage efficiency from fixed-point (input value is scaled by 1e9)
     pub fn set_storage_efficiency(&self, value_scaled: u128) {
-        self.storage_efficiency
-            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
+        self.storage_efficiency.store(
+            (value_scaled / (crate::QANTO_SCALE / 1000)) as u64,
+            Ordering::Relaxed,
+        );
         self.touch();
     }
 
@@ -873,8 +1041,10 @@ impl QantoMetrics {
 
     /// Set SAGA throughput from fixed-point (input value is scaled by 1e9)
     pub fn set_saga_throughput(&self, value_scaled: u128) {
-        self.throughput
-            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
+        self.throughput.store(
+            (value_scaled / (crate::QANTO_SCALE / 1000)) as u64,
+            Ordering::Relaxed,
+        );
         self.touch();
     }
 
@@ -885,8 +1055,10 @@ impl QantoMetrics {
 
     /// Set SAGA latency from fixed-point (input value is scaled by 1e9)
     pub fn set_saga_latency(&self, value_scaled: u128) {
-        self.latency
-            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
+        self.latency.store(
+            (value_scaled / (crate::QANTO_SCALE / 1000)) as u64,
+            Ordering::Relaxed,
+        );
         self.touch();
     }
 
@@ -897,8 +1069,10 @@ impl QantoMetrics {
 
     /// Set error rate from fixed-point (input value is scaled by 1e9)
     pub fn set_error_rate(&self, value_scaled: u128) {
-        self.error_rate
-            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
+        self.error_rate.store(
+            (value_scaled / (crate::QANTO_SCALE / 1000)) as u64,
+            Ordering::Relaxed,
+        );
         self.touch();
     }
 
@@ -909,8 +1083,10 @@ impl QantoMetrics {
 
     /// Set resource utilization from fixed-point (input value is scaled by 1e9)
     pub fn set_resource_utilization(&self, value_scaled: u128) {
-        self.resource_utilization
-            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
+        self.resource_utilization.store(
+            (value_scaled / (crate::QANTO_SCALE / 1000)) as u64,
+            Ordering::Relaxed,
+        );
         self.touch();
     }
 
@@ -921,8 +1097,10 @@ impl QantoMetrics {
 
     /// Set security score from fixed-point (input value is scaled by 1e9)
     pub fn set_security_score(&self, value_scaled: u128) {
-        self.security_score
-            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
+        self.security_score.store(
+            (value_scaled / (crate::QANTO_SCALE / 1000)) as u64,
+            Ordering::Relaxed,
+        );
         self.touch();
     }
 
@@ -933,8 +1111,10 @@ impl QantoMetrics {
 
     /// Set stability index from fixed-point (input value is scaled by 1e9)
     pub fn set_stability_index(&self, value_scaled: u128) {
-        self.stability_index
-            .store((value_scaled / (crate::QANTO_SCALE / 1000)) as u64, Ordering::Relaxed);
+        self.stability_index.store(
+            (value_scaled / (crate::QANTO_SCALE / 1000)) as u64,
+            Ordering::Relaxed,
+        );
         self.touch();
     }
 
@@ -1064,8 +1244,14 @@ impl QantoMetrics {
         );
         metrics.insert("cache_hit_ratio".to_string(), self.get_cache_hit_ratio());
         metrics.insert("tps".to_string(), self.get_tps());
-        metrics.insert("finality_ms".to_string(), self.get_finality_ms() as u128 * crate::QANTO_SCALE);
-        metrics.insert("rss_bytes".to_string(), self.get_rss_bytes() as u128 * crate::QANTO_SCALE);
+        metrics.insert(
+            "finality_ms".to_string(),
+            self.get_finality_ms() as u128 * crate::QANTO_SCALE,
+        );
+        metrics.insert(
+            "rss_bytes".to_string(),
+            self.get_rss_bytes() as u128 * crate::QANTO_SCALE,
+        );
         metrics.insert(
             "validator_count".to_string(),
             self.validator_count.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
@@ -1079,6 +1265,60 @@ impl QantoMetrics {
         metrics.insert("error_rate".to_string(), self.get_error_rate());
         metrics.insert("security_score".to_string(), self.get_security_score());
         metrics.insert("stability_index".to_string(), self.get_stability_index());
+
+        // Scaled Cohort A metrics
+        metrics.insert(
+            "parallel_tips_total".to_string(),
+            self.parallel_tips_total.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
+        );
+        metrics.insert(
+            "fork_events_total".to_string(),
+            self.fork_events_total.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
+        );
+        metrics.insert(
+            "forks_last_24h".to_string(),
+            self.forks_last_24h.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
+        );
+        metrics.insert(
+            "max_fork_depth".to_string(),
+            self.max_fork_depth.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
+        );
+        metrics.insert(
+            "last_fork_timestamp".to_string(),
+            self.last_fork_timestamp.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
+        );
+        metrics.insert(
+            "height_divergence_events".to_string(),
+            self.height_divergence_events.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
+        );
+        metrics.insert(
+            "chain_reconciliation_events".to_string(),
+            self.chain_reconciliation_events.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
+        );
+        metrics.insert(
+            "unique_peers_seen_24h".to_string(),
+            self.unique_peers_seen_24h.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
+        );
+        metrics.insert(
+            "peer_session_duration_p50".to_string(),
+            self.peer_session_duration_p50.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
+        );
+        metrics.insert(
+            "peer_session_duration_p95".to_string(),
+            self.peer_session_duration_p95.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
+        );
+        metrics.insert(
+            "peer_disconnects_24h".to_string(),
+            self.peer_disconnects_24h.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
+        );
+        metrics.insert(
+            "tip_count".to_string(),
+            self.tip_count.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
+        );
+        metrics.insert(
+            "tip_count_max_24h".to_string(),
+            self.tip_count_max_24h.load(Ordering::Relaxed) as u128 * crate::QANTO_SCALE,
+        );
 
         metrics
     }
@@ -1139,6 +1379,26 @@ impl QantoMetrics {
         self.resource_utilization.store(0, Ordering::Relaxed);
         self.security_score.store(0, Ordering::Relaxed);
         self.stability_index.store(0, Ordering::Relaxed);
+
+        self.parallel_tips_total.store(0, Ordering::Relaxed);
+        self.fork_events_total.store(0, Ordering::Relaxed);
+        self.forks_last_24h.store(0, Ordering::Relaxed);
+        self.max_fork_depth.store(0, Ordering::Relaxed);
+        self.last_fork_timestamp.store(0, Ordering::Relaxed);
+        self.height_divergence_events.store(0, Ordering::Relaxed);
+        self.chain_reconciliation_events.store(0, Ordering::Relaxed);
+        self.unique_peers_seen_24h.store(0, Ordering::Relaxed);
+        self.peer_session_duration_p50.store(0, Ordering::Relaxed);
+        self.peer_session_duration_p95.store(0, Ordering::Relaxed);
+        self.peer_disconnects_24h.store(0, Ordering::Relaxed);
+        self.tip_count.store(0, Ordering::Relaxed);
+        self.tip_count_max_24h.store(0, Ordering::Relaxed);
+        if let Ok(mut fork_ts) = self.fork_timestamps.try_write() {
+            fork_ts.clear();
+        }
+        if let Ok(mut tip_history) = self.tip_count_timestamps.try_write() {
+            tip_history.clear();
+        }
 
         // Reset relayer metrics
         self.relayer_success_rate.store(0, Ordering::Relaxed);
@@ -1263,7 +1523,6 @@ macro_rules! set_metric {
     };
 }
 
-
 mod rwlock_u128_serde {
     use serde::{Deserialize, Deserializer, Serializer};
     use std::sync::Arc;
@@ -1294,6 +1553,59 @@ mod rwlock_u128_serde {
     }
 }
 
+mod rwlock_vec_u64_serde {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    pub fn serialize<S>(val: &Arc<RwLock<Vec<u64>>>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let v = match val.try_read() {
+            Ok(guard) => guard.clone(),
+            Err(_) => Vec::new(),
+        };
+        serde::Serialize::serialize(&v, serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Arc<RwLock<Vec<u64>>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let v = <Vec<u64> as Deserialize>::deserialize(deserializer)?;
+        Ok(Arc::new(RwLock::new(v)))
+    }
+}
+
+mod rwlock_vec_tuple_serde {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+
+    pub fn serialize<S>(
+        val: &Arc<RwLock<Vec<(u64, u64)>>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let v = match val.try_read() {
+            Ok(guard) => guard.clone(),
+            Err(_) => Vec::new(),
+        };
+        serde::Serialize::serialize(&v, serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Arc<RwLock<Vec<(u64, u64)>>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let v = <Vec<(u64, u64)> as Deserialize>::deserialize(deserializer)?;
+        Ok(Arc::new(RwLock::new(v)))
+    }
+}
+
 mod atomic_serde {
     use serde::{Deserialize, Deserializer, Serializer};
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -1321,19 +1633,43 @@ mod tests {
     #[test]
     fn test_compute_hash_rate() {
         // 1000 attempts over 1 second -> 1000 H/s (scaled by 1e9)
-        assert_eq!(QantoMetrics::compute_hash_rate(1000, 1000), 1000 * crate::QANTO_SCALE);
+        assert_eq!(
+            QantoMetrics::compute_hash_rate(1000, 1000),
+            1000 * crate::QANTO_SCALE
+        );
         // 500 attempts over 2 seconds -> 250 H/s (scaled by 1e9)
-        assert_eq!(QantoMetrics::compute_hash_rate(500, 2000), 250 * crate::QANTO_SCALE);
+        assert_eq!(
+            QantoMetrics::compute_hash_rate(500, 2000),
+            250 * crate::QANTO_SCALE
+        );
     }
 
     #[test]
     fn test_format_hash_rate_units() {
         assert_eq!(QantoMetrics::format_hash_rate(0), "0.00 H/s");
-        assert_eq!(QantoMetrics::format_hash_rate(999 * crate::QANTO_SCALE), "999.00 H/s");
-        assert_eq!(QantoMetrics::format_hash_rate(1000 * crate::QANTO_SCALE), "1.00 kH/s");
-        assert_eq!(QantoMetrics::format_hash_rate(12_345 * crate::QANTO_SCALE), "12.34 kH/s");
-        assert_eq!(QantoMetrics::format_hash_rate(1_000_000 * crate::QANTO_SCALE), "1.00 MH/s");
-        assert_eq!(QantoMetrics::format_hash_rate(12_345_678 * crate::QANTO_SCALE), "12.34 MH/s");
-        assert_eq!(QantoMetrics::format_hash_rate(1_234_567_890 * crate::QANTO_SCALE), "1.23 GH/s");
+        assert_eq!(
+            QantoMetrics::format_hash_rate(999 * crate::QANTO_SCALE),
+            "999.00 H/s"
+        );
+        assert_eq!(
+            QantoMetrics::format_hash_rate(1000 * crate::QANTO_SCALE),
+            "1.00 kH/s"
+        );
+        assert_eq!(
+            QantoMetrics::format_hash_rate(12_345 * crate::QANTO_SCALE),
+            "12.34 kH/s"
+        );
+        assert_eq!(
+            QantoMetrics::format_hash_rate(1_000_000 * crate::QANTO_SCALE),
+            "1.00 MH/s"
+        );
+        assert_eq!(
+            QantoMetrics::format_hash_rate(12_345_678 * crate::QANTO_SCALE),
+            "12.34 MH/s"
+        );
+        assert_eq!(
+            QantoMetrics::format_hash_rate(1_234_567_890 * crate::QANTO_SCALE),
+            "1.23 GH/s"
+        );
     }
 }

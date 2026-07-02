@@ -65,7 +65,11 @@ impl ZKProofSystem {
         self.generate_proof(ZKProofType::RangeProof, &buf).await
     }
 
-    pub async fn generate_membership_proof(&self, element: u128, _set: Vec<u128>) -> Result<ZKProof> {
+    pub async fn generate_membership_proof(
+        &self,
+        element: u128,
+        _set: Vec<u128>,
+    ) -> Result<ZKProof> {
         self.generate_proof(ZKProofType::MembershipProof, &element.to_le_bytes())
             .await
     }

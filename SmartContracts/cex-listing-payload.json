@@ -9,7 +9,7 @@
     "whitepaper": "https://qanto.org/docs/whitepaper/Qanto-whitepaper.pdf"
   },
   "tokenomics": {
-    "nativeDecimals": 6,
+    "nativeDecimals": 9,
     "maxSupply": 21000000000,
     "maxSupplyFormatted": "21,000,000,000 QNTO",
     "emissionStrategy": {
@@ -30,7 +30,7 @@
     "nativeCurrency": {
       "name": "QNTO",
       "symbol": "QNTO",
-      "decimals": 6
+      "decimals": 9
     },
     "rpcEndpoint": "https://trvorth-qanto-testnet.hf.space/rpc",
     "webSocketEndpoint": "wss://trvorth-qanto-testnet.hf.space/ws",
@@ -74,12 +74,12 @@
     "dexWrapper": {
       "name": "WQNTO",
       "fullName": "Wrapped QANTO",
-      "decimals": 6,
+      "decimals": 9,
       "standard": "ERC-20 Compatible",
       "solidityVersion": "^0.8.20",
       "address": "TBD_UPON_MAINNET_DEPLOYMENT",
       "abiEndpoint": "https://qanto.org/assets/json/WQNTO_ABI.json",
-      "sourceCode": "https://github.com/trvorth/Qanto/blob/main/SmartContracts/WQNTO.sol"
+      "sourceCode": "https://github.com/trvorth/Qanto/blob/main/SmartContracts/contracts/WQNTO.sol"
     }
   },
   "compliance": {

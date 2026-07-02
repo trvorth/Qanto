@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use ahash::AHashMap as HashMap;
+use serde::{Deserialize, Serialize};
 
 /**
  * @title Universal Basic Inference (UBI)
@@ -35,8 +35,11 @@ impl UBICreditEngine {
     pub fn calculate_daily_credits(&self, reputation: u32, rank: u32) -> u64 {
         let reputation_multiplier = (reputation as f64 / 100.0).max(1.0);
         let rank_multiplier = rank as f64;
-        
-        println!("UBI: Calculating credits... Reputation: {}, Rank: {}.", reputation, rank);
+
+        println!(
+            "UBI: Calculating credits... Reputation: {}, Rank: {}.",
+            reputation, rank
+        );
         (self.base_refill as f64 * reputation_multiplier * rank_multiplier) as u64
     }
 
@@ -45,19 +48,25 @@ impl UBICreditEngine {
      */
     pub fn refill_credits(&mut self, user: String, reputation: u32, rank: u32) -> u64 {
         let refill_amount = self.calculate_daily_credits(reputation, rank);
-        
-        let credit = self.credit_registry.entry(user.clone()).or_insert(UBICredit {
-            user_address: user.clone(),
-            available_credits: 0,
-            reputation_score: reputation,
-            pioneer_rank: rank,
-            last_refill: 0,
-        });
+
+        let credit = self
+            .credit_registry
+            .entry(user.clone())
+            .or_insert(UBICredit {
+                user_address: user.clone(),
+                available_credits: 0,
+                reputation_score: reputation,
+                pioneer_rank: rank,
+                last_refill: 0,
+            });
 
         credit.available_credits += refill_amount;
         credit.last_refill = 850; // Cycle 850 (recursive veracity pulse)
-        
-        println!("UBI: User {} refilled with {} credits. New Balance: {}.", user, refill_amount, credit.available_credits);
+
+        println!(
+            "UBI: User {} refilled with {} credits. New Balance: {}.",
+            user, refill_amount, credit.available_credits
+        );
         refill_amount
     }
 }
@@ -71,7 +80,7 @@ mod tests {
     fn test_ubi_credit_calculation() {
         let engine = UBICreditEngine::new();
         let refill = engine.calculate_daily_credits(150, 3); // 1.5x rep, 3x rank
-        
+
         assert_eq!(refill, 450); // 100 * 1.5 * 3 = 450
     }
 }

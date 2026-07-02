@@ -4,9 +4,9 @@
 //! This module implements the 'Mesh-Mirror' logic, ensuring that the protocol
 //! UI and data are replicated across millions of Sentinel nodes globally.
 
+use ahash::AHashSet as HashSet;
 use anyhow::Result;
 use tracing::{info, warn};
-use std::collections::HashSet;
 
 pub struct MeshNode {
     pub id: [u8; 32],
@@ -36,7 +36,6 @@ impl Default for StorageMesh {
 }
 
 impl StorageMesh {
-
     /// Verifies that the current node state is replicated across the global mesh.
     pub fn verify_mesh_redundancy(&mut self, nodes: Vec<MeshNode>) -> Result<u32> {
         info!("OMNIPRESENCE: Initiating Mesh-Mirror verification...");
@@ -56,7 +55,10 @@ impl StorageMesh {
         if self.geo_redundancy_level < 5 {
             warn!("Storage Mesh Warning: Low geo-redundancy (Level {}). Possible fragilitiy detected.", self.geo_redundancy_level);
         } else {
-            info!("Storage Mesh Success: Verified Geo-Redundancy Level {} across {} nodes.", self.geo_redundancy_level, healthy_nodes);
+            info!(
+                "Storage Mesh Success: Verified Geo-Redundancy Level {} across {} nodes.",
+                self.geo_redundancy_level, healthy_nodes
+            );
             info!("STATUS: GEO-REDUNDANT | UNKILLABLE");
         }
 
@@ -66,6 +68,8 @@ impl StorageMesh {
     /// Detects if the current instance is served from a P2P Sentinel.
     pub fn is_p2p_hosted(&self, hostname: &str) -> bool {
         // Logic: P2P nodes typically use .qanto or localhost:8080/8443
-        hostname.ends_with(".qanto") || hostname.contains("localhost") || hostname.contains("127.0.0.1")
+        hostname.ends_with(".qanto")
+            || hostname.contains("localhost")
+            || hostname.contains("127.0.0.1")
     }
 }

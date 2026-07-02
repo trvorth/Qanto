@@ -7,6 +7,8 @@ service QantoRpc {
   rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
   rpc GetBlock(GetBlockRequest) returns (GetBlockResponse);
   rpc GetNetworkStats(GetNetworkStatsRequest) returns (GetNetworkStatsResponse);
+  rpc GetTransactionsByAddress(GetTransactionsByAddressRequest) returns (GetTransactionsByAddressResponse);
+  rpc SubscribeTransactionsByAddress(SubscribeTransactionsRequest) returns (stream AddressTransactionEntry);
   rpc SubscribeBalance(SubscribeBalanceRequest) returns (stream BalanceUpdate);
 }
 
@@ -20,8 +22,53 @@ message WalletGetBalanceRequest {
 }
 
 message BalanceResponse {
-  uint64 balance = 1;               // Confirmed balance in base units
-  uint64 unconfirmed_balance = 2;   // Net delta from pending mempool transactions
+  string balance = 1;               // Confirmed balance in base units
+  string unconfirmed_balance = 2;   // Net delta from pending mempool transactions
+}
+
+message GetTransactionsByAddressRequest {
+  string address = 1;
+  uint32 page = 2;       // 1-based
+  uint32 page_size = 3;  // max enforced server-side
+}
+
+message SubscribeTransactionsRequest {
+  string address = 1;
+  bool include_mempool = 2;
+  bool include_confirmed = 3;
+  bool include_finalized = 4;
+}
+
+enum TransactionStatus {
+  TRANSACTION_STATUS_PENDING = 0;
+  TRANSACTION_STATUS_CONFIRMED = 1;
+  TRANSACTION_STATUS_FINALIZED = 2;
+}
+
+enum TransactionEventKind {
+  TRANSACTION_EVENT_KIND_SNAPSHOT = 0;
+  TRANSACTION_EVENT_KIND_MEMPOOL = 1;
+  TRANSACTION_EVENT_KIND_CONFIRMED = 2;
+  TRANSACTION_EVENT_KIND_FINALIZED = 3;
+}
+
+message AddressTransactionEntry {
+  Transaction transaction = 1;
+  string block_id = 2;
+  uint64 block_height = 3;
+  uint64 block_timestamp = 4;
+  uint64 confirmations = 5;
+  bool is_finalized = 6;
+  bool in_mempool = 7;
+  TransactionStatus status = 8;
+  TransactionEventKind event_kind = 9;
+}
+
+message GetTransactionsByAddressResponse {
+  repeated AddressTransactionEntry transactions = 1;
+  uint64 total = 2;
+  uint32 current_page = 3;
+  uint32 page_size = 4;
 }
 
 // ----- Core Transaction Types -----
@@ -29,18 +76,19 @@ message Transaction {
   string id = 1;
   string sender = 2;
   string receiver = 3;
-  uint64 amount = 4;
-  uint64 fee = 5;
+  string amount = 4;
+  string fee = 5;
   uint64 gas_limit = 6;
   uint64 gas_used = 7;
-  uint64 gas_price = 8;
-  uint64 priority_fee = 9;
+  string gas_price = 8;
+  string priority_fee = 9;
   repeated Input inputs = 10;
   repeated Output outputs = 11;
   uint64 timestamp = 12;
   map<string, string> metadata = 13;
   QuantumResistantSignature signature = 14;
   FeeBreakdown fee_breakdown = 15; // optional by presence
+  uint32 chain_id = 16;
 }
 
 message Input {
@@ -50,7 +98,7 @@ message Input {
 
 message Output {
   string address = 1;
-  uint64 amount = 2;
+  string amount = 2;
   HomomorphicEncrypted homomorphic_encrypted = 3; // optional by presence
 }
 
@@ -65,15 +113,15 @@ message HomomorphicEncrypted {
 }
 
 message FeeBreakdown {
-  uint64 base_fee = 1;
-  uint64 complexity_fee = 2;
-  uint64 storage_fee = 3;
-  uint64 gas_fee = 4;
-  uint64 priority_fee = 5;
+  string base_fee = 1;
+  string complexity_fee = 2;
+  string storage_fee = 3;
+  string gas_fee = 4;
+  string priority_fee = 5;
   double congestion_multiplier = 6;
-  uint64 total_fee = 7;
+  string total_fee = 7;
   uint64 gas_used = 8;
-  uint64 gas_price = 9;
+  string gas_price = 9;
 }
 
 // ----- Block and Related Types -----
@@ -88,7 +136,7 @@ message QantoBlock {
   uint64 nonce = 8;
   uint64 timestamp = 9;
   uint64 height = 10;
-  uint64 reward = 11;
+  string reward = 11;
   uint64 effort = 12;
   repeated CrossChainReference cross_chain_references = 13;
   repeated CrossChainSwap cross_chain_swaps = 14;
@@ -111,7 +159,7 @@ message CrossChainSwapParams {
   uint32 source_chain = 1;
   uint32 target_chain = 2;
   string source_block_id = 3;
-  uint64 amount = 4;
+  string amount = 4;
   string initiator = 5;
   string responder = 6;
   uint64 timelock_duration = 7;
@@ -122,7 +170,7 @@ message CrossChainSwap {
   string swap_id = 1;
   uint32 source_chain = 2;
   uint32 target_chain = 3;
-  uint64 amount = 4;
+  string amount = 4;
   string initiator = 5;
   string responder = 6;
   uint64 timelock = 7;
@@ -142,7 +190,7 @@ message SmartContract {
   string code = 2;
   map<string, string> storage = 3;
   string owner = 4;
-  uint64 gas_balance = 5;
+  string gas_balance = 5;
 }
 
 message CarbonOffsetCredential {
@@ -173,7 +221,7 @@ message GetBalanceRequest {
 }
 
 message GetBalanceResponse {
-  uint64 base_units = 1;
+  string base_units = 1;
   string balance = 2;
 }
 
@@ -204,7 +252,7 @@ message SubscribeBalanceRequest {
 
 message BalanceUpdate {
   string address = 1;
-  uint64 base_units = 2;
+  string base_units = 2;
   uint64 timestamp = 3;
 }
 
@@ -219,7 +267,7 @@ enum P2PPayloadType {
 
 message UTXO {
   string address = 1;
-  uint64 amount = 2;
+  string amount = 2;
   string tx_id = 3;
   uint32 output_index = 4;
   string explorer_link = 5;

@@ -6,12 +6,12 @@
 //! - Predictive DAG generation for future epochs
 //! - Adaptive generation strategies based on system resources
 
+use ahash::AHashMap as HashMap;
 use lru::LruCache;
 use my_blockchain::qanto_standalone::hash::qanto_hash;
 use my_blockchain::qanto_standalone::parallel::ThreadPool;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};

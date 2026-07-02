@@ -3,11 +3,12 @@
 //! This module defines the consolidated QueryRoot and MutationRoot for Qanto's GraphQL endpoint.
 
 use crate::graphql_server::{
-    Balance, Block, BlockchainInfo, GraphQLContext, MempoolInfo, NetworkStats,
-    TransactionGQL, transaction_to_gql,
+    transaction_to_gql, Balance, Block, BlockchainInfo, GraphQLContext, MempoolInfo, NetworkStats,
+    TransactionGQL,
 };
-use async_graphql::{Context, Object, Result as GraphQLResult};
 use crate::transaction::Transaction;
+use ahash::AHashMap as HashMap;
+use async_graphql::{Context, Object, Result as GraphQLResult};
 
 pub struct QueryRoot;
 
@@ -26,6 +27,20 @@ impl QueryRoot {
     /// Get SAGA AI status
     async fn saga_status(&self, _ctx: &Context<'_>) -> GraphQLResult<String> {
         Ok("ACTIVE".to_string())
+    }
+
+    /// Get bridge total locked amount
+    async fn bridge_total_locked(&self, ctx: &Context<'_>) -> GraphQLResult<String> {
+        let context = ctx.data::<GraphQLContext>()?;
+        let total = *context.node.dag.total_bridge_locked.read().await;
+        Ok(total.to_string())
+    }
+
+    /// Get bridge total claimed amount
+    async fn bridge_total_claimed(&self, ctx: &Context<'_>) -> GraphQLResult<String> {
+        let context = ctx.data::<GraphQLContext>()?;
+        let total = *context.node.dag.total_bridge_claimed.read().await;
+        Ok(total.to_string())
     }
 
     /// Get blockchain information
@@ -150,25 +165,26 @@ impl QueryRoot {
         let context = ctx.data::<GraphQLContext>()?;
         let dag = &context.node.dag;
 
-        let blocks = dag
-            .get_blocks_paginated(5, 0)
-            .await;
+        let blocks = dag.get_blocks_paginated(5, 0).await;
 
         let mut block_list: Vec<Block> = blocks.into_iter().map(Block::from).collect();
-        
+
         // If DAG doesn't have blocks (e.g. mock testnet or not mined yet), provide some realistic mock blocks
         if block_list.is_empty() {
             let timestamp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs() as i32;
-            
+
             block_list = vec![
                 Block {
                     id: async_graphql::ID("block_10005".to_string()),
                     height: 10005,
-                    hash: "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b".to_string(),
-                    previous_hash: "0x0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c".to_string(),
+                    hash: "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b"
+                        .to_string(),
+                    previous_hash:
+                        "0x0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c"
+                            .to_string(),
                     timestamp,
                     transaction_count: 42,
                     transactions: vec![],
@@ -176,8 +192,11 @@ impl QueryRoot {
                 Block {
                     id: async_graphql::ID("block_10004".to_string()),
                     height: 10004,
-                    hash: "0x0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c".to_string(),
-                    previous_hash: "0xf9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a".to_string(),
+                    hash: "0x0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c"
+                        .to_string(),
+                    previous_hash:
+                        "0xf9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a"
+                            .to_string(),
                     timestamp: timestamp - 3,
                     transaction_count: 51,
                     transactions: vec![],
@@ -185,8 +204,11 @@ impl QueryRoot {
                 Block {
                     id: async_graphql::ID("block_10003".to_string()),
                     height: 10003,
-                    hash: "0xf9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a".to_string(),
-                    previous_hash: "0xe8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8".to_string(),
+                    hash: "0xf9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a"
+                        .to_string(),
+                    previous_hash:
+                        "0xe8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8"
+                            .to_string(),
                     timestamp: timestamp - 6,
                     transaction_count: 38,
                     transactions: vec![],
@@ -201,33 +223,43 @@ impl QueryRoot {
     async fn latest_batches(&self, _ctx: &Context<'_>) -> GraphQLResult<Vec<ZkBatchRecord>> {
         Ok(vec![
             ZkBatchRecord {
-                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a1".to_string(),
+                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a1"
+                    .to_string(),
                 tx_count: 145000,
-                state_root: "0x3a7c8e9b0d1f2a3c4e5f6a7b8c9d0e1f2a3c4e5f6a7b8c9d0e1f2a3c4e5f6a7b".to_string(),
+                state_root: "0x3a7c8e9b0d1f2a3c4e5f6a7b8c9d0e1f2a3c4e5f6a7b8c9d0e1f2a3c4e5f6a7b"
+                    .to_string(),
                 proving_time_ms: 120,
             },
             ZkBatchRecord {
-                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a2".to_string(),
+                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a2"
+                    .to_string(),
                 tx_count: 210000,
-                state_root: "0x4b8d9f0a1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b".to_string(),
+                state_root: "0x4b8d9f0a1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b"
+                    .to_string(),
                 proving_time_ms: 95,
             },
             ZkBatchRecord {
-                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a3".to_string(),
+                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a3"
+                    .to_string(),
                 tx_count: 185000,
-                state_root: "0x5c9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e".to_string(),
+                state_root: "0x5c9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e"
+                    .to_string(),
                 proving_time_ms: 105,
             },
             ZkBatchRecord {
-                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a4".to_string(),
+                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a4"
+                    .to_string(),
                 tx_count: 312000,
-                state_root: "0x6da0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0".to_string(),
+                state_root: "0x6da0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0"
+                    .to_string(),
                 proving_time_ms: 88,
             },
             ZkBatchRecord {
-                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a5".to_string(),
+                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a5"
+                    .to_string(),
                 tx_count: 420000,
-                state_root: "0x7eb1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1".to_string(),
+                state_root: "0x7eb1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1"
+                    .to_string(),
                 proving_time_ms: 72,
             },
         ])
@@ -237,33 +269,43 @@ impl QueryRoot {
     async fn zk_batches(&self, _ctx: &Context<'_>) -> GraphQLResult<Vec<ZkBatchRecord>> {
         Ok(vec![
             ZkBatchRecord {
-                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a1".to_string(),
+                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a1"
+                    .to_string(),
                 tx_count: 145000,
-                state_root: "0x3a7c8e9b0d1f2a3c4e5f6a7b8c9d0e1f2a3c4e5f6a7b8c9d0e1f2a3c4e5f6a7b".to_string(),
+                state_root: "0x3a7c8e9b0d1f2a3c4e5f6a7b8c9d0e1f2a3c4e5f6a7b8c9d0e1f2a3c4e5f6a7b"
+                    .to_string(),
                 proving_time_ms: 120,
             },
             ZkBatchRecord {
-                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a2".to_string(),
+                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a2"
+                    .to_string(),
                 tx_count: 210000,
-                state_root: "0x4b8d9f0a1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b".to_string(),
+                state_root: "0x4b8d9f0a1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b"
+                    .to_string(),
                 proving_time_ms: 95,
             },
             ZkBatchRecord {
-                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a3".to_string(),
+                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a3"
+                    .to_string(),
                 tx_count: 185000,
-                state_root: "0x5c9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e".to_string(),
+                state_root: "0x5c9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e"
+                    .to_string(),
                 proving_time_ms: 105,
             },
             ZkBatchRecord {
-                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a4".to_string(),
+                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a4"
+                    .to_string(),
                 tx_count: 312000,
-                state_root: "0x6da0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0".to_string(),
+                state_root: "0x6da0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0"
+                    .to_string(),
                 proving_time_ms: 88,
             },
             ZkBatchRecord {
-                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a5".to_string(),
+                batch_id: "0x00000000000000000000000000000000000000000000000000000000000001a5"
+                    .to_string(),
                 tx_count: 420000,
-                state_root: "0x7eb1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1".to_string(),
+                state_root: "0x7eb1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1"
+                    .to_string(),
                 proving_time_ms: 72,
             },
         ])
@@ -273,18 +315,20 @@ impl QueryRoot {
     async fn proposals(&self, ctx: &Context<'_>) -> GraphQLResult<Vec<ProposalGQL>> {
         let context = ctx.data::<GraphQLContext>()?;
         let proposals_guard = context.node.saga_pallet.governance.proposals.read().await;
-        
+
         let mut list = Vec::new();
         for p in proposals_guard.values() {
             list.push(ProposalGQL {
                 id: p.id.clone(),
                 proposer: p.proposer.clone(),
                 proposal_type: match &p.proposal_type {
-                    crate::saga::ProposalType::UpdateRule(name, val) => format!("UpdateRule({}, {})", name, val),
+                    crate::saga::ProposalType::UpdateRule(name, val) => {
+                        format!("UpdateRule({}, {})", name, val)
+                    }
                     crate::saga::ProposalType::Signal(msg) => format!("Signal({})", msg),
                 },
-                votes_for: p.votes_for,
-                votes_against: p.votes_against,
+                votes_for: p.votes_for as f64,
+                votes_against: p.votes_against as f64,
                 status: match p.status {
                     crate::saga::ProposalStatus::Voting => "Voting".to_string(),
                     crate::saga::ProposalStatus::Enacted => "Enacted".to_string(),
@@ -293,9 +337,12 @@ impl QueryRoot {
                 },
                 creation_epoch: p.creation_epoch as i32,
                 justification: p.justification.clone(),
+                title: p.title.clone(),
+                description: p.description.clone(),
+                cid: p.cid.clone(),
             });
         }
-        
+
         Ok(list)
     }
 }
@@ -318,6 +365,9 @@ pub struct ProposalGQL {
     pub status: String,
     pub creation_epoch: i32,
     pub justification: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub cid: Option<String>,
 }
 
 #[derive(async_graphql::SimpleObject)]
@@ -382,12 +432,15 @@ impl MutationRoot {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs(),
-            metadata: std::collections::HashMap::new(),
+            metadata: HashMap::new(),
             fee_breakdown: None,
+            transaction_kind: crate::transaction::TransactionKind::Transfer,
+            chain_id: crate::transaction::GLOBAL_CHAIN_ID.load(std::sync::atomic::Ordering::Relaxed)
+                as u32,
         };
 
         // Submit to mempool
-        let utxos = std::collections::HashMap::new();
+        let utxos = HashMap::new();
         match node
             .mempool
             .write()
@@ -451,17 +504,24 @@ impl MutationRoot {
             });
         }
 
-        let current_epoch = context.node.dag.current_epoch.load(std::sync::atomic::Ordering::SeqCst);
+        let current_epoch = context
+            .node
+            .dag
+            .current_epoch
+            .load(std::sync::atomic::Ordering::SeqCst);
         let proposal = crate::saga::GovernanceProposal {
             id: proposal_id.clone(),
             proposer: "0x0000000000000000000000000000000000000000".to_string(), // Default/mocked proposer
             proposal_type: crate::saga::ProposalType::Signal(cid.clone()),
-            votes_for: 0.0,
-            votes_against: 0.0,
+            votes_for: 0,
+            votes_against: 0,
             status: crate::saga::ProposalStatus::Voting,
             voters: vec![],
             creation_epoch: current_epoch,
             justification: Some(cid.clone()),
+            title: Some(format!("IPFS Proposal {}", cid)),
+            description: Some(format!("IPFS Justification: {}", cid)),
+            cid: Some(cid.clone()),
         };
 
         proposals_guard.insert(proposal_id.clone(), proposal);

@@ -3,7 +3,8 @@
 //! High-performance mempool with DAG-aware transaction ordering, UTXO reservation,
 //! parallel validation, and optimized selection algorithms for 32 BPS and 10M+ TPS.
 
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use ahash::{AHashMap as HashMap, AHashSet as HashSet};
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};

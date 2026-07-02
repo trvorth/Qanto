@@ -1,7 +1,7 @@
 //! Phase 101: Neural-Link Bridge (DITA-2)
 //!
 //! This module implements the "Absolute Intent" interface for the Qanto protocol.
-//! It bridges raw synaptic telemetry from DITA-2 neural hardware (Mocked)
+//! It bridges raw synaptic telemetry from DITA-2 neural hardware (Simulated)
 //! to cryptographic signing events.
 
 use anyhow::Result;
@@ -33,11 +33,14 @@ impl NeuralLink {
 
     /// Establish the Neural-Link Bridge (Phase 101)
     pub fn synchronize(&mut self, citizen_id: &str) -> Result<()> {
-        info!("🧠 SYNCHRONIZING NEURAL INTERFACE... [CITIZEN: {}]", citizen_id);
-        
-        // Mock hardware calibration
+        info!(
+            "🧠 SYNCHRONIZING NEURAL INTERFACE... [CITIZEN: {}]",
+            citizen_id
+        );
+
+        // Synthetic hardware calibration
         self.is_synchronized = true;
-        
+
         info!("🔗 SYNTAPTIC BRIDGE ESTABLISHED. DITA-2 HEARTBEAT ACTIVE.");
         Ok(())
     }
@@ -51,16 +54,22 @@ impl NeuralLink {
             return Err(anyhow::anyhow!("Link Not Synchronized"));
         }
 
-        info!("🛡️ GENERATING SYNAPTIC-FINALITY PROOF for ID: {}", telemetry.citizen_id);
-        
-        // Mock cryptographic signature from neural intent
+        info!(
+            "🛡️ GENERATING SYNAPTIC-FINALITY PROOF for ID: {}",
+            telemetry.citizen_id
+        );
+
+        // Synthetic cryptographic signature from neural intent
         let signature = [0u8; 64]; // This would be the result of a ZK-STARK proof
         Ok(signature)
     }
 
     /// Broadcast the intent to the Agentic Mesh
-    pub fn broadcast_intent(&self, signature: [u8; 64], action: &str) {
-        info!("🌊 ABSOLUTE INTENT BROADCAST: Action '{}' signed by Synaptic-Finality.", action);
+    pub fn broadcast_intent(&self, _signature: [u8; 64], action: &str) {
+        info!(
+            "🌊 ABSOLUTE INTENT BROADCAST: Action '{}' signed by Synaptic-Finality.",
+            action
+        );
     }
 
     /**

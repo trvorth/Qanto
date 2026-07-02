@@ -68,6 +68,8 @@
         Chart.defaults.color = '#94A3B8';
         Chart.defaults.font.family = 'Inter';
 
+        const RPC_BASE = window.location.origin;
+
         const ctx = document.getElementById('sagaRadarChart').getContext('2d');
         const radarData = {
             labels: ['Latency Opt', 'TPS Scaling', 'BPS Scaling', 'CPU Overhead', 'Memory Saturation', 'Shield Health'],
@@ -105,31 +107,77 @@
             }
         });
 
-        const logs = [
-            "> CPU Usage nominal (34%). Scaling Batch Size to 312,500.",
-            "> ALERT: Heavy transaction load detected from Shard 4.",
-            "> SAGA OVERRIDE: Increasing network throttle to 48 BPS.",
-            "> Post-Quantum signatures verified seamlessly.",
-            "> 31.25ms Finality Maintained. Optimizing peer routing...",
-            "> Backpressure threshold adjusted. Adjusting memory allocation.",
-            "> Shield state verified. Kyber key exchange completed."
-        ];
         const terminal = document.getElementById('saga-logs');
-        setInterval(() => {
-            // Update terminal logs
-            const log = document.createElement('div');
-            log.className = 'log-line';
-            log.innerText = logs[Math.floor(Math.random() * logs.length)];
-            terminal.appendChild(log);
-            terminal.scrollTop = terminal.scrollHeight;
 
-            // Randomly update radar metrics slightly to animate
-            radarChart.data.datasets[0].data = radarChart.data.datasets[0].data.map(val => {
-                const change = (Math.random() - 0.5) * 6;
-                return Math.max(10, Math.min(100, val + change));
-            });
-            radarChart.update('none');
-        }, 2500);
+        async function fetchSagaData() {
+            try {
+                const res = await fetch(`${RPC_BASE}/analytics/dashboard`);
+                if (!res.ok) throw new Error("Dashboard API returned error");
+                const data = await res.json();
+                
+                // Map the telemetry to 0-100 radar scores
+                const latencyMs = Number(data.ai_performance.inference_latency_ms || 0);
+                const latencyOpt = Math.max(10, Math.min(100, 100 - latencyMs));
+
+                const tpsVal = Number(data.tps_current || 0);
+                const tpsScaling = Math.max(10, Math.min(100, (tpsVal * 100) / 1000000));
+
+                const bpsVal = Number(data.network_health.throughput_bps || 0);
+                const bpsScaling = Math.max(10, Math.min(100, (bpsVal * 100) / 5000));
+
+                const cpuVal = Number(data.network_health.cpu_utilization || 0);
+                const cpuOverhead = Math.max(10, Math.min(100, cpuVal));
+
+                const memoryVal = Number(data.network_health.memory_usage_mb || 0);
+                const memorySat = Math.max(10, Math.min(100, (memoryVal * 100) / 16384));
+
+                const securityScore = Number(data.security_insights.security_confidence || 100);
+                const shieldHealth = Math.max(10, Math.min(100, securityScore));
+
+                radarChart.data.datasets[0].data = [latencyOpt, tpsScaling, bpsScaling, cpuOverhead, memorySat, shieldHealth];
+                radarChart.update();
+
+                // Append live status line to terminal
+                const lines = [
+                    `> SAGA Neural Core processed block height #${data.block_height}. Mempool depth: ${data.mempool_size}.`,
+                    `> Network throughput: ${bpsVal} BPS. CPU Utilization: ${cpuVal}%.`,
+                    `> Model accuracy: ${data.ai_performance.neural_network_accuracy}%. Drift score: ${data.ai_performance.model_drift_score}%.`,
+                    `> Threat level identified as: ${data.security_insights.threat_level}. Attacks blocked (24h): ${data.security_insights.attack_attempts_24h}.`,
+                    `> Environmental dashboard metrics: carbon footprint: ${Number(data.environmental_metrics.carbon_footprint_kg)/1_000_000_000} kg/block.`
+                ];
+                const selectedLine = lines[Math.floor(Math.random() * lines.length)];
+                
+                const log = document.createElement('div');
+                log.className = 'log-line';
+                log.innerText = selectedLine;
+                terminal.appendChild(log);
+                terminal.scrollTop = terminal.scrollHeight;
+                
+                if (terminal.children.length > 30) {
+                    terminal.removeChild(terminal.firstChild);
+                }
+            } catch (err) {
+                // Fallback animation
+                radarChart.data.datasets[0].data = radarChart.data.datasets[0].data.map(val => {
+                    const change = (Math.random() - 0.5) * 6;
+                    return Math.max(10, Math.min(100, val + change));
+                });
+                radarChart.update('none');
+
+                const log = document.createElement('div');
+                log.className = 'log-line';
+                log.innerText = `> Connecting to SAGA telemetry node at ${RPC_BASE}...`;
+                terminal.appendChild(log);
+                terminal.scrollTop = terminal.scrollHeight;
+
+                if (terminal.children.length > 30) {
+                    terminal.removeChild(terminal.firstChild);
+                }
+            }
+        }
+
+        setInterval(fetchSagaData, 2000);
+        fetchSagaData();
     </script>
 </body>
 </html>

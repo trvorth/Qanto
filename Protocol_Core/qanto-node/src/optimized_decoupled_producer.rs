@@ -18,9 +18,9 @@ use crate::types::UTXO;
 use crate::wallet::Wallet;
 use qanto_core::dag_aware_mempool::DAGAwareMempool;
 
+use ahash::AHashMap as HashMap;
 use async_trait::async_trait;
 use rayon::prelude::*;
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};

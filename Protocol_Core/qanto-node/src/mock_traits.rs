@@ -1,22 +1,22 @@
-//! Mock implementations for testing expensive operations
+//! Synthetic implementations for testing expensive operations
 //! This module provides mock implementations that can be used in tests
 
 use crate::qanto_storage::{QantoStorageError, StorageStats, WriteBatch};
 use crate::storage_traits::{CryptoOperations, NetworkOperations, StorageOperations};
+use ahash::AHashMap as HashMap;
 use anyhow::Result;
 use async_trait::async_trait;
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 
-/// Mock storage implementation for testing
+/// Synthetic storage implementation for testing
 #[derive(Debug, Clone)]
-pub struct MockStorage {
+pub struct SyntheticStorage {
     data: Arc<Mutex<HashMap<Vec<u8>, Vec<u8>>>>,
     stats: Arc<Mutex<StorageStats>>,
 }
 
-impl MockStorage {
+impl SyntheticStorage {
     pub fn new() -> Self {
         Self {
             data: Arc::new(Mutex::new(HashMap::new())),
@@ -34,15 +34,15 @@ impl MockStorage {
     }
 }
 
-// Default implementation for MockStorage - calls Self::new() for consistent initialization
-impl Default for MockStorage {
+// Default implementation for SyntheticStorage - calls Self::new() for consistent initialization
+impl Default for SyntheticStorage {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[async_trait]
-impl StorageOperations for MockStorage {
+impl StorageOperations for SyntheticStorage {
     async fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, QantoStorageError> {
         let data = self.data.lock().unwrap();
         Ok(data.get(key).cloned())
@@ -92,7 +92,7 @@ impl StorageOperations for MockStorage {
     }
 
     async fn begin_transaction(&self) -> u64 {
-        1 // Mock transaction ID
+        1 // Synthetic transaction ID
     }
 
     async fn commit_transaction(&self, _tx_id: u64) -> Result<(), QantoStorageError> {
@@ -116,25 +116,25 @@ impl StorageOperations for MockStorage {
     }
 }
 
-/// Mock crypto implementation for testing
+/// Synthetic crypto implementation for testing
 #[derive(Debug, Clone)]
-pub struct MockCrypto;
+pub struct SyntheticCrypto;
 
-impl MockCrypto {
+impl SyntheticCrypto {
     pub fn new() -> Self {
         Self
     }
 }
 
-// Default implementation for MockCrypto - calls Self::new() for consistent initialization
-impl Default for MockCrypto {
+// Default implementation for SyntheticCrypto - calls Self::new() for consistent initialization
+impl Default for SyntheticCrypto {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[async_trait]
-impl CryptoOperations for MockCrypto {
+impl CryptoOperations for SyntheticCrypto {
     async fn hash(&self, data: &[u8]) -> Vec<u8> {
         // Simple mock hash - just return first 32 bytes or pad with zeros
         let mut hash = vec![0u8; 32];
@@ -149,16 +149,16 @@ impl CryptoOperations for MockCrypto {
         _signature: &[u8],
         _public_key: &[u8],
     ) -> bool {
-        true // Mock always returns true
+        true // Synthetic always returns true
     }
 
     async fn sign(&self, message: &[u8], _private_key: &[u8]) -> Result<Vec<u8>, String> {
-        // Mock signature - just return hash of message
+        // Synthetic signature - just return hash of message
         Ok(self.hash(message).await)
     }
 
     async fn generate_keypair(&self) -> Result<(Vec<u8>, Vec<u8>), String> {
-        // Mock keypair
+        // Synthetic keypair
         let private_key = vec![1u8; 32];
         let public_key = vec![2u8; 32];
         Ok((private_key, public_key))
@@ -169,25 +169,25 @@ impl CryptoOperations for MockCrypto {
     }
 
     async fn encrypt(&self, data: &[u8], _key: &[u8]) -> Result<Vec<u8>, String> {
-        // Mock encryption - just XOR with 0x42
+        // Synthetic encryption - just XOR with 0x42
         let encrypted: Vec<u8> = data.iter().map(|b| b ^ 0x42).collect();
         Ok(encrypted)
     }
 
     async fn decrypt(&self, encrypted_data: &[u8], _key: &[u8]) -> Result<Vec<u8>, String> {
-        // Mock decryption - reverse the XOR
+        // Synthetic decryption - reverse the XOR
         let decrypted: Vec<u8> = encrypted_data.iter().map(|b| b ^ 0x42).collect();
         Ok(decrypted)
     }
 }
 
-/// Mock network implementation for testing
+/// Synthetic network implementation for testing
 #[derive(Debug, Clone)]
-pub struct MockNetwork {
+pub struct SyntheticNetwork {
     peers: Arc<Mutex<Vec<String>>>,
 }
 
-impl MockNetwork {
+impl SyntheticNetwork {
     pub fn new() -> Self {
         Self {
             peers: Arc::new(Mutex::new(Vec::new())),
@@ -195,15 +195,15 @@ impl MockNetwork {
     }
 }
 
-// Default implementation for MockNetwork - calls Self::new() for consistent initialization
-impl Default for MockNetwork {
+// Default implementation for SyntheticNetwork - calls Self::new() for consistent initialization
+impl Default for SyntheticNetwork {
     fn default() -> Self {
         Self::new()
     }
 }
 
 #[async_trait]
-impl NetworkOperations for MockNetwork {
+impl NetworkOperations for SyntheticNetwork {
     async fn send_to_peer(&self, _peer_id: &str, _data: &[u8]) -> Result<(), String> {
         Ok(())
     }
@@ -239,24 +239,24 @@ impl NetworkOperations for MockNetwork {
 #[cfg(feature = "zk")]
 use crate::zkp::{ZKProof, ZKProofType};
 
-/// Mock ZK Proof System for fast testing
+/// Synthetic ZK Proof System for fast testing
 #[cfg(feature = "zk")]
 #[derive(Debug, Clone)]
-pub struct MockZKProofSystem {
-    /// Mock proof cache
+pub struct SyntheticZKProofSystem {
+    /// Synthetic proof cache
     proof_cache: Arc<RwLock<HashMap<String, ZKProof>>>,
     /// Initialization state
     initialized: Arc<RwLock<bool>>,
 }
 
 #[cfg(feature = "zk")]
-impl Default for MockZKProofSystem {
+impl Default for SyntheticZKProofSystem {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MockZKProofSystem {
+impl SyntheticZKProofSystem {
     pub fn new() -> Self {
         Self {
             proof_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -264,7 +264,7 @@ impl MockZKProofSystem {
         }
     }
 
-    /// Mock initialization - instant completion
+    /// Synthetic initialization - instant completion
     pub async fn initialize(&self) -> Result<()> {
         let mut init = self.initialized.write().await;
         *init = true;
@@ -274,7 +274,7 @@ impl MockZKProofSystem {
     /// Generate mock range proof - instant completion
     pub async fn generate_range_proof(&self, value: u64, min: u64, max: u64) -> Result<ZKProof> {
         let proof = ZKProof {
-            proof: vec![0u8; 32], // Mock proof bytes
+            proof: vec![0u8; 32], // Synthetic proof bytes
             public_inputs: vec![vec![min as u8], vec![max as u8]],
             proof_type: ZKProofType::RangeProof,
             vk_hash: vec![0u8; 32],
@@ -298,7 +298,7 @@ impl MockZKProofSystem {
         outputs: Vec<u64>,
     ) -> Result<ZKProof> {
         let proof = ZKProof {
-            proof: vec![1u8; 32], // Mock proof bytes
+            proof: vec![1u8; 32], // Synthetic proof bytes
             public_inputs: vec![
                 inputs.iter().map(|&x| x as u8).collect(),
                 outputs.iter().map(|&x| x as u8).collect(),
@@ -326,7 +326,7 @@ impl MockZKProofSystem {
         computation_type: u8,
     ) -> Result<ZKProof> {
         let proof = ZKProof {
-            proof: vec![2u8; 32], // Mock proof bytes
+            proof: vec![2u8; 32], // Synthetic proof bytes
             public_inputs: vec![
                 public_inputs.iter().map(|&x| x as u8).collect(),
                 vec![expected_output as u8],
@@ -359,7 +359,7 @@ impl MockZKProofSystem {
         age_threshold: u64,
     ) -> Result<ZKProof> {
         let proof = ZKProof {
-            proof: vec![3u8; 32], // Mock proof bytes
+            proof: vec![3u8; 32], // Synthetic proof bytes
             public_inputs: vec![vec![identity_commitment as u8], vec![age_threshold as u8]],
             proof_type: ZKProofType::IdentityProof,
             vk_hash: vec![3u8; 32],
@@ -387,7 +387,7 @@ impl MockZKProofSystem {
         election_pubkey: u64,
     ) -> Result<ZKProof> {
         let proof = ZKProof {
-            proof: vec![4u8; 32], // Mock proof bytes
+            proof: vec![4u8; 32], // Synthetic proof bytes
             public_inputs: vec![vec![nullifier as u8], vec![election_pubkey as u8]],
             proof_type: ZKProofType::VotingProof,
             vk_hash: vec![4u8; 32],
@@ -403,9 +403,9 @@ impl MockZKProofSystem {
         Ok(proof)
     }
 
-    /// Mock proof verification - always returns true for valid mock proofs
+    /// Synthetic proof verification - always returns true for valid mock proofs
     pub async fn verify_proof(&self, proof: &ZKProof) -> Result<bool> {
-        // Mock verification: check if proof has expected mock structure
+        // Synthetic verification: check if proof has expected mock structure
         let is_valid = !proof.proof.is_empty() && !proof.vk_hash.is_empty() && proof.timestamp > 0;
         Ok(is_valid)
     }

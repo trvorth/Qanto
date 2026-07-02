@@ -4,8 +4,12 @@ export const QANTO_NETWORK = {
     chainId: '0x4D2', // Hex for 1234
     chainName: 'QANTO Testnet',
     nativeCurrency: { name: 'QANTO', symbol: 'QNTO', decimals: 9 },
-    rpcUrls: ['https://trvorth-qanto-testnet.hf.space/rpc'],
-    blockExplorerUrls: ['https://qanto.org/explorer']
+    rpcUrls: [
+        window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+        ? `${window.location.protocol}//${window.location.host}/rpc` 
+        : 'https://trvorth-qanto-testnet.hf.space/rpc'
+    ],
+    blockExplorerUrls: [window.location.origin + '/explorer']
 };
 
 let provider = null;

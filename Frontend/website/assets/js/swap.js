@@ -42,7 +42,7 @@ export async function executeSwap(amountIn, tokenPath) {
         alert(`Swap Successful! TX Hash: ${tx.hash}`);
         return true;
     } catch (error) {
-        console.error("Swap execution failed (Fallback to UI Mocking):", error);
+        console.error("Swap execution failed (Fallback to UI Simulation):", error);
         alert("Testnet AMM Routing Simulated. Connect to Mainnet for full execution.");
         return false;
     }

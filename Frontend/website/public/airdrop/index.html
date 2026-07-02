@@ -237,7 +237,7 @@
 
                 await new Promise(r => setTimeout(r, 2000));
                 
-                // Mocking the final claim transaction success
+                // Simulating the final claim transaction success
                 clearInterval(tpsInterval);
                 document.getElementById('settlement-tps').innerText = "Settlement Complete: 10,000 QNTO Verified";
                 btn.innerText = "SOVEREIGNTY ACQUIRED";

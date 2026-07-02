@@ -1,8 +1,8 @@
 //! QANTO Holographic State Mesh (HSM)
 //! Consensus achieved via Non-Linear Proof of Resonance (PoR).
 
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
-use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StateWave {
@@ -33,7 +33,10 @@ impl ResonanceField {
 
     /// Ingests a transaction not as a block, but as a fluid cryptographic wave.
     pub fn inject_wave(&mut self, payload_hash: String, value: u128) {
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
         let wave = StateWave {
             wave_id: format!("WAVE-{}", uuid::Uuid::new_v4()),
             frequency_hash: payload_hash,
@@ -46,8 +49,14 @@ impl ResonanceField {
     /// Analyzes wave interference. If waves align harmonically, state is finalized.
     pub fn check_constructive_interference(&mut self) -> Option<String> {
         if self.active_waves.len() >= self.resonance_threshold {
-            let crystalized_hash = format!("RESONANCE_FINALIZED_{}", self.active_waves[0].frequency_hash);
-            println!("🌌 HOLOGRAPHIC RESONANCE ACHIEVED: {} waves crystallized.", self.active_waves.len());
+            let crystalized_hash = format!(
+                "RESONANCE_FINALIZED_{}",
+                self.active_waves[0].frequency_hash
+            );
+            println!(
+                "🌌 HOLOGRAPHIC RESONANCE ACHIEVED: {} waves crystallized.",
+                self.active_waves.len()
+            );
             self.active_waves.clear(); // Collapse the wave function
             return Some(crystalized_hash);
         }

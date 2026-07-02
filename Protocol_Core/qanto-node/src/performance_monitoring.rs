@@ -5,6 +5,7 @@
 
 #[allow(unused_imports)]
 use crate::qantodag::QantoDAGError;
+use ahash::AHashMap as HashMap;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -42,16 +43,16 @@ pub enum PerformanceMonitoringError {
 pub struct PerformanceSnapshot {
     pub timestamp: u64,
     pub memory_usage_mb: u64,
-    pub cpu_utilization: u128, // Scaled by Q_SCALE
-    pub blocks_per_second: u128, // Scaled by Q_SCALE
-    pub transactions_per_second: u128, // Scaled by Q_SCALE
-    pub avg_block_time_ms: u128, // Scaled by Q_SCALE
+    pub cpu_utilization: u128,           // Scaled by Q_SCALE
+    pub blocks_per_second: u128,         // Scaled by Q_SCALE
+    pub transactions_per_second: u128,   // Scaled by Q_SCALE
+    pub avg_block_time_ms: u128,         // Scaled by Q_SCALE
     pub avg_tx_processing_time_us: u128, // Scaled by Q_SCALE
     pub active_connections: usize,
     pub mempool_size: usize,
     pub utxo_set_size: usize,
     pub cache_hit_ratio: u128, // Scaled by Q_SCALE
-    pub gc_pressure: u128, // Scaled by Q_SCALE
+    pub gc_pressure: u128,     // Scaled by Q_SCALE
 }
 
 /// Adaptive tuning parameters
@@ -61,7 +62,7 @@ pub struct AdaptiveTuningParams {
     pub worker_threads: usize,
     pub cache_size: usize,
     pub gc_threshold_mb: u64,
-    pub backpressure_threshold: u128, // Scaled by Q_SCALE
+    pub backpressure_threshold: u128,       // Scaled by Q_SCALE
     pub mining_difficulty_adjustment: u128, // Scaled by Q_SCALE
 }
 
@@ -72,7 +73,7 @@ impl Default for AdaptiveTuningParams {
             worker_threads: num_cpus::get(),
             cache_size: 1000,
             gc_threshold_mb: 512,
-            backpressure_threshold: 800_000_000, // 0.8
+            backpressure_threshold: 800_000_000,         // 0.8
             mining_difficulty_adjustment: 1_000_000_000, // 1.0
         }
     }
@@ -104,8 +105,8 @@ impl Default for PerformanceMonitoringConfig {
         Self {
             monitoring_interval_ms: 1000,
             memory_threshold_mb: 1024,
-            cpu_threshold: 800_000_000, // 80%
-            bps_threshold: 30_000_000_000, // 30.0
+            cpu_threshold: 800_000_000,           // 80%
+            bps_threshold: 30_000_000_000,        // 30.0
             tps_threshold: 1_000_000_000_000_000, // 1,000,000.0 * 1e9 (scaled)
             history_size: 1000,
             enable_adaptive_tuning: true,
@@ -287,8 +288,16 @@ impl PerformanceMonitor {
             cpu_utilization,
             blocks_per_second: bps,
             transactions_per_second: tps,
-            avg_block_time_ms: if bps > 0 { (1000 * crate::QANTO_SCALE) / bps } else { 0 },
-            avg_tx_processing_time_us: if tps > 0 { (1_000_000 * crate::QANTO_SCALE) / tps } else { 0 },
+            avg_block_time_ms: if bps > 0 {
+                (1000 * crate::QANTO_SCALE) / bps
+            } else {
+                0
+            },
+            avg_tx_processing_time_us: if tps > 0 {
+                (1_000_000 * crate::QANTO_SCALE) / tps
+            } else {
+                0
+            },
             active_connections: self
                 .resource_usage
                 .get("connections")
@@ -305,7 +314,8 @@ impl PerformanceMonitor {
                 .map(|v| *v as usize)
                 .unwrap_or(0),
             cache_hit_ratio,
-            gc_pressure: self.memory_pressure.load(Ordering::Relaxed) as u128 * (crate::QANTO_SCALE / 100),
+            gc_pressure: self.memory_pressure.load(Ordering::Relaxed) as u128
+                * (crate::QANTO_SCALE / 100),
         };
 
         // Update current snapshot
@@ -373,7 +383,9 @@ impl PerformanceMonitor {
         }
 
         // Adjust worker threads based on CPU utilization
-        if snapshot.cpu_utilization < 60 * crate::QANTO_SCALE && params.worker_threads < num_cpus::get() * 2 {
+        if snapshot.cpu_utilization < 60 * crate::QANTO_SCALE
+            && params.worker_threads < num_cpus::get() * 2
+        {
             params.worker_threads += 1;
         } else if snapshot.cpu_utilization > 90 * crate::QANTO_SCALE && params.worker_threads > 1 {
             params.worker_threads -= 1;
@@ -389,9 +401,11 @@ impl PerformanceMonitor {
         }
 
         // Adjust GC threshold based on memory pressure
-        if snapshot.gc_pressure > 800_000_000 { // 0.8
+        if snapshot.gc_pressure > 800_000_000 {
+            // 0.8
             params.gc_threshold_mb = (params.gc_threshold_mb * 90 / 100).max(128);
-        } else if snapshot.gc_pressure < 300_000_000 { // 0.3
+        } else if snapshot.gc_pressure < 300_000_000 {
+            // 0.3
             params.gc_threshold_mb = (params.gc_threshold_mb * 110 / 100).min(2048);
         }
 
@@ -688,14 +702,14 @@ impl MemoryOptimizer {
     }
 
     /// Optimize HashMap capacity
-    pub fn optimize_hashmap_capacity<K, V>(map: &mut std::collections::HashMap<K, V>)
+    pub fn optimize_hashmap_capacity<K, V>(map: &mut HashMap<K, V>)
     where
         K: std::cmp::Eq + std::hash::Hash,
     {
         let len = map.len();
         let capacity = map.capacity();
 
-        if capacity > len * 2 && capacity - len > 1000 {
+        if capacity > len * 2 && capacity.saturating_sub(len) > 1000 {
             map.shrink_to_fit();
         }
     }
@@ -708,10 +722,8 @@ impl MemoryOptimizer {
     }
 
     /// Create a pre-sized HashMap with optimal capacity
-    pub fn create_optimized_hashmap<K, V>(
-        estimated_size: usize,
-    ) -> std::collections::HashMap<K, V> {
+    pub fn create_optimized_hashmap<K, V>(estimated_size: usize) -> HashMap<K, V> {
         let optimal_capacity = (estimated_size * 125 / 100).min(1_000_000);
-        std::collections::HashMap::with_capacity(optimal_capacity)
+        HashMap::with_capacity(optimal_capacity)
     }
 }

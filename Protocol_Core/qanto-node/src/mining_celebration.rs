@@ -46,7 +46,7 @@ pub struct MiningStats {
     pub hash_rate: u128, // Scaled by QANTO_SCALE
     pub total_blocks_mined: u64,
     pub chain_id: u32,
-    pub effort: u64,       // Number of hashes tried
+    pub effort: u64,        // Number of hashes tried
     pub block_reward: u128, // Block reward in base units (1e9 scale)
 }
 
@@ -166,7 +166,8 @@ impl MiningStats {
 
         // Calculate theoretical TPS based on 31ms block time
         let theoretical_tps_scaled = if self.mining_time.as_millis() > 0 {
-            (self.transactions_count as u128 * 1000 * crate::QANTO_SCALE) / self.mining_time.as_millis()
+            (self.transactions_count as u128 * 1000 * crate::QANTO_SCALE)
+                / self.mining_time.as_millis()
         } else {
             0
         };
@@ -174,7 +175,9 @@ impl MiningStats {
         println!(
             "  {} {} TPS",
             "Throughput:".bright_blue().bold(),
-            self.format_tps(theoretical_tps_scaled).bright_green().bold()
+            self.format_tps(theoretical_tps_scaled)
+                .bright_green()
+                .bold()
         );
 
         // Mining performance section with enhanced metrics
@@ -198,7 +201,9 @@ impl MiningStats {
         println!(
             "  {} {} BPS",
             "Block Rate:".bright_blue().bold(),
-            format!("{}", bps_scaled / crate::QANTO_SCALE).bright_magenta().bold()
+            format!("{}", bps_scaled / crate::QANTO_SCALE)
+                .bright_magenta()
+                .bold()
         );
 
         println!(
@@ -495,9 +500,17 @@ pub fn celebrate_mining_success(params: MiningCelebrationParams) {
 pub fn format_hash_rate(rate_hps_scaled: u128) -> String {
     let rate_hps = rate_hps_scaled / crate::QANTO_SCALE;
     if rate_hps >= 1_000_000_000 {
-        format!("{}.{:02} GH/s", rate_hps / 1_000_000_000, (rate_hps % 1_000_000_000) / 10_000_000)
+        format!(
+            "{}.{:02} GH/s",
+            rate_hps / 1_000_000_000,
+            (rate_hps % 1_000_000_000) / 10_000_000
+        )
     } else if rate_hps >= 1_000_000 {
-        format!("{}.{:02} MH/s", rate_hps / 1_000_000, (rate_hps % 1_000_000) / 10_000)
+        format!(
+            "{}.{:02} MH/s",
+            rate_hps / 1_000_000,
+            (rate_hps % 1_000_000) / 10_000
+        )
     } else if rate_hps >= 1_000 {
         format!("{}.{:02} kH/s", rate_hps / 1_000, (rate_hps % 1_000) / 10)
     } else {

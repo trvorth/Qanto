@@ -250,6 +250,11 @@ impl PersistenceWriter {
                             Ok(job) => {
                                 // If this job is a shutdown, acknowledge and exit immediately
                                 if let PersistenceJob::Shutdown(ack_tx) = job {
+                                    if ops > 0 {
+                                        let _ = db_clone.write_batch(batch);
+                                        let _ = db_clone.flush();
+                                        let _ = db_clone.sync();
+                                    }
                                     let _ = ack_tx.send(());
                                     info!("Persistence writer thread shutting down during batch fill");
                                     break 'worker;

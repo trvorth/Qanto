@@ -3,12 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "deploy:frontend": "cd website && npm run build && npx wrangler pages deploy ./dist --project-name primary --branch production",
+    "build:frontend": "cd website && npm run build",
+    "preview:frontend": "cd website && npm run preview -- --host 0.0.0.0",
+    "deploy:frontend": "cd website && npm run deploy:pages",
     "deploy:node": "./deploy_to_hf.sh",
     "node:status": "./mission_control.sh --status",
     "test:contracts": "cd contracts && npx hardhat test"
   },
   "devDependencies": {
-    "wrangler": "^3.0.0"
+    "wrangler": "^4.22.0"
   }
 }
