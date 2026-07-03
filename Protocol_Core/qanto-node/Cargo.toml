@@ -40,7 +40,7 @@ async-graphql-axum = "7.0.11"
 # --- Web Server & API (UNIFIED VERSIONS - DEDUPLICATION COMPLETE) ---
 axum = { version = "0.8.4", features = ["macros", "ws", "json"] }
 tower-http = { version = "0.6.2", features = ["cors"] }  # For CORS middleware
-reqwest = { version = "0.12.5", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 hyper = { version = "1.3.1", features = ["full"] }
 # REMOVED: warp = "0.3.7" - Duplicate web server framework, using axum only
 
@@ -136,6 +136,20 @@ ark-r1cs-std = { version = "0.5.0", default-features = false, optional = true }
 ark-crypto-primitives = { version = "0.5.0", default-features = false, features = ["sponge", "r1cs", "crh"], optional = true }
 ark-serialize = { version = "0.5.0", optional = true }
 ark-snark = { version = "0.5.0", default-features = false, optional = true }
+
+# --- Security patches for transitive dependencies (CVE fixes) ---
+# quick-xml >=0.41.0 (CVE-2026-0194, CVE-2026-0195)
+quick-xml = "0.41"
+# quinn-proto >=0.11.15 (CVE-2026-0185)
+quinn-proto = "0.11.15"
+# rustls-webpki >=0.103.13 (CVE-2026-0098, CVE-2026-0104)
+rustls-webpki = "0.103.13"
+# Force rustls >=0.23 to use new webpki (CVE-2026-0098, CVE-2026-0104)
+rustls = "0.23"
+# hickory-proto >=0.26.1 (CVE-2026-0118, CVE-2026-0119)
+hickory-proto = "0.26"
+# ring >=0.17.12 (CVE-2025-0009) - requires ethers migration to alloy
+# ring = "0.17"
 
 # --- Post-Quantum Cryptography Dependencies (Replaced with Qanhash) ---
 ring = "0.17.8"
