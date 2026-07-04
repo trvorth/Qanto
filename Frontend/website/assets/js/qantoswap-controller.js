@@ -116,47 +116,8 @@ document.addEventListener("DOMContentLoaded", () => {
             console.log("Transaction confirmed:", receipt);
             showToast(`✅ Swap Successful! TxHash: ${receipt.hash.substring(0, 8)}...${receipt.hash.substring(58)}`);
         } catch (error) {
-            console.warn("Real transaction failed or contract not deployed. Falling back to mock interactive signature:", error);
-            
-            try {
-                // EIP-712 Typed Signature to prove UI interactivity
-                const msgParams = JSON.stringify({
-                    domain: {
-                        chainId: 1234,
-                        name: 'QantoSwap',
-                        version: '1',
-                    },
-                    message: {
-                        from: userAddress,
-                        to: WQNTO_ADDRESS,
-                        value: ethers.parseUnits(amount, 9).toString(),
-                    },
-                    primaryType: 'Swap',
-                    types: {
-                        EIP712Domain: [
-                            { name: 'name', type: 'string' },
-                            { name: 'version', type: 'string' },
-                            { name: 'chainId', type: 'uint256' },
-                        ],
-                        Swap: [
-                            { name: 'from', type: 'address' },
-                            { name: 'to', type: 'address' },
-                            { name: 'value', type: 'uint256' },
-                        ],
-                    },
-                });
-
-                const signature = await window.ethereum.request({
-                    method: 'eth_signTypedData_v4',
-                    params: [userAddress, msgParams],
-                });
-
-                console.log("Interactive Signature Received:", signature);
-                showToast(`✅ Signed Swap Proposal! Signature: ${signature.substring(0, 10)}...`);
-            } catch (sigError) {
-                console.error("Signature request rejected:", sigError);
-                alert("Transaction/Signature rejected by user.");
-            }
+            console.error("Real swap transaction failed:", error);
+            showToast(`❌ Swap failed: ${error.message || 'contract unavailable or transaction rejected'}`);
         } finally {
             payInput.disabled = false;
             payInput.value = '';

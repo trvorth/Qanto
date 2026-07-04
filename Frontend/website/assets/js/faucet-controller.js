@@ -56,11 +56,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
         } catch (error) {
             console.error("Faucet request failed:", error);
-            
-            // Fallback mock success if the RPC is offline/syncing but print warning
-            const mockHash = '0x' + [...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
-            const fallbackHTML = `⚠️ <strong>Connection Warning:</strong> RPC Node returned an error, falling back to mock allocation:<br>✅ 10 QNTO allocated to wallet.<br><span class="tx-hash">TX: ${mockHash}</span>`;
-            showStatus('error', `❌ <strong>Request Failed:</strong> ${error.message}<br>${fallbackHTML}`);
+            showStatus(
+                'error',
+                `❌ <strong>Request Failed:</strong> ${error.message}<br>Please retry once the faucet RPC is healthy. No funds were allocated.`
+            );
         } finally {
             btn.innerText = 'Request 10 QNTO';
             btn.disabled = false;

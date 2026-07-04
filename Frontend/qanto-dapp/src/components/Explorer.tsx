@@ -237,6 +237,14 @@ export function Explorer() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 font-mono text-xs md:text-sm">
+                {data?.latestBlocks?.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-8 px-6 text-center text-slate-500">
+                      No blocks have been indexed yet. Explorer data will appear after the node
+                      mines or syncs real blocks.
+                    </td>
+                  </tr>
+                )}
                 {data?.latestBlocks?.map((block) => (
                   <Fragment key={block.id}>
                     <tr 

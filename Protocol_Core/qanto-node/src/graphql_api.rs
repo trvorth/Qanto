@@ -6,11 +6,66 @@ use crate::graphql_server::{
     transaction_to_gql, Balance, Block, BlockchainInfo, GraphQLContext, MempoolInfo, NetworkStats,
     TransactionGQL,
 };
+use crate::persistence::{balance_key, decode_balance};
 use crate::transaction::Transaction;
 use ahash::AHashMap as HashMap;
 use async_graphql::{Context, Object, Result as GraphQLResult};
 
 pub struct QueryRoot;
+
+async fn load_confirmed_balance_base_units(
+    context: &GraphQLContext,
+    address: &str,
+) -> GraphQLResult<u128> {
+    let normalized_address = if address.starts_with("0x") || address.len() == 40 {
+        crate::transaction::pad_ethereum_address(address)
+    } else {
+        address.to_lowercase()
+    };
+
+    if let Some(cached) = context.node.dag.account_state_cache.get_balance(&normalized_address) {
+        return Ok(cached);
+    }
+
+    let scanned_total = {
+        let utxos = context.node.utxos.read().await;
+        utxos
+            .values()
+            .filter(|utxo| utxo.address == normalized_address)
+            .map(|utxo| utxo.amount)
+            .sum::<u128>()
+    };
+
+    if scanned_total > 0 {
+        context
+            .node
+            .dag
+            .account_state_cache
+            .set_balance(normalized_address.clone(), scanned_total);
+        return Ok(scanned_total);
+    }
+
+    let key = balance_key(&normalized_address);
+    match context.node.dag.db.get(&key) {
+        Ok(Some(bytes)) => match decode_balance(&bytes) {
+            Ok(balance) => {
+                context
+                    .node
+                    .dag
+                    .account_state_cache
+                    .set_balance(normalized_address, balance);
+                Ok(balance)
+            }
+            Err(err) => Err(async_graphql::Error::new(format!(
+                "Failed to decode persisted balance: {err}"
+            ))),
+        },
+        Ok(None) => Ok(0),
+        Err(err) => Err(async_graphql::Error::new(format!(
+            "Failed to load persisted balance: {err}"
+        ))),
+    }
+}
 
 #[Object]
 impl QueryRoot {
@@ -110,8 +165,9 @@ impl QueryRoot {
         ctx: &Context<'_>,
         #[graphql(desc = "Account address")] address: String,
     ) -> GraphQLResult<Balance> {
-        let _context = ctx.data::<GraphQLContext>()?;
-        let balance = 0.0;
+        let context = ctx.data::<GraphQLContext>()?;
+        let balance = load_confirmed_balance_base_units(context, &address).await? as f64
+            / crate::QANTO_SCALE as f64;
 
         Ok(Balance {
             address,
@@ -166,57 +222,7 @@ impl QueryRoot {
         let dag = &context.node.dag;
 
         let blocks = dag.get_blocks_paginated(5, 0).await;
-
-        let mut block_list: Vec<Block> = blocks.into_iter().map(Block::from).collect();
-
-        // If DAG doesn't have blocks (e.g. mock testnet or not mined yet), provide some realistic mock blocks
-        if block_list.is_empty() {
-            let timestamp = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i32;
-
-            block_list = vec![
-                Block {
-                    id: async_graphql::ID("block_10005".to_string()),
-                    height: 10005,
-                    hash: "0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b"
-                        .to_string(),
-                    previous_hash:
-                        "0x0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c"
-                            .to_string(),
-                    timestamp,
-                    transaction_count: 42,
-                    transactions: vec![],
-                },
-                Block {
-                    id: async_graphql::ID("block_10004".to_string()),
-                    height: 10004,
-                    hash: "0x0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c"
-                        .to_string(),
-                    previous_hash:
-                        "0xf9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a"
-                            .to_string(),
-                    timestamp: timestamp - 3,
-                    transaction_count: 51,
-                    transactions: vec![],
-                },
-                Block {
-                    id: async_graphql::ID("block_10003".to_string()),
-                    height: 10003,
-                    hash: "0xf9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a"
-                        .to_string(),
-                    previous_hash:
-                        "0xe8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8"
-                            .to_string(),
-                    timestamp: timestamp - 6,
-                    transaction_count: 38,
-                    transactions: vec![],
-                },
-            ];
-        }
-
-        Ok(block_list)
+        Ok(blocks.into_iter().map(Block::from).collect())
     }
 
     /// Get latest ZK-Rollup batches
