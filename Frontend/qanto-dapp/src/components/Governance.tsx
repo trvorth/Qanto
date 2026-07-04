@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { useAccount, useSendTransaction } from 'wagmi';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useQuery } from '@tanstack/react-query';
 import { request, gql } from 'graphql-request';
 import { AddressDisplay } from './AddressDisplay';
 import { CreateProposal } from './CreateProposal';
+import { ConnectButton, useAccount, useSendTransaction } from '../lib/qanto-wallet';
 
 const GOVERNANCE_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000010';
 const GRAPHQL_ENDPOINT = 'https://trvorth-qanto-testnet.hf.space/graphql';

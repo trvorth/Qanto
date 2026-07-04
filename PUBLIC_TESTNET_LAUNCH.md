@@ -2,6 +2,24 @@
 
 This guide defines the production rollout procedure for the QANTO public testnet stack on a fresh Ubuntu 22.04 LTS host.
 
+## Preferred Path
+
+The canonical deployment path is now the one-click bootstrapper:
+
+```bash
+git clone https://github.com/trvorth/qanto.git
+cd qanto/DevOps/docker
+chmod +x ubuntu-testnet-ignite.sh
+QANTO_DOMAIN=scan.testnet.qanto.org \
+ACME_EMAIL=ops@qanto.org \
+QANTO_REF=main \
+./ubuntu-testnet-ignite.sh
+```
+
+The script installs Docker, prepares `/srv/qanto`, bootstraps the real bootnode validator identity, rewrites `genesis.json` and both node configs into a single consistent state, launches the full stack, and verifies that the first block is produced.
+
+The manual procedure below remains useful for review, audits, or step-by-step recovery work.
+
 ## 1. Prerequisites
 
 ### Minimum host specification
@@ -73,8 +91,6 @@ Create persistent host paths:
 
 ```bash
 sudo mkdir -p /srv/qanto/config
-sudo mkdir -p /srv/qanto/bootnode/{keys,data,logs}
-sudo mkdir -p /srv/qanto/rpcnode/{keys,data,logs}
 sudo mkdir -p /srv/qanto/secrets
 sudo chown -R "$USER":"$USER" /srv/qanto
 chmod 700 /srv/qanto/secrets
@@ -91,20 +107,22 @@ chmod 600 /srv/qanto/secrets/wallet_password.txt
 
 ## 6. Prepare Node Configuration Files
 
-Create two production TOML configs.
+Create two production TOML configs and one genesis file.
 
 - `/srv/qanto/config/bootnode.toml`
 - `/srv/qanto/config/rpcnode.toml`
+- `/srv/qanto/config/genesis.json`
 
-Use the same `network_id`, `genesis_validator`, and chain parameters in both files.
+Use the same `network_id`, `genesis_validator`, and chain parameters in all three files.
 
 ### Bootnode config requirements
 
 - `api_address = "0.0.0.0:8081"`
 - `p2p_address = "/ip4/0.0.0.0/tcp/30303/ws"`
 - `rpc.address = "0.0.0.0:50051"` can remain enabled or be omitted if not required
-- `mining_enabled = false`
+- `mining_enabled = true`
 - `wallet_path`, `p2p_identity_path`, `data_dir`, and `db_path` must match the container-mounted paths under `/opt/qanto`
+- the file must be writable because the node persists `local_full_p2p_address`
 
 ### RPC node config requirements
 
@@ -113,6 +131,7 @@ Use the same `network_id`, `genesis_validator`, and chain parameters in both fil
 - `p2p_address` should bind to the desired internal node port, for example `/ip4/0.0.0.0/tcp/30304/ws`
 - `peers` should include the bootnode multiaddr
 - `mining_enabled = false` for a dedicated public RPC node
+- the file must be writable because the node persists `local_full_p2p_address`
 
 If you already validated configs during local cluster testing, reuse the same consensus-critical values and only change bind addresses and file paths.
 
@@ -136,6 +155,7 @@ ACME_EMAIL=ops@qanto.org
 QANTO_WALLET_PASSWORD_FILE=/srv/qanto/secrets/wallet_password.txt
 QANTO_BOOTNODE_CONFIG_PATH=/srv/qanto/config/bootnode.toml
 QANTO_RPCNODE_CONFIG_PATH=/srv/qanto/config/rpcnode.toml
+QANTO_GENESIS_PATH=/srv/qanto/config/genesis.json
 EOF
 ```
 
@@ -148,6 +168,12 @@ set +a
 ```
 
 ## 8. Launch The Full Public Testnet Stack
+
+If you are running the one-click bootstrapper, it already performs the two-phase boot sequence below:
+
+1. start `bootnode` once to derive the real validator wallet address and peer ID
+2. rewrite `genesis.json`, `bootnode.toml`, and `rpcnode.toml` with that derived identity
+3. relaunch the full stack and wait for readiness plus the first block
 
 From the repository root:
 
@@ -200,6 +226,7 @@ Required:
 - `/health` returns healthy JSON
 - `/stats` returns live network fields
 - `/publish-readiness` returns `"is_ready": true`
+- `/stats` reports `block_count >= 1`
 
 ### Validate gRPC RPC
 
@@ -299,7 +326,7 @@ Fix:
 
 - verify bootnode is reachable and healthy
 - verify bootnode multiaddr is present in `rpcnode.toml`
-- confirm `network_id` and `genesis_validator` match on both configs
+- confirm `network_id` and `genesis_validator` match in `bootnode.toml`, `rpcnode.toml`, and `genesis.json`
 - inspect `docker compose logs -f rpcnode`
 
 ### Explorer returns 502 or blank data

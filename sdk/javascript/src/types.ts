@@ -1,6 +1,5 @@
 // Network types
 export const NETWORKS = {
-  MAINNET: 'mainnet',
   TESTNET: 'testnet',
   LOCAL: 'local'
 } as const;
@@ -9,11 +8,6 @@ export type Network = typeof NETWORKS[keyof typeof NETWORKS];
 
 // Default endpoints
 export const DEFAULT_ENDPOINTS = {
-  [NETWORKS.MAINNET]: {
-    http: 'https://api.qanto.org',
-    websocket: 'wss://ws.qanto.org',
-    graphql: 'https://graphql.qanto.org'
-  },
   [NETWORKS.TESTNET]: {
     http: 'https://testnet-api.qanto.org',
     websocket: 'wss://testnet-ws.qanto.org',
@@ -227,7 +221,7 @@ export interface QantoClientConfig {
   httpEndpoint?: string;
   websocketEndpoint?: string;
   graphqlEndpoint?: string;
-  network?: 'mainnet' | 'testnet' | 'local';
+  network?: 'testnet' | 'local';
   timeout?: number;
   retryAttempts?: number;
   retryDelay?: number;

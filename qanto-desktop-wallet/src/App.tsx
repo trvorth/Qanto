@@ -256,7 +256,7 @@ function Overview({ recentTransactions }: OverviewProps) {
             {balanceStatus === "loading" ? "Refreshing..." : "Refresh"}
           </button>
           <div className="pill">
-            {balanceError ? "RPC Error" : "Mainnet: Coming Soon"}
+            {balanceError ? "RPC Error" : "Public Testnet Alpha"}
           </div>
         </div>
       </div>

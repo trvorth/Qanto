@@ -78,7 +78,7 @@ config:
   
 # Qanto specific configuration
 qanto:
-  network: "mainnet"
+  network: "qanto-testnet"
   bootNodes: []
   rpcCors: "all"
   

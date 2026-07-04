@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useAccount, useSendTransaction } from 'wagmi';
 import { request, gql } from 'graphql-request';
+import { useAccount, useSendTransaction } from '../lib/qanto-wallet';
 
 const GOVERNANCE_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000010';
 const GRAPHQL_ENDPOINT = 'https://trvorth-qanto-testnet.hf.space/graphql';
@@ -118,7 +118,7 @@ export function CreateProposal({ onSuccess, onCancel }: CreateProposalProps) {
     }
   };
 
-  // React to Wagmi transaction success
+  // Continue backend registration after the wallet signs and broadcasts the proposal.
   if (isTxSuccess && status === 'contract') {
     registerWithBackend(generatedCid);
   }
@@ -205,7 +205,7 @@ export function CreateProposal({ onSuccess, onCancel }: CreateProposalProps) {
                 }`}
               >
                 {status === 'ipfs' && 'Uploading to IPFS...'}
-                {status === 'contract' && 'Signing on Wagmi...'}
+                {status === 'contract' && 'Signing transaction...'}
                 {status === 'graphql' && 'Registering on Node...'}
                 {status === 'idle' && 'Submit Proposal'}
                 {status === 'error' && 'Retry Submission'}

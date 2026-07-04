@@ -10,7 +10,7 @@ export function Hero() {
 
         <div className="max-w-3xl flex flex-col items-center">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 text-xs font-semibold text-violet-300 mb-6 uppercase tracking-wider font-mono">
-            🛡️ Mainnet Alpha: Neural Network Active
+            🛡️ Public Testnet Alpha: Neural Network Active
           </div>
 
           <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white mb-6 font-sans leading-tight">

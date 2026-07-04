@@ -77,7 +77,7 @@
       "decimals": 9,
       "standard": "ERC-20 Compatible",
       "solidityVersion": "^0.8.20",
-      "address": "TBD_UPON_MAINNET_DEPLOYMENT",
+      "address": "TBD_UPON_PUBLIC_TESTNET_DEPLOYMENT",
       "abiEndpoint": "https://qanto.org/assets/json/WQNTO_ABI.json",
       "sourceCode": "https://github.com/trvorth/Qanto/blob/main/SmartContracts/contracts/WQNTO.sol"
     }

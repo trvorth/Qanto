@@ -11,6 +11,7 @@ release/
 *.o
 *.obj
 Cargo.lock
+!Cargo.lock
 
 # [NODE / NPM]
 node_modules/
@@ -19,6 +20,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 package-lock.json
+!Frontend/qanto-dapp/package-lock.json
+!Frontend/qantoscan/package-lock.json
+!qanto-desktop-wallet/package-lock.json
+!SmartContracts/package-lock.json
 website/dist/
 website/node_modules/
 contracts/node_modules/
@@ -104,4 +109,3 @@ Infrastructure/node-operator/keys/README.md
 .npm/
 .rustup/
 peer_cache.json
-

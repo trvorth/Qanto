@@ -1,6 +1,7 @@
 use crate::keystore::{get_key_material, record_failed_unlock, unlock_wallet_impl, WalletSessionState};
 use bincode::Options;
 use my_blockchain::qanto_hash;
+#[cfg(feature = "pqcrypto-legacy")]
 use pqcrypto_traits::sign::{DetachedSignature as _, SecretKey as _};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};

@@ -187,7 +187,7 @@ impl JsonRpcServer {
     }
 
     async fn handle_chain_id() -> Value {
-        json!("0x1") // Ethereum mainnet chain ID for compatibility
+        json!("0x1") // Ethereum chain ID 1 for compatibility
     }
 
     async fn handle_block_number(blockchain: &Arc<crate::Blockchain>) -> Value {
@@ -388,7 +388,7 @@ impl JsonRpcServer {
     }
 
     async fn handle_net_version() -> Value {
-        json!("1") // Ethereum mainnet network ID
+        json!("1") // Ethereum network ID 1
     }
 
     async fn handle_client_version() -> Value {

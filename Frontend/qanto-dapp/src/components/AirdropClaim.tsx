@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { toast } from 'react-hot-toast';
 import { useQantoBalance } from '../hooks/useQantoBalance';
+import {
+  ConnectButton,
+  useAccount,
+  useSendTransaction,
+  useWaitForTransactionReceipt,
+} from '../lib/qanto-wallet';
 
 const AIRDROP_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000008';
 
@@ -24,7 +28,7 @@ export function AirdropClaim() {
           toast.error('Insufficient QNTO balance for execution.');
         } else {
           toast.error('Blockchain transaction failed.');
-          console.error('Wagmi Core Error:', error);
+          console.error('Wallet transaction error:', error);
         }
       }
     }

@@ -1,10 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
-import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
-import { useConnectModal } from '@rainbow-me/rainbowkit';
 import { toast } from 'react-hot-toast';
 import { useQantoBalance } from '../hooks/useQantoBalance';
 import { privateKeyToAccount } from 'viem/accounts';
 import { keccak256, stringToBytes } from 'viem';
+import {
+  useAccount,
+  useConnectModal,
+  useSendTransaction,
+  useWaitForTransactionReceipt,
+} from '../lib/qanto-wallet';
 
 const BRIDGE_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000013';
 const REST_BASE = 'https://trvorth-qanto-testnet.hf.space';

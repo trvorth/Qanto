@@ -15,7 +15,7 @@ data:
       "/dns4/bootnode-2.qanto.network/tcp/30303/ws/p2p/12D3KooWBootnode2"
     ]
     local_full_p2p_address = ""
-    network_id = "qanto-mainnet"
+    network_id = "qanto-testnet"
     chain_id = 1234
     genesis_validator = "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3"
     contract_address = "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"
@@ -69,9 +69,9 @@ data:
 
   genesis.json: |
     {
-      "name": "Qanto Mainnet",
-      "id": "qanto-mainnet",
-      "chainType": "Live",
+      "name": "Qanto Testnet",
+      "id": "qanto-testnet",
+      "chainType": "Testnet",
       "bootNodes": [
         "/dns4/bootnode-1.qanto.network/tcp/30303/ws/p2p/12D3KooWBootnode1",
         "/dns4/bootnode-2.qanto.network/tcp/30303/ws/p2p/12D3KooWBootnode2"

@@ -1,8 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
-import { useConnectModal } from '@rainbow-me/rainbowkit';
 import { toast } from 'react-hot-toast';
 import { useQantoBalance } from '../hooks/useQantoBalance';
+import {
+  useAccount,
+  useConnectModal,
+  useSendTransaction,
+  useWaitForTransactionReceipt,
+} from '../lib/qanto-wallet';
 
 const STAKING_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000011';
 const REST_BASE = 'https://trvorth-qanto-testnet.hf.space';
@@ -69,7 +73,7 @@ export const Staking = () => {
         toast.error('Insufficient QNTO balance for execution.');
       } else {
         toast.error('Blockchain transaction failed.');
-        console.error('Wagmi Core Error:', sendError);
+        console.error('Wallet transaction error:', sendError);
       }
     }
   }, [sendError]);

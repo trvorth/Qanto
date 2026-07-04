@@ -1,6 +1,6 @@
-import { useAccount, useBalance } from 'wagmi';
 import { useState, useEffect, useCallback } from 'react';
 import { request, gql } from 'graphql-request';
+import { useAccount, useBalance } from '../lib/qanto-wallet';
 
 const GRAPHQL_ENDPOINT = 'https://trvorth-qanto-testnet.hf.space/graphql';
 const RPC_ENDPOINT = 'https://trvorth-qanto-testnet.hf.space/rpc';
@@ -15,8 +15,8 @@ export function useQantoBalance() {
     isError: false,
   });
 
-  // Wagmi useBalance hook
-  const { data: wagmiBalance, refetch: refetchWagmi } = useBalance({
+  // Primary injected-wallet balance query.
+  const { data: walletBalance, refetch: refetchWalletBalance } = useBalance({
     address,
     query: {
       enabled: isConnected && !!address,
@@ -85,8 +85,8 @@ export function useQantoBalance() {
 
   // Refresh balance
   const refresh = useCallback(async () => {
-    if (refetchWagmi) {
-      const { data } = await refetchWagmi();
+    if (refetchWalletBalance) {
+      const { data } = await refetchWalletBalance();
       if (data) {
         const val = Number(data.value) / 10 ** 18; // Convert to standard balance representation
         setBalanceData({
@@ -100,12 +100,12 @@ export function useQantoBalance() {
       }
     }
     await fetchFallbackBalance();
-  }, [refetchWagmi, fetchFallbackBalance]);
+  }, [refetchWalletBalance, fetchFallbackBalance]);
 
   useEffect(() => {
     if (isConnected && address) {
-      if (wagmiBalance) {
-        const val = Number(wagmiBalance.value) / 10 ** 18;
+      if (walletBalance) {
+        const val = Number(walletBalance.value) / 10 ** 18;
         setBalanceData({
           confirmed: val,
           pending: 0,
@@ -125,7 +125,7 @@ export function useQantoBalance() {
         isError: false,
       });
     }
-  }, [isConnected, address, wagmiBalance, fetchFallbackBalance]);
+  }, [isConnected, address, walletBalance, fetchFallbackBalance]);
 
   return {
     ...balanceData,

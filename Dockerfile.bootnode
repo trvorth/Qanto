@@ -1,23 +1,26 @@
 # Build Stage
-FROM rust:1.75 AS builder
+FROM rust:1.77-bookworm AS builder
+RUN apt-get update && apt-get install -y pkg-config libssl-dev cmake build-essential clang llvm git ca-certificates protobuf-compiler
 WORKDIR /usr/src/qanto
 COPY . .
-WORKDIR /usr/src/qanto/Protocol_Core/qanto-node
-RUN apt-get update && apt-get install -y protobuf-compiler cmake
-RUN cargo build --release
+RUN cargo build --release --locked --bin qanto -j 1
 
 # Runtime Stage
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y libssl-dev ca-certificates curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /usr/src/qanto/target/release/qanto /app/qanto-node
 COPY --from=builder /usr/src/qanto/config.toml /app/
 
-# Expose Hugging Face Proxy Port (7860) and P2P (30303)
-EXPOSE 7860 30303 9090
+# Expose HTTP API (8081), gRPC RPC (50051), P2P (30303), and Metrics (9090)
+EXPOSE 8081 30303 50051 9090
 
 ENV WALLET_PASSWORD=""
 ENV RUST_LOG="info"
 
+# Add Healthcheck to automatically monitor node health
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD curl -f http://localhost:8081/health || exit 1
+
 # Start the node (wallet auto-generated headlessly if missing)
-CMD ./qanto-node start --config config.toml --wallet wallet.key --rpc-port 7860 --p2p-port 30303 --listen 0.0.0.0 --bootnode --mine
+CMD ./qanto-node start --config config.toml --wallet wallet.key --rpc-port 50051 --p2p-port 30303 --listen 0.0.0.0 --bootnode --mine

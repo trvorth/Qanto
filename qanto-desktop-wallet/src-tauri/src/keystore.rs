@@ -478,7 +478,9 @@ pub async fn get_key_material(state: &WalletSessionState) -> Option<UnlockedKeyM
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "pqcrypto-legacy")]
     use pqcrypto_dilithium::dilithium3;
+    #[cfg(feature = "pqcrypto-legacy")]
     use pqcrypto_traits::sign::{DetachedSignature, PublicKey, SecretKey};
 
     const TEST_MNEMONIC: &str =
@@ -511,6 +513,7 @@ mod tests {
         assert_ne!(first.dilithium3_secret_key_b64, second.dilithium3_secret_key_b64);
     }
 
+    #[cfg(feature = "pqcrypto-legacy")]
     #[test]
     fn derived_dilithium_keys_work_with_standard_verifier() {
         let payload = build_wallet_payload(TEST_MNEMONIC.to_string()).expect("payload");

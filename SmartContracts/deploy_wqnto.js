@@ -9,7 +9,7 @@
  *   RPC_URL=https://your-rpc PRIVATE_KEY=0x... node deploy_wqnto.js
  *
  * Environment Variables:
- *   RPC_URL      - Target EVM RPC endpoint (e.g. Ethereum mainnet, Polygon, BSC)
+ *   RPC_URL      - Target EVM RPC endpoint (e.g. Ethereum, Polygon, BSC)
  *   PRIVATE_KEY  - Deployer wallet private key (without 0x prefix is also accepted)
  *   GAS_PRICE    - (Optional) Gas price in gwei
  */

@@ -28,7 +28,7 @@ function Header({ isConnected }: { isConnected: boolean }) {
             : '0 0 8px var(--qanto-danger)',
         }} />
         <span style={styles.statusLabel}>
-          {isConnected ? 'LIVE — Node Connected' : 'OFFLINE — Awaiting Node'}
+          {isConnected ? 'LIVE — Testnet Node Connected' : 'OFFLINE — Awaiting Testnet Node'}
         </span>
       </div>
     </header>
@@ -122,8 +122,8 @@ function LoadingState() {
   return (
     <div style={styles.loadingContainer}>
       <div style={styles.loadingHex}>⬡</div>
-      <p style={styles.loadingText}>Connecting to Qanto Node...</p>
-      <p style={styles.loadingHint}>Awaiting node at {import.meta.env.VITE_QANTO_NODE_URL ?? 'http://127.0.0.1:8081'}</p>
+      <p style={styles.loadingText}>Connecting to Qanto Testnet Node...</p>
+      <p style={styles.loadingHint}>Awaiting testnet node at {import.meta.env.VITE_QANTO_NODE_URL ?? 'http://127.0.0.1:8081'}</p>
     </div>
   );
 }

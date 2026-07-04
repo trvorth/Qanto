@@ -233,7 +233,7 @@ impl Default for Config {
             api_address: "127.0.0.1:8081".to_string(),
             peers: vec![],
             local_full_p2p_address: None,
-            network_id: "qanto-testnet-phoenix".to_string(),
+            network_id: "qanto-testnet".to_string(),
             chain_id: Some(1234),
             genesis_validator: "0000000000000000000000000000000000000000000000000000000000000000"
                 .to_string(),
@@ -577,7 +577,7 @@ impl Config {
             api_address: "127.0.0.1:8081".to_string(),
             peers: vec![],
             local_full_p2p_address: None,
-            network_id: "qanto-mainnet-performance".to_string(),
+            network_id: "qanto-testnet".to_string(),
             genesis_validator: "0000000000000000000000000000000000000000000000000000000000000000"
                 .to_string(),
             contract_address: "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"

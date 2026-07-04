@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Toaster } from 'react-hot-toast';
 import { Menu, X } from 'lucide-react';
+import { ConnectButton } from '../lib/qanto-wallet';
 
 export const Layout = () => {
   const location = useLocation();

@@ -51,7 +51,7 @@ spec:
         - name: RUST_LOG
           value: "info"
         - name: QANTO_NETWORK
-          value: "mainnet"
+          value: "testnet"
         - name: QANTO_NODE_TYPE
           value: "full"
         - name: QANTO_DATA_DIR

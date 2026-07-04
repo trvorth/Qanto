@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
 import { connectWallet } from "./web3-provider.js";
 
-// Deterministic Smart Contract Addresses for QANTO Mainnet Alpha
+// Deterministic Smart Contract Addresses for QANTO Public Testnet Alpha
 export const QANTO_CONTRACTS = {
     WQNTO: "0x9F00000000000000000000000000000000000001",
     QUSD: "0x9F00000000000000000000000000000000000002",
@@ -43,7 +43,7 @@ export async function executeSwap(amountIn, tokenPath) {
         return true;
     } catch (error) {
         console.error("Swap execution failed (Fallback to UI Simulation):", error);
-        alert("Testnet AMM Routing Simulated. Connect to Mainnet for full execution.");
+        alert("Testnet AMM routing simulated. Connect to the public testnet router for full execution.");
         return false;
     }
 }

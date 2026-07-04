@@ -2,11 +2,11 @@
 
 ## Overview
 
-Qanto is committed to ensuring the long-term security of its heterogeneous, post-quantum Layer-0 protocol. As the project is currently in Phase 1 - Foundation (In Progress), no official releases have been published, and thus no versions are currently supported with security updates. This policy outlines our approach to security during development and provides guidance for reporting vulnerabilities as we progress toward testnet and mainnet launches.
+Qanto is committed to ensuring the long-term security of its heterogeneous, post-quantum Layer-0 protocol. As the project is currently in Phase 1 - Foundation (In Progress), no official releases have been published, and thus no versions are currently supported with security updates. This policy outlines our approach to security during development and provides guidance for reporting vulnerabilities as we progress toward staged public testnet launches.
 
 ## Supported Versions
 
-As Qanto is in pre-release development, no versions are currently supported with security updates. Once the initial testnet is launched, we will publish a versioning scheme and designate supported versions in this section. Security updates will be provided for all active testnet and mainnet releases, with a deprecation process outlined prior to end-of-life for any version.
+As Qanto is in pre-release development, no versions are currently supported with security updates. Once the initial testnet is launched, we will publish a versioning scheme and designate supported versions in this section. Security updates will be provided for all active testnet releases, with a deprecation process outlined prior to end-of-life for any version.
 
 ## Reporting a Vulnerability
 
@@ -42,7 +42,7 @@ As a pre-release project, Qanto is actively developing its security infrastructu
 - Regular code reviews by the core development team.
 
 ### Future Audits
-We are preparing for a comprehensive third-party security audit prior to mainnet launch. The audit plan, including scope and timeline, will be detailed in our Security Audit Plan (docs/security_audit_plan.md) once available.
+We are preparing for a comprehensive third-party security audit prior to broader public testnet expansion. The audit plan, including scope and timeline, will be detailed in our Security Audit Plan (docs/security_audit_plan.md) once available.
 
 ### Community Involvement
 We encourage the community to contribute to security through code reviews and vulnerability reports. Please refer to our Contribution Guidelines (CONTRIBUTING.md) for participation details. All contributors are expected to adhere to our Code of Conduct.

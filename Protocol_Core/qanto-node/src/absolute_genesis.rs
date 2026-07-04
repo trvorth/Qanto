@@ -410,7 +410,7 @@ mod tests {
 
     fn sample_config() -> Config {
         let mut config = Config::default();
-        config.network_id = "qanto-local-testnet-alpha".to_string();
+        config.network_id = "qanto-testnet".to_string();
         config.chain_id = Some(1234);
         config.genesis_validator =
             "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3".to_string();
@@ -424,7 +424,7 @@ mod tests {
         fs::write(
             &genesis_path,
             r#"{
-                "networkId": "qanto-local-testnet-alpha",
+                "networkId": "qanto-testnet",
                 "chainId": 1234,
                 "genesisTimestamp": 1717250400,
                 "genesisValidator": "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3",
@@ -465,7 +465,7 @@ mod tests {
         fs::write(
             &genesis_path,
             r#"{
-                "networkId": "qanto-local-testnet-alpha",
+                "networkId": "qanto-testnet",
                 "chainId": 1234,
                 "genesisTimestamp": 1717250400,
                 "genesisValidator": "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3",

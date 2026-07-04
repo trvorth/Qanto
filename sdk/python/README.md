@@ -8,7 +8,7 @@ A comprehensive Python SDK for interacting with the Qanto Network blockchain.
 - **WebSocket Client**: Real-time subscriptions for blocks, transactions, and network events
 - **GraphQL Client**: Flexible querying with subscriptions support
 - **Type Safety**: Full type hints and Pydantic models
-- **Multi-Network Support**: Mainnet, testnet, and custom network configurations
+- **Multi-Network Support**: Public testnet, local development, and custom network configurations
 - **Error Handling**: Comprehensive error types and automatic retry logic
 - **Rate Limiting**: Built-in rate limiting for API calls
 - **Utilities**: Address validation, transaction building, and more
@@ -35,7 +35,7 @@ pip install -e .
 from qanto import QantoClient, Network
 
 # Initialize client
-client = QantoClient(network=Network.MAINNET)
+client = QantoClient(network=Network.TESTNET)
 
 # Get node information
 node_info = client.get_node_info()
@@ -65,7 +65,7 @@ import asyncio
 from qanto import QantoClient, Network
 
 async def main():
-    client = QantoClient(network=Network.MAINNET)
+    client = QantoClient(network=Network.TESTNET)
     
     # Get node info asynchronously
     node_info = await client.aget_node_info()
@@ -97,7 +97,7 @@ async def handle_new_transaction(tx):
     print(f"New transaction: {tx['hash']}")
 
 async def main():
-    ws = QantoWebSocket(network=Network.MAINNET)
+    ws = QantoWebSocket(network=Network.TESTNET)
     
     # Set up event handlers
     ws.on('block', handle_new_block)
@@ -124,7 +124,7 @@ asyncio.run(main())
 from qanto import QantoGraphQL, Network, DEFAULT_ENDPOINTS
 
 # Initialize GraphQL client
-graphql = QantoGraphQL(DEFAULT_ENDPOINTS[Network.MAINNET].graphql)
+graphql = QantoGraphQL(DEFAULT_ENDPOINTS[Network.TESTNET].graphql)
 
 # Get blockchain info
 blockchain_info = graphql.get_blockchain_info()
@@ -161,7 +161,7 @@ The main client class for interacting with the Qanto Network.
 from qanto import QantoClient, Network, QantoClientConfig
 
 # Basic initialization
-client = QantoClient(network=Network.MAINNET)
+client = QantoClient(network=Network.TESTNET)
 
 # Custom configuration
 config = QantoClientConfig(
@@ -212,7 +212,7 @@ WebSocket client for real-time subscriptions.
 ```python
 from qanto import QantoWebSocket, Network
 
-ws = QantoWebSocket(network=Network.MAINNET)
+ws = QantoWebSocket(network=Network.TESTNET)
 
 # Event handlers
 ws.on('connected', lambda: print("Connected"))
@@ -264,12 +264,11 @@ async for block in graphql.subscribe_to_blocks():
 from qanto import Network, DEFAULT_ENDPOINTS
 
 # Available networks
-Network.MAINNET
 Network.TESTNET
 Network.DEVNET
 
 # Default endpoints
-endpoints = DEFAULT_ENDPOINTS[Network.MAINNET]
+endpoints = DEFAULT_ENDPOINTS[Network.TESTNET]
 print(endpoints.http)      # HTTP API endpoint
 print(endpoints.websocket) # WebSocket endpoint
 print(endpoints.graphql)   # GraphQL endpoint

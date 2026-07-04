@@ -12,7 +12,6 @@ export const VERSION = '1.0.0';
 
 // Network constants
 export const NETWORKS = {
-  MAINNET: 'mainnet',
   TESTNET: 'testnet',
   LOCAL: 'local'
 } as const;
@@ -21,11 +20,6 @@ export type Network = typeof NETWORKS[keyof typeof NETWORKS];
 
 // Default endpoints
 export const DEFAULT_ENDPOINTS = {
-  [NETWORKS.MAINNET]: {
-    http: 'https://api.qanto.org',
-    websocket: 'wss://ws.qanto.org',
-    graphql: 'https://graphql.qanto.org'
-  },
   [NETWORKS.TESTNET]: {
     http: 'https://testnet-api.qanto.org',
     websocket: 'wss://testnet-ws.qanto.org',

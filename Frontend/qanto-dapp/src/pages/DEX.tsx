@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { useConnectModal } from '@rainbow-me/rainbowkit';
 import { toast } from 'react-hot-toast';
+import {
+  useAccount,
+  useConnectModal,
+  useWaitForTransactionReceipt,
+  useWriteContract,
+} from '../lib/qanto-wallet';
 
 const DEX_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000012';
 
@@ -42,7 +46,7 @@ export const DEX = () => {
           toast.error('Insufficient QNTO balance for execution.');
         } else {
           toast.error('Blockchain transaction failed.');
-          console.error('Wagmi Core Error:', error);
+          console.error('Wallet transaction error:', error);
         }
       }
     }

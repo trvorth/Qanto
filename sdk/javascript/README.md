@@ -8,7 +8,7 @@ A comprehensive TypeScript/JavaScript SDK for interacting with the Qanto Network
 - **WebSocket Client**: Real-time subscriptions for blocks, transactions, and network events
 - **GraphQL Client**: Advanced querying capabilities with subscriptions
 - **Type Safety**: Full TypeScript support with comprehensive type definitions
-- **Multi-Network**: Support for mainnet, testnet, and local development
+- **Multi-Network**: Support for public testnet, local development, and custom endpoints
 - **Error Handling**: Robust error handling with custom error types
 - **Utilities**: Helper functions for validation, formatting, and blockchain operations
 
@@ -29,11 +29,11 @@ import { QantoClient, NETWORKS } from '@qanto/sdk';
 
 // Initialize client
 const client = new QantoClient({
-  network: NETWORKS.MAINNET,
+  network: NETWORKS.TESTNET,
   // Optional: custom endpoints
-  httpEndpoint: 'https://api.qanto.org',
-  wsEndpoint: 'wss://ws.qanto.org',
-  graphqlEndpoint: 'https://graphql.qanto.org'
+  httpEndpoint: 'https://testnet-api.qanto.org',
+  wsEndpoint: 'wss://testnet-ws.qanto.org',
+  graphqlEndpoint: 'https://testnet-graphql.qanto.org'
 });
 
 // Get blockchain info
@@ -168,12 +168,12 @@ import { NETWORKS, DEFAULT_ENDPOINTS } from '@qanto/sdk';
 
 // Predefined networks
 const config = {
-  network: NETWORKS.MAINNET, // or TESTNET, LOCAL
+  network: NETWORKS.TESTNET, // or LOCAL
 };
 
 // Custom endpoints
 const customConfig = {
-  network: NETWORKS.MAINNET,
+  network: NETWORKS.TESTNET,
   httpEndpoint: 'https://custom-api.example.com',
   wsEndpoint: 'wss://custom-ws.example.com',
   graphqlEndpoint: 'https://custom-graphql.example.com'

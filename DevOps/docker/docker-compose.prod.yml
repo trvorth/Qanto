@@ -18,6 +18,7 @@ services:
     init: true
     environment:
       CONFIG_PATH: /opt/qanto/config/config.toml
+      QANTO_GENESIS_FILE: /opt/qanto/config/genesis.json
       WALLET_PATH: /opt/qanto/keys/wallet.key
       P2P_IDENTITY: /opt/qanto/keys/p2p_identity.key
       PEER_CACHE: /opt/qanto/keys/peer_cache.json
@@ -33,6 +34,9 @@ services:
       - type: bind
         source: ${QANTO_BOOTNODE_CONFIG_PATH:?set QANTO_BOOTNODE_CONFIG_PATH}
         target: /opt/qanto/config/config.toml
+      - type: bind
+        source: ${QANTO_GENESIS_PATH:?set QANTO_GENESIS_PATH}
+        target: /opt/qanto/config/genesis.json
         read_only: true
       - bootnode_keys:/opt/qanto/keys
       - bootnode_data:/opt/qanto/data
@@ -74,6 +78,7 @@ services:
         condition: service_healthy
     environment:
       CONFIG_PATH: /opt/qanto/config/config.toml
+      QANTO_GENESIS_FILE: /opt/qanto/config/genesis.json
       WALLET_PATH: /opt/qanto/keys/wallet.key
       P2P_IDENTITY: /opt/qanto/keys/p2p_identity.key
       PEER_CACHE: /opt/qanto/keys/peer_cache.json
@@ -91,6 +96,9 @@ services:
       - type: bind
         source: ${QANTO_RPCNODE_CONFIG_PATH:?set QANTO_RPCNODE_CONFIG_PATH}
         target: /opt/qanto/config/config.toml
+      - type: bind
+        source: ${QANTO_GENESIS_PATH:?set QANTO_GENESIS_PATH}
+        target: /opt/qanto/config/genesis.json
         read_only: true
       - rpcnode_keys:/opt/qanto/keys
       - rpcnode_data:/opt/qanto/data
