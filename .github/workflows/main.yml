@@ -10,26 +10,24 @@ jobs:
   rust-backend-tests:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install Rust Stable
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@stable
       with:
-        profile: minimal
         toolchain: 1.81.0
-        override: true
     - name: Cargo Check Node
       run: cd Protocol_Core/qanto-node && cargo check --release
 
   frontend-build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
         node-version: '20'
     - name: Install & Build Vite
       run: |
         cd Frontend/website
-        npm install
+        npm ci
         npm run build

@@ -12,7 +12,7 @@
     "deploy:pages": "vite build && wrangler pages deploy ./dist --project-name ${CLOUDFLARE_PAGES_PROJECT:-primary} --branch ${CLOUDFLARE_PAGES_BRANCH:-production}"
   },
   "dependencies": {
-    "ethers": "^6.16.0",
+    "ethers": "^6.17.0",
     "lucide-static": "^0.344.0"
   },
   "devDependencies": {

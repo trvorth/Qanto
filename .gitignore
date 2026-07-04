@@ -22,7 +22,9 @@ yarn-error.log*
 package-lock.json
 !Frontend/qanto-dapp/package-lock.json
 !Frontend/qantoscan/package-lock.json
+!Frontend/website/package-lock.json
 !qanto-desktop-wallet/package-lock.json
+!Scripts/tools/telemetry-server/package-lock.json
 !SmartContracts/package-lock.json
 website/dist/
 website/node_modules/
