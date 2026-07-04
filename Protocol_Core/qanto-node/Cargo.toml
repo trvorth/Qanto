@@ -17,7 +17,7 @@ repository = "https://github.com/trvorth/qanto"
 qanto-core = { path = "../qanto-core" }
 qanto-rpc = { path = "../qanto-rpc" }
 tfhe = { version = "1.4.1", features = ["boolean", "shortint", "integer"] }
-libp2p = { version = "0.56.0", features = ["tokio", "tcp", "noise", "yamux", "identify", "ping", "kad", "mdns", "gossipsub", "request-response", "autonat", "relay", "dcutr", "upnp", "macros", "websocket", "dns"] }
+libp2p = { version = "0.56.0", default-features = false, features = ["tokio", "tcp", "dns", "noise", "yamux", "identify", "ping", "kad", "gossipsub", "request-response", "autonat", "relay", "dcutr", "upnp", "macros", "websocket"] }
 k256 = { version = "0.13.4", features = ["ecdsa"] }
 sha3 = "0.10.8"
 rlp = "0.5.2"
@@ -74,8 +74,13 @@ lazy_static = "1.5.0"
 once_cell = "1.19.0"
 dashmap = "5.5.3"
 crossbeam = "0.8.4"
+crossbeam-queue = "0.3.12"
 crossbeam-channel = "0.5.13"
 crossbeam-utils = "0.8.20"
+bumpalo = "3.20.3"
+memmap2 = "0.9.11"
+zstd = "0.13"
+blake3 = "1.8.5"
 parking_lot = "0.12.3"
 regex = "1.10.5"
 url = "2.5.2"
@@ -108,9 +113,9 @@ rpassword = "7.3.1"
 colored = "2.0"
 libc = "0.2.155"
 
-# --- Async Traits ---
-async-trait = "0.1.80"
-tokio-util = { version = "0.7.11", features = ["compat"] }
+# --- Async Traits --- async-trait = "0.1.83"
+async-trait = "0.1.83"
+tokio-util = { version = "0.7.18", features = ["compat"] }
 
 # --- Signal Handling ---
 signal-hook = "0.3.17"
@@ -136,37 +141,23 @@ ark-r1cs-std = { version = "0.5.0", default-features = false, optional = true }
 ark-crypto-primitives = { version = "0.5.0", default-features = false, features = ["sponge", "r1cs", "crh"], optional = true }
 ark-serialize = { version = "0.5.0", optional = true }
 ark-snark = { version = "0.5.0", default-features = false, optional = true }
+halo2_proofs = { version = "0.3.0", optional = true }
+pasta_curves = { version = "0.5.1", optional = true }
 
-# --- Security patches for transitive dependencies (CVE fixes) ---
+# --- Security patches for transitive dependencies (CVE fixes) - force via direct dependencies ---
 # quick-xml >=0.41.0 (CVE-2026-0194, CVE-2026-0195)
-quick-xml = "0.41"
+quick-xml = { workspace = true }
 # quinn-proto >=0.11.15 (CVE-2026-0185)
-quinn-proto = "0.11.15"
+quinn-proto = { workspace = true }
 # rustls-webpki >=0.103.13 (CVE-2026-0098, CVE-2026-0104)
-rustls-webpki = "0.103.13"
-# Force rustls >=0.23 to use new webpki (CVE-2026-0098, CVE-2026-0104)
-rustls = "0.23"
-# hickory-proto >=0.26.1 (CVE-2026-0118, CVE-2026-0119)
-hickory-proto = "0.26"
-# ring >=0.17.12 (CVE-2025-0009) - requires ethers migration to alloy
-# ring = "0.17"
-
-# --- Post-Quantum Cryptography Dependencies (Replaced with Qanhash) ---
-ring = "0.17.8"
-memmap2 = "0.9.8"
-crossbeam-queue = "0.3.12"
-bumpalo = "3.20.3"
-criterion = "0.8.2"
-metrics = "0.24.6"
-halo2_proofs = "0.3.0"
-zstd = "0.13"
-blake3 = "1.8.5"
-pasta_curves = "0.5.1"
-# p256 = "0.13.2" # Replaced with qanto_compat
-# pqc_dilithium = { version = "0.2.0", features = ["mode5"] } # Replaced with qanto_compat
-
-[build-dependencies]
-tonic-build = { version = "0.11.0", features = ["prost"] }
+rustls-webpki = { workspace = true }
+# ring >=0.17.12 (CVE-2025-0009)
+ring = { workspace = true }
+# hickory-proto >=0.26.1 and hickory-resolver >=0.26.1 (CVE-2026-0118, CVE-2026-0119) - from libp2p-dns
+hickory-proto = { workspace = true }
+hickory-resolver = { workspace = true }
+# rustls >=0.23 to use new webpki (CVE-2026-0098, CVE-2026-0104)
+rustls = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.10.1"
@@ -175,6 +166,7 @@ mockall = "0.12.1"
 assert_cmd = "2.0.14"
 predicates = "3.1.0"
 proptest = "1.4"
+criterion = "0.8.2"
 
 
 [features]
@@ -199,6 +191,8 @@ zk = [
   "dep:ark-crypto-primitives",
   "dep:ark-serialize",
   "dep:ark-snark",
+  "dep:halo2_proofs",
+  "dep:pasta_curves",
 ]
 # ai feature removed for production hardening
 infinite-strata = []
@@ -243,4 +237,3 @@ path = "src/performance_benchmark.rs"
 [[bin]]
 name = "genesis_flood"
 path = "src/bin/genesis_flood.rs"
-

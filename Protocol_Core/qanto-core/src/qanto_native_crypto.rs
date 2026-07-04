@@ -519,13 +519,25 @@ impl QantoPQPublicKey {
     /// the 'S' portion of the signature using public data and compares it to the 'S' portion
     /// provided in the signature itself. This replaces the flawed "reconstruction" method.
     /// Verify post-quantum signature against message
+    #[cfg(feature = "pqcrypto-legacy")]
     pub fn verify(&self, message: &[u8], signature: &QantoPQSignature) -> CryptoResult<()> {
+        use pqcrypto_dilithium::dilithium3;
         let pub_key = dilithium3::PublicKey::from_bytes(&self.0)
             .map_err(|_| QantoNativeCryptoError::InvalidPublicKey)?;
         let detached_signature = dilithium3::DetachedSignature::from_bytes(&signature.0)
             .map_err(|_| QantoNativeCryptoError::InvalidFormat)?;
         dilithium3::verify_detached_signature(&detached_signature, message, &pub_key)
             .map_err(|_| QantoNativeCryptoError::SignatureVerificationFailed)
+    }
+
+    #[cfg(not(feature = "pqcrypto-legacy"))]
+    pub fn verify(&self, message: &[u8], signature: &QantoPQSignature) -> CryptoResult<()> {
+        let signature = dilithium::DilithiumSignature::from_slice(signature.as_bytes());
+        if DilithiumKeyPair::verify(self.as_bytes(), &signature, message, b"", ML_DSA_65) {
+            Ok(())
+        } else {
+            Err(QantoNativeCryptoError::SignatureVerificationFailed)
+        }
     }
 }
 
@@ -547,23 +559,53 @@ impl QantoPQPrivateKey {
     }
 
     /// Derive public key from private key
+    #[cfg(feature = "pqcrypto-legacy")]
     pub fn public_key(&self) -> QantoPQPublicKey {
+        use pqcrypto_dilithium::dilithium3;
         let public_key =
-            derive_dilithium3_public_key(&self.0).expect("stored Dilithium3 key must be valid");
+            dilithium3::PublicKey::from_bytes(&self.0).expect("stored Dilithium3 key must be valid");
+        QantoPQPublicKey(public_key.as_bytes().to_vec())
+    }
+
+    #[cfg(not(feature = "pqcrypto-legacy"))]
+    pub fn public_key(&self) -> QantoPQPublicKey {
+        let public_key = derive_dilithium3_public_key(&self.0)
+            .expect("stored ML-DSA-65 private key must derive a valid public key");
         QantoPQPublicKey(public_key)
     }
 
     /// Creates a post-quantum signature using a correct hash-based `R | S` scheme.
     /// This replaces the previously flawed signing logic.
     /// Sign message with post-quantum private key
+    #[cfg(feature = "pqcrypto-legacy")]
     pub fn sign(&self, message: &[u8]) -> CryptoResult<QantoPQSignature> {
+        use pqcrypto_dilithium::dilithium3;
         let secret_key = dilithium3::SecretKey::from_bytes(&self.0)
             .map_err(|_| QantoNativeCryptoError::InvalidPrivateKey)?;
         let signature = dilithium3::detached_sign(message, &secret_key);
         Ok(QantoPQSignature(signature.as_bytes().to_vec()))
     }
 
+    #[cfg(not(feature = "pqcrypto-legacy"))]
+    pub fn sign(&self, message: &[u8]) -> CryptoResult<QantoPQSignature> {
+        let public_key = derive_dilithium3_public_key(&self.0)?;
+        let keypair = DilithiumKeyPair::from_keys(&self.0, &public_key, ML_DSA_65)
+            .map_err(|_| QantoNativeCryptoError::InvalidPrivateKey)?;
+        let signature = keypair
+            .sign(message, b"")
+            .map_err(|_| QantoNativeCryptoError::RandomGenerationFailed)?;
+        Ok(QantoPQSignature(signature.as_bytes().to_vec()))
+    }
+
     /// Generate new post-quantum private key using cryptographically secure RNG
+    #[cfg(feature = "pqcrypto-legacy")]
+    pub fn generate<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
+        use pqcrypto_dilithium::dilithium3;
+        let (pk, sk) = dilithium3::keypair();
+        Self(sk.as_bytes().to_vec())
+    }
+
+    #[cfg(not(feature = "pqcrypto-legacy"))]
     pub fn generate<R: CryptoRng + RngCore>(rng: &mut R) -> Self {
         let mut seed = [0u8; SEEDBYTES];
         rng.fill_bytes(&mut seed);
@@ -747,8 +789,11 @@ pub struct QantoNativeCrypto;
 
 // --- Hybrid Post-Quantum Crypto Engine ---
 
+#[cfg(feature = "pqcrypto-legacy")]
 use pqcrypto_dilithium::dilithium3;
+#[cfg(feature = "pqcrypto-legacy")]
 use pqcrypto_sphincsplus::sphincssha2128fsimple;
+#[cfg(feature = "pqcrypto-legacy")]
 use pqcrypto_traits::sign::{
     DetachedSignature, PublicKey as PqPublicKey, SecretKey as PqSecretKey,
 }; // Fast stateless variants
@@ -772,6 +817,7 @@ pub trait QantoCryptoEngine: Send + Sync {
 
 pub struct PostQuantumEngine;
 
+#[cfg(feature = "pqcrypto-legacy")]
 impl QantoCryptoEngine for PostQuantumEngine {
     fn generate_keypair(scheme: PqcScheme) -> (Vec<u8>, Vec<u8>) {
         // Enforce safe FFI boundary
@@ -815,6 +861,20 @@ impl QantoCryptoEngine for PostQuantumEngine {
             }
         })
         .unwrap_or(false)
+    }
+}
+
+#[cfg(not(feature = "pqcrypto-legacy"))]
+impl QantoCryptoEngine for PostQuantumEngine {
+    fn generate_keypair(_scheme: PqcScheme) -> (Vec<u8>, Vec<u8>) {
+        // ML-KEM-768 production path is handled by qanto_native_crypto::QantoKeyPair.
+        // Legacy PQCrypto crate disabled; return empty keypairs to make the stub explicit.
+        (Vec::new(), Vec::new())
+    }
+
+    fn verify_state_proof(_pk: &[u8], _msg: &[u8], _sig: &[u8], _scheme: PqcScheme) -> bool {
+        // Legacy PQCrypto crate disabled; verification always rejects.
+        false
     }
 }
 

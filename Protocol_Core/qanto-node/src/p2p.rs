@@ -26,8 +26,6 @@ use libp2p::{
     gossipsub::{self, IdentTopic, MessageAuthenticity, ValidationMode},
     identity,
     kad::{store::MemoryStore, Behaviour as KadBehaviour, Event as KadEvent},
-    mdns::tokio::Behaviour as MdnsTokioBehaviour,
-    mdns::Event as MdnsEvent,
     noise,
     swarm::{NetworkBehaviour, SwarmEvent},
     yamux, Multiaddr, PeerId, Swarm, SwarmBuilder,
@@ -114,15 +112,12 @@ pub enum P2PError {
     BoxedStd(#[from] Box<dyn StdError + Send + Sync>),
     #[error("Infallible error (should not happen): {0}")]
     Infallible(#[from] Infallible),
-    #[error("mDNS error: {0}")]
-    Mdns(String),
 }
 
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "NodeBehaviourEvent")]
 pub struct NodeBehaviour {
     gossipsub: gossipsub::Behaviour,
-    mdns: MdnsTokioBehaviour,
     kademlia: KadBehaviour<MemoryStore>,
     // QDS request-response behaviour
     qds: RequestResponseBehaviour<QDSCodec>,
@@ -131,7 +126,6 @@ pub struct NodeBehaviour {
 #[derive(Debug)]
 pub enum NodeBehaviourEvent {
     Gossipsub(gossipsub::Event),
-    Mdns(MdnsEvent),
     Kademlia(KadEvent),
     // QDS event bridging
     RequestResponse(RequestResponseEvent<QDSRequest, QDSResponse>),
@@ -140,11 +134,6 @@ pub enum NodeBehaviourEvent {
 impl From<gossipsub::Event> for NodeBehaviourEvent {
     fn from(event: gossipsub::Event) -> Self {
         NodeBehaviourEvent::Gossipsub(event)
-    }
-}
-impl From<MdnsEvent> for NodeBehaviourEvent {
-    fn from(event: MdnsEvent) -> Self {
-        NodeBehaviourEvent::Mdns(event)
     }
 }
 impl From<KadEvent> for NodeBehaviourEvent {
@@ -574,13 +563,6 @@ impl P2PServer {
 
         let gossipsub_behaviour =
             Self::build_gossipsub_behaviour(config.local_keypair.clone(), &config.p2p_settings)?;
-        let mdns_behaviour =
-            MdnsTokioBehaviour::new(Default::default(), local_peer_id).map_err(|e| {
-                let mut error_msg = String::with_capacity(35 + e.to_string().len());
-                error_msg.push_str("Failed to create mDNS behaviour: ");
-                error_msg.push_str(&e.to_string());
-                P2PError::Mdns(error_msg)
-            })?;
         // Initialize QDS request-response
         let qds_behaviour = RequestResponseBehaviour::new(
             std::iter::once((QDS_PROTOCOL.to_string(), ProtocolSupport::Full)),
@@ -589,7 +571,6 @@ impl P2PServer {
 
         let behaviour = NodeBehaviour {
             gossipsub: gossipsub_behaviour,
-            mdns: mdns_behaviour,
             kademlia: kademlia_behaviour,
             qds: qds_behaviour,
         };
@@ -949,35 +930,6 @@ impl P2PServer {
                     rate_limiters,
                 )
                 .await;
-            }
-            SwarmEvent::Behaviour(NodeBehaviourEvent::Mdns(MdnsEvent::Discovered(list))) => {
-                for (peer_id, multiaddr) in list {
-                    info!("mDNS discovered peer: {} at {}", peer_id, multiaddr);
-                    let multiaddr_str = multiaddr.to_string();
-                    self.swarm
-                        .behaviour_mut()
-                        .kademlia
-                        .add_address(&peer_id, multiaddr.clone());
-
-                    // Prefer dialing real Qanto node websocket endpoints discovered via mDNS.
-                    // This avoids sending QDS traffic only to the ephemeral p2p_mesh identities.
-                    if multiaddr_str.contains("/ws/p2p/") {
-                        match self.swarm.dial(multiaddr.clone()) {
-                            Ok(()) => {
-                                info!(
-                                    "Dialing mDNS-discovered Qanto node peer {} at {}",
-                                    peer_id, multiaddr
-                                );
-                            }
-                            Err(e) => {
-                                warn!(
-                                    "Failed to dial mDNS-discovered Qanto node peer {} at {}: {}",
-                                    peer_id, multiaddr, e
-                                );
-                            }
-                        }
-                    }
-                }
             }
             SwarmEvent::Behaviour(NodeBehaviourEvent::Kademlia(
                 KadEvent::OutboundQueryProgressed { result, .. },

@@ -1,8 +1,9 @@
 use crate::qantodag::QantoBlock;
 use async_trait::async_trait;
-use futures::io::{AsyncReadExt, AsyncWriteExt};
+use futures::prelude::*;
 use libp2p::request_response::Codec;
 use serde::{Deserialize, Serialize};
+use std::io;
 
 pub const QDS_PROTOCOL: &str = "/qanto/qds/1";
 pub const MAX_QDS_PAYLOAD_SIZE: usize = 4 * 1024 * 1024; // 4MB limit to prevent OOM (D-C1)
@@ -38,34 +39,32 @@ impl Codec for QDSCodec {
         &mut self,
         _protocol: &Self::Protocol,
         io: &mut T,
-    ) -> std::io::Result<Self::Request>
+    ) -> io::Result<Self::Request>
     where
-        T: futures::io::AsyncRead + Unpin + Send,
+        T: AsyncRead + Unpin + Send,
     {
         let mut buf = Vec::new();
-        // Limit reading to MAX_QDS_PAYLOAD_SIZE to prevent memory bombs (D-C1)
         io.take(MAX_QDS_PAYLOAD_SIZE as u64)
             .read_to_end(&mut buf)
             .await?;
         serde_json::from_slice(&buf)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     async fn read_response<T>(
         &mut self,
         _protocol: &Self::Protocol,
         io: &mut T,
-    ) -> std::io::Result<Self::Response>
+    ) -> io::Result<Self::Response>
     where
-        T: futures::io::AsyncRead + Unpin + Send,
+        T: AsyncRead + Unpin + Send,
     {
         let mut buf = Vec::new();
-        // Limit reading to MAX_QDS_PAYLOAD_SIZE to prevent memory bombs (D-C1)
         io.take(MAX_QDS_PAYLOAD_SIZE as u64)
             .read_to_end(&mut buf)
             .await?;
         serde_json::from_slice(&buf)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     async fn write_request<T>(
@@ -73,11 +72,11 @@ impl Codec for QDSCodec {
         _protocol: &Self::Protocol,
         io: &mut T,
         req: Self::Request,
-    ) -> std::io::Result<()>
+    ) -> io::Result<()>
     where
-        T: futures::io::AsyncWrite + Unpin + Send,
+        T: AsyncWrite + Unpin + Send,
     {
-        let data = serde_json::to_vec(&req).map_err(std::io::Error::other)?;
+        let data = serde_json::to_vec(&req).map_err(io::Error::other)?;
         io.write_all(&data).await
     }
 
@@ -86,11 +85,11 @@ impl Codec for QDSCodec {
         _protocol: &Self::Protocol,
         io: &mut T,
         res: Self::Response,
-    ) -> std::io::Result<()>
+    ) -> io::Result<()>
     where
-        T: futures::io::AsyncWrite + Unpin + Send,
+        T: AsyncWrite + Unpin + Send,
     {
-        let data = serde_json::to_vec(&res).map_err(std::io::Error::other)?;
+        let data = serde_json::to_vec(&res).map_err(io::Error::other)?;
         io.write_all(&data).await
     }
 }

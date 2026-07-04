@@ -913,7 +913,7 @@ impl DecoupledProducer {
                                                 for parent_id in &block_to_add.parents {
                                                     if dag.get_block(parent_id).await.is_none() {
                                                         let entry = pending_children
-                                                            .entry(parent_id.clone())
+                                                            .entry(parent_id.to_string())
                                                             .or_default();
                                                         entry.push(PendingChild {
                                                             block: block_to_add.clone(),

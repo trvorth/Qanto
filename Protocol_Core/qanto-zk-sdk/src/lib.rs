@@ -3,6 +3,7 @@
 
 use ed25519_dalek::SigningKey;
 use num_bigint::BigUint;
+#[cfg(feature = "pqcrypto-legacy")]
 use pqcrypto_dilithium::dilithium3;
 use rand::RngCore;
 use rand::rngs::OsRng;
@@ -73,6 +74,7 @@ pub fn generate_new_address() -> Result<String, WalletKeygenError> {
     let signing_key = SigningKey::from_bytes(&secret);
     let verifying_key = signing_key.verifying_key();
 
+    #[cfg(feature = "pqcrypto-legacy")]
     let _ = dilithium3::keypair();
 
     Ok(hex::encode(verifying_key.to_bytes()))

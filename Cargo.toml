@@ -15,7 +15,6 @@ members = [
     "Protocol_Core/myblockchain",
     "Protocol_Core/qanto-zk-sdk",
     "Scripts/tools/relayer",
-    "Protocol_Core/qanto-relayer",
     "qanto-desktop/src-tauri",
 ]
 
@@ -24,6 +23,14 @@ members = [
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 mimalloc = { version = "0.1" }
 ahash = { version = "0.8", features = ["serde"] }
+# Security patches for transitive dependencies - force secure versions
+quick-xml = { version = "0.41.0" }
+quinn-proto = { version = "0.11.15" }
+rustls-webpki = { version = "0.103.13" }
+ring = { version = "0.17.12" }
+hickory-proto = { version = "0.26.1" }
+hickory-resolver = { version = "0.26.1" }
+rustls = { version = "0.23" }
 
 # Override vulnerable dependencies
 [patch.crates-io]
@@ -33,10 +40,9 @@ derivative = { git = "https://github.com/mcarton/rust-derivative", branch = "mas
 tracing-subscriber = { git = "https://github.com/tokio-rs/tracing", tag = "tracing-subscriber-0.3.20" }
 # Override ark-relations with a local patched manifest that depends on tracing-subscriber 0.3.20
 ark-relations = { path = "patches/ark-relations" }
-
-# Note: Security patches for transitive dependencies handled via direct dependencies in member crates
-# quick-xml >=0.41.0, quinn-proto >=0.11.15, rustls-webpki >=0.103.13, ring >=0.17.12
-# hickory-proto >=0.26.1 (requires libp2p upgrade)
+libp2p-dns = { path = "patches/libp2p-dns" }
+libp2p-mdns = { path = "patches/libp2p-mdns" }
+plist = { path = "patches/plist" }
 
 # --- Build Profiles ---
 [profile.release]
@@ -49,4 +55,3 @@ incremental = false
 
 [profile.dev]
 opt-level = 1
-
