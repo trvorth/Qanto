@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { isAddress, parseUnits } from 'viem';
 import { toast } from 'react-hot-toast';
 import { useQantoBalance } from '../hooks/useQantoBalance';
 import {
@@ -10,6 +11,7 @@ import {
 
 const STAKING_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000011';
 const REST_BASE = 'https://trvorth-qanto-testnet.hf.space';
+const QANTO_DECIMALS = 9;
 
 interface StakingStats {
   apy: string;
@@ -23,9 +25,9 @@ export const Staking = () => {
   const { isConnected, address } = useAccount();
   const { openConnectModal } = useConnectModal();
   const [activeTab, setActiveTab] = useState<'stake' | 'unstake' | 'delegate'>('stake');
-  const [stakeAmount, setStakeAmount] = useState('1000');
-  const [unstakeAmount, setUnstakeAmount] = useState('500');
-  const [delegateAmount, setDelegateAmount] = useState('500');
+  const [stakeAmount, setStakeAmount] = useState('');
+  const [unstakeAmount, setUnstakeAmount] = useState('');
+  const [delegateAmount, setDelegateAmount] = useState('');
   const [validatorAddress, setValidatorAddress] = useState('');
   const { confirmed: balance, refresh: refreshBalance } = useQantoBalance();
   const [stakingStats, setStakingStats] = useState<StakingStats | null>(null);
@@ -47,11 +49,8 @@ export const Staking = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const dynamicApy = stakingStats?.apy ?? '18.40';
   const totalStaked = stakingStats ? BigInt(stakingStats.total_staked) : 0n;
-  const totalStakedDisplay = totalStaked > 0n
-    ? Number(totalStaked / 1_000_000_000n).toLocaleString()
-    : (stakingStats?.validator_count ?? 0).toLocaleString();
+  const totalStakedDisplay = Number(totalStaked) / 10 ** QANTO_DECIMALS;
   const minStake = stakingStats?.min_stake ?? '1000';
 
   const { sendTransaction, data: txHash, isPending: isWritePending, error: sendError } = useSendTransaction();
@@ -78,6 +77,28 @@ export const Staking = () => {
     }
   }, [sendError]);
 
+  const parseQantoAmount = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    try {
+      const parsed = parseUnits(trimmed, QANTO_DECIMALS);
+      return parsed > 0n ? parsed : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const parseWholeQantoAmount = (value: string) => {
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) {
+      return null;
+    }
+    return BigInt(trimmed) * 10n ** BigInt(QANTO_DECIMALS);
+  };
+
   const handleAction = () => {
     if (!isConnected) {
       if (openConnectModal) {
@@ -89,22 +110,24 @@ export const Staking = () => {
     }
 
     if (activeTab === 'stake') {
-      if (!stakeAmount || parseFloat(stakeAmount) <= 0 || isNaN(parseFloat(stakeAmount))) {
-        toast.error('Please enter a valid amount to stake.');
+      const parsedStake = parseQantoAmount(stakeAmount);
+      if (!parsedStake) {
+        toast.error(`Enter a valid stake amount with up to ${QANTO_DECIMALS} decimals.`);
         return;
       }
-      toastId.current = toast.loading('Confirming stake transaction...');
+      toastId.current = toast.loading('Submitting stake transaction to the live staking contract...');
       sendTransaction({
         to: STAKING_CONTRACT_ADDRESS as `0x${string}`,
-        value: BigInt(Math.floor(parseFloat(stakeAmount) * 10 ** 18)),
+        value: parsedStake,
       });
     } else if (activeTab === 'unstake') {
-      if (!unstakeAmount || parseFloat(unstakeAmount) <= 0 || isNaN(parseFloat(unstakeAmount))) {
-        toast.error('Please enter a valid amount to unstake.');
+      const parsedUnstake = parseWholeQantoAmount(unstakeAmount);
+      if (!parsedUnstake) {
+        toast.error('Unstake currently requires a whole-number QNTO amount because the node protocol encodes integer token values.');
         return;
       }
-      toastId.current = toast.loading('Confirming unstake transaction...');
-      const amountStr = unstakeAmount.trim();
+      toastId.current = toast.loading('Submitting unstake request to the live staking contract...');
+      const amountStr = (parsedUnstake / 10n ** BigInt(QANTO_DECIMALS)).toString();
       const encoder = new TextEncoder();
       const bytes = encoder.encode(amountStr);
       let hexData = '0x02';
@@ -117,15 +140,16 @@ export const Staking = () => {
         data: hexData as `0x${string}`,
       });
     } else if (activeTab === 'delegate') {
-      if (!delegateAmount || parseFloat(delegateAmount) <= 0 || isNaN(parseFloat(delegateAmount))) {
-        toast.error('Please enter a valid amount to delegate.');
+      const parsedDelegate = parseQantoAmount(delegateAmount);
+      if (!parsedDelegate) {
+        toast.error(`Enter a valid delegation amount with up to ${QANTO_DECIMALS} decimals.`);
         return;
       }
-      if (!validatorAddress || !validatorAddress.startsWith('0x') || validatorAddress.length !== 42) {
-        toast.error('Please enter a valid 20-byte Ethereum-style validator address (0x...).');
+      if (!validatorAddress || !isAddress(validatorAddress)) {
+        toast.error('Please enter a valid validator EVM address.');
         return;
       }
-      toastId.current = toast.loading('Confirming delegation transaction...');
+      toastId.current = toast.loading('Submitting delegation transaction to the live staking contract...');
       const cleanAddr = validatorAddress.slice(2);
       const bytes = new Uint8Array(20);
       for (let i = 0; i < 20; i++) {
@@ -137,7 +161,7 @@ export const Staking = () => {
       }
       sendTransaction({
         to: STAKING_CONTRACT_ADDRESS as `0x${string}`,
-        value: BigInt(Math.floor(parseFloat(delegateAmount) * 10 ** 18)),
+        value: parsedDelegate,
         data: hexData as `0x${string}`,
       });
     }
@@ -151,11 +175,14 @@ export const Staking = () => {
         toastId.current = null;
       }
       if (activeTab === 'stake') {
-        toast.success('Sentinel Node Stake Successful!');
+        toast.success('Stake transaction confirmed on QANTO Testnet.');
+        setStakeAmount('');
       } else if (activeTab === 'unstake') {
-        toast.success('Sentinel Node Unstake Successful!');
+        toast.success('Unstake transaction confirmed on QANTO Testnet.');
+        setUnstakeAmount('');
       } else if (activeTab === 'delegate') {
-        toast.success('Staking Power Delegated Successfully!');
+        toast.success('Delegation transaction confirmed on QANTO Testnet.');
+        setDelegateAmount('');
       }
       refreshBalance();
     }
@@ -164,7 +191,7 @@ export const Staking = () => {
   const isPending = isConfirming || isWritePending;
 
   // Determine button details
-  let buttonText = 'INITIALIZE SENTINEL NODE';
+  let buttonText = 'SUBMIT STAKE';
   let buttonColorClass = 'bg-cyan-500 hover:bg-cyan-400 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)] border-transparent hover:scale-[1.02]';
   
   if (!isConnected) {
@@ -173,13 +200,13 @@ export const Staking = () => {
     buttonText = 'Processing Transaction...';
   } else {
     if (activeTab === 'stake') {
-      buttonText = 'INITIALIZE SENTINEL NODE';
+      buttonText = 'SUBMIT STAKE';
       buttonColorClass = 'bg-cyan-500 hover:bg-cyan-400 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)] border-transparent hover:scale-[1.02]';
     } else if (activeTab === 'unstake') {
-      buttonText = 'RELEASE SENTINEL STAKE';
+      buttonText = 'REQUEST UNSTAKE';
       buttonColorClass = 'bg-violet-600 hover:bg-violet-500 text-white shadow-[0_0_20px_rgba(139,92,246,0.4)] border-transparent hover:scale-[1.02]';
     } else if (activeTab === 'delegate') {
-      buttonText = 'DELEGATE VOTING POWER';
+      buttonText = 'DELEGATE STAKE';
       buttonColorClass = 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.4)] border-transparent hover:scale-[1.02]';
     }
   }
@@ -195,33 +222,33 @@ export const Staking = () => {
             Sentinel Node Staking
           </h1>
           <p className="text-sm text-slate-400 font-sans mb-8">
-            Manage Sentinel registration, stake withdrawals, and voting power delegation.
+            Manage live stake, unstake, and delegation transactions against the testnet staking protocol. Displayed values come directly from the node.
           </p>
 
           {/* Staking Stats Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 w-full">
             <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
               <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1">
-                Estimated APY
-              </div>
-              <div className="text-2xl font-bold text-cyan-400 font-mono">
-                {dynamicApy}%
-              </div>
-            </div>
-            <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1">
                 Total Staked
               </div>
-              <div className="text-2xl font-bold text-violet-400 font-mono">
-                {totalStakedDisplay} QNTO
+              <div className="text-2xl font-bold text-cyan-400 font-mono">
+                {totalStakedDisplay.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} QNTO
               </div>
             </div>
             <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
               <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1">
                 Active Sentinels
               </div>
+              <div className="text-2xl font-bold text-violet-400 font-mono">
+                {stakingStats?.validator_count?.toLocaleString() ?? '0'}
+              </div>
+            </div>
+            <div className="bg-black/40 border border-white/5 rounded-2xl p-4">
+              <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500 mb-1">
+                Current Epoch
+              </div>
               <div className="text-2xl font-bold text-emerald-400 font-mono">
-                {stakingStats?.validator_count?.toLocaleString() ?? '—'}
+                {stakingStats?.epoch?.toLocaleString() ?? '0'}
               </div>
             </div>
           </div>
@@ -262,7 +289,7 @@ export const Staking = () => {
             {activeTab === 'stake' && (
               <div>
                 <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 mb-2">
-                  Stake Amount ($QNTO)
+                  Stake Amount (QNTO)
                 </label>
                 <div className="relative">
                   <input
@@ -271,14 +298,14 @@ export const Staking = () => {
                     onChange={(e) => setStakeAmount(e.target.value)}
                     disabled={isPending}
                     className="w-full bg-black/40 border border-white/10 focus:border-cyan-500/50 rounded-xl py-4 px-5 text-white font-mono text-lg outline-none transition-all"
-                    placeholder="1000"
+                    placeholder="0.0"
                   />
                   <span className="absolute right-5 top-1/2 -translate-y-1/2 font-mono text-sm text-slate-500">
                     QNTO
                   </span>
                 </div>
                 <div className="mt-2 text-[10px] text-slate-500 font-mono flex justify-between">
-                  <span>Minimum Stake: {Number(minStake).toLocaleString()} $QNTO</span>
+                  <span>Minimum Stake: {Number(minStake).toLocaleString()} QNTO</span>
                   <span>Available: {isConnected ? `${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} QNTO` : '0.00 QNTO'}</span>
                 </div>
               </div>
@@ -287,7 +314,7 @@ export const Staking = () => {
             {activeTab === 'unstake' && (
               <div>
                 <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 mb-2">
-                  Unstake Amount ($QNTO)
+                  Unstake Amount (QNTO)
                 </label>
                 <div className="relative">
                   <input
@@ -296,15 +323,18 @@ export const Staking = () => {
                     onChange={(e) => setUnstakeAmount(e.target.value)}
                     disabled={isPending}
                     className="w-full bg-black/40 border border-white/10 focus:border-violet-500/50 rounded-xl py-4 px-5 text-white font-mono text-lg outline-none transition-all"
-                    placeholder="500"
+                    placeholder="0"
                   />
                   <span className="absolute right-5 top-1/2 -translate-y-1/2 font-mono text-sm text-slate-500">
                     QNTO
                   </span>
                 </div>
                 <div className="mt-2 text-[10px] text-slate-500 font-mono flex justify-between">
-                  <span>Unstake Cooldown: 0 epochs</span>
+                  <span>Protocol Cooldown: 10 epochs</span>
                   <span>Available: {isConnected ? `${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} QNTO` : '0.00 QNTO'}</span>
+                </div>
+                <div className="mt-2 text-[10px] text-slate-500 font-mono">
+                  The current node protocol encodes unstake amounts as whole-token integers. Decimal unstake requests are not supported yet.
                 </div>
               </div>
             )}
@@ -313,7 +343,7 @@ export const Staking = () => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 mb-2">
-                    Delegate Amount ($QNTO)
+                    Delegate Amount (QNTO)
                   </label>
                   <div className="relative">
                     <input
@@ -322,7 +352,7 @@ export const Staking = () => {
                       onChange={(e) => setDelegateAmount(e.target.value)}
                       disabled={isPending}
                       className="w-full bg-black/40 border border-white/10 focus:border-emerald-500/50 rounded-xl py-4 px-5 text-white font-mono text-lg outline-none transition-all"
-                      placeholder="500"
+                      placeholder="0.0"
                     />
                     <span className="absolute right-5 top-1/2 -translate-y-1/2 font-mono text-sm text-slate-500">
                       QNTO
@@ -331,7 +361,7 @@ export const Staking = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 mb-2">
-                    Validator Address (Hex)
+                    Validator Address
                   </label>
                   <input
                     type="text"
@@ -339,11 +369,11 @@ export const Staking = () => {
                     onChange={(e) => setValidatorAddress(e.target.value)}
                     disabled={isPending}
                     className="w-full bg-black/40 border border-white/10 focus:border-emerald-500/50 rounded-xl py-3 px-5 text-white font-mono text-sm outline-none transition-all"
-                    placeholder="0x9F00..."
+                    placeholder="0x..."
                   />
                 </div>
                 <div className="mt-2 text-[10px] text-slate-500 font-mono flex justify-between">
-                  <span>Assign voting/reward power to another Sentinel</span>
+                  <span>Delegate live validator stake to another Sentinel address</span>
                   <span>Available: {isConnected ? `${balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })} QNTO` : '0.00 QNTO'}</span>
                 </div>
               </div>
@@ -351,9 +381,17 @@ export const Staking = () => {
             
             {/* Details */}
             <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4 mt-4 mb-6 text-xs font-mono text-slate-400 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-400">Network Fee</span>
-                <span className="text-emerald-400 font-bold drop-shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse">Sponsored by SAGA 🧠</span>
+              <div className="flex justify-between">
+                <span>Protocol Address</span>
+                <span className="text-cyan-400">{STAKING_CONTRACT_ADDRESS}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Minimum Stake</span>
+                <span>{Number(minStake).toLocaleString()} QNTO</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Data Source</span>
+                <span>/staking live node endpoint</span>
               </div>
             </div>
           </div>
@@ -373,7 +411,7 @@ export const Staking = () => {
 
             {isConnected && (
               <div className="flex flex-col gap-2 mt-4 text-[10px] font-mono text-slate-500 break-all">
-                <div>Staking Sentinel Address: {address}</div>
+                <div>Staking Signer Address: {address}</div>
                 {txHash && <div className="text-cyan-400">Transaction Hash: {txHash}</div>}
               </div>
             )}

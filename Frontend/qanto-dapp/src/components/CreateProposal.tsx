@@ -1,9 +1,7 @@
-import { useState } from 'react';
-import { request, gql } from 'graphql-request';
-import { useAccount, useSendTransaction } from '../lib/qanto-wallet';
+import { useEffect, useState } from 'react';
+import { useAccount, useSendTransaction, useWaitForTransactionReceipt } from '../lib/qanto-wallet';
 
 const GOVERNANCE_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000010';
-const GRAPHQL_ENDPOINT = 'https://trvorth-qanto-testnet.hf.space/graphql';
 
 interface CreateProposalProps {
   onSuccess?: () => void;
@@ -12,30 +10,15 @@ interface CreateProposalProps {
 
 export function CreateProposal({ onSuccess, onCancel }: CreateProposalProps) {
   const { isConnected } = useAccount();
-  const { sendTransaction, isSuccess: isTxSuccess, error: txError, data: txHash } = useSendTransaction();
+  const { sendTransaction, error: txError, data: txHash } = useSendTransaction();
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash: txHash,
+  });
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [status, setStatus] = useState<'idle' | 'ipfs' | 'contract' | 'graphql' | 'success' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'contract' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
-  const [generatedCid, setGeneratedCid] = useState('');
-
-  const generateSyntheticCid = (proposalData: { title: string; description: string; timestamp: number }) => {
-    const jsonStr = JSON.stringify(proposalData);
-    let hash = 0;
-    for (let i = 0; i < jsonStr.length; i++) {
-      hash = (hash << 5) - hash + jsonStr.charCodeAt(i);
-      hash |= 0; 
-    }
-    const characters = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-    let mockHash = '';
-    const seed = Math.abs(hash);
-    for (let i = 0; i < 44; i++) {
-      const charIndex = (seed + i * 13) % characters.length;
-      mockHash += characters[charIndex];
-    }
-    return `Qm${mockHash}`;
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,24 +29,12 @@ export function CreateProposal({ onSuccess, onCancel }: CreateProposalProps) {
     }
 
     try {
-      setStatus('ipfs');
-      // Simulate IPFS uploading latency
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      
-      const cid = generateSyntheticCid({
-        title,
-        description,
-        timestamp: Date.now()
-      });
-      setGeneratedCid(cid);
-
       setStatus('contract');
       
       const jsonStr = JSON.stringify({
         title,
         description,
         proposal_type: 'Signal',
-        cid
       });
       const encoder = new TextEncoder();
       const bytes = encoder.encode(jsonStr);
@@ -72,7 +43,7 @@ export function CreateProposal({ onSuccess, onCancel }: CreateProposalProps) {
         hexData += bytes[i].toString(16).padStart(2, '0');
       }
 
-      sendTransaction({
+      await sendTransaction({
         to: GOVERNANCE_CONTRACT_ADDRESS,
         value: 0n,
         data: hexData as `0x${string}`,
@@ -83,58 +54,30 @@ export function CreateProposal({ onSuccess, onCancel }: CreateProposalProps) {
     }
   };
 
-  // Run the GraphQL registry once the blockchain write is simulated successfully
-  const registerWithBackend = async (cid: string) => {
-    try {
-      setStatus('graphql');
-      const mutation = gql`
-        mutation SubmitProposal($cid: String!) {
-          submitProposal(cid: $cid) {
-            success
-            proposalId
-            message
-          }
-        }
-      `;
-      
-      const response = await request<{ submitProposal: { success: boolean; proposalId: string; message: string } }>(
-        GRAPHQL_ENDPOINT,
-        mutation,
-        { cid }
-      );
-
-      if (response.submitProposal.success) {
-        setStatus('success');
-        if (onSuccess) {
-          setTimeout(() => onSuccess(), 1500);
-        }
-      } else {
-        setErrorMessage(response.submitProposal.message);
-        setStatus('error');
+  useEffect(() => {
+    if (isConfirmed && status === 'contract') {
+      setStatus('success');
+      if (onSuccess) {
+        const timer = window.setTimeout(() => onSuccess(), 1500);
+        return () => window.clearTimeout(timer);
       }
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to sync proposal with the network node.');
+    }
+    return undefined;
+  }, [isConfirmed, onSuccess, status]);
+
+  useEffect(() => {
+    if (txError && status === 'contract') {
+      setErrorMessage(txError.message || 'Blockchain transaction failed.');
       setStatus('error');
     }
-  };
-
-  // Continue backend registration after the wallet signs and broadcasts the proposal.
-  if (isTxSuccess && status === 'contract') {
-    registerWithBackend(generatedCid);
-  }
-
-  // Handle contract simulation error
-  if (txError && status === 'contract') {
-    setErrorMessage(txError.message || 'Blockchain transaction failed.');
-    setStatus('error');
-  }
+  }, [status, txError]);
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-6 relative z-10">
       <div className="backdrop-blur-md bg-[#0a0a14]/70 border border-white/10 rounded-[28px] p-6 md:p-8 shadow-purple-glow">
         <h2 className="text-xl font-bold text-white mb-1 font-sans text-center">CREATE DAO PROPOSAL</h2>
         <p className="text-xs text-slate-400 text-center mb-6 font-sans">
-          Your proposal text will be stored permanently on IPFS and validated by the network.
+          Submit a live governance payload to the testnet DAO without any synthetic CID or mock registry layer.
         </p>
 
         {status === 'success' ? (
@@ -143,15 +86,14 @@ export function CreateProposal({ onSuccess, onCancel }: CreateProposalProps) {
               ✓
             </div>
             <h3 className="text-lg font-bold text-white font-sans">Proposal Published Successfully!</h3>
-            <p className="text-xs text-slate-400 font-mono break-all max-w-xs mx-auto">
-              CID: {generatedCid}
-            </p>
             {txHash && (
               <p className="text-[10px] text-slate-500 font-mono break-all max-w-xs mx-auto">
                 Tx Hash: {txHash}
               </p>
             )}
-            <p className="text-xs text-cyan-400 animate-pulse">Syncing proposals...</p>
+            <p className="text-xs text-cyan-400 animate-pulse">
+              Proposal payload confirmed on-chain. Refreshing live governance state...
+            </p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -197,16 +139,14 @@ export function CreateProposal({ onSuccess, onCancel }: CreateProposalProps) {
               
               <button
                 type="submit"
-                disabled={!isConnected || status === 'ipfs' || status === 'contract' || status === 'graphql'}
+                disabled={!isConnected || status === 'contract'}
                 className={`flex-1 rounded-xl py-3 text-sm font-sans font-bold transition-all border ${
-                  !isConnected || status === 'ipfs' || status === 'contract' || status === 'graphql'
+                  !isConnected || status === 'contract'
                     ? 'bg-slate-800 border-transparent text-slate-500 cursor-not-allowed'
                     : 'bg-cyan-500/10 hover:bg-cyan-500 hover:text-white text-cyan-400 border-cyan-500/30 hover:shadow-[0_0_15px_rgba(6,182,212,0.3)]'
                 }`}
               >
-                {status === 'ipfs' && 'Uploading to IPFS...'}
-                {status === 'contract' && 'Signing transaction...'}
-                {status === 'graphql' && 'Registering on Node...'}
+                {status === 'contract' && (isConfirming ? 'Awaiting confirmation...' : 'Signing transaction...')}
                 {status === 'idle' && 'Submit Proposal'}
                 {status === 'error' && 'Retry Submission'}
               </button>

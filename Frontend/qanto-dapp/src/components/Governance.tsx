@@ -110,11 +110,10 @@ export function Governance() {
               {proposalsData?.proposals && proposalsData.proposals.length > 0 ? (
                 <div className="space-y-6">
                   <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 border-b border-white/10 pb-2">
-                    Decentralized IPFS Proposals
+                    Live Governance Proposals
                   </h3>
                   {proposalsData.proposals.map((proposal) => {
-                    const isIpfs = proposal.id.startsWith('ipfs-');
-                    const titleText = isIpfs ? `IPFS Proposal: ${proposal.id.slice(5, 17)}...` : proposal.id;
+                    const titleText = proposal.id;
                     const descText = proposal.justification || `Proposal type: ${proposal.proposalType}`;
                     
                     const propTotalVotes = proposal.votesFor + proposal.votesAgainst;
@@ -185,7 +184,7 @@ export function Governance() {
                   <div className="text-3xl mb-2">🏛️</div>
                   <div className="text-sm font-bold text-white font-sans mb-1">Awaiting DAO Activity</div>
                   <div className="text-xs text-slate-400 font-sans">
-                    No active proposals found in the current epoch. Use the button above to create a new decentralized proposal!
+                    No active proposals found in the current epoch. Use the button above to submit a live governance proposal.
                   </div>
                 </div>
               )}

@@ -85,6 +85,13 @@ interface WriteContractRequest {
   value?: bigint;
 }
 
+interface ReadContractRequest {
+  abi: readonly unknown[];
+  address: Address;
+  functionName: string;
+  args?: readonly unknown[];
+}
+
 interface BalanceHookOptions {
   address?: Address;
   query?: {
@@ -378,6 +385,19 @@ export function useWriteContract(options?: MutationCallbacks) {
     isPending: sendTransactionState.isPending,
     isSuccess: sendTransactionState.isSuccess,
   };
+}
+
+export async function readQantoContract(request: ReadContractRequest) {
+  return publicClient.readContract({
+    abi: request.abi,
+    address: request.address,
+    functionName: request.functionName,
+    args: request.args,
+  });
+}
+
+export function getQantoPublicClient() {
+  return publicClient;
 }
 
 export function useWaitForTransactionReceipt({ hash }: { hash?: Hash }) {

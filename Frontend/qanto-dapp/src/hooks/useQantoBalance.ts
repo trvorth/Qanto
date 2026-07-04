@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
+import { formatUnits } from 'viem';
 import { request, gql } from 'graphql-request';
-import { useAccount, useBalance } from '../lib/qanto-wallet';
+import { qantoChain, useAccount, useBalance } from '../lib/qanto-wallet';
 
 const GRAPHQL_ENDPOINT = 'https://trvorth-qanto-testnet.hf.space/graphql';
-const RPC_ENDPOINT = 'https://trvorth-qanto-testnet.hf.space/rpc';
+const RPC_ENDPOINT = qantoChain.rpcUrls.default.http[0];
+const QANTO_DECIMALS = qantoChain.nativeCurrency.decimals;
 
 export function useQantoBalance() {
   const { address, isConnected } = useAccount();
@@ -64,9 +66,8 @@ export function useQantoBalance() {
       });
       const data = await response.json();
       if (data.result) {
-        // Balance comes in Wei (18 decimals), convert to QNTO representation
-        const balanceWei = BigInt(data.result);
-        const amount = Number(balanceWei) / 10 ** 18;
+        const balanceBaseUnits = BigInt(data.result);
+        const amount = Number(formatUnits(balanceBaseUnits, QANTO_DECIMALS));
         setBalanceData({
           confirmed: amount,
           pending: 0,
@@ -88,7 +89,7 @@ export function useQantoBalance() {
     if (refetchWalletBalance) {
       const { data } = await refetchWalletBalance();
       if (data) {
-        const val = Number(data.value) / 10 ** 18; // Convert to standard balance representation
+        const val = Number(formatUnits(data.value, QANTO_DECIMALS));
         setBalanceData({
           confirmed: val,
           pending: 0,
@@ -105,7 +106,7 @@ export function useQantoBalance() {
   useEffect(() => {
     if (isConnected && address) {
       if (walletBalance) {
-        const val = Number(walletBalance.value) / 10 ** 18;
+        const val = Number(formatUnits(walletBalance.value, QANTO_DECIMALS));
         setBalanceData({
           confirmed: val,
           pending: 0,

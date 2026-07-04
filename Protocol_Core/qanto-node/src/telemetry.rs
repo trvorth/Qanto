@@ -426,13 +426,22 @@ pub fn get_live_metrics() -> NodeTelemetry {
 
     let cpu_usage = sys.global_cpu_info().cpu_usage();
     let mem_usage = sys.used_memory() / 1024 / 1024; // Convert KB to MB
+    let metrics = get_global_metrics();
+    let current_tps =
+        (metrics.calculate_real_time_tps() / crate::QANTO_SCALE).min(u64::MAX as u128) as u64;
+    let current_bps = metrics.get_bps() as f64 / crate::QANTO_SCALE as f64;
+    let synaptic_latency_ms = if current_bps > 0.0 {
+        1000.0 / current_bps
+    } else {
+        0.0
+    };
 
     NodeTelemetry {
-        current_tps: 10_000_000, // Hardcoded max theoretical for Genesis testing
+        current_tps,
         active_sentinels: 1402,
         cpu_usage,
         mem_usage_mb: mem_usage,
-        synaptic_latency_ms: 31.25,
+        synaptic_latency_ms,
     }
 }
 
