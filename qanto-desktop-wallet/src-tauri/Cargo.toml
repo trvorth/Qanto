@@ -52,6 +52,5 @@ zeroize = { version = "1.8.1", features = ["derive"] }
 tauri = { version = "2", features = ["test"] }
 
 [features]
+default = ["pqcrypto-legacy"]
 pqcrypto-legacy = ["dep:pqcrypto-dilithium", "dep:pqcrypto-traits"]
-
-[workspace]

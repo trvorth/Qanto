@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { toast } from 'react-hot-toast';
 import { useQantoBalance } from '../hooks/useQantoBalance';
-import { privateKeyToAccount } from 'viem/accounts';
-import { keccak256, stringToBytes } from 'viem';
+import { formatUnits, isAddress, parseUnits } from 'viem';
 import {
   useAccount,
   useConnectModal,
@@ -12,6 +11,8 @@ import {
 
 const BRIDGE_CONTRACT_ADDRESS = '0x9F00000000000000000000000000000000000013';
 const REST_BASE = 'https://trvorth-qanto-testnet.hf.space';
+const QANTO_DECIMALS = 9;
+const BRIDGE_SIGNATURE_BYTES = 65;
 
 // Helper functions for hex conversion
 const hexToBytes = (hex: string): Uint8Array => {
@@ -59,6 +60,54 @@ const encodeBridgeClaimData = (payload: any): string => {
   dataBytes.set(jsonBytes, 1);
   
   return '0x' + bytesToHex(dataBytes);
+};
+
+const parseQantoAmount = (value: string): bigint | null => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const parsed = parseUnits(trimmed, QANTO_DECIMALS);
+    return parsed > 0n ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const formatQantoAmount = (baseUnits: string | bigint): string => {
+  try {
+    const normalized = typeof baseUnits === 'bigint' ? baseUnits : BigInt(baseUnits);
+    const human = Number(formatUnits(normalized, QANTO_DECIMALS));
+    return human.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 6,
+    });
+  } catch {
+    return '0.00';
+  }
+};
+
+const normalizeRelayerSignatures = (value: string): string[] =>
+  value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+const isValidHexPayload = (value: string, expectedBytes?: number): boolean => {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('0x')) {
+    return false;
+  }
+  const hexBody = trimmed.slice(2);
+  if (!hexBody || hexBody.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(hexBody)) {
+    return false;
+  }
+  if (typeof expectedBytes === 'number' && hexBody.length !== expectedBytes * 2) {
+    return false;
+  }
+  return true;
 };
 
 export const Bridge = () => {
@@ -120,57 +169,6 @@ export const Bridge = () => {
     }
   }, [address, recipient]);
 
-  // Generate test claim proof (testnet/development mode only)
-  const handleGenerateTestClaim = async () => {
-    if (!address) {
-      toast.error('Connect wallet to generate test claim.');
-      return;
-    }
-    if (!amount || parseFloat(amount) <= 0 || isNaN(parseFloat(amount))) {
-      toast.error('Please enter a valid amount.');
-      return;
-    }
-
-    const testTxHash = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-    setEthTxHash(testTxHash);
-
-    const testBlockHeader = '0x0000000000000000000000000000000000000000000000000000000000000001';
-    setBlockHeader(testBlockHeader);
-
-    const testMerkleProof = '0x0000000000000000000000000000000000000000000000000000000000000002';
-    setMerkleProof(testMerkleProof);
-
-    const testReceiptProof = '0x0000000000000000000000000000000000000000000000000000000000000003';
-    setReceiptProof(testReceiptProof);
-
-    // Build the message data to sign
-    const chainBytes = stringToBytes(fromChain);
-    const txHashBytes = stringToBytes(testTxHash);
-    const amountVal = Math.floor(parseFloat(amount) * 10 ** 18).toString();
-    const amountBytes = stringToBytes(amountVal);
-    const recipientBytes = stringToBytes(address);
-
-    const totalBytes = new Uint8Array(chainBytes.length + txHashBytes.length + amountBytes.length + recipientBytes.length);
-    totalBytes.set(chainBytes, 0);
-    totalBytes.set(txHashBytes, chainBytes.length);
-    totalBytes.set(amountBytes, chainBytes.length + txHashBytes.length);
-    totalBytes.set(recipientBytes, chainBytes.length + txHashBytes.length + amountBytes.length);
-
-    // Compute Keccak256 hash of message
-    const msgHash = keccak256(totalBytes);
-
-    // Standard Hardhat dev private key #0
-    const devPrivKey = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
-    try {
-      const account = privateKeyToAccount(devPrivKey);
-      const signature = await account.sign({ hash: msgHash });
-      setRelayerSigs(signature);
-      toast.success('Test claim proof generated successfully for testnet!');
-    } catch (e) {
-      toast.error('Failed to generate test signature: ' + (e as Error).message);
-    }
-  };
-
   const handleBridge = () => {
     if (!isConnected) {
       if (openConnectModal) {
@@ -181,12 +179,13 @@ export const Bridge = () => {
       return;
     }
 
-    if (!amount || parseFloat(amount) <= 0 || isNaN(parseFloat(amount))) {
-      toast.error('Please enter a valid amount.');
+    const parsedAmount = parseQantoAmount(amount);
+    if (!parsedAmount) {
+      toast.error(`Please enter a valid amount with up to ${QANTO_DECIMALS} decimals.`);
       return;
     }
 
-    if (!recipient || !recipient.startsWith('0x') || recipient.length !== 42) {
+    if (!recipient || !isAddress(recipient)) {
       toast.error('Please enter a valid recipient EVM address.');
       return;
     }
@@ -197,23 +196,31 @@ export const Bridge = () => {
       const lockData = encodeBridgeLockData(toChain, recipient);
       sendTransaction({
         to: BRIDGE_CONTRACT_ADDRESS as `0x${string}`,
-        value: BigInt(Math.floor(parseFloat(amount) * 10 ** 18)),
+        value: parsedAmount,
         data: lockData as `0x${string}`,
       });
     } else {
-      if (!ethTxHash || !blockHeader || !merkleProof || !receiptProof || !relayerSigs) {
+      const signatures = normalizeRelayerSignatures(relayerSigs);
+      if (
+        !isValidHexPayload(ethTxHash, 32) ||
+        !isValidHexPayload(blockHeader) ||
+        !isValidHexPayload(merkleProof) ||
+        !isValidHexPayload(receiptProof) ||
+        signatures.length === 0 ||
+        signatures.some((signature) => !isValidHexPayload(signature, BRIDGE_SIGNATURE_BYTES))
+      ) {
         toast.dismiss(toastId.current!);
         toastId.current = null;
-        toast.error('Please complete all proof parameters for claiming.');
+        toast.error('Please provide a relayer-generated proof bundle with valid hex fields.');
         return;
       }
 
       const claimPayload = {
         source_tx_hash: ethTxHash,
-        amount: Math.floor(parseFloat(amount) * 10 ** 18).toString(),
+        amount: parsedAmount.toString(),
         recipient: recipient,
         source_chain: fromChain,
-        relayer_signatures: relayerSigs.split(',').map(s => s.trim()),
+        relayer_signatures: signatures,
         merkle_proof: merkleProof,
         receipt_proof: receiptProof,
         block_header: blockHeader,
@@ -261,9 +268,6 @@ export const Bridge = () => {
   } else if (isBridgeSuccess) {
     bridgeButtonText = 'Transfer Confirmed ✅';
   }
-
-  // Detect testnet mode to restrict Test Claim Generator
-  const isTestnetMode = fromChain.includes('Testnet') || fromChain.includes('Sepolia');
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-8 relative z-10">
@@ -388,17 +392,11 @@ export const Bridge = () => {
             {activeTab === 'claim' && (
               <div className="space-y-4 border-t border-white/5 pt-4">
                 <div className="bg-black/40 border border-white/10 rounded-2xl p-4 flex flex-col gap-2">
-                  <div className="flex justify-between items-center">
+                  <div className="flex flex-col gap-1">
                     <span className="text-xs text-slate-500 font-mono">Source Transaction Hash</span>
-                    {isTestnetMode && (
-                      <button
-                        onClick={handleGenerateTestClaim}
-                        disabled={isPending}
-                        className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 font-semibold underline"
-                      >
-                        [Generate Test Claim / Proof]
-                      </button>
-                    )}
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Paste the relayer-issued claim bundle fields. Bridge claims no longer generate local test proofs.
+                    </span>
                   </div>
                   <input
                     type="text"
@@ -468,11 +466,11 @@ export const Bridge = () => {
             </div>
             <div className="flex justify-between">
               <span>Total Network Locked:</span>
-              <span className="text-cyan-400">{parseFloat(bridgeStats.total_locked).toLocaleString()} QNTO</span>
+              <span className="text-cyan-400">{formatQantoAmount(bridgeStats.total_locked)} QNTO</span>
             </div>
             <div className="flex justify-between">
               <span>Total Network Claimed:</span>
-              <span className="text-cyan-400">{parseFloat(bridgeStats.total_claimed).toLocaleString()} QNTO</span>
+              <span className="text-cyan-400">{formatQantoAmount(bridgeStats.total_claimed)} QNTO</span>
             </div>
           </div>
 

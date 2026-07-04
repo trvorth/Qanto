@@ -67,7 +67,6 @@ use axum::{
 use governor::clock::QuantaClock;
 use governor::state::{InMemoryState, NotKeyed};
 use governor::{Quota, RateLimiter};
-use k256::ecdsa::{RecoveryId, Signature as K256Signature, VerifyingKey};
 use libp2p::{identity, PeerId};
 use nonzero_ext::nonzero;
 use qanto_core::balance_stream::BalanceBroadcaster;
@@ -4217,10 +4216,10 @@ async fn jsonrpc_handler(
                 serde_json::json!(false)
             }
         }
-        "qanto_submitBridgeProof" => {
+        "qanto_bridgeMint" | "qanto_submitBridgeProof" => {
             let params = payload.get("params").and_then(|p| p.as_array());
             if let Some(params) = params {
-                if params.len() < 5 {
+                let Some(request_value) = params.first() else {
                     return (
                         StatusCode::OK,
                         Json(serde_json::json!({
@@ -4228,129 +4227,51 @@ async fn jsonrpc_handler(
                             "id": id,
                             "error": {
                                 "code": -32602,
-                                "message": "Missing bridge proof parameters"
+                                "message": "Missing bridge claim payload"
                             }
                         })),
                     )
                         .into_response();
-                }
+                };
 
-                let eth_tx_hash = params[0].as_str().unwrap_or("");
-                let event_proof = params[1].as_str().unwrap_or("");
-                let merkle_proof = params[2].as_str().unwrap_or("");
-                let block_header = params[3].as_str().unwrap_or("");
-                let relayer_sig = params[4].as_str().unwrap_or("");
+                let request = match serde_json::from_value::<crate::rpc_backend::BridgeMintRequest>(
+                    request_value.clone(),
+                ) {
+                    Ok(request) => request,
+                    Err(error) => {
+                        return (
+                            StatusCode::OK,
+                            Json(serde_json::json!({
+                                "jsonrpc": "2.0",
+                                "id": id,
+                                "error": {
+                                    "code": -32602,
+                                    "message": format!("Invalid bridge claim payload: {}", error)
+                                }
+                            })),
+                        )
+                            .into_response();
+                    }
+                };
 
-                let claim_key = format!("bridge_eth_tx:{}", eth_tx_hash);
-                if state.airdrop_claims.contains_key(&claim_key) {
-                    return (
-                        StatusCode::OK,
-                        Json(serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "error": {
-                                "code": -32002,
-                                "message": "Bridge proof already processed (replay prevention)"
-                            }
-                        })),
-                    )
-                        .into_response();
-                }
-
-                let mut data_to_sign = Vec::new();
-                data_to_sign.extend_from_slice(eth_tx_hash.as_bytes());
-                data_to_sign.extend_from_slice(event_proof.as_bytes());
-                data_to_sign.extend_from_slice(merkle_proof.as_bytes());
-                data_to_sign.extend_from_slice(block_header.as_bytes());
-
-                let mut hasher = sha3::Keccak256::new();
-                hasher.update(&data_to_sign);
-                let message_hash = hasher.finalize();
-
-                let sig_bytes =
-                    hex::decode(relayer_sig.trim_start_matches("0x")).unwrap_or_default();
-                if sig_bytes.len() != 65 {
-                    return (
-                        StatusCode::OK,
-                        Json(serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "error": {
-                                "code": -32003,
-                                "message": "Invalid relayer signature length"
-                            }
-                        })),
-                    )
-                        .into_response();
-                }
-
-                let mut r_32 = [0u8; 32];
-                let mut s_32 = [0u8; 32];
-                r_32.copy_from_slice(&sig_bytes[..32]);
-                s_32.copy_from_slice(&sig_bytes[32..64]);
-                let v = sig_bytes[64];
-                let rec_id = if v >= 27 { v - 27 } else { v };
-
-                let signature = K256Signature::from_slice(&sig_bytes[..64]).unwrap();
-                let recovery_id = RecoveryId::try_from(rec_id).unwrap();
-
-                let recovered_key = VerifyingKey::recover_from_prehash(
-                    message_hash.as_ref(),
-                    &signature,
-                    recovery_id,
-                );
-
-                if recovered_key.is_err() {
-                    return (
-                        StatusCode::OK,
-                        Json(serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "error": {
-                                "code": -32004,
-                                "message": "Relayer signature verification failed"
-                            }
-                        })),
-                    )
-                        .into_response();
-                }
-
-                let event_bytes =
-                    hex::decode(event_proof.trim_start_matches("0x")).unwrap_or_default();
-                if event_bytes.len() < 64 {
-                    return (
-                        StatusCode::OK,
-                        Json(serde_json::json!({
-                            "jsonrpc": "2.0",
-                            "id": id,
-                            "error": {
-                                "code": -32005,
-                                "message": "Invalid event proof data"
-                            }
-                        })),
-                    )
-                        .into_response();
-                }
-
-                let recipient_bytes = &event_bytes[12..32];
-                let recipient_hex = format!("0x{}", hex::encode(recipient_bytes));
-                let padded_recipient = crate::transaction::pad_ethereum_address(&recipient_hex);
-
-                match crate::rpc_backend::handle_request_faucet_funds(
-                    &state.wallet,
-                    &state.utxos,
-                    &state.mempool,
-                    &state.p2p_command_sender,
+                match crate::rpc_backend::handle_bridge_claim_submission(
                     &state.dag,
-                    padded_recipient.clone(),
+                    &state.utxos,
+                    request,
                 )
                 .await
                 {
-                    Ok(tx_hash) => {
-                        state.airdrop_claims.insert(claim_key, true);
-                        serde_json::json!(format!("0x{}", tx_hash))
+                    Ok(execution) => {
+                        state
+                            .websocket_state
+                            .broadcast_balance_update(
+                                execution.recipient.clone(),
+                                execution.amount,
+                            )
+                            .await;
+                        serde_json::json!(format!("0x{}", execution.tx_id))
                     }
-                    Err(e) => {
+                    Err(error) => {
                         return (
                             StatusCode::OK,
                             Json(serde_json::json!({
@@ -4358,7 +4279,7 @@ async fn jsonrpc_handler(
                                 "id": id,
                                 "error": {
                                     "code": -32603,
-                                    "message": format!("Bridge execution failed: {}", e)
+                                    "message": error
                                 }
                             })),
                         )

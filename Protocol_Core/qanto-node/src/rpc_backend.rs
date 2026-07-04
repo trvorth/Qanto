@@ -1,8 +1,10 @@
 use ahash::AHashMap as HashMap;
+use serde::Deserialize;
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use sha3::{Digest, Keccak256};
 use tokio::sync::{broadcast, mpsc, RwLock};
 
 use crate::mempool::Mempool;
@@ -40,6 +42,173 @@ pub struct NodeRpcBackend {
     pub rpc_balance_sender: broadcast::Sender<proto::BalanceUpdate>,
     pub rpc_transaction_sender: broadcast::Sender<proto::AddressTransactionEntry>,
     pub balance_cache: Arc<RwLock<HashMap<String, u128>>>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct BridgeMintRequest {
+    pub source_tx_hash: String,
+    pub amount: String,
+    pub recipient: String,
+    pub source_chain: String,
+    pub relayer_signatures: Vec<String>,
+    pub merkle_proof: String,
+    pub receipt_proof: String,
+    pub block_header: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct BridgeClaimExecution {
+    pub tx_id: String,
+    pub recipient: String,
+    pub amount: u128,
+}
+
+impl BridgeMintRequest {
+    fn normalize_hex_field(field: &str, value: &str, expected_len: Option<usize>) -> Result<String, String> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Err(format!("{field} cannot be empty"));
+        }
+
+        let without_prefix = trimmed.trim_start_matches("0x").trim_start_matches("0X");
+        if without_prefix.is_empty() || without_prefix.len() % 2 != 0 {
+            return Err(format!("{field} must be valid hex data"));
+        }
+        if let Some(expected_len) = expected_len {
+            if without_prefix.len() != expected_len {
+                return Err(format!(
+                    "{field} must be {expected_len} hex characters, got {}",
+                    without_prefix.len()
+                ));
+            }
+        }
+        hex::decode(without_prefix).map_err(|_| format!("{field} must decode as hex bytes"))?;
+        Ok(format!("0x{}", without_prefix.to_lowercase()))
+    }
+
+    fn normalize_recipient(&self) -> Result<String, String> {
+        let trimmed = self.recipient.trim();
+        if trimmed.is_empty() {
+            return Err("recipient cannot be empty".to_string());
+        }
+
+        let without_prefix = trimmed.trim_start_matches("0x").trim_start_matches("0X");
+        match without_prefix.len() {
+            40 => {
+                hex::decode(without_prefix)
+                    .map_err(|_| "recipient must be a valid 20-byte EVM address".to_string())?;
+                Ok(crate::transaction::pad_ethereum_address(trimmed))
+            }
+            64 => {
+                hex::decode(without_prefix)
+                    .map_err(|_| "recipient must be a valid padded 32-byte address".to_string())?;
+                Ok(without_prefix.to_lowercase())
+            }
+            _ => Err("recipient must be 20-byte EVM hex or 32-byte padded hex".to_string()),
+        }
+    }
+
+    fn normalized_signatures(&self) -> Result<Vec<String>, String> {
+        if self.relayer_signatures.is_empty() {
+            return Err("relayer_signatures cannot be empty".to_string());
+        }
+
+        self.relayer_signatures
+            .iter()
+            .map(|signature| {
+                let normalized =
+                    Self::normalize_hex_field("relayer_signatures[]", signature, Some(130))?;
+                let sig_bytes = hex::decode(normalized.trim_start_matches("0x"))
+                    .map_err(|_| "relayer_signatures[] must decode as 65 bytes".to_string())?;
+                if sig_bytes.len() != 65 {
+                    return Err("relayer_signatures[] must decode as 65 bytes".to_string());
+                }
+                Ok(normalized)
+            })
+            .collect()
+    }
+
+    fn build_transaction(
+        &self,
+    ) -> Result<(crate::transaction::Transaction, String, u128), String> {
+        let source_tx_hash =
+            Self::normalize_hex_field("source_tx_hash", &self.source_tx_hash, Some(64))?;
+        let recipient = self.normalize_recipient()?;
+        let amount = self
+            .amount
+            .trim()
+            .parse::<u128>()
+            .map_err(|_| "amount must be a base-unit u128 string".to_string())?;
+        if amount == 0 {
+            return Err("amount must be greater than zero".to_string());
+        }
+        let source_chain = self.source_chain.trim();
+        if source_chain.is_empty() {
+            return Err("source_chain cannot be empty".to_string());
+        }
+        let relayer_signatures = self.normalized_signatures()?;
+        let merkle_proof =
+            Self::normalize_hex_field("merkle_proof", &self.merkle_proof, None)?;
+        let receipt_proof =
+            Self::normalize_hex_field("receipt_proof", &self.receipt_proof, None)?;
+        let block_header =
+            Self::normalize_hex_field("block_header", &self.block_header, None)?;
+
+        let mut metadata = HashMap::new();
+        metadata.insert("bridge_source_tx_hash".to_string(), source_tx_hash.clone());
+        metadata.insert("bridge_amount".to_string(), amount.to_string());
+        metadata.insert("bridge_recipient".to_string(), recipient.clone());
+        metadata.insert("bridge_source_chain".to_string(), source_chain.to_string());
+        metadata.insert(
+            "bridge_relayer_signatures".to_string(),
+            relayer_signatures.join(","),
+        );
+        metadata.insert("bridge_merkle_proof".to_string(), merkle_proof.clone());
+        metadata.insert("bridge_receipt_proof".to_string(), receipt_proof.clone());
+        metadata.insert("bridge_block_header".to_string(), block_header.clone());
+
+        let bridge_system_address =
+            crate::transaction::pad_ethereum_address("0x9F00000000000000000000000000000000000013");
+        let mut hasher = Keccak256::new();
+        hasher.update(source_chain.as_bytes());
+        hasher.update(source_tx_hash.as_bytes());
+        hasher.update(recipient.as_bytes());
+        hasher.update(amount.to_string().as_bytes());
+        hasher.update(merkle_proof.as_bytes());
+        hasher.update(receipt_proof.as_bytes());
+        hasher.update(block_header.as_bytes());
+        hasher.update(relayer_signatures.join(",").as_bytes());
+        let tx_id = hex::encode(hasher.finalize());
+
+        let tx = crate::transaction::Transaction {
+            id: tx_id.clone(),
+            sender: bridge_system_address.clone(),
+            receiver: bridge_system_address,
+            amount,
+            fee: 0,
+            gas_limit: 250_000,
+            gas_used: 0,
+            gas_price: 1,
+            priority_fee: 0,
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            metadata,
+            signature: crate::types::QuantumResistantSignature {
+                signer_public_key: Vec::new(),
+                signature: Vec::new(),
+            },
+            fee_breakdown: None,
+            transaction_kind: crate::transaction::TransactionKind::BridgeClaim,
+            chain_id: crate::transaction::GLOBAL_CHAIN_ID
+                .load(std::sync::atomic::Ordering::Relaxed) as u32,
+        };
+
+        Ok((tx, recipient, amount))
+    }
 }
 
 impl NodeRpcBackend {
@@ -626,4 +795,21 @@ pub async fn handle_request_faucet_funds(
         .await?;
 
     Ok(tx_id)
+}
+
+pub async fn handle_bridge_claim_submission(
+    dag: &crate::qantodag::QantoDAG,
+    utxos_arc: &Arc<RwLock<HashMap<String, crate::types::UTXO>>>,
+    request: BridgeMintRequest,
+) -> Result<BridgeClaimExecution, String> {
+    let (tx, recipient, amount) = request.build_transaction()?;
+    dag.process_bridge_claim(&tx, utxos_arc)
+        .await
+        .map_err(|err| format!("Bridge claim processing failed: {err}"))?;
+
+    Ok(BridgeClaimExecution {
+        tx_id: tx.id.clone(),
+        recipient,
+        amount,
+    })
 }
