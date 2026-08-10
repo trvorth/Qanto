@@ -270,7 +270,7 @@ impl DecoupledProducer {
                                 &mempool,
                                 &utxos,
                                 &miner,
-                                wallet.address().as_str(),
+                                wallet.validator_id().as_str(),
                                 signing_key.as_bytes(),
                                 public_key.as_bytes(),
                                 chain_id,
@@ -354,7 +354,7 @@ impl DecoupledProducer {
                             &mempool,
                             &utxos,
                             &miner,
-                            wallet.address().as_str(),
+                            wallet.validator_id().as_str(),
                             signing_key.as_bytes(),
                             public_key.as_bytes(),
                             chain_id,
@@ -580,6 +580,7 @@ impl DecoupledProducer {
         mut mined_rx: mpsc::Receiver<MinedBlock>,
     ) -> tokio::task::JoinHandle<Result<(), QantoDAGError>> {
         let dag = Arc::clone(&self.dag);
+        let wallet = Arc::clone(&self.wallet);
         let mempool = Arc::clone(&self.mempool);
         let utxos = Arc::clone(&self.utxos);
         let shutdown_token = self.shutdown_token.clone();
@@ -873,16 +874,26 @@ impl DecoupledProducer {
                             Some(mined_block) => {
                                 debug!("BLOCK PROCESSOR: Validating and adding mined block #{}", mined_block.sequence_id);
 
-                                // Block celebration display - gated by config flag
-                                if logging_config.enable_block_celebrations {
-                                    let block_str = format!("{}", mined_block.block);
-                                    info!("\n{}", block_str);
+                                // Finalize nonce/effort exactly once, after mining and before
+                                // any validation, persistence, or propagation.
+                                let mut block_to_add = mined_block.block.clone();
+                                let (signing_key, _) = match wallet.get_keypair() {
+                                    Ok(keypair) => keypair,
+                                    Err(error) => {
+                                        error!("BLOCK PROCESSOR: Cannot obtain sealing key: {}", error);
+                                        continue;
+                                    }
+                                };
+                                if let Err(error) = block_to_add.seal(&signing_key) {
+                                    error!("BLOCK PROCESSOR: Refusing unsealed mined block: {}", error);
+                                    continue;
                                 }
 
-                                // Prepare block: attach optional finality_proof derived from canonical PoW hash
-                                let mut block_to_add = mined_block.block.clone();
-                                let finality_hex = format!("{}", block_to_add.hash_for_pow());
-                                block_to_add.finality_proof = Some(finality_hex);
+                                // Block celebration display - gated by config flag
+                                if logging_config.enable_block_celebrations {
+                                    let block_str = format!("{}", block_to_add);
+                                    info!("\n{}", block_str);
+                                }
 
                                 // Validate and add block to DAG with parent-aware pending queue
                                 match attempt_add_block(

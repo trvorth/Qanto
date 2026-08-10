@@ -3,8 +3,6 @@
 
 use ed25519_dalek::SigningKey;
 use num_bigint::BigUint;
-#[cfg(feature = "pqcrypto-legacy")]
-use pqcrypto_dilithium::dilithium3;
 use rand::RngCore;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -115,9 +113,8 @@ fn normalize_witness(witness: &BridgeEventWitness) -> Result<BridgeEventWitness,
             "recipient cannot be empty".to_string(),
         ));
     }
-    parse_monetary_u128("bridge.amount", &witness.amount).map_err(|err| {
-        BridgeProofError::InvalidWitness(format!("invalid amount: {err}"))
-    })?;
+    parse_monetary_u128("bridge.amount", &witness.amount)
+        .map_err(|err| BridgeProofError::InvalidWitness(format!("invalid amount: {err}")))?;
 
     Ok(BridgeEventWitness {
         source_chain: witness.source_chain.trim().to_string(),
@@ -242,17 +239,13 @@ pub fn build_bridge_claim_request(
 /// Verifies a cross-chain bridge transaction using ultra-fast pairing checks.
 /// Optimized to execute within the 31ms synaptic finality delay.
 pub fn verify_bridge_transaction(
-    proof: &ZKProof,
-    inputs: &PublicInputs,
+    _proof: &ZKProof,
+    _inputs: &PublicInputs,
 ) -> Result<bool, &'static str> {
-    // MOCK: In production, this utilizes elliptic curve pairings (e.g. BLS12-381)
-    if proof.a == [0; 32] {
-        return Err("Invalid Proof Structure");
-    }
-
-    // Fast-path verification for 10M TPS consensus engine
-    let is_valid = inputs.root_hash != [0; 32] && inputs.nullifier != [0; 32];
-    Ok(is_valid)
+    // Fail closed until this crate has an audited circuit, canonical CRS/VK,
+    // source-header finality, receipt inclusion, and nullifier/domain binding.
+    // Shape/nonzero checks are not cryptographic verification.
+    Err("bridge ZK verifier is not implemented")
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -293,9 +286,6 @@ pub fn generate_new_address() -> Result<String, WalletKeygenError> {
     let signing_key = SigningKey::from_bytes(&secret);
     let verifying_key = signing_key.verifying_key();
 
-    #[cfg(feature = "pqcrypto-legacy")]
-    let _ = dilithium3::keypair();
-
     Ok(hex::encode(verifying_key.to_bytes()))
 }
 
@@ -326,7 +316,7 @@ mod tests {
     use num_bigint::BigUint;
 
     #[test]
-    fn test_rapid_verification() {
+    fn bridge_verifier_fails_closed_without_real_pairing_verification() {
         let proof = ZKProof {
             a: [1; 32],
             b: [2; 64],
@@ -336,7 +326,10 @@ mod tests {
             root_hash: [0xff; 32],
             nullifier: [0xee; 32],
         };
-        assert_eq!(verify_bridge_transaction(&proof, &inputs), Ok(true));
+        assert_eq!(
+            verify_bridge_transaction(&proof, &inputs),
+            Err("bridge ZK verifier is not implemented")
+        );
     }
 
     #[test]
@@ -377,41 +370,23 @@ mod tests {
     }
 
     #[test]
-    fn bridge_proof_pipeline_is_deterministic() {
+    fn synthetic_bridge_proof_pipeline_is_rejected() {
         let witness = BridgeEventWitness {
             source_chain: "ethereum-sepolia".to_string(),
-            source_tx_hash:
-                "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                    .to_string(),
+            source_tx_hash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .to_string(),
             recipient: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
             amount: "1000000000".to_string(),
             token_address: "0xcccccccccccccccccccccccccccccccccccccccc".to_string(),
-            block_hash:
-                "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
-                    .to_string(),
+            block_hash: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                .to_string(),
             block_number: 42,
             log_index: 7,
         };
 
-        let proof = generate_bridge_proof_bundle(&witness).expect("proof bundle");
-        let signing_hash = bridge_claim_signing_hash(
-            &witness.source_chain,
-            &witness.source_tx_hash,
-            &witness.amount,
-            &witness.recipient,
+        assert_eq!(
+            generate_bridge_proof_bundle(&witness),
+            Err(BridgeProofError::VerificationFailed)
         );
-        let request = build_bridge_claim_request(
-            &witness,
-            vec![format!("0x{}", "11".repeat(65))],
-            &proof,
-        )
-        .expect("claim request");
-
-        assert_eq!(proof.merkle_proof.len(), 66);
-        assert_eq!(proof.receipt_proof.len(), 66);
-        assert!(proof.block_header.starts_with("0x"));
-        assert_eq!(signing_hash.len(), 32);
-        assert_eq!(request.source_chain, "ethereum-sepolia");
-        assert_eq!(request.amount, "1000000000");
     }
 }

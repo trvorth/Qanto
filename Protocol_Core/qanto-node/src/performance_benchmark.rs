@@ -214,7 +214,7 @@ impl PerformanceBenchmark {
             parallel_writers: 8,
             enable_write_batching: true,
             enable_bloom_filters: true,
-            enable_async_io: true,
+            enable_async_io: false,
             sync_interval: Duration::from_millis(100),
             compression_level: 3,
         };
@@ -812,6 +812,9 @@ impl PerformanceBenchmark {
                                             TransactionError::InvalidAddress => {
                                                 std_tx_invalid_addr.fetch_add(1, Ordering::Relaxed);
                                             }
+                                            TransactionError::SignerAddressMismatch => {
+                                                std_tx_invalid_addr.fetch_add(1, Ordering::Relaxed);
+                                            }
                                             TransactionError::QuantumSignatureVerification => {
                                                 std_tx_sig.fetch_add(1, Ordering::Relaxed);
                                             }
@@ -927,6 +930,10 @@ impl PerformanceBenchmark {
                                                 elite_tx_omega.fetch_add(1, Ordering::Relaxed);
                                             }
                                             TransactionError::InvalidAddress => {
+                                                elite_tx_invalid_addr
+                                                    .fetch_add(1, Ordering::Relaxed);
+                                            }
+                                            TransactionError::SignerAddressMismatch => {
                                                 elite_tx_invalid_addr
                                                     .fetch_add(1, Ordering::Relaxed);
                                             }

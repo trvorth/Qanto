@@ -918,10 +918,8 @@ pub async fn get_or_generate_qdag(epoch: u64) -> Result<Arc<QDag>, QanhashError>
             // Convert raw bytes back to QDag format
             if dag_data.len().is_multiple_of(MIX_BYTES) {
                 let mut qdag_data = Vec::with_capacity(dag_data.len() / MIX_BYTES);
-                for chunk in dag_data.chunks_exact(MIX_BYTES) {
-                    let mut mix_bytes = [0u8; MIX_BYTES];
-                    mix_bytes.copy_from_slice(chunk);
-                    qdag_data.push(mix_bytes);
+                for chunk in dag_data.as_chunks::<MIX_BYTES>().0 {
+                    qdag_data.push(*chunk);
                 }
 
                 let qdag = Arc::new(QDag::new(qdag_data, epoch));
@@ -1393,6 +1391,15 @@ fn generate_qdag(seed: &[u8; 32], epoch: u64) -> Arc<Vec<[u8; MIX_BYTES]>> {
     Arc::new(dataset)
 }
 
+#[inline]
+fn decode_dag_words(entry: &[u8; MIX_BYTES]) -> [u64; MIX_BYTES / 8] {
+    let mut words = [0u64; MIX_BYTES / 8];
+    for (word, bytes) in words.iter_mut().zip(entry.as_chunks::<8>().0) {
+        *word = u64::from_le_bytes(*bytes);
+    }
+    words
+}
+
 pub fn hash(header_hash: &QantoHash, nonce: u64, block_index: u64) -> [u8; 32] {
     let dag = get_qdag(block_index);
     let dag_len_mask = dag.len() - 1;
@@ -1404,16 +1411,8 @@ pub fn hash(header_hash: &QantoHash, nonce: u64, block_index: u64) -> [u8; 32] {
     mix[4] = nonce;
     for _ in 0..32 {
         let p_index = mix[0].wrapping_add(mix[1]);
-        // SAFETY: DAG entry pointer casting is safe because:
-        // 1. DAG entries are guaranteed to be MIX_BYTES (128) bytes, which equals 16 * u64
-        // 2. Index is masked with dag_len_mask to ensure bounds checking
-        // 3. DAG is immutable during hashing operation (protected by Arc)
-        // 4. Memory layout of [u8; 128] is compatible with [u64; 16] (same size, aligned)
-        let dag_entry1: &[u64; 16] =
-            unsafe { &*(dag[p_index as usize & dag_len_mask].as_ptr() as *const [u64; 16]) };
-        let dag_entry2: &[u64; 16] = unsafe {
-            &*(dag[(p_index.wrapping_add(1)) as usize & dag_len_mask].as_ptr() as *const [u64; 16])
-        };
+        let dag_entry1 = decode_dag_words(&dag[p_index as usize & dag_len_mask]);
+        let dag_entry2 = decode_dag_words(&dag[(p_index.wrapping_add(1)) as usize & dag_len_mask]);
         for i in 0..16 {
             let val = mix[i].wrapping_mul(31).wrapping_add(dag_entry1[i]);
             mix[i] = val.rotate_left(((i % 8) + 1) as u32) ^ dag_entry2[i];
@@ -1882,12 +1881,9 @@ impl CpuMiner {
         // Unrolled mixing loop for better performance
         for _ in 0..32 {
             let p_index = mix[0].wrapping_add(mix[1]);
-            let dag_entry1: &[u64; 16] =
-                unsafe { &*(dag[p_index as usize & dag_len_mask].as_ptr() as *const [u64; 16]) };
-            let dag_entry2: &[u64; 16] = unsafe {
-                &*(dag[(p_index.wrapping_add(1)) as usize & dag_len_mask].as_ptr()
-                    as *const [u64; 16])
-            };
+            let dag_entry1 = decode_dag_words(&dag[p_index as usize & dag_len_mask]);
+            let dag_entry2 =
+                decode_dag_words(&dag[(p_index.wrapping_add(1)) as usize & dag_len_mask]);
 
             // Optimized mixing with better instruction pipelining
             mix[0] = mix[0]
@@ -2581,29 +2577,11 @@ pub async fn get_qdag_optimized(block_index: u64) -> Arc<Vec<[u8; MIX_BYTES]>> {
 
 /// Fallback to synchronous version for compatibility (renamed to avoid conflict)
 pub fn get_qdag_sync(block_index: u64) -> Arc<Vec<[u8; MIX_BYTES]>> {
-    // Always use the synchronous fallback implementation to avoid runtime issues
-    let epoch = block_index / EPOCH_LENGTH;
-
-    // Check cache first
-    if let Some((cached_epoch, dag)) = &*QDAG_CACHE.read().unwrap() {
-        if *cached_epoch == epoch {
-            return dag.clone();
-        }
-    }
-
-    // Double-check with write lock to avoid race conditions
-    let mut write_cache = QDAG_CACHE.write().unwrap();
-    if let Some((cached_epoch, dag)) = &*write_cache {
-        if *cached_epoch == epoch {
-            return dag.clone();
-        }
-    }
-
-    info!("[Qanhash] Generating new Q-DAG for epoch {epoch}");
-    let seed = compute_epoch_seed(epoch);
-    let new_dag = generate_qdag(&seed, epoch);
-    *write_cache = Some((epoch, new_dag.clone()));
-    new_dag
+    // Consensus containment: mining and validation must populate QDAG_CACHE
+    // through exactly the same seed derivation and generator. The previous
+    // implementation used compute_epoch_seed() here while get_qdag() used
+    // qanto_hash(epoch_le), so process call order changed consensus output.
+    get_qdag(block_index)
 }
 
 /// Optimized DAG generation with parallel processing and memory efficiency
@@ -2753,4 +2731,20 @@ pub async fn get_dag_cache_stats() -> (f64, u64, u64, u64) {
         stats.misses,
         stats.generations,
     )
+}
+
+#[cfg(test)]
+mod consensus_containment_tests {
+    use super::*;
+
+    #[test]
+    fn synchronous_and_validation_qdag_paths_are_identical() {
+        *QDAG_CACHE.write().unwrap() = None;
+        let validation_first = get_qdag(0);
+
+        *QDAG_CACHE.write().unwrap() = None;
+        let mining_first = get_qdag_sync(0);
+
+        assert_eq!(validation_first.as_ref(), mining_first.as_ref());
+    }
 }

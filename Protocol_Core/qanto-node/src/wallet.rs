@@ -139,7 +139,8 @@ impl Wallet {
     }
 
     /// Imports a wallet from a 32-byte or 64-byte hex-encoded Ed25519 private key.
-    /// A new, non-deterministic PQ keypair will be generated.
+    /// The canonical post-quantum keypair is deterministically derived so
+    /// repeated imports preserve the same protocol address.
     pub fn from_private_key(private_key_hex: &str) -> Result<Self, WalletError> {
         let key_bytes = hex::decode(private_key_hex.trim())?;
 
@@ -156,8 +157,13 @@ impl Wallet {
             .map_err(|e| WalletError::Crypto(e.to_string()))?;
         let verifying_key = signing_key.verifying_key();
 
+        use sha3::{Digest, Sha3_256};
+        let mut seed_hasher = Sha3_256::new();
+        seed_hasher.update(b"QANTO\0WALLET-PQ-SEED\0");
+        seed_hasher.update(key_array);
+        let pq_seed: [u8; 32] = seed_hasher.finalize().into();
         let (pk, sk) =
-            generate_pq_keypair(None).map_err(|e| WalletError::PqCrypto(e.to_string()))?;
+            generate_pq_keypair(Some(pq_seed)).map_err(|e| WalletError::PqCrypto(e.to_string()))?;
 
         Ok(Self {
             data: WalletData {
@@ -213,6 +219,12 @@ impl Wallet {
             WalletError::PqCrypto("Failed to deserialize post-quantum public key".to_string())
         })?;
 
+        if sk.public_key().as_bytes() != pk.as_bytes() {
+            return Err(WalletError::PqCrypto(
+                "Stored post-quantum public and private keys do not match".to_string(),
+            ));
+        }
+
         Ok((sk, pk))
     }
 
@@ -256,8 +268,39 @@ impl Wallet {
             .map_err(|e| WalletError::Crypto(e.to_string()))
     }
 
-    /// Returns the public address (hex-encoded Ed25519 public key).
+    /// Returns the canonical ML-DSA account address for the active network.
     pub fn address(&self) -> String {
+        self.address_for_chain(
+            crate::transaction::GLOBAL_CHAIN_ID.load(std::sync::atomic::Ordering::Relaxed) as u32,
+        )
+        .expect("wallet stores a validated ML-DSA-65 public key")
+    }
+
+    /// Returns the canonical ML-DSA account address for a specific network.
+    pub fn address_for_chain(&self, network_chain_id: u32) -> Result<String, WalletError> {
+        qanto_core::protocol_identity::account_address_v2(
+            network_chain_id,
+            &self.data.qr_public_key,
+        )
+        .map_err(|error| WalletError::PqCrypto(error.to_string()))
+    }
+
+    /// Returns the canonical validator identity for the active network.
+    pub fn validator_id(&self) -> String {
+        self.validator_id_for_chain(
+            crate::transaction::GLOBAL_CHAIN_ID.load(std::sync::atomic::Ordering::Relaxed) as u32,
+        )
+        .expect("wallet stores a validated ML-DSA-65 public key")
+    }
+
+    /// Returns the canonical validator identity for a specific network.
+    pub fn validator_id_for_chain(&self, network_chain_id: u32) -> Result<String, WalletError> {
+        qanto_core::protocol_identity::validator_id_v2(network_chain_id, &self.data.qr_public_key)
+            .map_err(|error| WalletError::PqCrypto(error.to_string()))
+    }
+
+    /// Returns the legacy Ed25519 identifier for explicit migration tooling.
+    pub fn legacy_ed25519_address(&self) -> String {
         hex::encode(&self.data.verifying_key)
     }
 
@@ -417,5 +460,36 @@ impl Wallet {
         let wallet = Self::from_file(&path, old_passphrase)?;
         wallet.save_to_file(&path, new_passphrase)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raw_key_import_preserves_the_post_quantum_address() {
+        let private_key = "11".repeat(32);
+        let wallet_a = Wallet::from_private_key(&private_key).expect("first import");
+        let wallet_b = Wallet::from_private_key(&private_key).expect("second import");
+
+        assert_eq!(
+            wallet_a.address_for_chain(1234).unwrap(),
+            wallet_b.address_for_chain(1234).unwrap()
+        );
+        assert_ne!(
+            wallet_a.address_for_chain(1234).unwrap(),
+            wallet_a.address_for_chain(1235).unwrap()
+        );
+        assert_ne!(
+            wallet_a.address_for_chain(1234).unwrap(),
+            wallet_a.validator_id_for_chain(1234).unwrap()
+        );
+
+        let (_, public_key) = wallet_a.get_keypair().expect("stored keypair");
+        assert_eq!(
+            wallet_a.address_for_chain(1234).unwrap(),
+            qanto_core::protocol_identity::account_address_v2(1234, public_key.as_bytes()).unwrap()
+        );
     }
 }

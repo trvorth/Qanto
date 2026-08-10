@@ -79,7 +79,7 @@ mod tests {
     fn test_final_transcendence_harmony() {
         let mut tft = FinalTranscendence::new();
         let scale = crate::QANTO_SCALE;
-        let harmonious = tft.achieve_universal_harmony([0xEE; 32], (995 * scale) / 1000, 1 * scale); // Harmony EE (High Density)
+        let harmonious = tft.achieve_universal_harmony([0xEE; 32], (995 * scale) / 1000, scale); // Harmony EE (High Density)
 
         assert!(harmonious);
         assert_eq!(

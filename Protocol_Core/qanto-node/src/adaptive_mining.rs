@@ -14,6 +14,20 @@ use tokio::sync::{mpsc, RwLock};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
+/// Adaptive mining remains contained until its signer ownership and difficulty
+/// rules are consensus-specified and independently validated.
+pub const ADAPTIVE_MINING_DISABLED_REASON: &str =
+    "adaptive mining is disabled until explicit wallet signing and deterministic consensus difficulty rules are implemented";
+
+/// Shared fail-closed activation gate used by configuration and runtime entry.
+pub fn validate_adaptive_mining_activation(enabled: bool) -> Result<(), &'static str> {
+    if enabled {
+        Err(ADAPTIVE_MINING_DISABLED_REASON)
+    } else {
+        Ok(())
+    }
+}
+
 /// Circuit breaker states for mining resilience
 #[derive(Debug, Clone, PartialEq)]
 pub enum CircuitBreakerState {
@@ -301,6 +315,12 @@ impl AdaptiveMiningLoop {
         p2p_broadcast_tx: Option<mpsc::Sender<P2PCommand>>,
         shutdown_token: CancellationToken,
     ) -> Result<(), QantoDAGError> {
+        // This must remain the first operation in the loop. Configuration
+        // validation should reject activation earlier, but direct callers also
+        // fail closed before metrics, state, mempool, or mining activity.
+        validate_adaptive_mining_activation(true)
+            .map_err(|reason| QantoDAGError::InvalidBlock(reason.to_string()))?;
+
         info!("🚀 Starting resilient adaptive mining loop for testnet");
         self.state.mining_start_time = Some(Instant::now());
 
@@ -477,7 +497,7 @@ impl AdaptiveMiningLoop {
                         qanto_dag,
                         mined_block,
                         mempool,
-                        utxos,
+                        utxos.clone(),
                         p2p_broadcast_tx,
                         mining_duration,
                     )
@@ -520,44 +540,15 @@ impl AdaptiveMiningLoop {
     /// Create candidate block with adaptive difficulty
     async fn create_candidate_block_with_difficulty(
         &self,
-        qanto_dag: &Arc<QantoDAG>,
-        wallet: &Arc<Wallet>,
-        mempool: &Arc<RwLock<Mempool>>,
-        utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
-        miner: &Arc<Miner>,
+        _qanto_dag: &Arc<QantoDAG>,
+        _wallet: &Arc<Wallet>,
+        _mempool: &Arc<RwLock<Mempool>>,
+        _utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
+        _miner: &Arc<Miner>,
     ) -> Result<QantoBlock, QantoDAGError> {
-        let miner_address = wallet.address();
-        let chain_id: u32 = 0;
-
-        // Get transactions from mempool
-        let transactions = {
-            let mempool_guard = mempool.read().await;
-            mempool_guard.get_pending_transactions().await
-        };
-
-        info!(
-            "Creating candidate block with {} transactions, difficulty: {}",
-            transactions.len(),
-            self.state.current_difficulty
-        );
-
-        // Create block with adaptive difficulty securely
-        let candidate_block = qanto_dag
-            .create_candidate_block(
-                &qanto_dag.get_private_key().await?,
-                &qanto_dag.get_private_key().await?.public_key(),
-                &miner_address,
-                mempool,
-                utxos,
-                chain_id,
-                miner,
-                None,                                // homomorphic_public_key
-                None,                                // parents_override
-                Some(self.state.current_difficulty), // override difficulty
-            )
-            .await?;
-
-        Ok(candidate_block)
+        Err(QantoDAGError::InvalidBlock(
+            ADAPTIVE_MINING_DISABLED_REASON.to_string(),
+        ))
     }
 
     /// Execute mining with retry logic and exponential backoff
@@ -671,7 +662,7 @@ impl AdaptiveMiningLoop {
         qanto_dag: &Arc<QantoDAG>,
         mined_block: QantoBlock,
         mempool: &Arc<RwLock<Mempool>>,
-        utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
+        consensus_utxos: Arc<RwLock<HashMap<String, UTXO>>>,
         p2p_broadcast_tx: &Option<mpsc::Sender<P2PCommand>>,
         mining_duration: Duration,
     ) -> Result<(), QantoDAGError> {
@@ -708,7 +699,7 @@ impl AdaptiveMiningLoop {
 
         while add_retry_count < MAX_ADD_RETRIES {
             match qanto_dag
-                .add_block(mined_block.clone(), utxos, Some(mempool), None)
+                .add_block(mined_block.clone(), &consensus_utxos, Some(mempool), None)
                 .await
             {
                 Ok(true) => {
@@ -765,71 +756,17 @@ impl AdaptiveMiningLoop {
             }
         }
 
+        // `QantoDAG::add_block` owns the accepted block's atomic UTXO state
+        // transition. Consume this path's handle now so post-commit effects
+        // cannot become a second writer.
+        drop(consensus_utxos);
+
         // Remove processed transactions from mempool with retry logic
         let mempool_guard = mempool.write().await;
         mempool_guard
             .remove_transactions(&mined_block.transactions)
             .await;
         debug!("✅ Removed {} transactions from mempool", tx_count);
-
-        // Update UTXO set with retry logic
-        const MAX_UTXO_RETRIES: u32 = 3;
-        let mut utxo_retry_count = 0;
-
-        while utxo_retry_count < MAX_UTXO_RETRIES {
-            let mut utxos_guard = utxos.write().await;
-
-            // This is a simplified UTXO update - in a real implementation,
-            // you'd need to properly handle inputs/outputs
-            let update_result = async {
-                for tx in &mined_block.transactions {
-                    // Remove spent UTXOs (inputs)
-                    for input in &tx.inputs {
-                        utxos_guard.remove(&input.tx_id);
-                    }
-
-                    // Add new UTXOs (outputs)
-                    for (index, output) in tx.outputs.iter().enumerate() {
-                        let utxo_id = format!("{}:{}", tx.id, index);
-                        let utxo = UTXO {
-                            address: output.address.clone(),
-                            amount: output.amount,
-                            tx_id: tx.id.clone(),
-                            output_index: index as u32,
-                            explorer_link: format!("https://explorer.qanto.org/tx/{}", tx.id),
-                        };
-                        utxos_guard.insert(utxo_id, utxo);
-                    }
-                }
-                Ok::<(), String>(())
-            }
-            .await;
-
-            match update_result {
-                Ok(_) => {
-                    debug!("✅ Updated UTXO set for block #{}", block_height);
-                    break;
-                }
-                Err(e) => {
-                    utxo_retry_count += 1;
-                    if utxo_retry_count < MAX_UTXO_RETRIES {
-                        warn!(
-                            "Failed to update UTXO set (attempt {}/{}): {}. Retrying...",
-                            utxo_retry_count, MAX_UTXO_RETRIES, e
-                        );
-                        drop(utxos_guard); // Release lock before retry
-                        tokio::time::sleep(Duration::from_millis(50)).await;
-                    } else {
-                        warn!(
-                            "Failed to update UTXO set after {} attempts: {}",
-                            MAX_UTXO_RETRIES, e
-                        );
-                        // Don't fail the entire operation for UTXO update issues
-                        break;
-                    }
-                }
-            }
-        }
 
         // Log mining metrics
         self.metrics.record_success(mining_duration, 0).await;
@@ -1060,4 +997,18 @@ pub struct AdaptiveMiningStats {
     pub current_difficulty: u64,
     pub success_rate: u64,
     pub uptime_secs: u64,
+}
+
+#[cfg(test)]
+mod containment_tests {
+    use super::*;
+
+    #[test]
+    fn activation_gate_is_fail_closed() {
+        assert_eq!(validate_adaptive_mining_activation(false), Ok(()));
+        assert_eq!(
+            validate_adaptive_mining_activation(true),
+            Err(ADAPTIVE_MINING_DISABLED_REASON)
+        );
+    }
 }

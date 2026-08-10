@@ -1,4 +1,4 @@
-[![Status](https://img.shields.io/badge/Status-Testnet%20Alpha-00e5ff?style=for-the-badge)](./Docs/ROADMAP.md)
+[![Status](https://img.shields.io/badge/Status-Research%20Prototype-orange?style=for-the-badge)](./Docs/ROADMAP.md)
 [![CI](https://img.shields.io/github/actions/workflow/status/trvorth/Qanto/rust.yml?branch=main&label=CI&style=for-the-badge)](https://github.com/trvorth/Qanto/actions/workflows/rust.yml)
 [![License](https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge)](https://github.com/trvorth/Qanto/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/Docs-Testnet%20Guide-blue?style=for-the-badge)](https://github.com/trvorth/Qanto/blob/main/Docs/guide/testnet-guide.md)
@@ -8,9 +8,9 @@
 
 <div align="center">
 
-# QANTO — Quantum-Resistant Layer-0 Blockchain
+# QANTO — Layer-0 Protocol Research Prototype
 
-**The world's first post-quantum, AI-governed blockchain infrastructure.**
+**Pre-release research code with ML-DSA signing, a multi-parent DAG, and experimental adaptive-control modules. Not ready for a public network or assets of value.**
 
 [Website](https://qanto.org) · [Explorer](https://qanto.org/public/explorer/index.html) · [Whitepaper](./Docs/whitepaper/Qanto-whitepaper.pdf) · [Discord](https://discord.gg/curfp5FKWV) · [X/Twitter](https://x.com/QantoLayer0)
 
@@ -20,13 +20,13 @@
 
 ## Overview
 
-Qanto is a production-grade Layer-0 blockchain engineered for extreme throughput, post-quantum security, and AI-driven governance. Its hybrid **PoW + DPoS** consensus model uses Proof-of-Work for permissionless leader election and Delegated Proof-of-Stake for sub-second block finality.
+Qanto is an experimental Layer-0 codebase. The current canonical block path checks fixed-difficulty Proof-of-Work, but it does not enforce a DPoS committee certificate or Proof-of-Storage/Execution, and automatic finality is disabled. SAGA/ΩMEGA remain experimental and must not control consensus until their inputs and arithmetic are deterministic and committed.
 
 **Key Design Principles:**
-- **Post-Quantum Security** — CRYSTALS-Dilithium signatures, Kyber KEM, SPHINCS+ hash-based auth
-- **DAG-Based Parallel Execution** — 100,000+ TPS capacity with sub-second finality
-- **AI Governance (SAGA)** — Neural network-driven parameter tuning and threat response
-- **Deflationary Tokenomics** — Asymptotic halving curve with 21B hard cap
+- **Post-Quantum direction** — ML-DSA signing is implemented, but sender/validator identity binding, PQ transport, migration, and independent side-channel review remain launch gates.
+- **DAG research** — Multi-parent storage and deterministic tie-breaking exist; branch-scoped state, reorganization, and finality are incomplete.
+- **Adaptive-control research** — SAGA contains heuristic and neural components; active consensus use is not safe.
+- **Sealed allocation constants** — The 21B constants and 9-decimal scale are compile-time checked; live issuance/cap enforcement is not yet correct.
 
 **Author**: trvorth (trvorth@qanto.org)
 
@@ -42,32 +42,19 @@ Qanto is a production-grade Layer-0 blockchain engineered for extreme throughput
 | **Native Decimals** | 9 |
 | **Max Supply** | 21,000,000,000 QNTO |
 | **Smallest Unit per QNTO** | 1,000,000,000 base units |
-| **Initial Block Reward** | 2.5 QNTO |
+| **Initial Block Reward** | Unresolved: code bases use 50 QNTO, but the live SAGA path is not consensus-safe |
 | **Target Block Time** | 1.0 second |
 | **Halving Period** | ~97.2 days (8,400,000 seconds) |
 | **Halving Factor** | 0.999 (0.1% reduction per period) |
-| **Chain ID** | `0x1234` (4660 decimal) |
+| **Chain ID** | `1234` (`0x4D2`) |
 
-### Deflationary Emission Curve
+### Emission Status
 
-Qanto employs an **asymptotic halving model** where the block reward is multiplied by a `0.999` factor every ~97.2 days. Unlike Bitcoin's aggressive 50% halvings, this creates a smooth, predictable deflation curve:
-
-```
-Reward(period) = 2.5 × 0.999^period
-```
-
-| Period | Approximate Date | Block Reward | Cumulative % Emitted |
-|--------|-----------------|--------------|---------------------|
-| 0 | Genesis | 2.5000 QNTO | 0% |
-| 100 | ~26.7 years | 2.2618 QNTO | ~4.8% |
-| 500 | ~133.3 years | 1.5186 QNTO | ~21.1% |
-| 1000 | ~266.6 years | 0.9215 QNTO | ~36.8% |
-
-This model ensures **long-term incentive alignment** — validators and miners receive meaningful rewards for centuries, eliminating the "security budget crisis" that plagues aggressive-halving chains.
+`emission.rs` contains an integer recurrence intended to calculate `50 × 0.999^period`, subject to a remaining-supply clamp. The canonical block producer and validator do not currently use that engine; they use process-local floating SAGA state instead. The shipped genesis also allocates the full 21B while the emission counter starts at zero. Therefore no live emission schedule, security budget, or cap guarantee should be inferred from this README. See the current tokenomics audit under `Docs/audits/2026-08-08-master-a-z/`.
 
 ### WQNTO (Wrapped QANTO)
 
-The `WQNTO` ERC-20 compatible wrapper enables DEX liquidity provision on EVM chains:
+The `WQNTO` ERC-20 contract is a same-chain wrapped-native-token primitive. It is not by itself a cross-chain bridge, and this repository publishes no canonical production deployment or live liquidity pool:
 
 | Property | Value |
 |---|---|
@@ -85,9 +72,9 @@ The `WQNTO` ERC-20 compatible wrapper enables DEX liquidity provision on EVM cha
 
 | Algorithm | Usage | NIST Status | Key Size |
 |---|---|---|---|
-| **CRYSTALS-Dilithium** | Transaction signatures | FIPS 204 (Approved) | 2528 bytes (pk) |
-| **Kyber KEM** | Secure key exchange | FIPS 203 (Approved) | 1568 bytes (pk) |
-| **SPHINCS+** | Hash-based fallback signatures | FIPS 205 (Approved) | 32-64 bytes (pk) |
+| **ML-DSA** | Local signing/verification primitive; identity binding incomplete | FIPS 204 | Parameter-dependent |
+| **ML-KEM/Kyber family** | Key material exists; no production session establishment was found | FIPS 203 family | Parameter-dependent |
+| **SLH-DSA/SPHINCS+ family** | Optional/fallback code; not canonical authorization | FIPS 205 family | Parameter-dependent |
 | **Qanhash32x** | PoW mining algorithm | Custom | N/A |
 
 ### Security Layers
@@ -96,7 +83,7 @@ The `WQNTO` ERC-20 compatible wrapper enables DEX liquidity provision on EVM cha
 ┌─────────────────────────────────────────────┐
 │  Application Layer (Smart Contracts, DApps)  │
 ├─────────────────────────────────────────────┤
-│  Consensus Layer (PoW + DPoS + PoSe + SAGA) │
+│  Consensus research (active PoW; other gates incomplete) │
 ├─────────────────────────────────────────────┤
 │  Network Layer (libp2p, WSS, P2P Mesh)       │
 ├─────────────────────────────────────────────┤
@@ -114,19 +101,17 @@ The `WQNTO` ERC-20 compatible wrapper enables DEX liquidity provision on EVM cha
 
 ### For DEX Integrators
 
-1. Deploy `WQNTO.sol` to your target EVM chain using [`SmartContracts/deploy_wqnto.js`](./SmartContracts/deploy_wqnto.js)
-2. Pair WQNTO with your desired liquidity token (USDT, USDC, ETH)
-3. Use the standard ERC-20 ABI — available at [`Frontend/website/assets/json/WQNTO_ABI.json`](./Frontend/website/assets/json/WQNTO_ABI.json)
+**Production integration is blocked.** QantoSwap intentionally reverts, bridge claims fail closed, and no production WQNTO address is published. For an explicitly authorized development network, compile and test the current contract before using the artifact-based deployment script.
 
 ```bash
 # Deploy WQNTO to target chain
 cd SmartContracts
-RPC_URL=https://your-chain-rpc PRIVATE_KEY=0x... node deploy_wqnto.js
+RPC_URL=https://your-authorized-rpc PRIVATE_KEY=0x... EXPECTED_CHAIN_ID=1234 node deploy_wqnto.js
 ```
 
 ### For CEX Integrators
 
-The complete CEX listing payload is available at [`SmartContracts/cex-listing-payload.json`](./SmartContracts/cex-listing-payload.json).
+`SmartContracts/cex-listing-payload.json` is a draft artifact and is **not approved for exchange integration**. Supply, reward, endpoint, and finality semantics must be corrected and independently verified first.
 
 **Required API Endpoints (CoinMarketCap / Binance Compatible):**
 
@@ -143,27 +128,18 @@ The complete CEX listing payload is available at [`SmartContracts/cex-listing-pa
   "name": "QNTO",
   "symbol": "QNTO",
   "decimals": 9,
-  "chainId": "0x1234",
+  "chainId": "0x4D2",
   "maxSupply": 21000000000,
-  "initialBlockReward": 2.5,
+  "initialBlockRewardStatus": "unresolved-do-not-integrate",
   "targetBlockTimeSeconds": 1.0
 }
 ```
 
 ---
 
-## Performance Benchmarks
+## Performance Status
 
-Benchmarks conducted on Apple M-series CPU with integrated GPU.
-
-| Benchmark | Time | Throughput | Notes |
-|---|---|---|---|
-| CPU Hashrate (1k) | ~281 µs | **3.55 MHash/s** | Single-core Qanhash |
-| GPU Hashrate (1 batch) | ~3.67 ms | **17.85 MHash/s** | 65,536 parallel hashes |
-| Execution Layer (16k txs) | ~79.7 ms | **200,580 TPS** | Full block payload |
-| Hyperscale (1.6M txs) | ~62.8 ms | **25,447,000 TPS** | Sharded execution |
-| PQ Signatures | ~1.2 ms | **833 sigs/sec** | Dilithium verification |
-| Cross-Chain Verify | ~15 ms | **66 proofs/sec** | Light client proofs |
+No reproducible current artifact establishes sustained accepted-and-durable TPS, state-changing TPS, Layer-0 routing throughput, WAN throughput, GPU/CPU QanHash parity, or bridge-proof throughput. The configured transaction and worker counts are not measurements. The available benchmark binary currently exits before useful measurement, and the claimed 10M+/25.447M TPS figures must not be repeated until a multi-node benchmark publishes raw inputs, accepted/finalized counts, bytes, latency distributions, hardware, and failure rates.
 
 ---
 
@@ -176,17 +152,17 @@ qanto/
 ├── Protocol_Core/
 │   ├── qanto-node/src/       # Core node implementation (Rust)
 │   │   ├── node.rs           # Main orchestration
-│   │   ├── consensus.rs      # PoW + DPoS + PoSe
+│   │   ├── consensus.rs      # Experimental consensus helpers
 │   │   ├── emission.rs       # Tokenomics & halving logic
 │   │   ├── qantodag.rs       # DAG ledger & sharding
 │   │   ├── p2p.rs            # libp2p networking
 │   │   ├── wallet.rs         # Encrypted wallet management
 │   │   ├── saga.rs           # AI governance engine
-│   │   ├── zk.rs             # Zero-knowledge circuits
+│   │   ├── zkp.rs            # Experimental zero-knowledge circuits
 │   │   └── post_quantum_crypto.rs  # PQC suite
 │   └── qanto-rpc/            # gRPC/JSON-RPC server
 ├── Frontend/
-│   └── website/              # Production website (Cloudflare Pages)
+│   └── website/              # Web frontend
 │       ├── index.html
 │       ├── assets/css/       # Glassmorphism dark-mode styles
 │       └── assets/js/os.js   # SAGA-OS window manager + RPC telemetry
@@ -194,21 +170,21 @@ qanto/
 │   ├── contracts/WQNTO.sol   # Wrapped QANTO (ERC-20, 9 decimals)
 │   ├── deploy_wqnto.js       # Deployment script (ethers.js)
 │   ├── token-info.json       # Canonical token metadata
-│   └── cex-listing-payload.json  # CEX integration payload
-└── docs/
+│   └── cex-listing-payload.json  # Draft integration metadata
+└── Docs/
     ├── whitepaper/           # Academic whitepaper
     └── ROADMAP.md            # Development roadmap
 ```
 
 ### Consensus Model
 
-Qanto's hybrid consensus combines three mechanisms:
+The repository contains code or specifications for three mechanisms, but only fixed-difficulty PoW is enforced by the canonical inbound block path:
 
-1. **Proof-of-Work (PoW)** — Qanhash algorithm for permissionless leader election with ASIC resistance
-2. **Delegated Proof-of-Stake (DPoS)** — Validator selection for fast finality (sub-second)
-3. **Proof-of-Storage/Execution (PoSe)** — Resource utilization verification
+1. **Proof-of-Work (PoW)** — checked, but the custom hash and heterogeneous backends require a versioned repair and parity vectors.
+2. **Delegated Proof-of-Stake (DPoS)** — helper code exists; inbound blocks do not prove committee eligibility or quorum.
+3. **Proof-of-Storage/Execution (PoSe)** — no canonical verifier was found.
 
-SAGA (AI Governance) continuously optimizes parameters, detects anomalies, and adjusts difficulty in real-time.
+SAGA telemetry and edict code exists, but active values are process-local and unsuitable for consensus. Difficulty is currently fixed.
 
 ---
 
@@ -293,7 +269,7 @@ message GetTransactionsByAddressResponse {
 - `transaction.amount`, `transaction.fee`, `transaction.gas_price`, `transaction.priority_fee`, and output amounts remain **string-encoded base units** to preserve full `u128` precision
 - `block_timestamp` is the canonical on-chain block time for the transaction inclusion block
 - `confirmations` is computed from `latest_height - block_height + 1`
-- `is_finalized` is derived from the DAG finality path and indicates stronger settlement assurance than a simple inclusion confirmation
+- `is_finalized` reflects the node's stored finalized set. Automatic protocol finality is currently disabled, so clients must not interpret this field as a live quorum certificate or irreversible settlement guarantee.
 
 This endpoint is backed by the node’s existing `address_index` and `tx_index`, avoiding local wallet-side caches and enabling direct decentralized history reads from the QANTO node.
 
@@ -303,7 +279,7 @@ This endpoint is backed by the node’s existing `address_index` and `tx_index`,
 
 ### Prerequisites
 
-- **Rust** 1.75+ with Cargo
+- **Rust** via rustup; `rust-toolchain.toml` pins the required nightly
 - **System**: Linux / macOS / Windows
 - **RAM**: 8–16 GB recommended
 - **Storage**: 50 GB+ SSD
@@ -315,30 +291,19 @@ This endpoint is backed by the node’s existing `address_index` and `tx_index`,
 git clone https://github.com/trvorth/Qanto.git
 cd Qanto
 
-# Build
-cargo build --release
+# Check the locked workspace
+cargo check --workspace --locked
 
-# Run node
-cargo run --release --features infinite-strata --bin qanto -- \
-  start --config config.toml --wallet wallet.key --clean
-
-# Run tests
-cargo test --release
+# Run the canonical Rust suite
+cargo nextest run --workspace --locked
 ```
 
-### Docker
-
-```bash
-docker pull qanto/node:latest
-docker run -d --name qanto-node \
-  -p 8081:8081 -p 30303:30303 -p 50051:50051 \
-  -v qanto-data:/data qanto/node:latest
-```
+The checked-in Docker/Kubernetes/Helm paths are under audit and are not a reproducible public-testnet launch contract. Do not pull or deploy an unpinned `latest` image.
 
 ### Connect via RPC
 
 ```bash
-# Check block height
+# Legacy endpoint example only; availability and safety are not asserted
 curl -s -X POST https://trvorth-qanto-testnet.hf.space/rpc \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
@@ -374,10 +339,12 @@ level = "info"
 
 ## Testnet
 
+The endpoints below are legacy metadata, not evidence of an active or launch-ready public testnet. The audited zero-budget Hugging Face topology is not suitable for a public P2P blockchain.
+
 | Parameter | Value |
 |---|---|
 | Network Name | QANTO Testnet |
-| Chain ID | `0x1234` (4660) |
+| Chain ID | `1234` (`0x4D2`) |
 | RPC | `https://trvorth-qanto-testnet.hf.space/rpc` |
 | WebSocket | `wss://trvorth-qanto-testnet.hf.space/ws` |
 | Explorer | [qanto.org/public/explorer](https://qanto.org/public/explorer/index.html) |
@@ -386,7 +353,7 @@ level = "info"
 
 ```json
 {
-  "chainId": "0x1234",
+  "chainId": "0x4D2",
   "chainName": "QANTO Testnet",
   "nativeCurrency": { "name": "QNTO", "symbol": "QNTO", "decimals": 9 },
   "rpcUrls": ["https://trvorth-qanto-testnet.hf.space/rpc"],
@@ -400,9 +367,9 @@ level = "info"
 
 Report vulnerabilities responsibly:
 
-- **Email**: security@qanto.org
-- **Response Time**: 24–48 hours
-- **Bug Bounty**: Up to $1,000 for critical vulnerabilities
+- Use the private process in [SECURITY.md](SECURITY.md).
+- Do not open a public issue containing vulnerability details.
+- No formal bug bounty or guaranteed reward is currently active.
 
 ---
 
@@ -410,7 +377,7 @@ Report vulnerabilities responsibly:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Run `cargo test --all && cargo fmt && cargo clippy`
+3. Run the applicable locked checks documented in [CONTRIBUTING.md](CONTRIBUTING.md)
 4. Submit a Pull Request
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
@@ -425,7 +392,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-**Qanto** — Quantum-Resistant Layer-0 Blockchain
+**Qanto** — Layer-0 Protocol Research Prototype
 
 [Website](https://qanto.org) · [Explorer](https://qanto.org/public/explorer/index.html) · [X/Twitter](https://x.com/QantoLayer0) · [Discord](https://discord.gg/curfp5FKWV)
 

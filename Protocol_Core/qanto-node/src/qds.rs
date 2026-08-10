@@ -47,8 +47,7 @@ impl Codec for QDSCodec {
         io.take(MAX_QDS_PAYLOAD_SIZE as u64)
             .read_to_end(&mut buf)
             .await?;
-        serde_json::from_slice(&buf)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        serde_json::from_slice(&buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     async fn read_response<T>(
@@ -63,8 +62,7 @@ impl Codec for QDSCodec {
         io.take(MAX_QDS_PAYLOAD_SIZE as u64)
             .read_to_end(&mut buf)
             .await?;
-        serde_json::from_slice(&buf)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        serde_json::from_slice(&buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 
     async fn write_request<T>(

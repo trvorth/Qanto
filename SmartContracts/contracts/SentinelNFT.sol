@@ -17,7 +17,8 @@ contract SentinelNFT is ERC721URIStorage, Ownable {
         _tokenIds++;
         uint256 newItemId = _tokenIds;
         
-        _mint(recipient, newItemId);
+        // Refuse to strand NFTs in contracts that do not implement ERC721Receiver.
+        _safeMint(recipient, newItemId);
         _setTokenURI(newItemId, tokenURI);
         
         return newItemId;

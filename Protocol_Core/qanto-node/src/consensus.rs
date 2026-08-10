@@ -94,9 +94,27 @@ impl Consensus {
         crate::miner::Miner::hash_meets_target(hash_bytes, &target_hash)
     }
 
-    /// The primary validation function. It checks a block against all consensus rules,
-    /// prioritizing Proof-of-Work as the primary finality mechanism.
+    /// Validate through the single canonical DAG path. No alternate consensus
+    /// API may omit identity, stake, reward, or state checks.
     pub async fn validate_block(
+        &self,
+        block: &QantoBlock,
+        dag_arc: &Arc<QantoDAG>,
+        utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
+    ) -> Result<(), ConsensusError> {
+        if dag_arc.is_valid_block(block, utxos).await? {
+            Ok(())
+        } else {
+            Err(ConsensusError::InvalidBlockStructure(
+                "canonical DAG validation rejected block".to_string(),
+            ))
+        }
+    }
+
+    /// Historical alternate validator retained only as non-callable reference
+    /// until its helper methods are deleted during the V2 cutover.
+    #[allow(dead_code)]
+    async fn validate_block_legacy_unreachable(
         &self,
         block: &QantoBlock,
         dag_arc: &Arc<QantoDAG>,

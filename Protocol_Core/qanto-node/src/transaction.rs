@@ -72,6 +72,11 @@ pub const FEE_RATE_TIER3_FIXED: u128 = 20_000_000;
 /// The fee rate for the fourth tier (3%).
 pub const FEE_RATE_TIER4_FIXED: u128 = 30_000_000;
 
+/// Canonical sender used only by protocol-created coinbase transactions.
+pub const COINBASE_SENDER: &str =
+    "0000000000000000000000000000000000000000000000000000000000000000";
+pub const COINBASE_CONTEXT_KEY: &str = "coinbase_context_v2";
+
 #[derive(Error, Debug)]
 pub enum TransactionError {
     #[error("ΛΣ-ΩMEGA Protocol rejected the action as unstable")]
@@ -82,6 +87,8 @@ pub enum TransactionError {
     QuantumSignatureVerification,
     #[error("Invalid transaction signature")]
     InvalidTransactionSignature,
+    #[error("Transaction signer is not bound to the declared sender or reward receiver")]
+    SignerAddressMismatch,
     #[error("Insufficient funds")]
     InsufficientFunds,
     #[error("Invalid transaction structure: {0}")]
@@ -176,6 +183,7 @@ pub(crate) struct TransactionSigningPayload {
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum TransactionKind {
+    Coinbase,
     Transfer,
     Stake,
     Unstake,
@@ -244,6 +252,89 @@ pub fn calculate_dynamic_fee(amount: u128) -> u128 {
 }
 
 impl Transaction {
+    /// Derive the canonical post-quantum account address for a network.
+    pub fn pq_address_from_public_key_for_chain(
+        public_key: &[u8],
+        network_chain_id: u32,
+    ) -> Result<String, TransactionError> {
+        qanto_core::protocol_identity::account_address_v2(network_chain_id, public_key)
+            .map_err(|_| TransactionError::SignerAddressMismatch)
+    }
+
+    /// Derive the canonical post-quantum account address for the active network.
+    pub fn pq_address_from_public_key(public_key: &[u8]) -> Result<String, TransactionError> {
+        Self::pq_address_from_public_key_for_chain(
+            public_key,
+            GLOBAL_CHAIN_ID.load(std::sync::atomic::Ordering::Relaxed) as u32,
+        )
+    }
+
+    fn validate_native_signer_binding(&self) -> Result<(), TransactionError> {
+        let public_key = &self.signature.signer_public_key;
+        let expected = Self::pq_address_from_public_key_for_chain(public_key, self.chain_id)?;
+
+        if self.is_coinbase() {
+            if self.sender != COINBASE_SENDER
+                || self.receiver != expected
+                || self.outputs.first().map(|output| output.address.as_str())
+                    != Some(self.receiver.as_str())
+            {
+                return Err(TransactionError::SignerAddressMismatch);
+            }
+            self.validate_coinbase_structure()?;
+        } else if self.sender != expected {
+            return Err(TransactionError::SignerAddressMismatch);
+        }
+
+        Ok(())
+    }
+
+    fn validate_coinbase_structure(&self) -> Result<(), TransactionError> {
+        if !self.inputs.is_empty()
+            || self.fee != 0
+            || self.gas_limit != 0
+            || self.gas_used != 0
+            || self.gas_price != 0
+            || self.priority_fee != 0
+            || self.metadata.len() != 1
+            || self.outputs.is_empty()
+        {
+            return Err(TransactionError::InvalidStructure(
+                "coinbase must have no inputs, fees, gas, extra metadata, or empty outputs"
+                    .to_string(),
+            ));
+        }
+
+        let context = self.metadata.get(COINBASE_CONTEXT_KEY).ok_or_else(|| {
+            TransactionError::InvalidStructure(
+                "coinbase is missing its canonical block context".to_string(),
+            )
+        })?;
+        if context.len() != 64
+            || !context
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(TransactionError::InvalidStructure(
+                "coinbase block context must be 32-byte lowercase hexadecimal".to_string(),
+            ));
+        }
+
+        let total_output = self.outputs.iter().try_fold(0u128, |total, output| {
+            total.checked_add(output.amount).ok_or_else(|| {
+                TransactionError::InvalidStructure("coinbase output sum overflow".to_string())
+            })
+        })?;
+        if self.amount != total_output {
+            return Err(TransactionError::InvalidStructure(format!(
+                "coinbase amount {} does not equal output sum {total_output}",
+                self.amount
+            )));
+        }
+
+        Ok(())
+    }
+
     fn canonical_metadata(metadata: &HashMap<String, String>) -> BTreeMap<String, String> {
         metadata
             .iter()
@@ -423,17 +514,14 @@ impl Transaction {
         signing_key: &crate::qanto_native_crypto::QantoPQPrivateKey,
         _public_key: &crate::qanto_native_crypto::QantoPQPublicKey,
     ) -> Result<Self, TransactionError> {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        let dummy_sender: [u8; 32] = rng.gen();
-        let dummy_receiver: [u8; 32] = rng.gen();
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
 
-        let sender_str = hex::encode(dummy_sender);
-        let receiver_str = hex::encode(dummy_receiver);
+        let sender_str =
+            Self::pq_address_from_public_key_for_chain(signing_key.public_key().as_bytes(), 1234)?;
+        let receiver_str = "b".repeat(64);
 
         let id_payload = Self::id_payload(
             sender_str.clone(),
@@ -444,8 +532,18 @@ impl Transaction {
             0,
             1,
             0,
-            vec![],
-            vec![],
+            vec![Input {
+                tx_id: "c".repeat(64),
+                output_index: 0,
+            }],
+            vec![Output {
+                address: receiver_str.clone(),
+                amount: 50_000_000_000,
+                homomorphic_encrypted: HomomorphicEncrypted {
+                    ciphertext: vec![],
+                    public_key: vec![],
+                },
+            }],
             HashMap::new(),
             timestamp,
             TransactionKind::Transfer,
@@ -461,16 +559,19 @@ impl Transaction {
         Ok(Self {
             id: tx_id,
             sender: sender_str,
-            receiver: receiver_str,
+            receiver: receiver_str.clone(),
             amount: 100,
             fee: 0,
             gas_limit: 50000,
             gas_used: 0,
             gas_price: 1,
             priority_fee: 0,
-            inputs: vec![],
+            inputs: vec![Input {
+                tx_id: "c".repeat(64),
+                output_index: 0,
+            }],
             outputs: vec![Output {
-                address: "dummy_miner_address".to_string(),
+                address: receiver_str.clone(),
                 amount: 50_000_000_000, // Example mining reward (50 QAN)
                 homomorphic_encrypted: HomomorphicEncrypted {
                     ciphertext: vec![],
@@ -532,6 +633,8 @@ impl Transaction {
             return Ok(());
         }
 
+        self.validate_native_signer_binding()?;
+
         let signature_data = Self::serialize_for_signing(&self.signing_payload_for_transaction())?;
 
         if !QuantumResistantSignature::verify(&self.signature, &signature_data) {
@@ -545,6 +648,19 @@ impl Transaction {
         config: TransactionConfig,
         signing_key: &crate::qanto_native_crypto::QantoPQPrivateKey,
     ) -> Result<Self, TransactionError> {
+        if !config
+            .metadata
+            .as_ref()
+            .is_some_and(|metadata| metadata.contains_key("evm_raw_tx"))
+        {
+            qanto_core::protocol_identity::validate_account_address_v2(
+                &config.sender,
+                config.chain_id,
+                signing_key.public_key().as_bytes(),
+            )
+            .map_err(|_| TransactionError::SignerAddressMismatch)?;
+        }
+
         Self::validate_structure_pre_creation(
             config.sender.clone(),
             config.receiver.clone(),
@@ -631,17 +747,48 @@ impl Transaction {
     /// Creates a new coinbase transaction.
     pub(crate) fn new_coinbase(
         receiver: String,
-        _reward: u128,
+        reward: u128,
         outputs: Vec<Output>,
         signing_key: &crate::qanto_native_crypto::QantoPQPrivateKey,
         chain_id: u32,
+        coinbase_context: String,
     ) -> Result<Self, TransactionError> {
-        let sender = "0000000000000000000000000000000000000000000000000000000000000000".to_string();
+        let expected_receiver = Self::pq_address_from_public_key_for_chain(
+            signing_key.public_key().as_bytes(),
+            chain_id,
+        )?;
+        if receiver != expected_receiver
+            || outputs.first().map(|output| output.address.as_str()) != Some(receiver.as_str())
+        {
+            return Err(TransactionError::SignerAddressMismatch);
+        }
+
+        if coinbase_context.len() != 64
+            || !coinbase_context
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(TransactionError::InvalidStructure(
+                "coinbase block context must be 32-byte lowercase hexadecimal".to_string(),
+            ));
+        }
+
+        let sender = COINBASE_SENDER.to_string();
         let timestamp = Self::get_current_timestamp()?;
-        let metadata = HashMap::new();
+        let mut metadata = HashMap::new();
+        metadata.insert(COINBASE_CONTEXT_KEY.to_string(), coinbase_context);
 
         // Calculate the actual amount as sum of outputs
-        let actual_amount = outputs.iter().map(|output| output.amount).sum::<u128>();
+        let actual_amount = outputs.iter().try_fold(0u128, |total, output| {
+            total.checked_add(output.amount).ok_or_else(|| {
+                TransactionError::InvalidStructure("coinbase output sum overflow".to_string())
+            })
+        })?;
+        if reward != actual_amount {
+            return Err(TransactionError::InvalidStructure(format!(
+                "declared coinbase reward {reward} does not equal output sum {actual_amount}"
+            )));
+        }
 
         let id_payload = Self::id_payload(
             sender.clone(),
@@ -656,7 +803,7 @@ impl Transaction {
             outputs.clone(),
             metadata.clone(),
             timestamp,
-            TransactionKind::Transfer,
+            TransactionKind::Coinbase,
             chain_id,
         );
         let tx_id = Self::derive_transaction_id(&id_payload)?;
@@ -682,7 +829,7 @@ impl Transaction {
             metadata,
             signature: signature_obj,
             fee_breakdown: None,
-            transaction_kind: TransactionKind::Transfer,
+            transaction_kind: TransactionKind::Coinbase,
             chain_id,
         };
         Ok(tx)
@@ -690,7 +837,20 @@ impl Transaction {
 
     /// Checks if the transaction is a coinbase transaction.
     pub fn is_coinbase(&self) -> bool {
-        self.inputs.is_empty()
+        self.transaction_kind == TransactionKind::Coinbase
+    }
+
+    pub(crate) fn validate_coinbase_context(
+        &self,
+        expected_context: &str,
+    ) -> Result<(), TransactionError> {
+        self.validate_coinbase_structure()?;
+        if self.metadata.get(COINBASE_CONTEXT_KEY).map(String::as_str) != Some(expected_context) {
+            return Err(TransactionError::InvalidStructure(
+                "coinbase is not bound to this block context".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     /// Returns a reference to the transaction's metadata.
@@ -1043,6 +1203,22 @@ impl Transaction {
 
     /// Lightweight transaction validation for mempool admission.
     pub fn validate_for_mempool(&self) -> Result<(), TransactionError> {
+        // Coinbase transactions are created only inside block construction.
+        // Treating every inputless transaction as coinbase at an external
+        // boundary lets peers inject a second coinbase into a candidate block.
+        if self.inputs.is_empty() {
+            return Err(TransactionError::InvalidStructure(
+                "Inputless/coinbase transactions are not accepted by the mempool".to_string(),
+            ));
+        }
+
+        if self.transaction_kind != TransactionKind::Transfer {
+            return Err(TransactionError::InvalidStructure(
+                "Non-transfer transaction kinds are disabled until branch-scoped atomic state is activated"
+                    .to_string(),
+            ));
+        }
+
         // DoS Protection: size limits check
         let serialized_len = serde_json::to_vec(self)
             .map_err(TransactionError::Serialization)?
@@ -1370,6 +1546,17 @@ mod tests {
         assert_eq!(bytes_a, bytes_b);
     }
 
+    #[test]
+    fn mempool_rejects_inputless_coinbase_like_transactions() {
+        let tx = Transaction::new_dummy();
+        let error = tx
+            .validate_for_mempool()
+            .expect_err("coinbase-like transactions must not enter the mempool");
+        assert!(
+            matches!(error, TransactionError::InvalidStructure(message) if message.contains("not accepted by the mempool"))
+        );
+    }
+
     #[tokio::test]
     async fn verify_paths_fail_fast_on_invalid_signature() {
         let dag = QantoDAG::new_dummy_for_verification();
@@ -1398,6 +1585,76 @@ mod tests {
             TransactionError::InvalidTransactionSignature
         ));
     }
+
+    #[test]
+    fn native_signature_cannot_authorize_a_different_sender() {
+        let (public_key, signing_key) = generate_pq_keypair(Some([17u8; 32])).expect("keypair");
+        let canonical_sender =
+            Transaction::pq_address_from_public_key_for_chain(public_key.as_bytes(), 1234)
+                .expect("canonical sender");
+        let mut tx = Transaction::new_dummy_signed(&signing_key, &public_key).expect("signed tx");
+        tx.sender = canonical_sender;
+        tx.receiver = "b".repeat(64);
+        tx.inputs = vec![Input {
+            tx_id: "c".repeat(64),
+            output_index: 0,
+        }];
+        tx.outputs = vec![sample_output()];
+        tx.rebuild_canonical_signature(&signing_key)
+            .expect("canonical signature");
+        tx.verify_signature(&public_key)
+            .expect("bound signer must verify");
+
+        tx.sender = "d".repeat(64);
+        tx.rebuild_canonical_signature(&signing_key)
+            .expect("attacker can sign the forged payload with their own key");
+        assert!(matches!(
+            tx.verify_signature(&public_key),
+            Err(TransactionError::SignerAddressMismatch)
+        ));
+        assert_eq!(
+            Transaction::verify_signatures_batch_parallel(&[tx]),
+            vec![false]
+        );
+    }
+
+    #[test]
+    fn coinbase_receiver_must_match_the_reward_signer() {
+        let (public_key, signing_key) = generate_pq_keypair(Some([23u8; 32])).expect("keypair");
+        let receiver =
+            Transaction::pq_address_from_public_key_for_chain(public_key.as_bytes(), 1234)
+                .expect("receiver");
+        let output = Output {
+            address: receiver.clone(),
+            amount: 50,
+            homomorphic_encrypted: HomomorphicEncrypted::default(),
+        };
+
+        let coinbase = Transaction::new_coinbase(
+            receiver.clone(),
+            50,
+            vec![output.clone()],
+            &signing_key,
+            1234,
+            "0".repeat(64),
+        )
+        .expect("bound coinbase");
+        coinbase
+            .verify_signature(&public_key)
+            .expect("bound coinbase signature");
+
+        assert!(matches!(
+            Transaction::new_coinbase(
+                "e".repeat(64),
+                50,
+                vec![output],
+                &signing_key,
+                1234,
+                "0".repeat(64),
+            ),
+            Err(TransactionError::SignerAddressMismatch)
+        ));
+    }
 }
 
 impl Transaction {
@@ -1408,6 +1665,9 @@ impl Transaction {
             .par_iter()
             .map(|tx| {
                 if tx.chain_id != expected_chain_id {
+                    return false;
+                }
+                if tx.id != tx.compute_hash() {
                     return false;
                 }
                 if let Some(raw_tx_hex) = tx.metadata.get("evm_raw_tx") {
@@ -1424,6 +1684,10 @@ impl Transaction {
                                 && recovered_amount == tx.amount;
                         }
                     }
+                    return false;
+                }
+
+                if tx.validate_native_signer_binding().is_err() {
                     return false;
                 }
 

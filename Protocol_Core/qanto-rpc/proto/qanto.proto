@@ -130,14 +130,14 @@ message QantoBlock {
   string id = 2;
   repeated string parents = 3;
   repeated Transaction transactions = 4;
-  double difficulty = 5;
+  uint64 difficulty = 5;            // exact fixed-point consensus integer
   string validator = 6;
   string miner = 7;
   uint64 nonce = 8;
   uint64 timestamp = 9;
   uint64 height = 10;
   string reward = 11;
-  uint64 effort = 12;
+  string effort = 12;               // exact unsigned 128-bit decimal integer
   repeated CrossChainReference cross_chain_references = 13;
   repeated CrossChainSwap cross_chain_swaps = 14;
   string merkle_root = 15;
@@ -148,6 +148,7 @@ message QantoBlock {
   uint64 epoch = 20;
   optional string finality_proof = 21;
   optional string reservation_miner_id = 22;
+  uint32 protocol_version = 23;
 }
 
 message CrossChainReference {

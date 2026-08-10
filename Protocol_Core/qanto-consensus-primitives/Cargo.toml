@@ -1,0 +1,12 @@
+[package]
+name = "qanto-consensus-primitives"
+version = "0.1.0"
+edition = "2021"
+authors = ["Qanto Contributors"]
+description = "Inactive V2 consensus encoding, hashing, and proof-of-work primitives for Qanto"
+license = "MIT"
+repository = "https://github.com/trvorth/qanto"
+
+[dependencies]
+sha3 = "0.10.8"
+

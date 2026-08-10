@@ -13,6 +13,7 @@ pub const GENESIS_BLOCK_ID_KEY: &[u8] = b"genesis_block_id";
 pub const GENESIS_BLOCK_ID_PREFIX: &str = "genesis_block_id:";
 
 pub const TIPS_KEY_PREFIX: &str = "tips:";
+pub const EMISSION_STATE_V1_KEY: &[u8] = b"consensus:emission:v1";
 
 // New: balances key prefix and helpers
 pub const BALANCES_KEY_PREFIX: &str = "balance:";

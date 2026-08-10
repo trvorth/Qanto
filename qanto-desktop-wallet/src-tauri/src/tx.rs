@@ -1,4 +1,7 @@
-use crate::keystore::{get_key_material, record_failed_unlock, unlock_wallet_impl, WalletSessionState};
+use crate::keystore::{
+    get_key_material, record_failed_unlock, unlock_wallet_impl, validate_unlocked_identity,
+    WalletSessionState, WALLET_NETWORK_CHAIN_ID,
+};
 use bincode::Options;
 use my_blockchain::qanto_hash;
 #[cfg(feature = "pqcrypto-legacy")]
@@ -12,7 +15,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 use tokio::time::timeout;
 
-const DEFAULT_CHAIN_ID: u32 = 1234;
 const DEFAULT_GAS_LIMIT: u64 = 50_000;
 const DEFAULT_GAS_PRICE: u128 = 1;
 const DEFAULT_PRIORITY_FEE: u128 = 0;
@@ -24,8 +26,11 @@ fn validate_address(address: &str) -> Result<(), String> {
     if addr.len() != 64 {
         return Err("invalid address: expected 64 hex characters".to_string());
     }
-    if !addr.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err("invalid address: must be hex".to_string());
+    if !addr
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err("invalid address: must be lowercase hexadecimal".to_string());
     }
     Ok(())
 }
@@ -137,10 +142,12 @@ struct WalletUtxo {
     amount: u128,
     tx_id: String,
     output_index: u32,
+    #[allow(dead_code)]
     explorer_link: String,
 }
 
 #[derive(Clone, Copy, Serialize)]
+#[allow(dead_code)]
 enum CanonicalTransactionKind {
     Transfer,
     Stake,
@@ -224,7 +231,7 @@ fn build_transfer_signing_payload(
         metadata: metadata.clone(),
         timestamp,
         transaction_kind,
-        chain_id: DEFAULT_CHAIN_ID,
+        chain_id: WALLET_NETWORK_CHAIN_ID,
     };
     let id = hex::encode(qanto_hash(&canonical_serialize(&id_payload)?).as_bytes());
 
@@ -245,7 +252,7 @@ fn build_transfer_signing_payload(
             metadata,
             timestamp,
             transaction_kind,
-            chain_id: DEFAULT_CHAIN_ID,
+            chain_id: WALLET_NETWORK_CHAIN_ID,
         },
     ))
 }
@@ -260,9 +267,7 @@ fn http_get(path: &str, api_addr: &str) -> Result<String, String> {
         .set_write_timeout(Some(Duration::from_secs(5)))
         .map_err(|e| format!("API write timeout setup failed ({api_addr}): {e}"))?;
 
-    let request = format!(
-        "GET {path} HTTP/1.1\r\nHost: {api_addr}\r\nConnection: close\r\n\r\n"
-    );
+    let request = format!("GET {path} HTTP/1.1\r\nHost: {api_addr}\r\nConnection: close\r\n\r\n");
     stream
         .write_all(request.as_bytes())
         .map_err(|e| format!("API request write failed ({api_addr}): {e}"))?;
@@ -357,7 +362,9 @@ fn build_transfer_io(
     Ok((selected, outputs))
 }
 
-fn tx_status_from_entry(entry: &qanto_rpc::server::generated::AddressTransactionEntry) -> &'static str {
+fn tx_status_from_entry(
+    entry: &qanto_rpc::server::generated::AddressTransactionEntry,
+) -> &'static str {
     if entry.in_mempool {
         "pending"
     } else if entry.is_finalized {
@@ -411,6 +418,7 @@ pub async fn send_transaction_impl(
     if material.address != sender {
         return Err("wallet state mismatch".to_string());
     }
+    validate_unlocked_identity(&material)?;
 
     let amount_u128 = parse_qnto_to_base_units(&amount_string)?;
     if amount_u128 == 0 {
@@ -432,8 +440,9 @@ pub async fn send_transaction_impl(
     )?;
     let payload_bytes = canonical_serialize(&signing_payload)?;
 
-    let pq_sk = pqcrypto_dilithium::dilithium3::SecretKey::from_bytes(&material.dilithium3_secret_key)
-        .map_err(|_| "invalid dilithium3 secret key".to_string())?;
+    let pq_sk =
+        pqcrypto_dilithium::dilithium3::SecretKey::from_bytes(&material.dilithium3_secret_key)
+            .map_err(|_| "invalid dilithium3 secret key".to_string())?;
     let pq_sig = pqcrypto_dilithium::dilithium3::detached_sign(&payload_bytes, &pq_sk);
 
     let mut metadata = HashMap::new();
@@ -471,10 +480,11 @@ pub async fn send_transaction_impl(
             signature: pq_sig.as_bytes().to_vec(),
         }),
         fee_breakdown: None,
-        chain_id: DEFAULT_CHAIN_ID,
+        chain_id: WALLET_NETWORK_CHAIN_ID,
     };
 
-    let rpc_addr = std::env::var("QANTO_RPC_ADDR").unwrap_or_else(|_| "127.0.0.1:50051".to_string());
+    let rpc_addr =
+        std::env::var("QANTO_RPC_ADDR").unwrap_or_else(|_| "127.0.0.1:50051".to_string());
     let endpoint = format!("http://{rpc_addr}");
     let mut client = timeout(
         Duration::from_secs(3),
@@ -510,14 +520,17 @@ pub async fn get_transaction_history_impl(
     let page = page.unwrap_or(1).max(1);
     let page_size = page_size.unwrap_or(20).clamp(5, 100);
 
-    let rpc_addr = std::env::var("QANTO_RPC_ADDR").unwrap_or_else(|_| "127.0.0.1:50051".to_string());
+    let rpc_addr =
+        std::env::var("QANTO_RPC_ADDR").unwrap_or_else(|_| "127.0.0.1:50051".to_string());
     let endpoint = format!("http://{rpc_addr}");
 
     let mut last_err: Option<String> = None;
     for attempt in 0..2u32 {
         let mut client = match timeout(
             Duration::from_secs(3),
-            qanto_rpc::server::generated::qanto_rpc_client::QantoRpcClient::connect(endpoint.clone()),
+            qanto_rpc::server::generated::qanto_rpc_client::QantoRpcClient::connect(
+                endpoint.clone(),
+            ),
         )
         .await
         {
@@ -546,7 +559,12 @@ pub async fn get_transaction_history_impl(
             page_size,
         };
 
-        let resp = match timeout(Duration::from_secs(6), client.get_transactions_by_address(req)).await {
+        let resp = match timeout(
+            Duration::from_secs(6),
+            client.get_transactions_by_address(req),
+        )
+        .await
+        {
             Ok(Ok(r)) => r.into_inner(),
             Ok(Err(status)) => {
                 last_err = Some(format!("RPC error: {}", status.message()));
@@ -594,20 +612,28 @@ pub async fn subscribe_transactions_impl(
     validate_address(&address)?;
 
     let window_key = window.label().to_string();
-    if let Some(existing) = subscriptions.tasks.lock().map_err(|_| "subscription lock poisoned".to_string())?.remove(&window_key) {
+    if let Some(existing) = subscriptions
+        .tasks
+        .lock()
+        .map_err(|_| "subscription lock poisoned".to_string())?
+        .remove(&window_key)
+    {
         existing.abort();
     }
 
     let window_for_task = window.clone();
     let address_for_task = address.clone();
     let handle = tokio::spawn(async move {
-        let rpc_addr = std::env::var("QANTO_RPC_ADDR").unwrap_or_else(|_| "127.0.0.1:50051".to_string());
+        let rpc_addr =
+            std::env::var("QANTO_RPC_ADDR").unwrap_or_else(|_| "127.0.0.1:50051".to_string());
         let endpoint = format!("http://{rpc_addr}");
 
         loop {
             let mut client = match timeout(
                 Duration::from_secs(3),
-                qanto_rpc::server::generated::qanto_rpc_client::QantoRpcClient::connect(endpoint.clone()),
+                qanto_rpc::server::generated::qanto_rpc_client::QantoRpcClient::connect(
+                    endpoint.clone(),
+                ),
             )
             .await
             {
@@ -669,12 +695,15 @@ mod tests {
     use super::*;
     use crate::app::get_wallet_balance;
     use crate::keystore::{create_wallet_impl, keystore_path};
-    use rand::RngCore;
+    use qanto_core::protocol_identity::account_address_v2;
+    use qanto_core::qanto_native_crypto::QantoPQPrivateKey;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
     use serde_json::Value;
     use std::fs;
-    use std::path::PathBuf;
     use std::io::{Read, Write};
     use std::net::TcpStream;
+    use std::path::PathBuf;
     use tauri::test::mock_app;
     use tokio::time::sleep;
 
@@ -689,7 +718,10 @@ mod tests {
             match fs::remove_file(&path) {
                 Ok(()) => {}
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-                Err(err) => panic!("test keystore cleanup failed to remove {}: {err}", path.display()),
+                Err(err) => panic!(
+                    "test keystore cleanup failed to remove {}: {err}",
+                    path.display()
+                ),
             }
             if let Some(parent) = path.parent() {
                 let _ = fs::remove_dir_all(parent);
@@ -706,10 +738,19 @@ mod tests {
         std::env::temp_dir().join("qanto-wallet-live-e2e")
     }
 
-    fn random_hex_address() -> String {
-        let mut bytes = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut bytes);
-        hex::encode(bytes)
+    fn deterministic_recipient_address() -> String {
+        let mut rng = StdRng::from_seed([0xA5; 32]);
+        let private_key = QantoPQPrivateKey::generate(&mut rng);
+        let public_key = private_key.public_key();
+        account_address_v2(WALLET_NETWORK_CHAIN_ID, public_key.as_bytes())
+            .expect("deterministic recipient identity")
+    }
+
+    #[test]
+    fn native_transaction_addresses_are_canonical_protocol_identities() {
+        let address = deterministic_recipient_address();
+        validate_address(&address).expect("derived account identity");
+        assert!(validate_address(&address.to_uppercase()).is_err());
     }
 
     fn jsonrpc_post(method: &str, address: &str) -> Result<Value, String> {
@@ -776,15 +817,22 @@ mod tests {
         tx_hash: &str,
     ) -> Result<TxRecord, String> {
         for _ in 0..120 {
-            let history = get_transaction_history_impl(app, address.to_string(), Some(1), Some(20)).await?;
-            if let Some(record) = history.items.into_iter().find(|item| item.tx_hash == tx_hash) {
+            let history =
+                get_transaction_history_impl(app, address.to_string(), Some(1), Some(20)).await?;
+            if let Some(record) = history
+                .items
+                .into_iter()
+                .find(|item| item.tx_hash == tx_hash)
+            {
                 if !record.in_mempool {
                     return Ok(record);
                 }
             }
             sleep(Duration::from_secs(1)).await;
         }
-        Err(format!("timed out waiting for transaction {tx_hash} on address {address}"))
+        Err(format!(
+            "timed out waiting for transaction {tx_hash} on address {address}"
+        ))
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -798,7 +846,7 @@ mod tests {
         remove_test_keystore(&app_handle);
 
         let session = WalletSessionState::default();
-        let recipient = random_hex_address();
+        let recipient = deterministic_recipient_address();
 
         let recipient_before = get_wallet_balance(recipient.clone())
             .await
@@ -818,8 +866,8 @@ mod tests {
             .expect("sender initial balance query should work");
         assert_eq!(sender_initial.balance, "0");
 
-        let airdrop_response = jsonrpc_post("qanto_claimAirdrop", &sender)
-            .expect("airdrop JSON-RPC should succeed");
+        let airdrop_response =
+            jsonrpc_post("qanto_claimAirdrop", &sender).expect("airdrop JSON-RPC should succeed");
         assert!(
             airdrop_response.get("error").is_none(),
             "airdrop returned error payload: {airdrop_response}"
@@ -829,7 +877,10 @@ mod tests {
             .await
             .expect("sender should receive airdrop funds");
         assert_eq!(
-            funded_balance.balance.parse::<u128>().expect("funded sender balance should parse"),
+            funded_balance
+                .balance
+                .parse::<u128>()
+                .expect("funded sender balance should parse"),
             AIRDROP_BASE_UNITS
         );
 
@@ -842,7 +893,11 @@ mod tests {
         )
         .await
         .expect("wallet should send a signed transfer");
-        assert_eq!(send_response.tx_hash.len(), 64, "tx hash must remain 64 hex chars");
+        assert_eq!(
+            send_response.tx_hash.len(),
+            64,
+            "tx hash must remain 64 hex chars"
+        );
 
         let sender_tx = wait_for_transaction(&app_handle, &sender, &send_response.tx_hash)
             .await
@@ -872,12 +927,10 @@ mod tests {
             "sender confirmed balance should reflect outgoing transfer"
         );
 
-        let recipient_after = wait_for_confirmed_balance(
-            &recipient,
-            recipient_before_confirmed + SEND_BASE_UNITS,
-        )
-        .await
-        .expect("recipient confirmed balance should include transferred funds");
+        let recipient_after =
+            wait_for_confirmed_balance(&recipient, recipient_before_confirmed + SEND_BASE_UNITS)
+                .await
+                .expect("recipient confirmed balance should include transferred funds");
         let recipient_after_confirmed = recipient_after
             .balance
             .parse::<u128>()

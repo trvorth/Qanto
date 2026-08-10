@@ -737,7 +737,7 @@ impl InteroperabilityCoordinator {
             parallel_writers: 4,                // Number of parallel writers
             enable_write_batching: true,
             enable_bloom_filters: true,
-            enable_async_io: true,
+            enable_async_io: false,
             sync_interval: Duration::from_millis(100),
             compression_level: 3,
         };
@@ -1014,33 +1014,14 @@ impl InteroperabilityCoordinator {
                 }
                 #[cfg(feature = "real-zk-verifier")]
                 {
-                    // Enhanced zk-SNARK proof verification with persistent storage
-                    let proof_key =
-                        format!("zkproof:{}:{}", bridge_id, hex::encode(&proof.data[..8]));
-
-                    // Store proof for verification tracking
-                    self.persistent_db
-                        .put(proof_key.as_bytes().to_vec(), proof.data.clone())
-                        .map_err(|e| InteroperabilityError::ProofVerificationFailed {
-                            reason: format!("Failed to store ZK proof: {e}"),
-                        })?;
-
-                    // Verify ZK proof structure and content
-                    if proof.data.len() < 32 {
-                        return Err(InteroperabilityError::ProofVerificationFailed {
-                            reason: "Invalid ZK proof: insufficient data length".to_string(),
-                        });
-                    }
-
-                    // Verify proof components (simplified verification)
-                    let proof_hash = self.compute_hash(&proof.data);
-                    if proof_hash.len() != 32 {
-                        return Err(InteroperabilityError::ProofVerificationFailed {
-                            reason: "Invalid ZK proof hash".to_string(),
-                        });
-                    }
-
-                    debug!("ZK-SNARK proof verified for bridge {}", bridge_id);
+                    // The feature name previously enabled only length/hash checks,
+                    // which are not a SNARK verifier. Keep this path fail-closed
+                    // until an audited circuit and canonical verification key are
+                    // wired in; this also removes the short-proof slice panic.
+                    return Err(InteroperabilityError::ProofVerificationFailed {
+                        reason: "real-zk-verifier has no cryptographic verifier implementation"
+                            .to_string(),
+                    });
                 }
             }
             ProofType::OptimisticProof => {
@@ -2949,9 +2930,9 @@ pub mod halo2_zk {
 
             // Range-Check Lookup Table: bounds-check limb variables
             // Verifies x \in [0, 2^16-1] to reconstruct 64-bit bounds without 2^64 row explosion
-            for i in 0..4 {
+            for (_i, &a) in advice.iter().enumerate().take(4) {
                 meta.lookup(|meta| {
-                    let limb_expr = meta.query_advice(advice[i], Rotation::cur());
+                    let limb_expr = meta.query_advice(a, Rotation::cur());
                     vec![(limb_expr, range_table)]
                 });
             }

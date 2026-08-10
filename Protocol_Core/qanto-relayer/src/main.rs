@@ -122,7 +122,7 @@ fn strip_hex_prefix(value: &str) -> &str {
 fn normalize_hex(value: &str) -> Result<String, DynError> {
     let stripped = strip_hex_prefix(value);
     if stripped.is_empty()
-        || stripped.len() % 2 != 0
+        || !stripped.len().is_multiple_of(2)
         || !stripped.chars().all(|ch| ch.is_ascii_hexdigit())
     {
         return Err(format!("invalid hex string: {value}").into());

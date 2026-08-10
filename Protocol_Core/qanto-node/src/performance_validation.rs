@@ -507,14 +507,13 @@ impl PerformanceValidator {
                 .as_secs(),
             current_epoch: 0,
             height: index,
+            reward: 0,
+            nonce: 1_000_000 + index,
+            effort: 1_000,
+            chain_work: crate::miner::U256::ZERO,
             paillier_pk,
         };
-        let mut block = QantoBlock::new(creation_data)?;
-
-        // For testing: Create a mock valid block without expensive PoW
-        // Set a deterministic nonce that will pass basic validation
-        block.nonce = 1000000 + index; // Unique nonce per block
-        block.effort = 1000; // Higher effort value for testing
+        let block = QantoBlock::new(creation_data)?;
 
         // Override the block hash to ensure it meets the low difficulty target
         // This is a test-only approach to avoid expensive mining
@@ -637,7 +636,7 @@ pub async fn validate_performance_targets(
         parallel_writers: 4,                // Number of parallel writers
         enable_write_batching: true,
         enable_bloom_filters: true,
-        enable_async_io: true,
+        enable_async_io: false,
         sync_interval: Duration::from_millis(100),
         compression_level: 3,
     };

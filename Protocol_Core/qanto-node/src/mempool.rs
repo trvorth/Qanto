@@ -2206,3 +2206,9 @@ impl LockFreePqcMempool {
         arena.reset(); // Instant O(1) cleanup without heap fragmentation
     }
 }
+
+impl Default for LockFreePqcMempool {
+    fn default() -> Self {
+        Self::new()
+    }
+}

@@ -9,6 +9,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "Protocol_Core/qanto-consensus-primitives",
     "Protocol_Core/qanto-node",
     "Protocol_Core/qanto-core",
     "Protocol_Core/qanto-rpc",
@@ -21,7 +22,7 @@ members = [
 
 # Force secure versions to override transitive dependencies
 [workspace.dependencies]
-tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 mimalloc = { version = "0.1" }
 ahash = { version = "0.8", features = ["serde"] }
 # Security patches for transitive dependencies - force secure versions
@@ -33,17 +34,13 @@ hickory-proto = { version = "0.26.1" }
 hickory-resolver = { version = "0.26.1" }
 rustls = { version = "0.23" }
 
-# Override vulnerable dependencies
+# Compatibility overrides that still carry local source/API changes.
 [patch.crates-io]
-# Replace derivative with synstructure for arkworks compatibility
-derivative = { git = "https://github.com/mcarton/rust-derivative", branch = "master" }
-# Force secure tracing-subscriber version for all transitive dependencies
-tracing-subscriber = { git = "https://github.com/tokio-rs/tracing", tag = "tracing-subscriber-0.3.20" }
 # Override ark-relations with a local patched manifest that depends on tracing-subscriber 0.3.20
 ark-relations = { path = "patches/ark-relations" }
+# Keep the libp2p DNS patches until their hickory 0.26 API updates are available upstream.
 libp2p-dns = { path = "patches/libp2p-dns" }
 libp2p-mdns = { path = "patches/libp2p-mdns" }
-plist = { path = "patches/plist" }
 
 # --- Build Profiles ---
 [profile.release]

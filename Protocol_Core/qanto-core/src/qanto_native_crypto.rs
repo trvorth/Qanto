@@ -562,8 +562,8 @@ impl QantoPQPrivateKey {
     #[cfg(feature = "pqcrypto-legacy")]
     pub fn public_key(&self) -> QantoPQPublicKey {
         use pqcrypto_dilithium::dilithium3;
-        let public_key =
-            dilithium3::PublicKey::from_bytes(&self.0).expect("stored Dilithium3 key must be valid");
+        let public_key = dilithium3::PublicKey::from_bytes(&self.0)
+            .expect("stored Dilithium3 key must be valid");
         QantoPQPublicKey(public_key.as_bytes().to_vec())
     }
 

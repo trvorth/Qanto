@@ -34,7 +34,7 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 ## **Enforcement**
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement. All complaints will be reviewed and investigated promptly and fairly.  
+Until a dedicated conduct address is published, instances of abusive, harassing, or otherwise unacceptable behavior may be submitted privately through the repository's [private reporting form](https://github.com/trvorth/qanto/security/advisories/new) with "Code of Conduct" in the title. Do not include sensitive personal information beyond what is necessary to investigate the report. If the form is unavailable, use [GitHub's report-abuse process](https://support.github.com/contact/report-abuse). All complaints will be reviewed and investigated promptly and fairly.
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 
 ## **Enforcement Guidelines**

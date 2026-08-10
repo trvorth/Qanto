@@ -1,157 +1,152 @@
 /**
- * WQNTO DEX Deployment Script
- * Deploys the 6-decimal Wrapped QANTO (WQNTO) contract to EVM-compatible networks.
+ * WQNTO deployment script.
  *
  * Prerequisites:
- *   npm install ethers dotenv
+ *   npm install
+ *   npx hardhat compile
  *
  * Usage:
  *   RPC_URL=https://your-rpc PRIVATE_KEY=0x... node deploy_wqnto.js
  *
- * Environment Variables:
- *   RPC_URL      - Target EVM RPC endpoint (e.g. Ethereum, Polygon, BSC)
- *   PRIVATE_KEY  - Deployer wallet private key (without 0x prefix is also accepted)
- *   GAS_PRICE    - (Optional) Gas price in gwei
+ * Environment variables:
+ *   RPC_URL           - Target EVM RPC endpoint (required)
+ *   PRIVATE_KEY       - Deployer private key (required)
+ *   EXPECTED_CHAIN_ID - Refuse a different chain (default: 1234)
+ *   GAS_PRICE         - Optional legacy gas price in gwei
+ *   CONFIRMATIONS     - Required deployment confirmations (default: 2)
  */
 
-require('dotenv').config();
-const { ethers } = require('ethers');
-const fs = require('fs');
-const path = require('path');
+import "dotenv/config";
+import { ethers } from "ethers";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-// ============================================================
-// WQNTO Contract ABI & Bytecode (compiled from WQNTO.sol)
-// ============================================================
-// To generate bytecode, run: solc --optimize --bin WQNTO.sol
-// Or use Hardhat/Foundry: npx hardhat compile
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const artifactPath = path.join(
+  __dirname,
+  "artifacts",
+  "contracts",
+  "WQNTO.sol",
+  "WQNTO.json",
+);
 
-const WQNTO_ABI = [
-    "constructor()",
-    "function name() view returns (string)",
-    "function symbol() view returns (string)",
-    "function decimals() view returns (uint8)",
-    "function totalSupply() view returns (uint256)",
-    "function balanceOf(address) view returns (uint256)",
-    "function allowance(address,address) view returns (uint256)",
-    "function approve(address,uint256) returns (bool)",
-    "function transfer(address,uint256) returns (bool)",
-    "function transferFrom(address,address,uint256) returns (bool)",
-    "function deposit() payable",
-    "function withdraw(uint256)",
-    "event Approval(address indexed, address indexed, uint256)",
-    "event Transfer(address indexed, address indexed, uint256)",
-    "event Deposit(address indexed, uint256)",
-    "event Withdrawal(address indexed, uint256)"
-];
-
-// ============================================================
-// DEPLOYMENT CONFIGURATION
-// ============================================================
-
-const CONFIG = {
-    rpcUrl: process.env.RPC_URL || 'https://trvorth-qanto-testnet.hf.space/rpc',
-    privateKey: process.env.PRIVATE_KEY,
-    gasPrice: process.env.GAS_PRICE ? ethers.parseUnits(process.env.GAS_PRICE, 'gwei') : undefined,
-    confirmations: 2,
-};
-
-// ============================================================
-// MAIN DEPLOYMENT
-// ============================================================
-
-async function main() {
-    console.log('='.repeat(60));
-    console.log('🚀 WQNTO DEPLOYMENT SCRIPT');
-    console.log('='.repeat(60));
-    console.log(`  Token:      Wrapped QANTO (WQNTO)`);
-    console.log(`  Decimals:   6`);
-    console.log(`  Standard:   ERC-20 Compatible`);
-    console.log(`  Solidity:   ^0.8.20`);
-    console.log(`  RPC:        ${CONFIG.rpcUrl}`);
-    console.log('='.repeat(60));
-
-    if (!CONFIG.privateKey) {
-        console.error('\n❌ ERROR: PRIVATE_KEY environment variable is required.');
-        console.error('   Usage: PRIVATE_KEY=0x... RPC_URL=https://... node deploy_wqnto.js');
-        process.exit(1);
-    }
-
-    // Connect to network
-    const provider = new ethers.JsonRpcProvider(CONFIG.rpcUrl);
-    const network = await provider.getNetwork();
-    console.log(`\n📡 Connected to network: ${network.name} (chainId: ${network.chainId})`);
-
-    const wallet = new ethers.Wallet(CONFIG.privateKey, provider);
-    const balance = await provider.getBalance(wallet.address);
-    console.log(`💰 Deployer: ${wallet.address}`);
-    console.log(`💎 Balance:  ${ethers.formatUnits(balance, 6)} QNTO`);
-
-    if (balance === 0n) {
-        console.error('\n❌ Deployer wallet has zero balance. Fund it before deploying.');
-        process.exit(1);
-    }
-
-    // Check for compiled bytecode
-    const bytecodePath = path.join(__dirname, 'WQNTO_bytecode.bin');
-    if (!fs.existsSync(bytecodePath)) {
-        console.error('\n❌ WQNTO_bytecode.bin not found.');
-        console.error('   Compile WQNTO.sol first:');
-        console.error('     solc --optimize --bin --abi WQNTO.sol -o ./build/');
-        console.error('     cp ./build/WQNTO.bin ./WQNTO_bytecode.bin');
-        console.error('   Or use Hardhat:');
-        console.error('     npx hardhat compile');
-        process.exit(1);
-    }
-
-    const bytecode = '0x' + fs.readFileSync(bytecodePath, 'utf-8').trim();
-
-    // Deploy
-    console.log('\n🔨 Deploying WQNTO contract...');
-    const factory = new ethers.ContractFactory(WQNTO_ABI, bytecode, wallet);
-
-    const deployTx = {
-        gasPrice: CONFIG.gasPrice,
-    };
-
-    const contract = await factory.deploy(deployTx);
-    console.log(`📤 TX Hash: ${contract.deploymentTransaction().hash}`);
-    console.log(`⏳ Waiting for ${CONFIG.confirmations} confirmations...`);
-
-    await contract.waitForDeployment();
-    const contractAddress = await contract.getAddress();
-
-    console.log('\n' + '='.repeat(60));
-    console.log('✅ WQNTO DEPLOYED SUCCESSFULLY');
-    console.log('='.repeat(60));
-    console.log(`  Address:    ${contractAddress}`);
-    console.log(`  Name:       ${await contract.name()}`);
-    console.log(`  Symbol:     ${await contract.symbol()}`);
-    console.log(`  Decimals:   ${await contract.decimals()}`);
-    console.log(`  Network:    ${network.name} (${network.chainId})`);
-    console.log('='.repeat(60));
-
-    // Save deployment receipt
-    const receipt = {
-        contractAddress,
-        deployer: wallet.address,
-        network: network.name,
-        chainId: Number(network.chainId),
-        txHash: contract.deploymentTransaction().hash,
-        blockNumber: contract.deploymentTransaction().blockNumber,
-        timestamp: new Date().toISOString(),
-        token: {
-            name: 'Wrapped QANTO',
-            symbol: 'WQNTO',
-            decimals: 9,
-        },
-    };
-
-    const receiptPath = path.join(__dirname, 'deployment_receipt.json');
-    fs.writeFileSync(receiptPath, JSON.stringify(receipt, null, 2));
-    console.log(`\n📄 Deployment receipt saved to: ${receiptPath}`);
+function requiredEnvironmentVariable(name) {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`${name} environment variable is required`);
+  }
+  return value;
 }
 
-main().catch((err) => {
-    console.error('\n❌ Deployment failed:', err.message);
-    process.exit(1);
+function positiveIntegerEnvironmentVariable(name, fallback) {
+  const raw = process.env[name]?.trim() || fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return value;
+}
+
+function loadWqntoArtifact() {
+  if (!fs.existsSync(artifactPath)) {
+    throw new Error(
+      `Compiled WQNTO artifact not found at ${artifactPath}; run \`npx hardhat compile\` first`,
+    );
+  }
+
+  const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
+  if (!Array.isArray(artifact.abi)) {
+    throw new Error("Compiled WQNTO artifact has no ABI");
+  }
+  if (typeof artifact.bytecode !== "string" || !/^0x[0-9a-fA-F]+$/.test(artifact.bytecode)) {
+    throw new Error("Compiled WQNTO artifact has no deployable bytecode");
+  }
+  const constructor = artifact.abi.find((entry) => entry.type === "constructor");
+  if (!constructor || constructor.inputs.length !== 0) {
+    throw new Error("WQNTO constructor ABI must have zero arguments");
+  }
+  return artifact;
+}
+
+async function main() {
+  const rpcUrl = requiredEnvironmentVariable("RPC_URL");
+  const privateKey = requiredEnvironmentVariable("PRIVATE_KEY");
+  const expectedChainId = BigInt(process.env.EXPECTED_CHAIN_ID?.trim() || "1234");
+  const confirmations = positiveIntegerEnvironmentVariable("CONFIRMATIONS", "2");
+  const artifact = loadWqntoArtifact();
+
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const network = await provider.getNetwork();
+  if (network.chainId !== expectedChainId) {
+    throw new Error(
+      `Refusing deployment to chain ${network.chainId}; expected ${expectedChainId}. ` +
+        "Set EXPECTED_CHAIN_ID explicitly for an intentional alternate network.",
+    );
+  }
+
+  const wallet = new ethers.Wallet(privateKey, provider);
+  const balance = await provider.getBalance(wallet.address);
+  if (balance === 0n) {
+    throw new Error(`Deployer ${wallet.address} has zero native balance`);
+  }
+
+  const overrides = {};
+  if (process.env.GAS_PRICE?.trim()) {
+    overrides.gasPrice = ethers.parseUnits(process.env.GAS_PRICE.trim(), "gwei");
+  }
+
+  console.log(`Deploying WQNTO (9 decimals) to chain ${network.chainId}`);
+  console.log(`Deployer: ${wallet.address}`);
+  console.log(`Native balance: ${ethers.formatUnits(balance, 9)} QNTO`);
+
+  const factory = new ethers.ContractFactory(artifact.abi, artifact.bytecode, wallet);
+  const contract = await factory.deploy(overrides);
+  const deploymentTransaction = contract.deploymentTransaction();
+  if (!deploymentTransaction) {
+    throw new Error("Deployment transaction was not created");
+  }
+
+  console.log(`Deployment transaction: ${deploymentTransaction.hash}`);
+  const transactionReceipt = await deploymentTransaction.wait(confirmations);
+  if (!transactionReceipt || transactionReceipt.status !== 1) {
+    throw new Error("WQNTO deployment transaction failed");
+  }
+  await contract.waitForDeployment();
+
+  const contractAddress = await contract.getAddress();
+  const deployedDecimals = await contract.decimals();
+  if (deployedDecimals !== 9n) {
+    throw new Error(`Deployed WQNTO reports ${deployedDecimals} decimals, expected 9`);
+  }
+
+  const receipt = {
+    contractAddress,
+    deployer: wallet.address,
+    network: network.name,
+    chainId: Number(network.chainId),
+    txHash: deploymentTransaction.hash,
+    blockNumber: transactionReceipt.blockNumber,
+    confirmations,
+    timestamp: new Date().toISOString(),
+    token: {
+      name: await contract.name(),
+      symbol: await contract.symbol(),
+      decimals: Number(deployedDecimals),
+    },
+  };
+
+  const receiptPath = path.join(__dirname, "deployment_receipt.json");
+  fs.writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, {
+    mode: 0o600,
+  });
+
+  console.log(`WQNTO deployed at ${contractAddress}`);
+  console.log(`Deployment receipt: ${receiptPath}`);
+}
+
+main().catch((error) => {
+  console.error(`Deployment failed: ${error.message}`);
+  process.exitCode = 1;
 });

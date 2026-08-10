@@ -22,7 +22,7 @@ import {
 } from 'viem';
 
 export const qantoChain = defineChain({
-  id: 21313,
+  id: 1234,
   name: 'QANTO Testnet',
   nativeCurrency: { name: 'QANTO', symbol: 'QNTO', decimals: 9 },
   rpcUrls: {

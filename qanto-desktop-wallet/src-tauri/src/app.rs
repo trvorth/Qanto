@@ -1,7 +1,10 @@
-use crate::keystore::{create_wallet_impl, export_mnemonic_impl, has_wallet_impl, record_failed_unlock, unlock_wallet_impl, WalletSessionState};
+use crate::keystore::{
+    create_wallet_impl, export_mnemonic_impl, has_wallet_impl, record_failed_unlock,
+    unlock_wallet_impl, WalletSessionState,
+};
 use crate::tx::{
-    get_transaction_history_impl, send_transaction_impl, subscribe_transactions_impl, SendTransactionResponse,
-    TxHistoryResponse, TxSubscriptionState,
+    get_transaction_history_impl, send_transaction_impl, subscribe_transactions_impl,
+    SendTransactionResponse, TxHistoryResponse, TxSubscriptionState,
 };
 use serde::Serialize;
 use std::time::Duration;
@@ -18,8 +21,11 @@ fn validate_address(address: &str) -> Result<(), String> {
     if addr.len() != 64 {
         return Err("invalid address: expected 64 hex characters".to_string());
     }
-    if !addr.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err("invalid address: must be hex".to_string());
+    if !addr
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err("invalid address: must be lowercase hexadecimal".to_string());
     }
     Ok(())
 }
@@ -29,11 +35,6 @@ fn ensure_main_window(window: &tauri::Window) -> Result<(), String> {
         return Err("unauthorized caller".to_string());
     }
     Ok(())
-}
-
-#[tauri::command]
-pub fn generate_new_address() -> Result<String, String> {
-    qanto_zk_sdk::generate_new_address().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -118,7 +119,8 @@ pub async fn subscribe_transactions(
 pub async fn get_wallet_balance(address: String) -> Result<WalletBalanceResponse, String> {
     validate_address(&address)?;
 
-    let rpc_addr = std::env::var("QANTO_RPC_ADDR").unwrap_or_else(|_| "127.0.0.1:50051".to_string());
+    let rpc_addr =
+        std::env::var("QANTO_RPC_ADDR").unwrap_or_else(|_| "127.0.0.1:50051".to_string());
     let endpoint = format!("http://{rpc_addr}");
 
     let mut client = timeout(
@@ -154,7 +156,6 @@ pub fn run() {
         .manage(WalletSessionState::default())
         .manage(TxSubscriptionState::default())
         .invoke_handler(tauri::generate_handler![
-            generate_new_address,
             has_wallet,
             create_wallet,
             unlock_wallet,

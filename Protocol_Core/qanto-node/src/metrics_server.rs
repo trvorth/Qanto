@@ -24,7 +24,7 @@ async fn health_check() -> Json<serde_json::Value> {
 
 /// Prometheus metrics endpoint
 async fn metrics_endpoint(State(state): State<MetricsState>) -> String {
-    state.metrics.export_prometheus()
+    state.metrics.export_prometheus().await
 }
 
 /// Performance metrics endpoint

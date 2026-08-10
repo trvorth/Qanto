@@ -1,19 +1,22 @@
-use crate::post_quantum_crypto::{generate_pq_keypair, pq_sign};
+use crate::post_quantum_crypto::generate_pq_keypair;
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError};
 use crate::security_tests::new_dummy_with_storage_path;
-use crate::transaction::{Output, Transaction};
 use ahash::AHashMap as HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 fn wrap_and_init_dag(dag: QantoDAG) -> Arc<QantoDAG> {
-    // Byzantine tests use hardcoded test block rewards that don't match
-    // the emission schedule. Bypass reward validation since these tests
-    // exercise equivocation/merkle/signature behavior, not reward correctness.
-    // Note: test_byzantine_forged_coinbase_reward tests header-vs-tx mismatch
-    // which is a separate check from emission-vs-header validation.
-    dag.bypass_reward_check.store(true, Ordering::Relaxed);
+    dag.bypass_reward_check.store(false, Ordering::Relaxed);
+    if !dag.tips.contains_key(&0) {
+        let mut genesis = QantoBlock::new_test_block("test-genesis".to_string());
+        genesis.height = 0;
+        genesis.parents.clear();
+        genesis.timestamp = 0;
+        genesis.id = genesis.compute_block_id().expect("test genesis id");
+        dag.blocks.insert(genesis.id.clone(), genesis.clone());
+        dag.tips.entry(0).or_default().insert(genesis.id);
+    }
     let arc_dag = Arc::new(dag);
     let weak_self = Arc::downgrade(&arc_dag);
     let ptr = Arc::as_ptr(&arc_dag) as *mut QantoDAG;
@@ -24,13 +27,42 @@ fn wrap_and_init_dag(dag: QantoDAG) -> Arc<QantoDAG> {
 }
 
 #[tokio::test]
-async fn test_byzantine_double_signing_slashing() {
+async fn rejects_forged_block_id_before_expensive_validation() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let dag = wrap_and_init_dag(new_dummy_with_storage_path(temp_dir.path()));
+    let block = QantoBlock::new_test_block("attacker-controlled-id".to_string());
+    let utxos = Arc::new(RwLock::new(HashMap::new()));
+
+    let error = dag.is_valid_block(&block, &utxos).await.unwrap_err();
+    assert!(
+        matches!(error, QantoDAGError::InvalidBlock(message) if message.contains("canonical header"))
+    );
+}
+
+#[tokio::test]
+async fn rejects_zero_declared_difficulty() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let dag = wrap_and_init_dag(new_dummy_with_storage_path(temp_dir.path()));
+    let mut block = QantoBlock::new_test_block(String::new());
+    block.difficulty = 0;
+    block.id = block.compute_block_id().unwrap();
+    let utxos = Arc::new(RwLock::new(HashMap::new()));
+
+    let error = dag.is_valid_block(&block, &utxos).await.unwrap_err();
+    assert!(
+        matches!(error, QantoDAGError::InvalidBlock(message) if message.contains("network requirement"))
+    );
+}
+
+#[tokio::test]
+async fn test_byzantine_double_signing_rejected_without_unbound_slashing() {
     let temp_dir = tempfile::tempdir().unwrap();
     let path = temp_dir.path();
     let dag = wrap_and_init_dag(new_dummy_with_storage_path(path));
 
     let (pk, sk) = generate_pq_keypair(None).unwrap();
-    let validator_address = hex::encode(pk.as_bytes());
+    let validator_address =
+        qanto_core::protocol_identity::validator_id_v2(1234, pk.as_bytes()).expect("validator id");
     let initial_stake = 1_000_000 * crate::Q_SCALE;
     dag.validators
         .insert(validator_address.clone(), initial_stake);
@@ -42,68 +74,19 @@ async fn test_byzantine_double_signing_slashing() {
 
     // Create block 1
     let mut block1 = QantoBlock::new_test_block("block_1".to_string());
-    block1.validator = validator_address.clone();
+    let genesis_id = dag.tips.get(&0).unwrap().iter().next().unwrap().clone();
+    block1.parents = vec![genesis_id.clone()];
     block1.height = 1;
     block1.chain_id = 0;
-    block1.reward = block1.transactions[0]
-        .outputs
-        .iter()
-        .map(|o| o.amount)
-        .sum();
-    block1.merkle_root = QantoBlock::compute_merkle_root(&block1.transactions).unwrap();
-
-    // Sign block 1
-    let signing_data1 = crate::qantodag::SigningData {
-        parents: &block1.parents,
-        transactions: &block1.transactions,
-        timestamp: block1.timestamp,
-        difficulty: block1.difficulty,
-        validator: &block1.validator,
-        miner: &block1.miner,
-        chain_id: block1.chain_id,
-        merkle_root: &block1.merkle_root,
-        height: block1.height,
-    };
-    let pre_sig_data1 = QantoBlock::serialize_for_signing(&signing_data1).unwrap();
-    let sig1 = pq_sign(&sk, &pre_sig_data1).unwrap();
-    block1.signature = crate::types::QuantumResistantSignature {
-        signer_public_key: pk.as_bytes().to_vec(),
-        signature: sig1.as_bytes().to_vec(),
-    };
-    block1.id = block1.hash();
+    block1.bind_test_signer(&sk, 0).unwrap();
 
     // Create block 2 (different ID, same height, same validator, same chain)
     let mut block2 = QantoBlock::new_test_block("block_2".to_string());
-    block2.validator = validator_address.clone();
+    block2.parents = vec![genesis_id.clone()];
     block2.height = 1;
     block2.chain_id = 0;
-    block2.transactions[0].outputs[0].address = "other_miner".to_string();
-    block2.reward = block2.transactions[0]
-        .outputs
-        .iter()
-        .map(|o| o.amount)
-        .sum();
-    block2.merkle_root = QantoBlock::compute_merkle_root(&block2.transactions).unwrap();
-
-    // Sign block 2
-    let signing_data2 = crate::qantodag::SigningData {
-        parents: &block2.parents,
-        transactions: &block2.transactions,
-        timestamp: block2.timestamp,
-        difficulty: block2.difficulty,
-        validator: &block2.validator,
-        miner: &block2.miner,
-        chain_id: block2.chain_id,
-        merkle_root: &block2.merkle_root,
-        height: block2.height,
-    };
-    let pre_sig_data2 = QantoBlock::serialize_for_signing(&signing_data2).unwrap();
-    let sig2 = pq_sign(&sk, &pre_sig_data2).unwrap();
-    block2.signature = crate::types::QuantumResistantSignature {
-        signer_public_key: pk.as_bytes().to_vec(),
-        signature: sig2.as_bytes().to_vec(),
-    };
-    block2.id = block2.hash();
+    block2.timestamp = block1.timestamp.saturating_add(1);
+    block2.bind_test_signer(&sk, 0).unwrap();
 
     let utxos = Arc::new(RwLock::new(HashMap::new()));
 
@@ -112,7 +95,14 @@ async fn test_byzantine_double_signing_slashing() {
     assert!(res1.is_ok(), "Failed to add block 1: {:?}", res1);
     assert!(res1.unwrap());
 
-    // Adding block 2 (double-signing equivocation) should fail and slash stake
+    // Recreate the validator's signed view at height one. The block remains in
+    // history as evidence, while validation sees the same genesis parent.
+    dag.tips.get_mut(&0).unwrap().clear();
+    dag.tips.get_mut(&0).unwrap().insert(genesis_id);
+
+    // Adding block 2 (double-signing equivocation) should fail. Until validator
+    // addresses are cryptographically bound to PQ keys, automatic slashing must
+    // remain disabled to prevent an attacker from naming and slashing a victim.
     let res2 = dag.add_block(block2, &utxos, None, None).await;
     assert!(res2.is_err(), "Expected error for double-signing, got Ok");
 
@@ -124,10 +114,9 @@ async fn test_byzantine_double_signing_slashing() {
         other => panic!("Expected equivocation invalid block error, got {:?}", other),
     }
 
-    // Verify validator stake has been slashed by 30%
+    // Verify unproven attribution cannot mutate validator stake.
     let final_stake = *dag.validators.get(&validator_address).unwrap();
-    let expected_stake = initial_stake - (initial_stake * 30 / 100);
-    assert_eq!(final_stake, expected_stake);
+    assert_eq!(final_stake, initial_stake);
 }
 
 #[tokio::test]
@@ -136,41 +125,26 @@ async fn test_byzantine_forged_coinbase_reward() {
     let path = temp_dir.path();
     let dag = wrap_and_init_dag(new_dummy_with_storage_path(path));
 
-    let (pk, sk) = generate_pq_keypair(None).unwrap();
+    let (_pk, sk) = generate_pq_keypair(None).unwrap();
 
     let mut block = QantoBlock::new_test_block("forged_coinbase".to_string());
-    block.validator = hex::encode(pk.as_bytes());
-    // Modify reward in header to mismatch transaction outputs sum
+    block.parents = vec![dag.tips.get(&0).unwrap().iter().next().unwrap().clone()];
+    let validator_id = block.bind_test_signer(&sk, 0).unwrap();
+    dag.validators.insert(validator_id, 50 * crate::Q_SCALE);
+    // Modify reward in header to mismatch transaction outputs sum (this will also invalidate the block ID)
     block.reward = 1000 * crate::Q_SCALE;
-    block.transactions[0].outputs[0].amount = 50 * crate::Q_SCALE;
-    block.merkle_root = QantoBlock::compute_merkle_root(&block.transactions).unwrap();
-
-    // Sign the block header with correct key to pass block signature check
-    let signing_data = crate::qantodag::SigningData {
-        parents: &block.parents,
-        transactions: &block.transactions,
-        timestamp: block.timestamp,
-        difficulty: block.difficulty,
-        validator: &block.validator,
-        miner: &block.miner,
-        chain_id: block.chain_id,
-        merkle_root: &block.merkle_root,
-        height: block.height,
-    };
-    let pre_sig_data = QantoBlock::serialize_for_signing(&signing_data).unwrap();
-    let sig = pq_sign(&sk, &pre_sig_data).unwrap();
-    block.signature = crate::types::QuantumResistantSignature {
-        signer_public_key: pk.as_bytes().to_vec(),
-        signature: sig.as_bytes().to_vec(),
-    };
-    block.id = block.hash();
 
     let utxos = Arc::new(RwLock::new(HashMap::new()));
     let res = dag.add_block(block, &utxos, None, None).await;
     assert!(res.is_err());
     match res {
-        Err(QantoDAGError::RewardMismatch(_, _)) => {}
-        other => panic!("Expected reward mismatch error, got {:?}", other),
+        Err(QantoDAGError::InvalidBlock(msg)) => {
+            assert!(msg.contains("Block ID does not match canonical header"));
+        }
+        other => panic!(
+            "Expected InvalidBlock error due to block ID mismatch, got {:?}",
+            other
+        ),
     }
 }
 
@@ -180,31 +154,14 @@ async fn test_byzantine_invalid_merkle_root() {
     let path = temp_dir.path();
     let dag = wrap_and_init_dag(new_dummy_with_storage_path(path));
 
-    let (pk, sk) = generate_pq_keypair(None).unwrap();
+    let (_pk, sk) = generate_pq_keypair(None).unwrap();
 
     let mut block = QantoBlock::new_test_block("bad_merkle".to_string());
-    block.validator = hex::encode(pk.as_bytes());
+    block.parents = vec![dag.tips.get(&0).unwrap().iter().next().unwrap().clone()];
+    let validator_id = block.bind_test_signer(&sk, 0).unwrap();
+    dag.validators.insert(validator_id, 50 * crate::Q_SCALE);
     block.merkle_root = "bad_root_hash_value_123456789".to_string();
-
-    // Sign the block header with correct key to pass block signature check
-    let signing_data = crate::qantodag::SigningData {
-        parents: &block.parents,
-        transactions: &block.transactions,
-        timestamp: block.timestamp,
-        difficulty: block.difficulty,
-        validator: &block.validator,
-        miner: &block.miner,
-        chain_id: block.chain_id,
-        merkle_root: &block.merkle_root,
-        height: block.height,
-    };
-    let pre_sig_data = QantoBlock::serialize_for_signing(&signing_data).unwrap();
-    let sig = pq_sign(&sk, &pre_sig_data).unwrap();
-    block.signature = crate::types::QuantumResistantSignature {
-        signer_public_key: pk.as_bytes().to_vec(),
-        signature: sig.as_bytes().to_vec(),
-    };
-    block.id = block.hash();
+    block.id = block.compute_block_id().unwrap();
 
     let utxos = Arc::new(RwLock::new(HashMap::new()));
     let res = dag.add_block(block, &utxos, None, None).await;
@@ -221,49 +178,13 @@ async fn test_byzantine_invalid_coinbase_signature() {
     let path = temp_dir.path();
     let dag = wrap_and_init_dag(new_dummy_with_storage_path(path));
 
-    let (pk, sk) = generate_pq_keypair(None).unwrap();
-    let (_pk_wrong, sk_wrong) = generate_pq_keypair(None).unwrap();
-
-    let output = Output {
-        address: "test_miner".to_string(),
-        amount: 50 * crate::Q_SCALE,
-        homomorphic_encrypted: crate::types::HomomorphicEncrypted::default(),
-    };
-
-    // Create coinbase signed with wrong key
-    let bad_coinbase = Transaction::new_coinbase(
-        "test_miner".to_string(),
-        50 * crate::Q_SCALE,
-        vec![output],
-        &sk_wrong,
-        0,
-    )
-    .unwrap();
+    let (_pk, sk) = generate_pq_keypair(None).unwrap();
 
     let mut block = QantoBlock::new_test_block("bad_coinbase_sig".to_string());
-    block.transactions = vec![bad_coinbase];
-    block.merkle_root = QantoBlock::compute_merkle_root(&block.transactions).unwrap();
-    block.validator = hex::encode(pk.as_bytes());
-
-    // Sign the block header with correct key to pass block signature check
-    let signing_data = crate::qantodag::SigningData {
-        parents: &block.parents,
-        transactions: &block.transactions,
-        timestamp: block.timestamp,
-        difficulty: block.difficulty,
-        validator: &block.validator,
-        miner: &block.miner,
-        chain_id: block.chain_id,
-        merkle_root: &block.merkle_root,
-        height: block.height,
-    };
-    let pre_sig_data = QantoBlock::serialize_for_signing(&signing_data).unwrap();
-    let sig = pq_sign(&sk, &pre_sig_data).unwrap();
-    block.signature = crate::types::QuantumResistantSignature {
-        signer_public_key: pk.as_bytes().to_vec(),
-        signature: sig.as_bytes().to_vec(),
-    };
-    block.id = block.hash();
+    block.parents = vec![dag.tips.get(&0).unwrap().iter().next().unwrap().clone()];
+    let validator_id = block.bind_test_signer(&sk, 0).unwrap();
+    dag.validators.insert(validator_id, 50 * crate::Q_SCALE);
+    block.transactions[0].signature.signature[0] ^= 1;
 
     let utxos = Arc::new(RwLock::new(HashMap::new()));
     let res = dag.add_block(block, &utxos, None, None).await;
@@ -278,7 +199,8 @@ async fn test_clock_drift_guard_positive_and_negative() {
     let dag = wrap_and_init_dag(new_dummy_with_storage_path(path));
 
     let (pk, sk) = generate_pq_keypair(None).unwrap();
-    let validator_address = hex::encode(pk.as_bytes());
+    let validator_address =
+        qanto_core::protocol_identity::validator_id_v2(1234, pk.as_bytes()).expect("validator id");
     dag.validators
         .insert(validator_address.clone(), 1_000_000 * crate::Q_SCALE);
     dag.emission
@@ -296,7 +218,8 @@ async fn test_clock_drift_guard_positive_and_negative() {
         celebration_log_level: "info".to_string(),
         celebration_throttle_per_min: None,
     };
-    let miner_address = "a".repeat(64);
+    let miner_address =
+        qanto_core::protocol_identity::account_address_v2(1234, pk.as_bytes()).unwrap();
     let miner_config = crate::miner::MinerConfig {
         address: miner_address.clone(),
         dag: dag.clone(),
@@ -316,36 +239,11 @@ async fn test_clock_drift_guard_positive_and_negative() {
         + 15;
 
     let mut block_future = QantoBlock::new_test_block("block_future".to_string());
-    block_future.validator = validator_address.clone();
+    block_future.parents = vec![dag.tips.get(&0).unwrap().iter().next().unwrap().clone()];
     block_future.timestamp = future_time;
     block_future.height = 1;
     block_future.chain_id = 0;
-    block_future.reward = block_future.transactions[0]
-        .outputs
-        .iter()
-        .map(|o| o.amount)
-        .sum();
-    block_future.merkle_root = QantoBlock::compute_merkle_root(&block_future.transactions).unwrap();
-
-    // Sign the future block
-    let signing_data = crate::qantodag::SigningData {
-        parents: &block_future.parents,
-        transactions: &block_future.transactions,
-        timestamp: block_future.timestamp,
-        difficulty: block_future.difficulty,
-        validator: &block_future.validator,
-        miner: &block_future.miner,
-        chain_id: block_future.chain_id,
-        merkle_root: &block_future.merkle_root,
-        height: block_future.height,
-    };
-    let pre_sig_data = QantoBlock::serialize_for_signing(&signing_data).unwrap();
-    let sig = pq_sign(&sk, &pre_sig_data).unwrap();
-    block_future.signature = crate::types::QuantumResistantSignature {
-        signer_public_key: pk.as_bytes().to_vec(),
-        signature: sig.as_bytes().to_vec(),
-    };
-    block_future.id = block_future.hash();
+    block_future.bind_test_signer(&sk, 0).unwrap();
 
     // Add future block to DAG
     let added = dag
@@ -417,36 +315,11 @@ async fn test_clock_drift_guard_positive_and_negative() {
         - 15;
 
     let mut block_past = QantoBlock::new_test_block("block_past".to_string());
-    block_past.validator = validator_address.clone();
+    block_past.parents = vec![dag2.tips.get(&0).unwrap().iter().next().unwrap().clone()];
     block_past.timestamp = past_time;
     block_past.height = 1;
     block_past.chain_id = 0;
-    block_past.reward = block_past.transactions[0]
-        .outputs
-        .iter()
-        .map(|o| o.amount)
-        .sum();
-    block_past.merkle_root = QantoBlock::compute_merkle_root(&block_past.transactions).unwrap();
-
-    // Sign past block
-    let signing_data_past = crate::qantodag::SigningData {
-        parents: &block_past.parents,
-        transactions: &block_past.transactions,
-        timestamp: block_past.timestamp,
-        difficulty: block_past.difficulty,
-        validator: &block_past.validator,
-        miner: &block_past.miner,
-        chain_id: block_past.chain_id,
-        merkle_root: &block_past.merkle_root,
-        height: block_past.height,
-    };
-    let pre_sig_data_past = QantoBlock::serialize_for_signing(&signing_data_past).unwrap();
-    let sig_past = pq_sign(&sk, &pre_sig_data_past).unwrap();
-    block_past.signature = crate::types::QuantumResistantSignature {
-        signer_public_key: pk.as_bytes().to_vec(),
-        signature: sig_past.as_bytes().to_vec(),
-    };
-    block_past.id = block_past.hash();
+    block_past.bind_test_signer(&sk, 0).unwrap();
 
     // Add past block to DAG
     let added_past = dag2

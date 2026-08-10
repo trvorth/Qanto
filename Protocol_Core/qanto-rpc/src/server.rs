@@ -70,15 +70,17 @@ impl RpcService {
         base_units.to_string()
     }
 
-    fn parse_monetary_u128(field: &'static str, value: &str) -> Result<u128, Status> {
+    fn parse_monetary_u128(field: &'static str, value: &str) -> Result<u128, Box<Status>> {
         value.parse::<u128>().map_err(|_| {
-            Status::invalid_argument(format!(
+            Box::new(Status::invalid_argument(format!(
                 "invalid monetary value for {field}: must be base-unit unsigned integer string"
-            ))
+            )))
         })
     }
 
-    fn validate_transaction_monetary_fields(tx: &generated::Transaction) -> Result<(), Status> {
+    fn validate_transaction_monetary_fields(
+        tx: &generated::Transaction,
+    ) -> Result<(), Box<Status>> {
         Self::parse_monetary_u128("transaction.amount", &tx.amount)?;
         Self::parse_monetary_u128("transaction.fee", &tx.fee)?;
         Self::parse_monetary_u128("transaction.gas_price", &tx.gas_price)?;
@@ -153,7 +155,7 @@ impl QantoRpc for RpcService {
             .transaction
             .ok_or_else(|| Status::invalid_argument("missing transaction"))?;
 
-        Self::validate_transaction_monetary_fields(&tx)?;
+        Self::validate_transaction_monetary_fields(&tx).map_err(|e| *e)?;
         match self.backend.submit_transaction(tx).await {
             Ok(()) => Ok(Response::new(SubmitTransactionResponse {
                 accepted: true,

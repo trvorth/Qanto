@@ -1,7 +1,9 @@
-//! Unified metrics system for Qanto blockchain
+//! Unified metrics system for Qanto blockchain-solo
 //! This module provides a centralized metrics collection and reporting system
 //! that eliminates duplication across the codebase.
 //! v0.1.0
+#![allow(clippy::manual_checked_ops)]
+
 use ahash::AHashMap as HashMap;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -797,8 +799,15 @@ impl QantoMetrics {
         })
     }
 
-    /// Export metrics in Prometheus format
-    pub fn export_prometheus(&self) -> String {
+    /// Export metrics in Prometheus format.
+    ///
+    /// The lock-backed gauges are read asynchronously so callers can safely invoke
+    /// this method from a Tokio runtime without blocking an executor thread.
+    pub async fn export_prometheus(&self) -> String {
+        let total_value_locked = *self.total_value_locked.read().await;
+        let validator_rewards_24h = *self.validator_rewards_24h.read().await;
+        let transaction_fees_24h = *self.transaction_fees_24h.read().await;
+
         let mut output = String::new();
 
         // Core blockchain metrics
@@ -871,15 +880,15 @@ impl QantoMetrics {
         ));
         output.push_str(&format!(
             "qanto_total_value_locked {}\n",
-            *self.total_value_locked.blocking_read()
+            total_value_locked
         ));
         output.push_str(&format!(
             "qanto_validator_rewards_24h {}\n",
-            *self.validator_rewards_24h.blocking_read()
+            validator_rewards_24h
         ));
         output.push_str(&format!(
             "qanto_transaction_fees_24h {}\n",
-            *self.transaction_fees_24h.blocking_read()
+            transaction_fees_24h
         ));
 
         // Optimization metrics
@@ -1671,5 +1680,19 @@ mod tests {
             QantoMetrics::format_hash_rate(1_234_567_890 * crate::QANTO_SCALE),
             "1.23 GH/s"
         );
+    }
+
+    #[tokio::test]
+    async fn test_export_prometheus_reads_lock_backed_gauges_in_async_runtime() {
+        let metrics = QantoMetrics::new();
+        metrics.set_total_value_locked(101).await;
+        metrics.set_validator_rewards_24h(202).await;
+        metrics.set_transaction_fees_24h(303).await;
+
+        let output = metrics.export_prometheus().await;
+
+        assert!(output.contains("qanto_total_value_locked 101\n"));
+        assert!(output.contains("qanto_validator_rewards_24h 202\n"));
+        assert!(output.contains("qanto_transaction_fees_24h 303\n"));
     }
 }

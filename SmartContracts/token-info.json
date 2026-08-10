@@ -4,7 +4,7 @@
   "decimals": 9,
   "description": "Native token of the Qanto Agentic Mesh Ecosystem",
   "isNative": true,
-  "chainID": "0x1234",
+  "chainID": "0x4D2",
   "circulatingSupply": "DYNAMIC",
   "totalSupply": "21000000000",
   "emissionStrategy": {

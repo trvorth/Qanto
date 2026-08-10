@@ -1,17 +1,15 @@
 //! --- Qanto QantoDAG Ledger ---
 //! v0.1.0 - Initial Version
-//! This version corrects the block reward calculation by ensuring that transaction
-//! fees are properly calculated and included in the final reward amount.
-//!
-//! - FIX: The `create_candidate_block` function now calculates the total fees
-//!   from mempool transactions *before* calling SAGA's reward calculation,
-//!   ensuring the final reward includes both the base amount and fees.
+//! The legacy full-supply genesis runs in fee-only containment. Subsidy remains
+//! disabled until the versioned emission schedule and allocation manifest are
+//! committed by a new genesis; local SAGA telemetry cannot change issuance.
 
 use crate::config::LoggingConfig;
 use crate::emission::Emission;
 use crate::mempool::Mempool;
 use crate::metrics::QantoMetrics;
 use crate::miner::Miner;
+use crate::miner::U256;
 use crate::mining_metrics::MiningMetrics;
 use crate::performance_monitoring::{PerformanceMonitor, PerformanceMonitoringConfig};
 use crate::saga::{
@@ -20,6 +18,7 @@ use crate::saga::{
 use crate::timing::BlockTimingCoordinator;
 use crate::types::QuantumResistantSignature;
 use my_blockchain::{qanhash, qanto_hash};
+use qanto_consensus_primitives::{block_id_v2, hash_v2, CanonicalRecord, DomainV2, WireType};
 use qanto_core::balance_stream::BalanceBroadcaster;
 use qanto_core::mining_celebration::LoggingConfig as CoreLoggingConfig;
 
@@ -28,15 +27,16 @@ use qanto_core::mining_celebration::LoggingConfig as CoreLoggingConfig;
 use crate::optimized_qdag::{OptimizedQDagConfig, OptimizedQDagGenerator};
 use crate::persistence::{
     balance_key, decode_balance, encode_balance, genesis_id_key, tip_key, tips_prefix,
-    PersistenceWriter, BALANCES_KEY_PREFIX, GENESIS_BLOCK_ID_KEY,
+    PersistenceWriter, BALANCES_KEY_PREFIX, EMISSION_STATE_V1_KEY, GENESIS_BLOCK_ID_KEY,
 };
 use crate::post_quantum_crypto::{
-    pq_sign, pq_verify, PQError, QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature,
+    generate_pq_keypair, pq_sign, pq_verify, PQError, QantoPQPrivateKey, QantoPQPublicKey,
+    QantoPQSignature,
 };
 use crate::qanto_storage::{
     AccountStateCache, QantoStorage, QantoStorageError, StorageConfig, WriteBatch,
 };
-use crate::transaction::{Output, Transaction};
+use crate::transaction::{Output, Transaction, TransactionKind};
 use crate::types::{HomomorphicEncrypted, UTXO};
 
 use ahash::{AHashMap as HashMap, AHashSet as HashSet};
@@ -64,12 +64,11 @@ use tokio::task;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-// --- High-Throughput Constants ---
-// To achieve ~10M TPS at 32 BPS, each block must hold ~312,500 transactions.
-// Set to 312,500 transactions per block for precise 10M+ TPS target
-pub const MAX_TRANSACTIONS_PER_BLOCK: usize = 312_500;
-// Increased block size to accommodate the higher transaction count.
-pub const MAX_BLOCK_SIZE: usize = 33_554_432; // 32 MB (32 * 1024 * 1024)
+// Consensus limits must fit the smallest normal block transport. Qanto's
+// current gossip frame is 2,000,000 bytes, so leave deterministic envelope
+// headroom until chunked authenticated block transfer is implemented.
+pub const MAX_TRANSACTIONS_PER_BLOCK: usize = 256;
+pub const MAX_BLOCK_SIZE: usize = 1_500_000;
 pub const MAX_TRANSACTION_SIZE: usize = 102_400; // 100 KB per transaction
 
 // --- Network & Economic Constants ---
@@ -77,15 +76,21 @@ pub const DEV_ADDRESS: &str = "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff6
 pub const CONTRACT_ADDRESS: &str =
     "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394";
 pub const INITIAL_BLOCK_REWARD: u128 = 50 * crate::transaction::SMALLEST_UNITS_PER_QAN; // 50 QAN in base units
-const FINALIZATION_DEPTH: u64 = 8;
-const SHARD_THRESHOLD: u32 = 2;
 const TEMPORAL_CONSENSUS_WINDOW: u64 = 600;
 const MAX_BLOCKS_PER_MINUTE: u64 = 32 * 60;
 const MIN_VALIDATOR_STAKE: u128 = 50 * crate::transaction::SMALLEST_UNITS_PER_QAN;
-const SLASHING_PENALTY: u128 = 30 * crate::transaction::SMALLEST_UNITS_PER_QAN;
 const CACHE_SIZE: usize = 10_000; // Increased cache size for better performance
 const ANOMALY_DETECTION_BASELINE_BLOCKS: usize = 100;
 const ANOMALY_Z_SCORE_THRESHOLD: u128 = 3 * crate::QANTO_SCALE + 500_000_000;
+/// Bridge minting must stay disabled until source-chain finality, receipt
+/// inclusion, and the advertised ZK proof are cryptographically verified.
+const BRIDGE_PROOF_VERIFIER_AVAILABLE: bool = false;
+/// The only block schema accepted by the reconstructed chain. Legacy blocks
+/// must be migrated by replaying from a new, explicitly versioned genesis.
+pub const QANTO_BLOCK_PROTOCOL_VERSION_V2: u16 = 2;
+const BLOCK_CORE_SCHEMA_V2: u16 = 2;
+const BLOCK_SIGNING_SCHEMA_V2: u16 = 2;
+const BLOCK_ID_SCHEMA_V2: u16 = 2;
 #[cfg(feature = "performance-test")]
 const INITIAL_DIFFICULTY: u64 = (crate::QANTO_SCALE / 1000) as u64; // Minimal difficulty for performance testing (0.001)
 #[cfg(not(feature = "performance-test"))]
@@ -322,6 +327,8 @@ impl From<String> for QantoDAGError {
 }
 
 pub struct SigningData<'a> {
+    pub protocol_version: u16,
+    pub network_chain_id: u32,
     pub parents: &'a [String],
     pub transactions: &'a [Transaction],
     pub timestamp: u64,
@@ -331,6 +338,11 @@ pub struct SigningData<'a> {
     pub chain_id: u32,
     pub merkle_root: &'a str,
     pub height: u64,
+    pub epoch: u64,
+    pub reward: u128,
+    pub nonce: u64,
+    pub effort: u128,
+    pub cross_chain_references: &'a [(u32, String)],
 }
 
 pub struct QantoBlockCreationData {
@@ -345,6 +357,10 @@ pub struct QantoBlockCreationData {
     pub timestamp: u64,
     pub current_epoch: u64,
     pub height: u64,
+    pub reward: u128,
+    pub nonce: u64,
+    pub effort: u128,
+    pub chain_work: U256, // Cumulative work from genesis to this block
     pub paillier_pk: Vec<u8>,
 }
 
@@ -441,6 +457,7 @@ impl SmartContract {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct QantoBlock {
+    pub protocol_version: u16,
     pub chain_id: u32,
     pub id: String,
     pub parents: Vec<String>,
@@ -453,6 +470,7 @@ pub struct QantoBlock {
     pub height: u64,
     pub reward: u128,
     pub effort: u128,
+    pub chain_work: U256, // Cumulative work from genesis to this block
     pub cross_chain_references: Vec<(u32, String)>,
     pub cross_chain_swaps: Vec<CrossChainSwap>,
     pub merkle_root: String,
@@ -465,7 +483,9 @@ pub struct QantoBlock {
     pub epoch: u64,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub finality_proof: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
+    /// Local mempool bookkeeping only. This value is never persisted, signed,
+    /// or placed on the wire and cannot affect block validity.
+    #[serde(skip, default)]
     pub reservation_miner_id: Option<String>,
 }
 
@@ -531,70 +551,101 @@ impl fmt::Display for QantoBlock {
 }
 
 impl QantoBlock {
-    pub fn new(data: QantoBlockCreationData) -> Result<Self, QantoDAGError> {
-        let nonce = 0;
-        let merkle_root = Self::compute_merkle_root(&data.transactions)?;
+    pub(crate) fn compute_coinbase_context(
+        chain_id: u32,
+        height: u64,
+        parents: &[String],
+        transactions: &[Transaction],
+    ) -> String {
+        use sha3::{Digest, Sha3_256};
 
-        let signing_data = SigningData {
-            parents: &data.parents,
-            transactions: &data.transactions,
-            timestamp: data.timestamp,
-            difficulty: data.difficulty,
-            validator: &data.validator,
-            miner: &data.miner,
-            chain_id: data.chain_id,
-            merkle_root: &merkle_root,
-            height: data.height,
-        };
+        let mut hasher = Sha3_256::new();
+        hasher.update(b"QANTO\0COINBASE-CONTEXT\0");
+        hasher.update(2u16.to_be_bytes());
+        hasher.update(chain_id.to_be_bytes());
+        hasher.update(height.to_be_bytes());
+        hasher.update((parents.len() as u32).to_be_bytes());
+        for parent in parents {
+            hasher.update((parent.len() as u32).to_be_bytes());
+            hasher.update(parent.as_bytes());
+        }
+        hasher.update((transactions.len() as u32).to_be_bytes());
+        for transaction in transactions {
+            hasher.update((transaction.id.len() as u32).to_be_bytes());
+            hasher.update(transaction.id.as_bytes());
+        }
+        hex::encode(hasher.finalize())
+    }
 
-        let pre_signature_data_for_id = Self::serialize_for_signing(&signing_data)?;
-        let id = hex::encode(qanto_hash(&pre_signature_data_for_id));
-
-        // For test environments, use empty homomorphic data to avoid massive TFHE serialization
-        // Always use empty data for now to avoid the 437MB serialization issue
-        let homomorphic_encrypted_data = data
-            .transactions
-            .iter()
-            .map(|_tx| HomomorphicEncrypted {
-                ciphertext: vec![],
-                public_key: vec![],
-            })
-            .collect();
-
-        let signer_public_key = data.validator_private_key.public_key().as_bytes().to_vec();
-        let signature =
-            pq_sign(&data.validator_private_key, &pre_signature_data_for_id).map_err(|_e| {
-                QantoDAGError::QuantumSignature(crate::post_quantum_crypto::PQError::SigningError)
+    fn build_unsealed(data: QantoBlockCreationData) -> Result<Self, QantoDAGError> {
+        if data.height != 0 {
+            let network_chain_id =
+                crate::transaction::GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32;
+            let expected_validator = qanto_core::protocol_identity::validator_id_v2(
+                network_chain_id,
+                data.validator_private_key.public_key().as_bytes(),
+            )
+            .map_err(|error| {
+                QantoDAGError::InvalidBlock(format!(
+                    "Cannot derive validator identity from block signing key: {error}"
+                ))
             })?;
+            if data.validator != expected_validator {
+                return Err(QantoDAGError::InvalidBlock(
+                    "Block signing key is not bound to the declared validator".to_string(),
+                ));
+            }
+            if data.miner != data.validator {
+                return Err(QantoDAGError::InvalidBlock(
+                    "Protocol V2 requires miner identity to equal the bound validator".to_string(),
+                ));
+            }
+        }
 
+        let merkle_root = Self::compute_merkle_root(&data.transactions)?;
+        let signer_public_key = data.validator_private_key.public_key().as_bytes().to_vec();
         let block = Self {
+            protocol_version: QANTO_BLOCK_PROTOCOL_VERSION_V2,
             chain_id: data.chain_id,
-            id,
+            id: String::new(),
             parents: data.parents,
             transactions: data.transactions,
             difficulty: data.difficulty,
             validator: data.validator,
             miner: data.miner,
-            nonce,
+            nonce: data.nonce,
             timestamp: data.timestamp,
             height: data.height,
-            reward: 0,
-            effort: 0,
+            reward: data.reward,
+            effort: data.effort,
+            chain_work: data.chain_work,
             cross_chain_references: vec![],
             merkle_root,
 
             cross_chain_swaps: vec![],
-            homomorphic_encrypted: homomorphic_encrypted_data,
+            homomorphic_encrypted: vec![],
             smart_contracts: vec![],
             signature: QuantumResistantSignature {
                 signer_public_key,
-                signature: signature.as_bytes().to_vec(),
+                signature: vec![],
             },
             carbon_credentials: vec![],
             epoch: data.current_epoch,
             finality_proof: None,
             reservation_miner_id: None,
         };
+
+        block.validate_consensus_surface()?;
+        Ok(block)
+    }
+
+    /// Construct and seal a complete V2 block. Callers that still need to
+    /// search for a nonce must use `new_unsealed_candidate` and seal exactly
+    /// once after mining finishes.
+    pub fn new(data: QantoBlockCreationData) -> Result<Self, QantoDAGError> {
+        let signing_key = data.validator_private_key.clone();
+        let mut block = Self::build_unsealed(data)?;
+        block.seal(&signing_key)?;
 
         // #region debug-point block-signature-failure-new
         report_block_signature_debug_event(
@@ -617,32 +668,16 @@ impl QantoBlock {
         Ok(block)
     }
 
-    pub fn serialize_for_signing(data: &SigningData) -> Result<Vec<u8>, QantoDAGError> {
-        let mut buffer = Vec::with_capacity(512); // Pre-allocate
-
-        // --- CANONICAL SERIALIZATION ORDER (Big-Endian) ---
-        buffer.extend_from_slice(&data.timestamp.to_be_bytes());
-        buffer.extend_from_slice(&data.chain_id.to_be_bytes());
-        buffer.extend_from_slice(&data.height.to_be_bytes());
-        buffer.extend_from_slice(&data.difficulty.to_be_bytes());
-        buffer.extend_from_slice(data.merkle_root.as_bytes());
-        buffer.extend_from_slice(data.validator.as_bytes());
-        buffer.extend_from_slice(data.miner.as_bytes());
-
-        // Parents in deterministic order
-        for parent in data.parents {
-            buffer.extend_from_slice(parent.as_bytes());
-        }
-
-        // Transaction list binding
-        for tx in data.transactions {
-            buffer.extend_from_slice(tx.id.as_bytes());
-        }
-
-        Ok(qanto_hash(&buffer).as_bytes().to_vec())
+    pub(crate) fn new_unsealed_candidate(
+        data: QantoBlockCreationData,
+    ) -> Result<Self, QantoDAGError> {
+        Self::build_unsealed(data)
     }
-    pub fn compute_block_id(&self) -> Result<String, QantoDAGError> {
-        let signing_data = SigningData {
+
+    fn signing_data(&self) -> SigningData<'_> {
+        SigningData {
+            protocol_version: self.protocol_version,
+            network_chain_id: crate::transaction::GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32,
             parents: &self.parents,
             transactions: &self.transactions,
             timestamp: self.timestamp,
@@ -652,9 +687,232 @@ impl QantoBlock {
             chain_id: self.chain_id,
             merkle_root: &self.merkle_root,
             height: self.height,
-        };
+            epoch: self.epoch,
+            reward: self.reward,
+            nonce: self.nonce,
+            effort: self.effort,
+            cross_chain_references: &self.cross_chain_references,
+        }
+    }
+
+    fn record_error(error: impl fmt::Display) -> QantoDAGError {
+        QantoDAGError::InvalidBlock(format!("Canonical V2 block encoding failed: {error}"))
+    }
+
+    fn serialize_block_core(data: &SigningData<'_>) -> Result<Vec<u8>, QantoDAGError> {
+        let mut record = CanonicalRecord::new();
+        record
+            .push_u16(1, data.protocol_version)
+            .map_err(Self::record_error)?;
+        record
+            .push_u32(2, data.network_chain_id)
+            .map_err(Self::record_error)?;
+        record
+            .push_u32(3, data.chain_id)
+            .map_err(Self::record_error)?;
+        record
+            .push_u64(4, data.height)
+            .map_err(Self::record_error)?;
+        record.push_u64(5, data.epoch).map_err(Self::record_error)?;
+        record
+            .push_u64(6, data.timestamp)
+            .map_err(Self::record_error)?;
+        record
+            .push_u64(7, data.difficulty)
+            .map_err(Self::record_error)?;
+        record
+            .push_u128(8, data.reward)
+            .map_err(Self::record_error)?;
+        record
+            .push_bytes(9, data.merkle_root.as_bytes())
+            .map_err(Self::record_error)?;
+        record
+            .push_bytes(10, data.validator.as_bytes())
+            .map_err(Self::record_error)?;
+        record
+            .push_bytes(11, data.miner.as_bytes())
+            .map_err(Self::record_error)?;
+
+        let parent_elements = data
+            .parents
+            .iter()
+            .map(|parent| parent.as_bytes())
+            .collect::<Vec<_>>();
+        record
+            .push_ordered_sequence(12, WireType::Bytes, &parent_elements)
+            .map_err(Self::record_error)?;
+
+        let transaction_elements = data
+            .transactions
+            .iter()
+            .map(|transaction| transaction.id.as_bytes())
+            .collect::<Vec<_>>();
+        record
+            .push_ordered_sequence(13, WireType::Bytes, &transaction_elements)
+            .map_err(Self::record_error)?;
+
+        let mut encoded_references = Vec::with_capacity(data.cross_chain_references.len());
+        for (chain_id, block_id) in data.cross_chain_references {
+            let mut reference = CanonicalRecord::new();
+            reference
+                .push_u32(1, *chain_id)
+                .map_err(Self::record_error)?;
+            reference
+                .push_bytes(2, block_id.as_bytes())
+                .map_err(Self::record_error)?;
+            encoded_references.push(reference.finish());
+        }
+        let reference_elements = encoded_references
+            .iter()
+            .map(Vec::as_slice)
+            .collect::<Vec<_>>();
+        record
+            .push_ordered_sequence(14, WireType::Bytes, &reference_elements)
+            .map_err(Self::record_error)?;
+
+        Ok(record.finish())
+    }
+
+    fn block_core_hash(data: &SigningData<'_>) -> Result<[u8; 32], QantoDAGError> {
+        let core_record = Self::serialize_block_core(data)?;
+        Ok(hash_v2(
+            DomainV2::BlockCore,
+            data.network_chain_id,
+            BLOCK_CORE_SCHEMA_V2,
+            &core_record,
+        )
+        .into_bytes())
+    }
+
+    pub fn serialize_for_signing(data: &SigningData) -> Result<Vec<u8>, QantoDAGError> {
+        let core_hash = Self::block_core_hash(data)?;
+        let mut signing_record = CanonicalRecord::new();
+        signing_record
+            .push_u16(1, data.protocol_version)
+            .map_err(Self::record_error)?;
+        signing_record
+            .push_hash32(2, &core_hash)
+            .map_err(Self::record_error)?;
+        signing_record
+            .push_u64(3, data.nonce)
+            .map_err(Self::record_error)?;
+        signing_record
+            .push_u128(4, data.effort)
+            .map_err(Self::record_error)?;
+
+        Ok(hash_v2(
+            DomainV2::BlockSigning,
+            data.network_chain_id,
+            BLOCK_SIGNING_SCHEMA_V2,
+            &signing_record.finish(),
+        )
+        .as_bytes()
+        .to_vec())
+    }
+
+    pub fn compute_block_id(&self) -> Result<String, QantoDAGError> {
+        self.validate_consensus_surface()?;
+        if self.signature.signer_public_key.is_empty() || self.signature.signature.is_empty() {
+            return Err(QantoDAGError::InvalidBlock(
+                "Cannot derive a V2 block ID from an unsealed candidate".to_string(),
+            ));
+        }
+        let signing_data = self.signing_data();
         let pre_sig_data = Self::serialize_for_signing(&signing_data)?;
-        Ok(hex::encode(qanto_hash(&pre_sig_data)))
+        let signing_digest: [u8; 32] = pre_sig_data.try_into().map_err(|_| {
+            QantoDAGError::InvalidBlock("V2 signing digest is not 32 bytes".to_string())
+        })?;
+        let mut id_record = CanonicalRecord::new();
+        id_record
+            .push_u16(1, self.protocol_version)
+            .map_err(Self::record_error)?;
+        id_record
+            .push_hash32(2, &signing_digest)
+            .map_err(Self::record_error)?;
+        id_record
+            .push_bytes(3, &self.signature.signer_public_key)
+            .map_err(Self::record_error)?;
+        id_record
+            .push_bytes(4, &self.signature.signature)
+            .map_err(Self::record_error)?;
+        Ok(block_id_v2(
+            signing_data.network_chain_id,
+            BLOCK_ID_SCHEMA_V2,
+            &id_record.finish(),
+        )
+        .to_string())
+    }
+
+    fn validate_consensus_surface(&self) -> Result<(), QantoDAGError> {
+        if self.protocol_version != QANTO_BLOCK_PROTOCOL_VERSION_V2 {
+            return Err(QantoDAGError::InvalidBlock(format!(
+                "Unsupported block protocol version {}; this node accepts only V2",
+                self.protocol_version
+            )));
+        }
+        if !self.cross_chain_references.is_empty()
+            || !self.cross_chain_swaps.is_empty()
+            || !self.homomorphic_encrypted.is_empty()
+            || !self.smart_contracts.is_empty()
+            || !self.carbon_credentials.is_empty()
+            || self.finality_proof.is_some()
+        {
+            return Err(QantoDAGError::InvalidBlock(
+                "Unsupported V2 block extension is non-empty; cross-chain, block-level homomorphic, smart-contract, carbon, and ad-hoc finality fields are disabled"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn ensure_unsealed_candidate(&self) -> Result<(), QantoDAGError> {
+        self.validate_consensus_surface()?;
+        if !self.id.is_empty() || !self.signature.signature.is_empty() {
+            return Err(QantoDAGError::InvalidBlock(
+                "Mining may only mutate an explicitly unsealed V2 candidate".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Seal an unsealed candidate after nonce and effort are final. Once this
+    /// succeeds, every consensus-relevant accepted field is immutable under
+    /// the signature and the distinct block-ID commitment.
+    pub(crate) fn seal(&mut self, signing_key: &QantoPQPrivateKey) -> Result<(), QantoDAGError> {
+        self.ensure_unsealed_candidate()?;
+        let expected_merkle_root = Self::compute_merkle_root(&self.transactions)?;
+        if self.merkle_root != expected_merkle_root {
+            return Err(QantoDAGError::MerkleRootMismatch);
+        }
+
+        let public_key = signing_key.public_key();
+        if self.height != 0 {
+            let network_chain_id =
+                crate::transaction::GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32;
+            let expected_validator = qanto_core::protocol_identity::validator_id_v2(
+                network_chain_id,
+                public_key.as_bytes(),
+            )
+            .map_err(|error| {
+                QantoDAGError::InvalidBlock(format!(
+                    "Cannot derive validator identity from block signing key: {error}"
+                ))
+            })?;
+            if self.validator != expected_validator || self.miner != self.validator {
+                return Err(QantoDAGError::InvalidBlock(
+                    "Block signing key is not bound to the declared validator/miner".to_string(),
+                ));
+            }
+        }
+
+        self.signature.signer_public_key = public_key.as_bytes().to_vec();
+        let signing_bytes = Self::serialize_for_signing(&self.signing_data())?;
+        let signature = pq_sign(signing_key, &signing_bytes).map_err(|_| {
+            QantoDAGError::QuantumSignature(crate::post_quantum_crypto::PQError::SigningError)
+        })?;
+        self.signature.signature = signature.as_bytes().to_vec();
+        self.id = self.compute_block_id()?;
+        Ok(())
     }
 
     pub fn new_test_block(block_id: String) -> Self {
@@ -663,6 +921,7 @@ impl QantoBlock {
         let merkle_root = Self::compute_merkle_root(&transactions).unwrap_or_default();
 
         Self {
+            protocol_version: QANTO_BLOCK_PROTOCOL_VERSION_V2,
             chain_id: 0,
             id: block_id,
             parents: vec![],
@@ -678,6 +937,7 @@ impl QantoBlock {
             height: 1,
             reward: 0,
             effort: 0,
+            chain_work: U256::ZERO,
             cross_chain_references: vec![],
             merkle_root,
             cross_chain_swaps: vec![],
@@ -692,6 +952,76 @@ impl QantoBlock {
             finality_proof: None,
             reservation_miner_id: None,
         }
+    }
+
+    /// Rebuild a test block with a canonical validator identity and a coinbase
+    /// signed by the same post-quantum key as the block header.
+    ///
+    /// This is deliberately test-only: production callers must construct
+    /// blocks through `QantoBlock::new` or `QantoDAG::create_candidate_block`.
+    #[cfg(test)]
+    pub(crate) fn bind_test_signer(
+        &mut self,
+        signing_key: &QantoPQPrivateKey,
+        reward: u128,
+    ) -> Result<String, QantoDAGError> {
+        let network_chain_id = crate::transaction::GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32;
+        let public_key = signing_key.public_key();
+        let validator_id =
+            qanto_core::protocol_identity::validator_id_v2(network_chain_id, public_key.as_bytes())
+                .map_err(|error| {
+                    QantoDAGError::InvalidBlock(format!(
+                        "Cannot derive test validator identity: {error}"
+                    ))
+                })?;
+        let reward_address = qanto_core::protocol_identity::account_address_v2(
+            network_chain_id,
+            public_key.as_bytes(),
+        )
+        .map_err(|error| {
+            QantoDAGError::InvalidBlock(format!("Cannot derive test reward address: {error}"))
+        })?;
+        let coinbase = Transaction::new_coinbase(
+            reward_address.clone(),
+            reward,
+            vec![Output {
+                address: reward_address,
+                amount: reward,
+                homomorphic_encrypted: HomomorphicEncrypted::default(),
+            }],
+            signing_key,
+            network_chain_id,
+            Self::compute_coinbase_context(
+                self.chain_id,
+                self.height,
+                &self.parents,
+                self.transactions.get(1..).unwrap_or_default(),
+            ),
+        )?;
+
+        if self.transactions.is_empty() {
+            self.transactions.push(coinbase);
+        } else {
+            self.transactions[0] = coinbase;
+        }
+        self.validator = validator_id.clone();
+        self.miner = validator_id.clone();
+        self.reward = reward;
+        self.merkle_root = Self::compute_merkle_root(&self.transactions)?;
+        self.protocol_version = QANTO_BLOCK_PROTOCOL_VERSION_V2;
+        self.cross_chain_references.clear();
+        self.cross_chain_swaps.clear();
+        self.homomorphic_encrypted.clear();
+        self.smart_contracts.clear();
+        self.carbon_credentials.clear();
+        self.finality_proof = None;
+        self.id.clear();
+        self.signature = QuantumResistantSignature {
+            signer_public_key: public_key.as_bytes().to_vec(),
+            signature: vec![],
+        };
+        self.seal(signing_key)?;
+        Ok(validator_id)
     }
 
     pub fn compute_merkle_root(transactions: &[Transaction]) -> Result<String, QantoDAGError> {
@@ -723,23 +1053,36 @@ impl QantoBlock {
     }
 
     pub fn verify_signature(&self) -> Result<bool, QantoDAGError> {
-        let signing_data = SigningData {
-            parents: &self.parents,
-            transactions: &self.transactions,
-            timestamp: self.timestamp,
-            difficulty: self.difficulty,
-            validator: &self.validator,
-            miner: &self.miner,
-            chain_id: self.chain_id,
-            merkle_root: &self.merkle_root,
-            height: self.height,
-        };
-
+        self.validate_consensus_surface()?;
+        let signing_data = self.signing_data();
         let data_to_verify = Self::serialize_for_signing(&signing_data)?;
 
         let pk = QantoPQPublicKey::from_bytes(&self.signature.signer_public_key).map_err(|_e| {
             QantoDAGError::QuantumSignature(crate::post_quantum_crypto::PQError::VerificationError)
         })?;
+
+        if self.height != 0 {
+            let network_chain_id =
+                crate::transaction::GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32;
+            let expected_validator =
+                qanto_core::protocol_identity::validator_id_v2(network_chain_id, pk.as_bytes())
+                    .map_err(|error| {
+                        QantoDAGError::InvalidBlock(format!(
+                            "Cannot derive validator identity from block signing key: {error}"
+                        ))
+                    })?;
+            if self.validator != expected_validator {
+                return Err(QantoDAGError::InvalidBlock(
+                    "Block signing key is not bound to the declared validator".to_string(),
+                ));
+            }
+            if self.miner != self.validator {
+                return Err(QantoDAGError::InvalidBlock(
+                    "Protocol V2 requires miner identity to equal the bound validator".to_string(),
+                ));
+            }
+        }
+
         let sig = QantoPQSignature::from_bytes(&self.signature.signature).map_err(|_e| {
             QantoDAGError::QuantumSignature(crate::post_quantum_crypto::PQError::VerificationError)
         })?;
@@ -748,27 +1091,14 @@ impl QantoBlock {
     }
 
     pub fn hash(&self) -> String {
-        // Create header hash for qanhash algorithm (excluding id to avoid circular dependency)
-        let mut header_data = Vec::new();
-        header_data.extend_from_slice(&self.timestamp.to_be_bytes());
-        header_data.extend_from_slice(&self.chain_id.to_be_bytes());
-        header_data.extend_from_slice(&self.height.to_be_bytes());
-        header_data.extend_from_slice(&self.difficulty.to_be_bytes());
-        header_data.extend_from_slice(self.merkle_root.as_bytes());
-        header_data.extend_from_slice(self.validator.as_bytes());
-        header_data.extend_from_slice(self.miner.as_bytes());
+        self.hash_for_pow().to_string()
+    }
 
-        // Add parent hashes to header
-        for parent in &self.parents {
-            header_data.extend_from_slice(parent.as_bytes());
-        }
-
-        // Create header hash using qanto_hash
-        let header_hash = qanto_hash(&header_data);
-
-        // Use qanhash algorithm for mining hash
-        let qanhash_result = qanhash::hash(&header_hash, self.nonce, self.height);
-        hex::encode(qanhash_result)
+    /// Canonical nonce-independent V2 header digest used by every mining
+    /// backend. The nonce is supplied separately to QanHash.
+    pub(crate) fn pow_header_hash(&self) -> Result<[u8; 32], QantoDAGError> {
+        self.validate_consensus_surface()?;
+        Self::block_core_hash(&self.signing_data())
     }
 
     /// **CANONICAL PROOF-OF-WORK HASH METHOD - SINGLE SOURCE OF TRUTH**
@@ -777,60 +1107,25 @@ impl QantoBlock {
     /// It serves as the ONLY way to compute PoW hashes across the entire codebase, ensuring
     /// perfect consistency between mining and validation code paths.
     ///
-    /// ## Field Serialization Order (Big-Endian):
-    /// 1. `timestamp` (u64) - Block creation timestamp
-    /// 2. `chain_id` (u32) - Chain identifier  
-    /// 3. `height` (u64) - Block height in the chain
-    /// 4. `difficulty` (u64) - Mining difficulty as fixed-point (scale 1e9)
-    /// 5. `merkle_root` (String) - Merkle root of transactions as UTF-8 bytes
-    /// 6. `validator` (String) - Validator address as UTF-8 bytes
-    /// 7. `miner` (String) - Miner address as UTF-8 bytes
-    /// 8. `parents` (Vec<String>) - Parent block hashes as UTF-8 bytes (in order)
-    ///
-    /// ## Algorithm:
-    /// 1. Serialize all fields in the specified order using big-endian byte representation
-    /// 2. Create header hash using `qanto_hash(&header_data)` (NOTE: nonce is NOT part of header)
-    /// 3. Apply qanhash algorithm: `qanhash::hash(header_hash, nonce, height)`
-    /// 4. Return as `QantoHash` type for type safety
+    /// The header digest is the SHA3-256 Qanto V2 `BlockCore` domain over a
+    /// length-framed canonical record. QanHash then receives that digest plus
+    /// the nonce and height. The block signature separately commits the nonce
+    /// and reported effort after mining completes.
     ///
     /// ## Performance Notes:
     /// - Zero-allocation design for 31ms target block time
     /// - Excludes block's own `id` field to prevent non-deterministic hashing
-    /// - Uses pre-allocated Vec with capacity hint for optimal memory usage
     /// - Header hash is invariant across nonce trials to match miner
     ///
     /// ## Critical:
     /// This method MUST be used for ALL PoW operations. Any deviation will cause
     /// mining/validation inconsistencies and 100% block rejection.
     pub fn hash_for_pow(&self) -> my_blockchain::qanto_standalone::hash::QantoHash {
-        // Pre-allocate header data with estimated capacity to avoid reallocations
-        let estimated_capacity = 280 + (self.parents.len() * 64);
-        let mut header_data = Vec::with_capacity(estimated_capacity);
-
-        // --- CANONICAL SERIALIZATION ORDER (MUST MATCH serialize_for_signing) ---
-        header_data.extend_from_slice(&self.timestamp.to_be_bytes());
-        header_data.extend_from_slice(&self.chain_id.to_be_bytes());
-        header_data.extend_from_slice(&self.height.to_be_bytes());
-        header_data.extend_from_slice(&self.difficulty.to_be_bytes());
-        header_data.extend_from_slice(self.merkle_root.as_bytes());
-        header_data.extend_from_slice(self.validator.as_bytes());
-        header_data.extend_from_slice(self.miner.as_bytes());
-
-        // Add parent hashes in deterministic order
-        for parent in &self.parents {
-            header_data.extend_from_slice(parent.as_bytes());
-        }
-
-        // Note: Transactions are implicitly included via merkle_root.
-        // hash_for_pow excludes individual tx IDs for mining efficiency.
-
-        // Create header hash using qanto_hash
-        let header_hash = qanto_hash(&header_data);
-
-        // Apply qanhash algorithm - this is the canonical PoW hash
+        let header_hash_bytes = self
+            .pow_header_hash()
+            .expect("validated V2 block fields must have a canonical BlockCore encoding");
+        let header_hash = my_blockchain::qanto_standalone::hash::QantoHash::new(header_hash_bytes);
         let qanhash_result = qanhash::hash(&header_hash, self.nonce, self.height);
-
-        // Return as QantoHash type for type safety and consistency
         my_blockchain::qanto_standalone::hash::QantoHash::new(qanhash_result)
     }
 
@@ -962,7 +1257,7 @@ pub struct QantoDAG {
     pub dev_fee_rate: u128,
     pub last_fork_depth: Arc<AtomicU64>,
     pub last_fork_lca: Arc<tokio::sync::RwLock<String>>,
-    pub bypass_reward_check: Arc<AtomicBool>,
+    pub(crate) bypass_reward_check: Arc<AtomicBool>,
 }
 
 /// Helper struct to track mining state
@@ -983,6 +1278,12 @@ pub struct ValidationOutcome {
     pub state_witness: [u8; 32],
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct BalanceMovement {
+    debit: u128,
+    credit: u128,
+}
+
 impl QantoDAG {
     pub fn new(
         config: QantoDagConfig,
@@ -996,6 +1297,54 @@ impl QantoDAG {
         let (block_sender, block_receiver) = bounded(CONCURRENT_BLOCK_LIMIT);
 
         let db_arc = Arc::new(db);
+        let expected_emission =
+            Emission::legacy_full_supply_with_timestamp(genesis_timestamp, config.num_chains);
+        let persisted_emission = match db_arc.get(EMISSION_STATE_V1_KEY)? {
+            Some(bytes) => {
+                let emission: Emission = serde_json::from_slice(&bytes).map_err(|error| {
+                    QantoDAGError::Governance(format!(
+                        "Persisted V1 emission state is corrupt: {error}"
+                    ))
+                })?;
+                emission
+                    .validate_legacy_containment(genesis_timestamp, config.num_chains)
+                    .map_err(QantoDAGError::Governance)?;
+                emission
+            }
+            None => {
+                for chain_id in 0..config.num_chains {
+                    let Some(genesis_id_bytes) = db_arc.get(&genesis_id_key(chain_id))? else {
+                        continue;
+                    };
+                    let genesis_id = String::from_utf8(genesis_id_bytes).map_err(|error| {
+                        QantoDAGError::Governance(format!(
+                            "Genesis marker for chain {chain_id} is not UTF-8: {error}"
+                        ))
+                    })?;
+                    let prefix = tips_prefix(chain_id);
+                    for tip_key_bytes in db_arc.keys_with_prefix(&prefix)? {
+                        let tip_id = String::from_utf8(tip_key_bytes[prefix.len()..].to_vec())
+                            .map_err(|error| {
+                                QantoDAGError::Governance(format!(
+                                    "Tip marker for chain {chain_id} is not UTF-8: {error}"
+                                ))
+                            })?;
+                        if tip_id != genesis_id {
+                            return Err(QantoDAGError::Governance(format!(
+                                "Non-genesis database on chain {chain_id} has no atomic emission state; replay into a fresh data directory is required"
+                            )));
+                        }
+                    }
+                }
+                let mut batch = WriteBatch::new();
+                batch.put(
+                    EMISSION_STATE_V1_KEY.to_vec(),
+                    serde_json::to_vec(&expected_emission)?,
+                );
+                db_arc.write_batch(batch)?;
+                expected_emission
+            }
+        };
 
         let dag = Self {
             consensus_lock: tokio::sync::Mutex::new(()),
@@ -1004,10 +1353,7 @@ impl QantoDAG {
             validators: Arc::new(DashMap::new()),
             delegations: Arc::new(DashMap::new()),
             target_block_time: config.target_block_time,
-            emission: Arc::new(RwLock::new(Emission::default_with_timestamp(
-                genesis_timestamp,
-                config.num_chains,
-            ))),
+            emission: Arc::new(RwLock::new(persisted_emission)),
             num_chains: Arc::new(RwLock::new(config.num_chains.max(1))),
             finalized_blocks: Arc::new(DashMap::new()),
             chain_loads: Arc::new(DashMap::new()),
@@ -1073,7 +1419,7 @@ impl QantoDAG {
             )),
             logging_config,
             qdag_generator: Arc::new(OptimizedQDagGenerator::new(OptimizedQDagConfig::default())),
-            dev_fee_rate: config.dev_fee_rate,
+            dev_fee_rate: 0,
             last_fork_depth: Arc::new(AtomicU64::new(0)),
             last_fork_lca: Arc::new(tokio::sync::RwLock::new(String::new())),
             bypass_reward_check: Arc::new(AtomicBool::new(false)),
@@ -1085,6 +1431,8 @@ impl QantoDAG {
         );
         // Generate a single keypair for all genesis blocks to avoid expensive repeated key generation
         let (paillier_pk, _) = HomomorphicEncrypted::generate_keypair();
+        let (_genesis_validator_pk, genesis_validator_sk) = generate_pq_keypair(Some([42u8; 32]))
+            .expect("Failed to generate genesis validator PQ keypair");
         for chain_id_val in 0..config.num_chains {
             let gkey = genesis_id_key(chain_id_val);
             match dag.db.get(&gkey) {
@@ -1117,10 +1465,6 @@ impl QantoDAG {
 
                             let loaded_id = loaded_block.id.clone();
                             dag.blocks.insert(loaded_id.clone(), loaded_block);
-                            dag.tips
-                                .entry(chain_id_val)
-                                .or_insert_with(HashSet::new)
-                                .insert(loaded_id.clone());
                             info!(
                                 "Loaded existing genesis for chain {} from storage",
                                 chain_id_val
@@ -1130,6 +1474,10 @@ impl QantoDAG {
                             match dag.db.keys_with_prefix(&prefix) {
                                 Ok(keys) => {
                                     if keys.is_empty() {
+                                        dag.tips
+                                            .entry(chain_id_val)
+                                            .or_insert_with(HashSet::new)
+                                            .insert(loaded_id.clone());
                                         let mut batch = WriteBatch::new();
                                         batch.put(tip_key(chain_id_val, &loaded_id), b"1".to_vec());
                                         dag.db.write_batch(batch)?;
@@ -1140,121 +1488,86 @@ impl QantoDAG {
                                             chain_id_val, &loaded_id
                                         );
                                     } else {
-                                        // Validate that each persisted tip has a corresponding block; load valid ones
+                                        // A persisted tip replaces genesis; it is not
+                                        // unioned with genesis on restart.
+                                        dag.tips
+                                            .entry(chain_id_val)
+                                            .or_insert_with(HashSet::new)
+                                            .clear();
                                         let mut loaded_count = 0usize;
-                                        let mut batch = WriteBatch::new();
                                         for k in keys {
-                                            if k.len() >= prefix.len() {
-                                                let id =
-                                                    String::from_utf8_lossy(&k[prefix.len()..])
-                                                        .to_string();
-                                                let id_bytes = id.as_bytes().to_vec();
-                                                match dag.db.get(&id_bytes) {
-                                                    Ok(Some(block_bytes)) => {
-                                                        match serde_json::from_slice::<QantoBlock>(
-                                                            &block_bytes,
-                                                        ) {
-                                                            Ok(blk) => {
-                                                                dag.blocks.insert(id.clone(), blk);
-                                                                dag.tips
-                                                                    .entry(chain_id_val)
-                                                                    .or_insert_with(HashSet::new)
-                                                                    .insert(id.clone());
-                                                                loaded_count += 1;
-                                                            }
-                                                            Err(e) => {
-                                                                warn!(
-                                                                    "Failed to decode block for tip {} on chain {}: {}. Pruning stale tip.",
-                                                                    id, chain_id_val, e
-                                                                );
-                                                                batch.delete(k.clone());
-                                                            }
-                                                        }
-                                                    }
-                                                    Ok(None) => {
-                                                        warn!(
-                                                            "Tip {} persisted for chain {} but block missing. Pruning stale tip.",
-                                                            id, chain_id_val
-                                                        );
-                                                        batch.delete(k.clone());
-                                                    }
-                                                    Err(e) => {
-                                                        warn!(
-                                                            "Storage error loading block {} for chain {}: {}. Skipping.",
-                                                            id, chain_id_val, e
-                                                        );
-                                                    }
-                                                }
+                                            if k.len() < prefix.len() {
+                                                return Err(QantoDAGError::Governance(format!(
+                                                    "Malformed persisted tip key on chain {chain_id_val}"
+                                                )));
                                             }
+                                            let id = String::from_utf8(k[prefix.len()..].to_vec())
+                                                .map_err(|error| {
+                                                    QantoDAGError::Governance(format!(
+                                                        "Non-UTF8 persisted tip on chain {chain_id_val}: {error}"
+                                                    ))
+                                                })?;
+                                            let block_bytes = dag
+                                                .db
+                                                .get(id.as_bytes())?
+                                                .ok_or_else(|| {
+                                                    QantoDAGError::Governance(format!(
+                                                        "Persisted tip {id} on chain {chain_id_val} has no block"
+                                                    ))
+                                                })?;
+                                            let tip_block: QantoBlock = serde_json::from_slice(
+                                                &block_bytes,
+                                            )
+                                            .map_err(|error| {
+                                                QantoDAGError::Governance(format!(
+                                                    "Persisted tip {id} is corrupt: {error}"
+                                                ))
+                                            })?;
+                                            let computed_tip_id = tip_block.compute_block_id()?;
+                                            if tip_block.id != id
+                                                || computed_tip_id != id
+                                                || tip_block.chain_id != chain_id_val
+                                            {
+                                                return Err(QantoDAGError::Governance(format!(
+                                                    "Persisted tip {id} failed identity or chain validation"
+                                                )));
+                                            }
+                                            dag.blocks.insert(id.clone(), tip_block);
+                                            dag.tips
+                                                .entry(chain_id_val)
+                                                .or_insert_with(HashSet::new)
+                                                .insert(id);
+                                            loaded_count += 1;
                                         }
-                                        if loaded_count == 0 {
-                                            // Ensure at least genesis is present as initial tip
-                                            batch.put(
-                                                tip_key(chain_id_val, &loaded_id),
-                                                b"1".to_vec(),
-                                            );
+                                        if loaded_count != 1 {
+                                            return Err(QantoDAGError::Governance(format!(
+                                                "Containment mode requires exactly one persisted tip on chain {chain_id_val}; found {loaded_count}"
+                                            )));
                                         }
-                                        dag.db.write_batch(batch)?;
-                                        dag.db.flush()?;
-                                        dag.db.sync()?;
                                         info!(
-                                            "Loaded {} valid tips for chain {} from storage (stale entries pruned)",
+                                            "Loaded {} validated tip for chain {} from storage",
                                             loaded_count, chain_id_val
                                         );
                                     }
                                 }
                                 Err(e) => {
-                                    warn!(
-                                        "Failed to load tips for chain {}: {}. Continuing with in-memory tips.",
-                                        chain_id_val, e
-                                    );
+                                    return Err(QantoDAGError::DatabaseError(format!(
+                                        "Failed to load tips for chain {chain_id_val}: {e}"
+                                    )));
                                 }
                             }
                         }
                         None => {
-                            warn!("Genesis ID found but block missing for chain {}. Recreating genesis.", chain_id_val);
-                            let genesis_creation_data = QantoBlockCreationData {
-                                validator_private_key: QantoPQPrivateKey::new_dummy(),
-                                chain_id: chain_id_val,
-                                parents: vec![],
-                                transactions: vec![],
-                                difficulty: INITIAL_DIFFICULTY,
-                                validator: config.initial_validator.clone(),
-                                miner: config.initial_validator.clone(),
-                                timestamp: genesis_timestamp,
-                                current_epoch: 0,
-                                height: 0,
-                                paillier_pk: paillier_pk.clone(),
-                            };
-                            let mut genesis_block = QantoBlock::new(genesis_creation_data)?;
-                            genesis_block.reward = INITIAL_BLOCK_REWARD;
-                            let genesis_id = genesis_block.id.clone();
-                            dag.blocks.insert(genesis_id.clone(), genesis_block.clone());
-                            dag.tips
-                                .entry(chain_id_val)
-                                .or_insert_with(HashSet::new)
-                                .insert(genesis_id.clone());
-                            let id_bytes_new = genesis_id.clone().into_bytes();
-                            let block_bytes_new = serde_json::to_vec(&genesis_block)?;
-                            let mut batch = WriteBatch::new();
-                            batch.put(id_bytes_new.clone(), block_bytes_new);
-                            batch.put(gkey.clone(), id_bytes_new.clone());
-                            if chain_id_val == 0 {
-                                batch.put(GENESIS_BLOCK_ID_KEY.to_vec(), id_bytes_new.clone());
-                            }
-                            // Persist genesis as initial tip
-                            batch.put(tip_key(chain_id_val, &genesis_id), b"1".to_vec());
-                            dag.db.write_batch(batch)?;
-                            dag.db.flush()?;
-                            dag.db.sync()?;
-                            info!("✅ Successfully persisted genesis marker to database.");
+                            return Err(QantoDAGError::Governance(format!(
+                                "Genesis marker exists but block is missing on chain {chain_id_val}"
+                            )));
                         }
                     }
                 }
                 Ok(None) => {
                     // Fresh chain; create and persist genesis
                     let genesis_creation_data = QantoBlockCreationData {
-                        validator_private_key: QantoPQPrivateKey::new_dummy(),
+                        validator_private_key: genesis_validator_sk.clone(),
                         chain_id: chain_id_val,
                         parents: vec![],
                         transactions: vec![],
@@ -1264,10 +1577,13 @@ impl QantoDAG {
                         timestamp: genesis_timestamp,
                         current_epoch: 0,
                         height: 0,
+                        reward: 0,
+                        nonce: 0,
+                        effort: 0,
+                        chain_work: U256::ZERO,
                         paillier_pk: paillier_pk.clone(),
                     };
-                    let mut genesis_block = QantoBlock::new(genesis_creation_data)?;
-                    genesis_block.reward = INITIAL_BLOCK_REWARD;
+                    let genesis_block = QantoBlock::new(genesis_creation_data)?;
                     let genesis_id = genesis_block.id.clone();
 
                     dag.blocks.insert(genesis_id.clone(), genesis_block.clone());
@@ -1284,7 +1600,7 @@ impl QantoDAG {
                     if chain_id_val == 0 {
                         batch.put(GENESIS_BLOCK_ID_KEY.to_vec(), id_bytes.clone());
                     }
-                    batch.put(tip_key(chain_id_val, &genesis_id), vec![]);
+                    batch.put(tip_key(chain_id_val, &genesis_id), b"1".to_vec());
                     dag.db.write_batch(batch)?;
                     dag.db.flush()?;
                     dag.db.sync()?;
@@ -1295,73 +1611,56 @@ impl QantoDAG {
                     );
                 }
                 Err(e) => {
-                    warn!(
-                        "Error reading genesis key for chain {}: {}. Creating genesis.",
-                        chain_id_val, e
-                    );
-                    let genesis_creation_data = QantoBlockCreationData {
-                        validator_private_key: QantoPQPrivateKey::new_dummy(),
-                        chain_id: chain_id_val,
-                        parents: vec![],
-                        transactions: vec![],
-                        difficulty: INITIAL_DIFFICULTY,
-                        validator: config.initial_validator.clone(),
-                        miner: config.initial_validator.clone(),
-                        timestamp: genesis_timestamp,
-                        current_epoch: 0,
-                        height: 0,
-                        paillier_pk: paillier_pk.clone(),
-                    };
-                    let mut genesis_block = QantoBlock::new(genesis_creation_data)?;
-                    genesis_block.reward = INITIAL_BLOCK_REWARD;
-                    let genesis_id = genesis_block.id.clone();
-
-                    dag.blocks.insert(genesis_id.clone(), genesis_block.clone());
-                    dag.tips
-                        .entry(chain_id_val)
-                        .or_insert_with(HashSet::new)
-                        .insert(genesis_id.clone());
-
-                    let id_bytes = genesis_id.clone().into_bytes();
-                    let block_bytes = serde_json::to_vec(&genesis_block)?;
-                    let mut batch = WriteBatch::new();
-                    batch.put(id_bytes.clone(), block_bytes);
-                    batch.put(gkey.clone(), id_bytes.clone());
-                    if chain_id_val == 0 {
-                        batch.put(GENESIS_BLOCK_ID_KEY.to_vec(), id_bytes.clone());
-                    }
-                    batch.put(tip_key(chain_id_val, &genesis_id), vec![]);
-                    dag.db.write_batch(batch)?;
-                    dag.db.flush()?;
-                    dag.db.sync()?;
-                    info!("✅ Successfully persisted genesis marker to database.");
+                    return Err(QantoDAGError::DatabaseError(format!(
+                        "Cannot read genesis marker for chain {chain_id_val}: {e}"
+                    )));
                 }
             }
         }
 
         info!("Genesis loop completed");
+        for tips_entry in dag.tips.iter() {
+            let mut tips: Vec<String> = tips_entry.value().iter().cloned().collect();
+            tips.sort();
+            dag.fast_tips_cache.insert(*tips_entry.key(), tips);
+        }
         let balance_prefix = BALANCES_KEY_PREFIX.as_bytes();
         match dag.db.keys_with_prefix(balance_prefix) {
             Ok(keys) => {
                 let mut loaded_balances = 0usize;
                 for key in keys {
                     if key.len() <= balance_prefix.len() {
-                        continue;
+                        return Err(QantoDAGError::Governance(
+                            "Malformed persisted balance key".to_string(),
+                        ));
                     }
-                    let address = String::from_utf8_lossy(&key[balance_prefix.len()..]).to_string();
-                    match dag.db.get(&key) {
-                        Ok(Some(bytes)) => match decode_balance(&bytes) {
-                            Ok(balance) => {
-                                dag.account_state_cache.set_balance(address, balance);
-                                loaded_balances += 1;
-                            }
-                            Err(err) => {
-                                warn!("Failed to decode persisted balance entry: {}", err);
-                            }
+                    let address = String::from_utf8(key[balance_prefix.len()..].to_vec()).map_err(
+                        |error| {
+                            QantoDAGError::Governance(format!(
+                                "Persisted balance address is not UTF-8: {error}"
+                            ))
                         },
-                        Ok(None) => {}
+                    )?;
+                    match dag.db.get(&key) {
+                        Ok(Some(bytes)) => {
+                            let balance = decode_balance(&bytes).map_err(|error| {
+                                QantoDAGError::Governance(format!(
+                                    "Failed to decode persisted balance for {address}: {error}"
+                                ))
+                            })?;
+                            dag.account_state_cache.set_balance(address, balance);
+                            loaded_balances += 1;
+                        }
+                        Ok(None) => {
+                            return Err(QantoDAGError::Governance(format!(
+                                "Persisted balance key has no value: {}",
+                                String::from_utf8_lossy(&key)
+                            )));
+                        }
                         Err(err) => {
-                            warn!("Failed to load persisted balance entry: {}", err);
+                            return Err(QantoDAGError::DatabaseError(format!(
+                                "Failed to load persisted balance entry: {err}"
+                            )));
                         }
                     }
                 }
@@ -1371,10 +1670,9 @@ impl QantoDAG {
                 );
             }
             Err(err) => {
-                warn!(
-                    "Failed to preload account_state_cache from storage: {}",
-                    err
-                );
+                return Err(QantoDAGError::DatabaseError(format!(
+                    "Failed to preload account state: {err}"
+                )));
             }
         }
 
@@ -1400,14 +1698,13 @@ impl QantoDAG {
         }
 
         // Hydrate in-memory blocks and indices from storage history on startup
-        if let Err(e) = arc_dag.populate_and_index_history() {
-            warn!("Failed to populate and index historical blocks: {:?}", e);
-        }
+        arc_dag.populate_and_index_history()?;
 
         Ok(arc_dag)
     }
 
-    pub fn set_bypass_reward_check(&self, bypass: bool) {
+    #[cfg(test)]
+    pub(crate) fn set_bypass_reward_check(&self, bypass: bool) {
         self.bypass_reward_check.store(bypass, Ordering::Relaxed);
     }
 
@@ -1647,19 +1944,15 @@ impl QantoDAG {
                             Some(blk)
                         }
                         Err(e) => {
-                            warn!(
-                                "Failed to deserialize block {} from storage: {}",
-                                block_id, e
-                            );
-                            None
+                            return Err(QantoDAGError::Governance(format!(
+                                "Historical block {block_id} is corrupt: {e}"
+                            )));
                         }
                     },
                     Ok(None) => {
-                        warn!(
-                            "Block {} not found in storage during history population",
-                            block_id
-                        );
-                        None
+                        return Err(QantoDAGError::Governance(format!(
+                            "Historical block {block_id} is missing"
+                        )));
                     }
                     Err(e) => {
                         error!(
@@ -1672,12 +1965,51 @@ impl QantoDAG {
             };
 
             if let Some(block) = block_opt {
+                let computed_id = block.compute_block_id()?;
+                if block.id != block_id || computed_id != block_id {
+                    return Err(QantoDAGError::Governance(format!(
+                        "Historical block {block_id} failed canonical ID validation"
+                    )));
+                }
+                let computed_merkle = QantoBlock::compute_merkle_root(&block.transactions)?;
+                if block.merkle_root != computed_merkle {
+                    return Err(QantoDAGError::Governance(format!(
+                        "Historical block {block_id} failed Merkle validation"
+                    )));
+                }
+                if !block.verify_signature()? {
+                    return Err(QantoDAGError::Governance(format!(
+                        "Historical block {block_id} failed signature validation"
+                    )));
+                }
                 // Index this block
                 self.index_block_internal(&block);
 
                 // Add parents to queue
                 for parent_id in &block.parents {
                     queue.push(parent_id.clone());
+                }
+            }
+        }
+
+        for block_id in &visited {
+            let block = self.blocks.get(block_id).ok_or_else(|| {
+                QantoDAGError::Governance(format!(
+                    "Validated history lost block {block_id} during reconstruction"
+                ))
+            })?;
+            for parent_id in &block.parents {
+                let parent = self.blocks.get(parent_id).ok_or_else(|| {
+                    QantoDAGError::Governance(format!(
+                        "Historical block {block_id} has missing parent {parent_id}"
+                    ))
+                })?;
+                if parent.chain_id != block.chain_id
+                    || parent.height.saturating_add(1) != block.height
+                {
+                    return Err(QantoDAGError::Governance(format!(
+                        "Historical edge {parent_id} -> {block_id} failed chain/height validation"
+                    )));
                 }
             }
         }
@@ -1872,18 +2204,16 @@ impl QantoDAG {
         });
 
         if is_equivocation {
-            if let Some(mut stake_ref) = self.validators.get_mut(&block.validator) {
-                let current_stake = *stake_ref.value();
-                let penalty = (current_stake * 30) / 100; // 30% slashing penalty
-                let new_stake = current_stake.saturating_sub(penalty);
-                *stake_ref.value_mut() = new_stake;
-                warn!(
-                    "Slashed validator {} by {} for equivocation (double-signing) at height {}",
-                    block.validator, penalty, block.height
-                );
-            }
+            // Identity is cryptographically bound above, but an automatic
+            // penalty still requires canonical finalized equivocation evidence
+            // and deterministic state rollback rules. Reject now; slash only
+            // after certificate-based finality is activated.
+            warn!(
+                "Rejected equivocation by validator {} at height {}; automatic slashing remains disabled pending finalized evidence rules",
+                block.validator, block.height
+            );
             return Err(QantoDAGError::InvalidBlock(
-                "Equivocation (double-signing) detected and validator slashed".to_string(),
+                "Equivocation (double-signing) detected".to_string(),
             ));
         }
 
@@ -1895,196 +2225,206 @@ impl QantoDAG {
             .collect();
         let anomaly_score = self.detect_anomaly_internal(&blocks_map, &block).await?;
         if anomaly_score > 900_000_000 {
-            if let Some(mut stake_ref) = self.validators.get_mut(&block.validator) {
-                let current_stake = *stake_ref.value();
-                let penalty = (current_stake * SLASHING_PENALTY) / 100;
-                let new_stake = current_stake.saturating_sub(penalty);
-                *stake_ref.value_mut() = new_stake;
-                info!(
-                    "Slashed validator {} by {} for anomaly (score: {})",
-                    block.validator, penalty, anomaly_score
-                );
-            }
-        }
-
-        // Plan conflict-free UTXO changes and compute balance deltas
-        let (balance_deltas, removal_keys, additions) = self
-            .plan_utxo_changes_conflict_free(&block.transactions, utxos_arc)
-            .await?;
-
-        let removal_keys_persist = removal_keys.clone();
-        let additions_persist = additions.clone();
-        {
-            let mut utxos_write_guard = utxos_arc.write().await;
-            for key in removal_keys {
-                utxos_write_guard.remove(&key);
-            }
-            for (utxo_id, utxo) in additions {
-                utxos_write_guard.insert(utxo_id, utxo);
-            }
-        }
-
-        // Persist UTXO changes asynchronously via writer
-        for key in removal_keys_persist {
-            let del_key = crate::persistence::utxo_key(&key);
-            if let Err(e) = self.persistence_writer.enqueue_delete(del_key) {
-                error!("Failed to enqueue UTXO delete for {}: {}", key, e);
-                return Err(QantoDAGError::DatabaseError(e.to_string()));
-            }
-        }
-        for (utxo_id, utxo) in additions_persist {
-            let put_key = crate::persistence::utxo_key(&utxo_id);
-            let utxo_bytes =
-                crate::persistence::encode_utxo(&utxo).map_err(QantoDAGError::Generic)?;
-            if let Err(e) = self.persistence_writer.enqueue_put(put_key, utxo_bytes) {
-                error!("Failed to enqueue UTXO put for {}: {}", utxo_id, e);
-                return Err(QantoDAGError::DatabaseError(e.to_string()));
-            }
-        }
-
-        // Process custom transaction state machine transitions
-        for tx in &block.transactions {
-            match tx.transaction_kind {
-                crate::transaction::TransactionKind::Stake => {
-                    if let Err(e) = self.process_stake(tx).await {
-                        error!("Failed to process stake transaction {}: {:?}", tx.id, e);
-                    }
-                }
-                crate::transaction::TransactionKind::Unstake => {
-                    if let Err(e) = self.process_unstake(tx, utxos_arc).await {
-                        error!("Failed to process unstake transaction {}: {:?}", tx.id, e);
-                    }
-                }
-                crate::transaction::TransactionKind::Delegate => {
-                    if let Err(e) = self.process_delegate(tx).await {
-                        error!("Failed to process delegate transaction {}: {:?}", tx.id, e);
-                    }
-                }
-                crate::transaction::TransactionKind::Vote => {
-                    if let Err(e) = self.process_vote(tx).await {
-                        error!("Failed to process vote transaction {}: {:?}", tx.id, e);
-                    }
-                }
-                crate::transaction::TransactionKind::Proposal => {
-                    if let Err(e) = self.process_proposal(tx).await {
-                        error!("Failed to process proposal transaction {}: {:?}", tx.id, e);
-                    }
-                }
-                crate::transaction::TransactionKind::BridgeLock => {
-                    if let Err(e) = self.process_bridge_lock(tx).await {
-                        error!(
-                            "Failed to process bridge lock transaction {}: {:?}",
-                            tx.id, e
-                        );
-                    }
-                }
-                crate::transaction::TransactionKind::BridgeClaim => {
-                    if let Err(e) = self.process_bridge_claim(tx, utxos_arc).await {
-                        error!(
-                            "Failed to process bridge claim transaction {}: {:?}",
-                            tx.id, e
-                        );
-                    }
-                }
-                crate::transaction::TransactionKind::BridgeObserve => {
-                    // Currently a no-op framework placeholder for observation recording
-                    info!(
-                        "BRIDGE OBSERVE: Recorded observation for transaction {}",
-                        tx.id
-                    );
-                }
-                _ => {}
-            }
-        }
-
-        // Persist balance updates asynchronously via writer
-        let balance_sender_opt = self.balance_event_sender.read().await.clone();
-        let balance_broadcaster_opt = self.balance_broadcaster.read().await.clone();
-        let block_id_for_state_logs = block.id.clone();
-        let block_height_for_state_logs = block.height;
-
-        for (address, delta) in balance_deltas {
-            if delta == 0 {
-                continue;
-            }
-            let key = balance_key(&address);
-            let maybe_cached = self.account_state_cache.get_balance(&address);
-            if maybe_cached.is_none() {
-                let current_val = match self.db.get(&key) {
-                    Ok(Some(bytes)) => match decode_balance(&bytes) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            warn!(
-                                "Failed to decode balance for {}: {}. Defaulting to 0.",
-                                address, e
-                            );
-                            0u128
-                        }
-                    },
-                    Ok(None) => 0u128,
-                    Err(e) => {
-                        error!("Storage read error for {}: {}", address, e);
-                        return Err(QantoDAGError::DatabaseError(e.to_string()));
-                    }
-                };
-                self.account_state_cache
-                    .set_balance(address.clone(), current_val);
-            }
-
-            let next_u128_clamped = self
-                .account_state_cache
-                .apply_delta(address.as_str(), delta);
-            if let Err(e) = self
-                .persistence_writer
-                .enqueue_put(key, encode_balance(next_u128_clamped))
-            {
-                error!("Failed to enqueue balance update for {}: {}", address, e);
-                return Err(QantoDAGError::DatabaseError(e.to_string()));
-            }
-
-            if let Some(ref sender) = balance_sender_opt {
-                let timestamp = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map_err(QantoDAGError::Time)?
-                    .as_secs();
-                let event = BalanceEvent {
-                    address: address.clone(),
-                    balance: next_u128_clamped,
-                    timestamp,
-                };
-                let _ = sender.send(event);
-            }
-
-            if let Some(ref bb) = balance_broadcaster_opt {
-                bb.set_balance(address.as_str(), next_u128_clamped);
-            }
-
-            info!(
-                "STATE_UPDATED block_id={} height={} address={} delta={} balance={}",
-                block_id_for_state_logs,
-                block_height_for_state_logs,
-                address,
-                delta,
-                next_u128_clamped
+            // Anomaly scores are node-local heuristics, not committed evidence.
+            // They remain advisory and must never mutate consensus stake.
+            warn!(
+                "Advisory anomaly score {} for block {}; no automatic slashing applied",
+                anomaly_score, block.id
             );
         }
 
+        // Plan the complete state transition without mutating any visible
+        // in-memory state. The consensus lock held above keeps this snapshot
+        // stable until the durable batch commits.
+        let (balance_movements, mut removal_keys, mut additions) = self
+            .plan_utxo_changes_conflict_free(&block.transactions, utxos_arc)
+            .await?;
+        removal_keys.sort();
+        additions.sort_by(|left, right| left.0.cmp(&right.0));
+        let removed_total = {
+            let utxos_guard = utxos_arc.read().await;
+            removal_keys.iter().try_fold(0u128, |total, key| {
+                let amount = utxos_guard.get(key).ok_or_else(|| {
+                    QantoDAGError::InvalidBlock(format!(
+                        "Planned input UTXO disappeared before commit: {key}"
+                    ))
+                })?;
+                total.checked_add(amount.amount).ok_or_else(|| {
+                    QantoDAGError::InvalidBlock("Removed UTXO sum overflow".to_string())
+                })
+            })?
+        };
+        let added_total = additions.iter().try_fold(0u128, |total, (_, utxo)| {
+            total
+                .checked_add(utxo.amount)
+                .ok_or_else(|| QantoDAGError::InvalidBlock("Added UTXO sum overflow".to_string()))
+        })?;
+        if removed_total != added_total {
+            return Err(QantoDAGError::InvalidBlock(format!(
+                "UTXO conservation failed: removed {removed_total}, added {added_total}"
+            )));
+        }
+        let total_fees =
+            block
+                .transactions
+                .iter()
+                .skip(1)
+                .try_fold(0u128, |total, transaction| {
+                    total.checked_add(transaction.fee).ok_or_else(|| {
+                        QantoDAGError::InvalidBlock("Transaction fee sum overflow".to_string())
+                    })
+                })?;
+        let subsidy = block.reward.checked_sub(total_fees).ok_or_else(|| {
+            QantoDAGError::InvalidBlock(
+                "Block reward is lower than the transferred fee total".to_string(),
+            )
+        })?;
+        if subsidy != 0 {
+            return Err(QantoDAGError::InvalidBlock(
+                "Legacy full-supply genesis permits no additional subsidy".to_string(),
+            ));
+        }
+        let total_debits = balance_movements
+            .values()
+            .try_fold(0u128, |total, movement| {
+                total.checked_add(movement.debit).ok_or_else(|| {
+                    QantoDAGError::InvalidBlock("Balance debit sum overflow".to_string())
+                })
+            })?;
+        let total_credits = balance_movements
+            .values()
+            .try_fold(0u128, |total, movement| {
+                total.checked_add(movement.credit).ok_or_else(|| {
+                    QantoDAGError::InvalidBlock("Balance credit sum overflow".to_string())
+                })
+            })?;
+        if total_debits != total_credits {
+            return Err(QantoDAGError::InvalidBlock(format!(
+                "Balance conservation failed: debits {total_debits}, credits {total_credits}"
+            )));
+        }
+
+        let mut balance_updates: Vec<(String, u128)> = Vec::new();
+        let mut ordered_movements: Vec<(String, BalanceMovement)> = balance_movements
+            .into_iter()
+            .filter(|(_, movement)| movement.debit != 0 || movement.credit != 0)
+            .collect();
+        ordered_movements.sort_by(|left, right| left.0.cmp(&right.0));
+        for (address, movement) in ordered_movements {
+            let key = balance_key(&address);
+            let current = match self.account_state_cache.get_balance(&address) {
+                Some(balance) => balance,
+                None => match self.db.get(&key) {
+                    Ok(Some(bytes)) => decode_balance(&bytes).map_err(|error| {
+                        QantoDAGError::DatabaseError(format!(
+                            "Invalid persisted balance for {address}: {error}"
+                        ))
+                    })?,
+                    Ok(None) => 0,
+                    Err(error) => {
+                        return Err(QantoDAGError::DatabaseError(error.to_string()));
+                    }
+                },
+            };
+            let next = current
+                .checked_sub(movement.debit)
+                .and_then(|balance| balance.checked_add(movement.credit))
+            .ok_or_else(|| {
+                QantoDAGError::InvalidBlock(format!(
+                    "Balance transition overflow/underflow for {address}: {current}, debit {}, credit {}",
+                    movement.debit, movement.credit
+                ))
+            })?;
+            balance_updates.push((address, next));
+        }
+
         let block_for_db = block.clone();
-        self.blocks.insert(block.id.clone(), block);
+        let block_bytes = serde_json::to_vec(&block_for_db)?;
+        let emission_bytes = serde_json::to_vec(&*self.emission.read().await)?;
+        let mut durable_batch = WriteBatch::with_capacity(
+            removal_keys.len()
+                + additions.len()
+                + balance_updates.len()
+                + block_for_db.parents.len()
+                + 3,
+        );
+        // Write the referenced objects and state first. Tip replacement is the
+        // final visibility marker within the storage transaction.
+        durable_batch.put(block_for_db.id.as_bytes().to_vec(), block_bytes);
+        durable_batch.put(EMISSION_STATE_V1_KEY.to_vec(), emission_bytes);
+        for key in &removal_keys {
+            durable_batch.delete(crate::persistence::utxo_key(key));
+        }
+        for (utxo_id, utxo) in &additions {
+            durable_batch.put(
+                crate::persistence::utxo_key(utxo_id),
+                crate::persistence::encode_utxo(utxo).map_err(QantoDAGError::Generic)?,
+            );
+        }
+        for (address, next) in &balance_updates {
+            durable_batch.put(balance_key(address), encode_balance(*next));
+        }
+        for parent_id in &block_for_db.parents {
+            durable_batch.delete(tip_key(block_for_db.chain_id, parent_id));
+        }
+        durable_batch.put(
+            tip_key(block_for_db.chain_id, &block_for_db.id),
+            b"1".to_vec(),
+        );
+
+        // This is the only fallible state-publication point. A block, its tip,
+        // its UTXOs, and its balances reach one WAL transaction before any
+        // reader can observe the transition in memory.
+        self.db
+            .write_batch(durable_batch)
+            .map_err(|error| QantoDAGError::DatabaseError(error.to_string()))?;
+
+        {
+            let mut utxos_write_guard = utxos_arc.write().await;
+            for key in &removal_keys {
+                utxos_write_guard.remove(key);
+            }
+            for (utxo_id, utxo) in &additions {
+                utxos_write_guard.insert(utxo_id.clone(), utxo.clone());
+            }
+        }
+        let balance_sender_opt = self.balance_event_sender.read().await.clone();
+        let balance_broadcaster_opt = self.balance_broadcaster.read().await.clone();
+        let event_timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        for (address, next) in &balance_updates {
+            self.account_state_cache.set_balance(address.clone(), *next);
+            if let Some(ref sender) = balance_sender_opt {
+                let _ = sender.send(BalanceEvent {
+                    address: address.clone(),
+                    balance: *next,
+                    timestamp: event_timestamp,
+                });
+            }
+            if let Some(ref broadcaster) = balance_broadcaster_opt {
+                broadcaster.set_balance(address, *next);
+            }
+            info!(
+                "STATE_UPDATED block_id={} height={} address={} balance={}",
+                block_for_db.id, block_for_db.height, address, next
+            );
+        }
+
+        self.blocks
+            .insert(block_for_db.id.clone(), block_for_db.clone());
         self.index_block_internal(&block_for_db);
         self.block_creation_timestamps
-            .insert(block_for_db.id.clone(), Utc::now().timestamp() as u64);
+            .insert(block_for_db.id.clone(), block_for_db.timestamp);
 
-        let mut removed_parents: Vec<String> = Vec::new();
         {
             let mut current_tips = self
                 .tips
                 .entry(block_for_db.chain_id)
                 .or_insert_with(HashSet::new);
             for parent_id in &block_for_db.parents {
-                if current_tips.remove(parent_id) {
-                    removed_parents.push(parent_id.clone());
-                }
+                current_tips.remove(parent_id);
             }
             current_tips.insert(block_for_db.id.clone());
             let tips_vec: Vec<String> = current_tips.iter().cloned().collect();
@@ -2188,63 +2528,6 @@ impl QantoDAG {
             }
         }
 
-        for parent_id in removed_parents {
-            let del_key = tip_key(block_for_db.chain_id, &parent_id);
-            if let Err(e) = self.persistence_writer.enqueue_delete(del_key) {
-                error!(
-                    "Failed to enqueue tip delete for parent {}: {}",
-                    parent_id, e
-                );
-                return Err(QantoDAGError::DatabaseError(e.to_string()));
-            }
-        }
-        let put_key = tip_key(block_for_db.chain_id, &block_for_db.id);
-        if let Err(e) = self.persistence_writer.enqueue_put(put_key, b"1".to_vec()) {
-            error!(
-                "SOLO MINER: Failed to enqueue tip put for new tip {}: {}",
-                block_for_db.id, e
-            );
-            return Err(QantoDAGError::DatabaseError(e.to_string()));
-        }
-
-        info!(
-            "SOLO MINER: Starting database enqueue for block {}",
-            block_for_db.id
-        );
-        let id_bytes = block_for_db.id.as_bytes().to_vec();
-        let block_bytes = serde_json::to_vec(&block_for_db)?;
-        info!(
-            "SOLO MINER: Serialized block {} for enqueue",
-            block_for_db.id
-        );
-
-        if let Err(e) = self.persistence_writer.enqueue_put(id_bytes, block_bytes) {
-            error!(
-                "SOLO MINER: Failed to enqueue block {} for persistence: {}",
-                block_for_db.id, e
-            );
-            return Err(QantoDAGError::DatabaseError(e.to_string()));
-        }
-        info!(
-            "SOLO MINER: Enqueued block {} for asynchronous persistence",
-            block_for_db.id
-        );
-
-        info!(
-            "SOLO MINER: Updating emission supply for block {}",
-            block_for_db.id
-        );
-        {
-            let mut emission = self.emission.write().await;
-            emission
-                .update_supply(block_for_db.reward)
-                .map_err(QantoDAGError::EmissionError)?;
-        }
-        info!(
-            "SOLO MINER: Emission supply updated for block {}",
-            block_for_db.id
-        );
-
         BLOCKS_PROCESSED.inc();
         TRANSACTIONS_PROCESSED.inc_by(block_for_db.transactions.len() as u64);
 
@@ -2304,43 +2587,6 @@ impl QantoDAG {
             block_for_db.height, state_root
         );
 
-        #[cfg(any(test, debug_assertions))]
-        {
-            let circulating_supply: u128 = self.account_state_cache.snapshot().values().sum();
-            let staked_supply: u128 = self
-                .validators
-                .iter()
-                .map(|entry| *entry.value() as u128)
-                .sum();
-            let delegated_supply: u128 = self
-                .delegations
-                .iter()
-                .map(|entry| *entry.value() as u128)
-                .sum();
-            let bridge_locked_supply = *self.total_bridge_locked.read().await;
-            let current_supply = self.emission.read().await.current_supply();
-
-            // circulating + staked + delegated + bridge_locked = current_supply
-            let calculated_total = circulating_supply
-                .saturating_add(staked_supply)
-                .saturating_add(delegated_supply)
-                .saturating_add(bridge_locked_supply);
-
-            if calculated_total != current_supply {
-                let err_msg = format!(
-                    "GLOBAL SUPPLY INVARIANT VIOLATION: circulating ({}) + staked ({}) + delegated ({}) + bridge_locked ({}) = {} vs current_supply ({})",
-                    circulating_supply, staked_supply, delegated_supply, bridge_locked_supply, calculated_total, current_supply
-                );
-                error!("{}", err_msg);
-                return Err(QantoDAGError::Governance(err_msg));
-            } else {
-                info!(
-                    "Global supply invariant check passed: circulating ({}) + staked ({}) + delegated ({}) + bridge_locked ({}) = current_supply ({})",
-                    circulating_supply, staked_supply, delegated_supply, bridge_locked_supply, current_supply
-                );
-            }
-        }
-
         Ok(true)
     }
 
@@ -2352,9 +2598,31 @@ impl QantoDAG {
         self.fast_tips_cache.get(&chain_id).map(|v| v.clone())
     }
 
-    pub async fn add_validator(&self, address: String, stake: u128) {
-        self.validators
-            .insert(address, stake.max(MIN_VALIDATOR_STAKE));
+    pub async fn add_validator(&self, _address: String, _stake: u128) -> Result<(), QantoDAGError> {
+        Err(QantoDAGError::Governance(
+            "Dynamic validator registration is disabled for the immutable V2 genesis set"
+                .to_string(),
+        ))
+    }
+
+    #[cfg(test)]
+    pub async fn add_test_validator(
+        &self,
+        validator_id: String,
+        stake: u128,
+    ) -> Result<(), QantoDAGError> {
+        if validator_id.len() != 64 || hex::decode(&validator_id).is_err() {
+            return Err(QantoDAGError::Governance(
+                "Test validator ID is not canonical hexadecimal".to_string(),
+            ));
+        }
+        if stake < MIN_VALIDATOR_STAKE {
+            return Err(QantoDAGError::Governance(format!(
+                "Test validator stake {stake} is below minimum {MIN_VALIDATOR_STAKE}"
+            )));
+        }
+        self.validators.insert(validator_id, stake);
+        Ok(())
     }
 
     pub async fn initiate_cross_chain_swap(
@@ -2443,16 +2711,47 @@ impl QantoDAG {
     pub async fn create_candidate_block(
         &self,
         qr_signing_key: &QantoPQPrivateKey,
-        _qr_public_key: &QantoPQPublicKey,
+        qr_public_key: &QantoPQPublicKey,
         validator_address: &str,
         mempool_arc: &Arc<RwLock<Mempool>>,
         _utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
         chain_id_val: u32,
-        miner: &Arc<Miner>,
+        _miner: &Arc<Miner>,
         homomorphic_public_key: Option<&[u8]>,
         parents_override: Option<Vec<String>>, // Optional explicit parents
         difficulty_override: Option<crate::QDifficulty>, // Optional explicit difficulty
     ) -> Result<QantoBlock, QantoDAGError> {
+        let network_chain_id = crate::transaction::GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32;
+        let signer_public_key = qr_signing_key.public_key();
+        if signer_public_key.as_bytes() != qr_public_key.as_bytes() {
+            return Err(QantoDAGError::InvalidBlock(
+                "Candidate public and private validator keys do not match".to_string(),
+            ));
+        }
+        let expected_validator_id = qanto_core::protocol_identity::validator_id_v2(
+            network_chain_id,
+            signer_public_key.as_bytes(),
+        )
+        .map_err(|error| {
+            QantoDAGError::InvalidBlock(format!(
+                "Cannot derive validator identity from candidate signing key: {error}"
+            ))
+        })?;
+        if validator_address != expected_validator_id {
+            return Err(QantoDAGError::InvalidBlock(
+                "Candidate signing key is not bound to the registered validator".to_string(),
+            ));
+        }
+        let reward_address = qanto_core::protocol_identity::account_address_v2(
+            network_chain_id,
+            signer_public_key.as_bytes(),
+        )
+        .map_err(|error| {
+            QantoDAGError::InvalidBlock(format!(
+                "Cannot derive reward address from candidate signing key: {error}"
+            ))
+        })?;
+
         {
             let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
             let recent_blocks = self
@@ -2490,14 +2789,10 @@ impl QantoDAG {
                 QantoDAGError::InvalidBlock(msg)
             })?;
             if *stake < MIN_VALIDATOR_STAKE {
-                // Per updated consensus policy, PoS is a helper and low stake should not block
-                // candidate creation. Log a warning and proceed.
-                warn!(
-                    validator = %validator_address,
-                    stake = *stake,
-                    min_required = MIN_VALIDATOR_STAKE,
-                    "Validator stake below minimum; proceeding with candidate creation due to PoW-first finality"
-                );
+                return Err(QantoDAGError::InvalidBlock(format!(
+                    "Validator {validator_address} stake {} is below minimum {MIN_VALIDATOR_STAKE}",
+                    *stake
+                )));
             }
         }
 
@@ -2565,46 +2860,12 @@ impl QantoDAG {
             );
         }
 
-        // Enforce block size limits dynamically
-        let dynamic_max_size = {
-            let this_load = self
-                .chain_loads
-                .get(&chain_id_val)
-                .map(|entry| entry.value().load(Ordering::Relaxed))
-                .unwrap_or(0);
-            let total_load: u64 = self
-                .chain_loads
-                .iter()
-                .map(|entry| entry.value().load(Ordering::Relaxed))
-                .sum();
-            let num_chains_val = *self.num_chains.read().await;
-            let avg_load = if num_chains_val > 0 {
-                total_load / num_chains_val as u64
-            } else {
-                total_load
-            };
-
-            if num_chains_val > 0 && avg_load > 0 {
-                let congestion_ratio_fixed = (this_load as u128 * 1_000_000_000) / avg_load as u128;
-                let computed = if congestion_ratio_fixed > 1_000_000_000 {
-                    let reduction_fixed =
-                        ((congestion_ratio_fixed - 1_000_000_000) / 3).min(500_000_000);
-                    (MAX_BLOCK_SIZE as u128 * (1_000_000_000 - reduction_fixed) / 1_000_000_000)
-                        as usize
-                } else {
-                    MAX_BLOCK_SIZE
-                };
-                computed.clamp(8_388_608, MAX_BLOCK_SIZE)
-            } else {
-                MAX_BLOCK_SIZE
-            }
-        };
-
         let filtered_transactions = {
             let mut final_txs = Vec::new();
             let mut current_size = 0usize;
-            // 500KB safety buffer for coinbase, metadata and serialization overhead
-            let size_limit = dynamic_max_size.saturating_sub(500_000);
+            // Reserve deterministic envelope headroom for coinbase, the block
+            // signature, and transport framing.
+            let size_limit = MAX_BLOCK_SIZE.saturating_sub(250_000);
             for tx in all_filtered_transactions {
                 if let Ok(tx_bytes) = serde_json::to_vec(&tx) {
                     let tx_size = tx_bytes.len();
@@ -2626,20 +2887,25 @@ impl QantoDAG {
         };
         // Determine parent tips with optional override for deterministic testing or special flows
         let parent_tips: Vec<String> = match parents_override {
-            Some(p) if !p.is_empty() => p,
-            _ => match self.get_fast_tips(chain_id_val).await {
-                Ok(tips) => tips,
-                Err(_) => {
-                    // Chain doesn't exist in fast tips cache yet - this is a genesis case
-                    // Return empty vector to be handled as genesis below
-                    debug!(
-                        "No fast tips found for chain_id {}, treating as genesis case",
-                        chain_id_val
-                    );
-                    Vec::new()
-                }
-            },
+            Some(parents) if !parents.is_empty() => parents,
+            _ => {
+                let tips = self.tips.get(&chain_id_val);
+                tips.map(|tip_set| {
+                    // Convert to vector and sort deterministically to ensure consistent parent selection
+                    let mut tips_vec: Vec<String> = tip_set.iter().cloned().collect();
+                    tips_vec.sort(); // Deterministic lexicographic ordering
+                    tips_vec
+                })
+                .unwrap_or_default()
+            }
         };
+        if parent_tips.is_empty() {
+            return Err(QantoDAGError::InvalidParent(
+                "No parent tips available for block production".to_string(),
+            ));
+        }
+        // Select the lexicographically smallest tip as the deterministic parent
+        let selected_parent = parent_tips[0].clone();
 
         let (height, new_timestamp) = {
             let blocks_guard = &self.blocks;
@@ -2749,43 +3015,16 @@ impl QantoDAG {
         let current_difficulty = difficulty_override.unwrap_or(INITIAL_DIFFICULTY);
 
         // Calculate total fees from filtered transactions (excluding coinbase which will be added later)
-        let total_fees = filtered_transactions.iter().map(|tx| tx.fee).sum::<u128>();
-
-        // Create temporary block with actual selected transactions for accurate reward calculation
-        let paillier_pk = homomorphic_public_key
-            .map(|key| key.to_vec())
-            .unwrap_or_else(|| {
-                let (pk, _) = HomomorphicEncrypted::generate_keypair();
-                pk
-            });
-        let temp_block_for_reward_calc = QantoBlock::new(QantoBlockCreationData {
-            chain_id: chain_id_val,
-            parents: parent_tips.clone(),
-            transactions: filtered_transactions.clone(),
-            difficulty: current_difficulty,
-            validator: validator_address.to_string(),
-            miner: miner
-                .get_address()
-                .unwrap_or_else(|| validator_address.to_string()),
-            validator_private_key: qr_signing_key.clone(),
-
-            timestamp: new_timestamp,
-            current_epoch: epoch,
-            height,
-            paillier_pk: paillier_pk.clone(),
+        let total_fees = filtered_transactions.iter().try_fold(0u128, |total, tx| {
+            total.checked_add(tx.fee).ok_or_else(|| {
+                QantoDAGError::InvalidBlock("Transaction fee sum overflow".to_string())
+            })
         })?;
 
-        let self_arc_strong = self
-            .self_arc
-            .upgrade()
-            .ok_or(QantoDAGError::SelfReferenceNotInitialized)?;
-        let base_reward = self
-            .saga
-            .calculate_dynamic_reward(&temp_block_for_reward_calc, &self_arc_strong, total_fees)
-            .await?;
-
-        // Total reward includes base reward plus transaction fees
-        let reward = base_reward + total_fees;
+        // V1 genesis allocates the full sealed supply. Until a validated V2
+        // allocation manifest activates EmissionV2, only fee transfers are
+        // permitted; SAGA/telemetry cannot create subsidy.
+        let reward = total_fees;
 
         // Generate proper homomorphic encryption keys for coinbase output
         let public_key_material = homomorphic_public_key
@@ -2794,18 +3033,16 @@ impl QantoDAG {
                 let (pk, _) = HomomorphicEncrypted::generate_keypair();
                 pk
             });
-        // Developer fee calculated using configurable rate
-        // Developer fee calculated using fixed-point math: (reward * rate) / 1e9
-        let dev_fee = (reward
-            .checked_mul(self.dev_fee_rate)
-            .and_then(|r| r.checked_div(crate::QANTO_SCALE)))
-        .unwrap_or(0);
+        // Fee policy during containment is exact: all fees go to the producer.
+        // Ecosystem/development funds belong in the V2 genesis allocation,
+        // never in a node-local configurable coinbase percentage.
+        let dev_fee = 0u128;
         // Ensure validator_amount + dev_fee equals reward exactly by adjusting validator_amount
         // This prevents rounding discrepancies that cause reward mismatch errors
         let validator_amount = reward.saturating_sub(dev_fee);
         let mut coinbase_outputs = Vec::with_capacity(2);
         coinbase_outputs.push(Output {
-            address: validator_address.to_string(),
+            address: reward_address.clone(),
             amount: validator_amount,
             homomorphic_encrypted: HomomorphicEncrypted::new(
                 validator_amount,
@@ -2821,18 +3058,27 @@ impl QantoDAG {
         }
 
         // Verify that outputs sum equals reward (should always be true now)
-        let actual_coinbase_total = validator_amount + dev_fee;
+        let actual_coinbase_total = validator_amount
+            .checked_add(dev_fee)
+            .ok_or_else(|| QantoDAGError::InvalidBlock("Coinbase sum overflow".to_string()))?;
         debug_assert_eq!(
             actual_coinbase_total, reward,
             "Coinbase outputs must sum to reward"
         );
 
+        let coinbase_context = QantoBlock::compute_coinbase_context(
+            chain_id_val,
+            height,
+            &[selected_parent.clone()],
+            &filtered_transactions,
+        );
         let reward_tx = Transaction::new_coinbase(
-            validator_address.to_string(),
+            reward_address,
             reward,
             coinbase_outputs,
             qr_signing_key,
             crate::transaction::GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32,
+            coinbase_context,
         )?;
         // #region debug-point coinbase-chain-id
         report_block_signature_debug_event(
@@ -2850,34 +3096,32 @@ impl QantoDAG {
         let mut transactions_for_block = vec![reward_tx];
         transactions_for_block.extend(filtered_transactions);
 
-        let mut cross_chain_references = vec![];
         let num_chains_val = *self.num_chains.read().await;
-        if num_chains_val > 1 {
-            let prev_chain = (chain_id_val + num_chains_val - 1) % num_chains_val;
-            let tips_guard = &self.tips;
-            if let Some(prev_tips_set) = tips_guard.get(&prev_chain) {
-                if let Some(tip_val) = prev_tips_set.iter().next() {
-                    cross_chain_references.push((prev_chain, tip_val.clone()));
-                }
-            }
+        if num_chains_val != 1 || chain_id_val != 0 {
+            return Err(QantoDAGError::InvalidBlock(
+                "V2 containment permits only chain 0 until cross-chain state commitments are activated"
+                    .to_string(),
+            ));
         }
 
         let (paillier_pk, _) = HomomorphicEncrypted::generate_keypair();
-        let mut block = QantoBlock::new(QantoBlockCreationData {
+        let mut block = QantoBlock::new_unsealed_candidate(QantoBlockCreationData {
             validator_private_key: qr_signing_key.clone(),
 
             chain_id: chain_id_val,
-            parents: parent_tips,
+            parents: vec![selected_parent.clone()],
             transactions: transactions_for_block,
             difficulty: current_difficulty,
             validator: validator_address.to_string(),
-            miner: miner
-                .get_address()
-                .unwrap_or_else(|| validator_address.to_string()),
+            miner: validator_address.to_string(),
 
             timestamp: new_timestamp,
             current_epoch: epoch,
             height,
+            reward,
+            nonce: 0,
+            effort: 0,
+            chain_work: U256::ZERO,
             paillier_pk: paillier_pk.clone(),
         })?;
         // #region debug-point block-signature-failure-candidate
@@ -2893,17 +3137,12 @@ impl QantoDAG {
                 "used_dummy_private_key": false,
                 "signature_len": block.signature.signature.len(),
                 "signer_public_key_len": block.signature.signer_public_key.len(),
-                "verify_before_mutation": block.verify_signature().ok(),
+                "candidate_is_unsealed": block.ensure_unsealed_candidate().is_ok(),
             }),
         );
         // #endregion debug-point block-signature-failure-candidate
         // Attach reservation miner id for downstream reservation release
         block.reservation_miner_id = Some(miner_id);
-        block.cross_chain_references = cross_chain_references;
-        block.reward = reward; // Set to match expected reward (base_reward + total_fees)
-
-        self.block_creation_timestamps
-            .insert(block.id.clone(), new_timestamp);
         self.chain_loads
             .entry(chain_id_val)
             .or_insert_with(|| AtomicU64::new(0))
@@ -2922,53 +3161,55 @@ impl QantoDAG {
                 "Block ID cannot be empty".to_string(),
             ));
         }
+        let expected_block_id = block.compute_block_id()?;
+        if block.id != expected_block_id {
+            return Err(QantoDAGError::InvalidBlock(format!(
+                "Block ID does not match canonical header: expected {expected_block_id}, got {}",
+                block.id
+            )));
+        }
+        if block.difficulty != INITIAL_DIFFICULTY {
+            return Err(QantoDAGError::InvalidBlock(format!(
+                "Block difficulty does not match the deterministic network requirement: expected {INITIAL_DIFFICULTY}, got {}",
+                block.difficulty
+            )));
+        }
         if block.transactions.is_empty() {
             return Err(QantoDAGError::InvalidBlock(
                 "Block must contain at least a coinbase transaction".to_string(),
             ));
         }
-
-        let serialized_size = bincode::serialized_size(&block).unwrap_or(0) as usize;
-        // Dynamic block size limit based on chain congestion, clamped to [8MB, MAX_BLOCK_SIZE]
-        let dynamic_max_size = {
-            let chain_id_val = block.chain_id;
-            let this_load = self
-                .chain_loads
-                .get(&chain_id_val)
-                .map(|entry| entry.value().load(Ordering::Relaxed))
-                .unwrap_or(0);
-            let total_load: u64 = self
-                .chain_loads
+        if block
+            .transactions
+            .iter()
+            .skip(1)
+            .any(|tx| tx.transaction_kind != TransactionKind::Transfer)
+        {
+            return Err(QantoDAGError::InvalidBlock(
+                "Non-transfer state transitions are disabled until branch-scoped atomic state is activated"
+                    .to_string(),
+            ));
+        }
+        if !BRIDGE_PROOF_VERIFIER_AVAILABLE
+            && block
+                .transactions
                 .iter()
-                .map(|entry| entry.value().load(Ordering::Relaxed))
-                .sum();
-            let num_chains_val = *self.num_chains.read().await;
-            let avg_load = if num_chains_val > 0 {
-                total_load / num_chains_val as u64
-            } else {
-                total_load
-            };
+                .any(|tx| tx.transaction_kind == TransactionKind::BridgeClaim)
+        {
+            return Err(QantoDAGError::InvalidBlock(
+                "Bridge claims are disabled until cryptographic source-chain proof verification is implemented"
+                    .to_string(),
+            ));
+        }
 
-            // Reduce allowed size modestly under congestion; no increase above MAX_BLOCK_SIZE
-            // Using fixed-point math for size limit calculation (scale 1e9)
-            if num_chains_val > 0 && avg_load > 0 {
-                let congestion_ratio_fixed = (this_load as u128 * 1_000_000_000) / avg_load as u128;
-                let computed = if congestion_ratio_fixed > 1_000_000_000 {
-                    let reduction_fixed =
-                        ((congestion_ratio_fixed - 1_000_000_000) / 3).min(500_000_000);
-                    (MAX_BLOCK_SIZE as u128 * (1_000_000_000 - reduction_fixed) / 1_000_000_000)
-                        as usize
-                } else {
-                    MAX_BLOCK_SIZE
-                };
-                computed.clamp(8_388_608, MAX_BLOCK_SIZE)
-            } else {
-                MAX_BLOCK_SIZE
-            }
-        };
+        let serialized_size_u64 = bincode::serialized_size(block).map_err(|error| {
+            QantoDAGError::InvalidBlock(format!("Block size encoding failed: {error}"))
+        })?;
+        let serialized_size = usize::try_from(serialized_size_u64).map_err(|_| {
+            QantoDAGError::InvalidBlock("Block size does not fit this platform".to_string())
+        })?;
 
-        if block.transactions.len() > MAX_TRANSACTIONS_PER_BLOCK
-            || serialized_size > dynamic_max_size
+        if block.transactions.len() > MAX_TRANSACTIONS_PER_BLOCK || serialized_size > MAX_BLOCK_SIZE
         {
             let mut error_msg = String::with_capacity(64);
             error_msg.push_str("Block exceeds size limits: ");
@@ -2985,6 +3226,49 @@ impl QantoDAG {
         }
         if !block.verify_signature()? {
             return Err(QantoDAGError::QuantumSignature(PQError::VerificationError));
+        }
+
+        if block.height != 0 {
+            let validator_stake = self.validators.get(&block.validator).ok_or_else(|| {
+                QantoDAGError::InvalidBlock(format!(
+                    "Validator {} is not registered in consensus state",
+                    block.validator
+                ))
+            })?;
+            if *validator_stake < MIN_VALIDATOR_STAKE {
+                return Err(QantoDAGError::InvalidBlock(format!(
+                    "Validator {} stake {} is below minimum {}",
+                    block.validator, *validator_stake, MIN_VALIDATOR_STAKE
+                )));
+            }
+
+            if block.parents.len() != 1 {
+                return Err(QantoDAGError::InvalidParent(
+                    "Containment mode requires exactly one state parent".to_string(),
+                ));
+            }
+            let current_tips = self.tips.get(&block.chain_id).ok_or_else(|| {
+                QantoDAGError::InvalidParent(format!(
+                    "Chain {} has no authoritative current tip",
+                    block.chain_id
+                ))
+            })?;
+            if current_tips.len() != 1 {
+                return Err(QantoDAGError::InvalidParent(format!(
+                    "Chain {} has {} tips; branch-scoped state is unavailable",
+                    block.chain_id,
+                    current_tips.len()
+                )));
+            }
+            let current_tip = current_tips.iter().next().ok_or_else(|| {
+                QantoDAGError::InvalidParent("Authoritative tip set is empty".to_string())
+            })?;
+            if block.parents[0] != *current_tip {
+                return Err(QantoDAGError::InvalidParent(format!(
+                    "State parent {} is not current tip {}",
+                    block.parents[0], current_tip
+                )));
+            }
         }
 
         // Proof-of-Work validation using canonical function
@@ -3093,47 +3377,72 @@ impl QantoDAG {
         }
 
         let coinbase_tx = &block.transactions[0];
-        let total_coinbase_output: u128 = coinbase_tx.outputs.iter().map(|o| o.amount).sum();
+        let expected_coinbase_context = QantoBlock::compute_coinbase_context(
+            block.chain_id,
+            block.height,
+            &block.parents,
+            &block.transactions[1..],
+        );
+        coinbase_tx
+            .validate_coinbase_context(&expected_coinbase_context)
+            .map_err(|error| {
+                QantoDAGError::InvalidBlock(format!(
+                    "Coinbase block-context validation failed: {error}"
+                ))
+            })?;
+        let total_coinbase_output =
+            coinbase_tx
+                .outputs
+                .iter()
+                .try_fold(0u128, |total, output| {
+                    total.checked_add(output.amount).ok_or_else(|| {
+                        QantoDAGError::InvalidBlock("Coinbase output sum overflow".to_string())
+                    })
+                })?;
 
-        let self_arc_strong = self
-            .self_arc
-            .upgrade()
-            .ok_or(QantoDAGError::SelfReferenceNotInitialized)?;
         let total_fees = block
             .transactions
             .iter()
             .skip(1)
-            .map(|tx| tx.fee)
-            .sum::<u128>();
+            .try_fold(0u128, |total, tx| {
+                total.checked_add(tx.fee).ok_or_else(|| {
+                    QantoDAGError::InvalidBlock("Transaction fee sum overflow".to_string())
+                })
+            })?;
 
         debug!(
             "Block {} reward validation: total_fees={}, total_coinbase_output={}, block.reward={}",
             block.id, total_fees, total_coinbase_output, block.reward
         );
 
-        // SAGA returns the base dynamic reward (without fees). QantoDAG adds fees.
-        let saga_base_reward = self
-            .saga
-            .calculate_dynamic_reward(block, &self_arc_strong, total_fees)
-            .await?;
-        let expected_reward_total = saga_base_reward + total_fees;
+        let expected_reward_total = total_fees;
 
         debug!(
-            "Block {} SAGA base_reward={}, total_fees={}, expected_total={}, block.reward={}",
-            block.id, saga_base_reward, total_fees, expected_reward_total, block.reward
+            "Block {} containment subsidy=0, total_fees={}, expected_total={}, block.reward={}",
+            block.id, total_fees, expected_reward_total, block.reward
         );
 
         // Verify coinbase signature against validator's public key from block header
         let skip_coinbase_sig = self.bypass_reward_check.load(Ordering::Relaxed)
             && coinbase_tx.signature.signer_public_key.is_empty();
 
+        let validator_pubkey = QantoPQPublicKey::from_bytes(&block.signature.signer_public_key)
+            .map_err(|_e| {
+                QantoDAGError::InvalidBlock(
+                    "Invalid validator public key in block header".to_string(),
+                )
+            })?;
+        let expected_reward_address = qanto_core::protocol_identity::account_address_v2(
+            crate::transaction::GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32,
+            validator_pubkey.as_bytes(),
+        )
+        .map_err(|error| {
+            QantoDAGError::InvalidBlock(format!(
+                "Cannot derive coinbase reward address from validator key: {error}"
+            ))
+        })?;
+
         if !skip_coinbase_sig {
-            let validator_pubkey = QantoPQPublicKey::from_bytes(&block.signature.signer_public_key)
-                .map_err(|_e| {
-                    QantoDAGError::InvalidBlock(
-                        "Invalid validator public key in block header".to_string(),
-                    )
-                })?;
             coinbase_tx
                 .verify_signature(&validator_pubkey)
                 .map_err(|e| {
@@ -3160,7 +3469,7 @@ impl QantoDAG {
         if !self.bypass_reward_check.load(Ordering::Relaxed) {
             if block.reward != expected_reward_total {
                 error!(
-                    "Block {} declared reward mismatch: expected SAGA reward + fees = {}, declared block.reward = {}",
+                    "Block {} declared reward mismatch: expected transferred fees only = {}, declared block.reward = {}",
                     block.id, expected_reward_total, block.reward
                 );
                 return Err(QantoDAGError::RewardMismatch(
@@ -3170,10 +3479,7 @@ impl QantoDAG {
             }
 
             // Validate outputs distribution according to consensus dev fee rate rules
-            let expected_dev_fee = (expected_reward_total
-                .checked_mul(self.dev_fee_rate)
-                .and_then(|r| r.checked_div(crate::QANTO_SCALE)))
-            .unwrap_or(0);
+            let expected_dev_fee = 0u128;
             let expected_validator_amount = expected_reward_total.saturating_sub(expected_dev_fee);
 
             if expected_dev_fee > 0 {
@@ -3183,18 +3489,17 @@ impl QantoDAG {
                         coinbase_tx.outputs.len()
                     )));
                 }
-                let has_validator_output = coinbase_tx
-                    .outputs
-                    .iter()
-                    .any(|o| o.address == block.validator && o.amount == expected_validator_amount);
+                let has_validator_output = coinbase_tx.outputs.iter().any(|o| {
+                    o.address == expected_reward_address && o.amount == expected_validator_amount
+                });
                 let has_dev_output = coinbase_tx
                     .outputs
                     .iter()
                     .any(|o| o.address == DEV_ADDRESS && o.amount == expected_dev_fee);
                 if !has_validator_output || !has_dev_output {
                     return Err(QantoDAGError::InvalidBlock(format!(
-                        "Coinbase outputs incorrect. Expected validator: {} ({}), dev: {} ({}). Outputs: {:?}",
-                        block.validator, expected_validator_amount, DEV_ADDRESS, expected_dev_fee, coinbase_tx.outputs
+                        "Coinbase outputs incorrect. Expected reward address: {} ({}), dev: {} ({}). Outputs: {:?}",
+                        expected_reward_address, expected_validator_amount, DEV_ADDRESS, expected_dev_fee, coinbase_tx.outputs
                     )));
                 }
             } else {
@@ -3205,10 +3510,15 @@ impl QantoDAG {
                     )));
                 }
                 let output = &coinbase_tx.outputs[0];
-                if output.address != block.validator || output.amount != expected_reward_total {
+                if output.address != expected_reward_address
+                    || output.amount != expected_reward_total
+                {
                     return Err(QantoDAGError::InvalidBlock(format!(
-                        "Coinbase output incorrect. Expected validator: {} ({}), got {} ({})",
-                        block.validator, expected_reward_total, output.address, output.amount
+                        "Coinbase output incorrect. Expected reward address: {} ({}), got {} ({})",
+                        expected_reward_address,
+                        expected_reward_total,
+                        output.address,
+                        output.amount
                     )));
                 }
             }
@@ -3434,205 +3744,17 @@ impl QantoDAG {
     }
 
     pub async fn finalize_blocks(&self) -> Result<(), QantoDAGError> {
-        let blocks_guard = &self.blocks;
-        let finalized_guard = &self.finalized_blocks;
-        let tips_guard = &self.tips;
-        let num_chains_val = *self.num_chains.read().await;
-
-        for chain_id_val in 0..num_chains_val {
-            if let Some(chain_tips) = tips_guard.get(&chain_id_val) {
-                for tip_id in chain_tips.iter() {
-                    let mut path_to_finalize = Vec::new();
-                    let mut current_id = tip_id.clone();
-
-                    for _depth in 0..FINALIZATION_DEPTH {
-                        if finalized_guard.contains_key(&current_id) {
-                            break;
-                        }
-
-                        if let Some(current_block) = blocks_guard.get(&current_id) {
-                            path_to_finalize.push(current_id.clone());
-                            if current_block.parents.is_empty() {
-                                break;
-                            }
-                            // Simple finalization follows the first parent. More complex schemes could be used.
-                            current_id = current_block.parents[0].clone();
-                        } else {
-                            break;
-                        }
-                    }
-
-                    if path_to_finalize.len() >= FINALIZATION_DEPTH as usize {
-                        // Sum total active stake
-                        let total_active_stake: u128 =
-                            self.validators.iter().map(|entry| *entry.value()).sum();
-
-                        // Count validator stakes along the path_to_finalize
-                        let mut path_validators = HashSet::new();
-                        for block_id in &path_to_finalize {
-                            if let Some(block) = blocks_guard.get(block_id) {
-                                path_validators.insert(block.validator.clone());
-                            }
-                        }
-
-                        let path_stake: u128 = path_validators
-                            .iter()
-                            .map(|val| self.validators.get(val).map(|e| *e.value()).unwrap_or(0))
-                            .sum();
-
-                        // Enforce stake-weighted finality (>= 2/3 stake) fallback if total active stake is 0
-                        let quorum_met =
-                            total_active_stake == 0 || (path_stake * 3 >= total_active_stake * 2);
-
-                        if quorum_met {
-                            let finalized_at_ms = SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_millis()
-                                as u64;
-                            let latest_finalized_latency_ms = path_to_finalize
-                                .first()
-                                .and_then(|block_id| blocks_guard.get(block_id))
-                                .map(|block| {
-                                    finalized_at_ms
-                                        .saturating_sub(block.timestamp.saturating_mul(1000))
-                                });
-                            let mut inserted_any = false;
-                            for id_to_finalize in path_to_finalize {
-                                if finalized_guard
-                                    .insert(id_to_finalize.clone(), true)
-                                    .is_none()
-                                {
-                                    inserted_any = true;
-                                    log::debug!("Finalized block: {id_to_finalize}");
-                                }
-                            }
-                            if inserted_any {
-                                if let Some(latency_ms) = latest_finalized_latency_ms {
-                                    let metrics = crate::metrics::get_global_metrics();
-                                    metrics.set_finality_ms(latency_ms);
-                                    metrics
-                                        .finality_time_ms
-                                        .store(latency_ms, Ordering::Relaxed);
-                                }
-                            }
-                        } else {
-                            log::warn!(
-                                "Finalization quorum NOT met: path stake {}, total stake {}",
-                                path_stake,
-                                total_active_stake
-                            );
-                        }
-                    }
-                }
-            }
-        }
-        Ok(())
+        Err(QantoDAGError::InvalidBlock(
+            "Finality is disabled until signed validator votes and canonical certificates are implemented"
+                .to_string(),
+        ))
     }
 
     pub async fn dynamic_sharding(&self) -> Result<(), QantoDAGError> {
-        if self.chain_loads.is_empty() {
-            return Ok(());
-        }
-
-        let total_load: u64 = self
-            .chain_loads
-            .iter()
-            .map(|entry| entry.value().load(Ordering::SeqCst))
-            .sum();
-        let num_chains = *self.num_chains.read().await;
-        if num_chains == 0 {
-            return Ok(());
-        }
-        let avg_load = total_load / (num_chains as u64);
-        let split_threshold = avg_load.saturating_mul(SHARD_THRESHOLD as u64);
-
-        let chains_to_split: Vec<u32> = self
-            .chain_loads
-            .iter()
-            .filter(|entry| entry.value().load(Ordering::SeqCst) > split_threshold)
-            .map(|entry| *entry.key())
-            .collect();
-
-        if chains_to_split.is_empty() {
-            return Ok(());
-        }
-
-        // Get the first available validator from the validators map, or use DEV_ADDRESS as fallback
-        let initial_validator = self
-            .validators
-            .iter()
-            .next()
-            .map(|entry| entry.key().clone())
-            .unwrap_or_else(|| DEV_ADDRESS.to_string());
-        // Generate proper quantum-resistant keypair using PostQuantumCrypto infrastructure
-
-        let epoch = self.current_epoch.load(Ordering::SeqCst);
-
-        for chain_id_to_split in chains_to_split {
-            let current_num_chains = *self.num_chains.read().await;
-            if current_num_chains == u32::MAX {
-                continue;
-            }
-
-            let new_chain_id = current_num_chains;
-            {
-                let mut num_chains_write = self.num_chains.write().await;
-                *num_chains_write = current_num_chains + 1;
-            }
-
-            let original_load = self
-                .chain_loads
-                .get(&chain_id_to_split)
-                .map(|entry| entry.value().load(Ordering::SeqCst))
-                .unwrap_or_default();
-            let new_load_for_old = original_load / 2;
-            let new_load_for_new = original_load - new_load_for_old;
-
-            if let Some(entry) = self.chain_loads.get(&chain_id_to_split) {
-                entry.value().store(new_load_for_old, Ordering::SeqCst);
-            }
-            self.chain_loads
-                .insert(new_chain_id, AtomicU64::new(new_load_for_new));
-
-            let new_genesis_timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-            let parent_difficulty = self
-                .saga
-                .economy
-                .epoch_rules
-                .read()
-                .await
-                .get("base_difficulty")
-                .map_or(10 * crate::Q_SCALE as u64, |r| r.value as u64);
-
-            let (paillier_pk, _) = HomomorphicEncrypted::generate_keypair();
-            let mut genesis_block = QantoBlock::new(QantoBlockCreationData {
-                chain_id: new_chain_id,
-                parents: vec![],
-                transactions: vec![],
-                difficulty: parent_difficulty,
-                validator: initial_validator.clone(),
-                miner: initial_validator.clone(),
-                validator_private_key: QantoPQPrivateKey::new_dummy(),
-
-                timestamp: new_genesis_timestamp,
-                current_epoch: epoch,
-                height: 0,
-                paillier_pk,
-            })?;
-            genesis_block.reward = INITIAL_BLOCK_REWARD;
-            let new_genesis_id = genesis_block.id.clone();
-            self.index_block_internal(&genesis_block);
-            self.blocks.insert(new_genesis_id.clone(), genesis_block);
-            let mut new_tips = HashSet::new();
-            new_tips.insert(new_genesis_id);
-            self.tips.insert(new_chain_id, new_tips);
-
-            info!(
-                "SHARDING: High load on chain {chain_id_to_split} triggered split. New chain {new_chain_id} created."
-            );
-        }
-        Ok(())
+        Err(QantoDAGError::InvalidBlock(
+            "Dynamic sharding is disabled until shard-split decisions are committed by consensus"
+                .to_string(),
+        ))
     }
 
     pub fn get_effective_stake(&self, validator: &str) -> u128 {
@@ -3981,6 +4103,13 @@ impl QantoDAG {
         utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
     ) -> Result<(), QantoDAGError> {
         use sha3::{Digest, Keccak256};
+
+        if !BRIDGE_PROOF_VERIFIER_AVAILABLE {
+            return Err(QantoDAGError::Governance(
+                "Bridge claims are disabled: cryptographic source-chain proof verification is not implemented"
+                    .to_string(),
+            ));
+        }
 
         let eth_tx_hash = tx.metadata.get("bridge_source_tx_hash").ok_or_else(|| {
             QantoDAGError::Governance("Missing source transaction hash".to_string())
@@ -4381,12 +4510,11 @@ impl QantoDAG {
         self.manage_lock_free_queue().await;
 
         // Difficulty adjustment is now fully handled by SAGA during epoch evolution.
-        if let Err(e) = self.finalize_blocks().await {
-            warn!("Failed to finalize blocks during maintenance: {e}");
-        }
-        if let Err(e) = self.dynamic_sharding().await {
-            warn!("Failed to run dynamic sharding during maintenance: {e}");
-        }
+        // Automatic finality and dynamic sharding are intentionally disabled.
+        // Both currently derive consensus-affecting state from local observations
+        // rather than a committed, deterministic protocol transition. Re-enable
+        // only after their consensus specifications and multi-node determinism
+        // tests are implemented.
 
         // AtomicU64 doesn't require async locking, use atomic operations directly
         let current_epoch = self.current_epoch.fetch_add(1, Ordering::SeqCst) + 1;
@@ -5082,72 +5210,14 @@ impl QantoDAG {
     /// Optimized block creation with batch processing
     pub async fn create_optimized_block(
         &self,
-
-        validator_address: &str,
-        transactions: Vec<Transaction>,
-        chain_id_val: u32,
+        _validator_address: &str,
+        _transactions: Vec<Transaction>,
+        _chain_id_val: u32,
     ) -> Result<QantoBlock, QantoDAGError> {
-        let start_time = Instant::now();
-
-        // Get parent blocks efficiently
-        let parents: Vec<String> = self
-            .get_fast_tips(chain_id_val)
-            .await?
-            .into_iter()
-            .take(2) // Limit to 2 parents for efficiency
-            .collect();
-
-        // Determine max parent timestamp for non-decreasing assignment
-        let max_parent_timestamp = {
-            let blocks_guard = &self.blocks;
-            parents
-                .iter()
-                .filter_map(|p_id: &String| blocks_guard.get(p_id))
-                .map(|p_block| p_block.timestamp)
-                .max()
-                .unwrap_or(0)
-        };
-
-        // Calculate total fees in parallel
-        let total_fees: u128 = transactions.par_iter().map(|tx| tx.fee).sum();
-
-        // Get current difficulty and height
-        let difficulty = crate::QANTO_SCALE as u64; // Use default difficulty for optimized processing
-        let height = self.blocks.len() as u64 + 1;
-        let current_epoch = self.current_epoch.load(Ordering::Relaxed);
-
-        // Calculate reward using simplified approach for optimized processing
-        let base_reward = total_fees + (transactions.len() as u128 * 100);
-
-        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-        let timestamp = now.max(max_parent_timestamp);
-
-        // Create block data
-        let (paillier_pk, _) = HomomorphicEncrypted::generate_keypair();
-        let block_data = QantoBlockCreationData {
-            chain_id: chain_id_val,
-            parents,
-            transactions,
-            difficulty,
-            validator: validator_address.to_string(),
-            miner: validator_address.to_string(),
-            validator_private_key: self.get_private_key().await?,
-
-            timestamp,
-            current_epoch,
-            height,
-            paillier_pk,
-        };
-
-        let mut block = QantoBlock::new(block_data)?;
-        block.reward = base_reward;
-
-        let creation_time = start_time.elapsed().as_millis() as u64;
-        self.performance_metrics
-            .block_creation_time_ms
-            .store(creation_time, Ordering::Relaxed);
-
-        Ok(block)
+        Err(QantoDAGError::InvalidBlock(
+            "Signer-less optimized block creation is disabled; use create_candidate_block with an unlocked wallet signer"
+                .to_string(),
+        ))
     }
 
     /// High-performance mempool transaction selection
@@ -5166,20 +5236,10 @@ impl QantoDAG {
 
     /// Batch process multiple blocks with optimized validation
     pub async fn get_private_key(&self) -> Result<QantoPQPrivateKey, QantoDAGError> {
-        // In a real implementation, this would load the validator's private key
-        // from a secure storage. For now, we'll generate a dummy one.
-        // #region debug-point block-signature-failure-get-private-key
-        report_block_signature_debug_event(
-            "B",
-            "get-private-key",
-            "qantodag.rs:4968",
-            json!({
-                "source": "qantodag.get_private_key",
-                "returns_dummy_private_key": true,
-            }),
-        );
-        // #endregion debug-point block-signature-failure-get-private-key
-        Ok(QantoPQPrivateKey::new_dummy())
+        Err(QantoDAGError::InvalidBlock(
+            "Consensus DAG does not store validator private keys; provide an unlocked wallet signer"
+                .to_string(),
+        ))
     }
 
     pub async fn process_blocks_optimized(
@@ -5643,15 +5703,15 @@ impl QantoDAG {
 
     /// Plans UTXO removals, additions, and per-address balance deltas for a block’s transactions.
     /// This computes changes without taking a write lock, enabling conflict-free application later.
-    pub async fn plan_utxo_changes_conflict_free(
+    async fn plan_utxo_changes_conflict_free(
         &self,
         transactions: &[Transaction],
         utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
     ) -> Result<
         (
-            HashMap<String, i128>, // balance_deltas per address
-            Vec<String>,           // removal_keys (spent UTXO ids)
-            Vec<(String, UTXO)>,   // additions (new UTXOs)
+            HashMap<String, BalanceMovement>, // checked debits/credits per address
+            Vec<String>,                      // removal_keys (spent UTXO ids)
+            Vec<(String, UTXO)>,              // additions (new UTXOs)
         ),
         QantoDAGError,
     > {
@@ -5659,7 +5719,7 @@ impl QantoDAG {
 
         #[derive(Default)]
         struct TxPlan {
-            balance_deltas: HashMap<String, i128>,
+            balance_movements: HashMap<String, BalanceMovement>,
             removal_keys: Vec<String>,
             additions: Vec<(String, UTXO)>,
             input_ids: Vec<String>,
@@ -5669,7 +5729,7 @@ impl QantoDAG {
         let tx_plan_results: Vec<Result<TxPlan, QantoDAGError>> = transactions
             .par_iter()
             .map(|tx| {
-                let mut local_balance: HashMap<String, i128> = HashMap::new();
+                let mut local_balance: HashMap<String, BalanceMovement> = HashMap::new();
                 let mut local_removals: Vec<String> = Vec::new();
                 let mut local_additions: Vec<(String, UTXO)> = Vec::new();
                 let mut local_inputs: HashSet<String> = HashSet::new();
@@ -5689,8 +5749,14 @@ impl QantoDAG {
                     match utxos_guard.get(&utxo_id) {
                         Some(consumed) => {
                             local_removals.push(utxo_id);
-                            let entry = local_balance.entry(consumed.address.clone()).or_insert(0);
-                            *entry -= consumed.amount as i128;
+                            let entry = local_balance.entry(consumed.address.clone()).or_default();
+                            entry.debit =
+                                entry.debit.checked_add(consumed.amount).ok_or_else(|| {
+                                    QantoDAGError::InvalidBlock(format!(
+                                        "Balance debit overflow in transaction {}",
+                                        tx.id
+                                    ))
+                                })?;
                         }
                         None => {
                             return Err(QantoDAGError::InvalidBlock(format!(
@@ -5702,17 +5768,27 @@ impl QantoDAG {
 
                 // Outputs: plan additions and add recipient balances
                 for (idx, output) in tx.outputs.iter().enumerate() {
-                    let index_u32 = idx as u32;
+                    let index_u32 = u32::try_from(idx).map_err(|_| {
+                        QantoDAGError::InvalidBlock(format!(
+                            "Too many outputs in transaction {}",
+                            tx.id
+                        ))
+                    })?;
                     let new_utxo = tx.generate_utxo(index_u32);
                     let new_utxo_id = format!("{}_{}", tx.id, index_u32);
                     local_additions.push((new_utxo_id, new_utxo));
 
-                    let entry = local_balance.entry(output.address.clone()).or_insert(0);
-                    *entry += output.amount as i128;
+                    let entry = local_balance.entry(output.address.clone()).or_default();
+                    entry.credit = entry.credit.checked_add(output.amount).ok_or_else(|| {
+                        QantoDAGError::InvalidBlock(format!(
+                            "Balance credit overflow in transaction {}",
+                            tx.id
+                        ))
+                    })?;
                 }
 
                 Ok(TxPlan {
-                    balance_deltas: local_balance,
+                    balance_movements: local_balance,
                     removal_keys: local_removals,
                     additions: local_additions,
                     input_ids: local_inputs.into_iter().collect(),
@@ -5730,10 +5806,11 @@ impl QantoDAG {
         }
 
         // Merge per-transaction plans and detect double-spends across the entire block
-        let mut balance_deltas: HashMap<String, i128> = HashMap::new();
+        let mut balance_movements: HashMap<String, BalanceMovement> = HashMap::new();
         let mut removal_keys: Vec<String> = Vec::new();
         let mut additions: Vec<(String, UTXO)> = Vec::new();
         let mut spent_in_block: HashSet<String> = HashSet::new();
+        let mut created_in_block: HashSet<String> = HashSet::new();
 
         for plan in tx_plans {
             for input_id in plan.input_ids {
@@ -5745,14 +5822,32 @@ impl QantoDAG {
             }
 
             removal_keys.extend(plan.removal_keys);
-            additions.extend(plan.additions);
+            for (utxo_id, utxo) in plan.additions {
+                if !created_in_block.insert(utxo_id.clone()) {
+                    return Err(QantoDAGError::InvalidBlock(format!(
+                        "Duplicate output UTXO ID within block: {utxo_id}"
+                    )));
+                }
+                if utxos_guard.contains_key(&utxo_id) {
+                    return Err(QantoDAGError::InvalidBlock(format!(
+                        "Output UTXO ID collides with existing state: {utxo_id}"
+                    )));
+                }
+                additions.push((utxo_id, utxo));
+            }
 
-            for (addr, delta) in plan.balance_deltas {
-                *balance_deltas.entry(addr).or_insert(0) += delta;
+            for (address, movement) in plan.balance_movements {
+                let entry = balance_movements.entry(address).or_default();
+                entry.debit = entry.debit.checked_add(movement.debit).ok_or_else(|| {
+                    QantoDAGError::InvalidBlock("Block balance-debit overflow".to_string())
+                })?;
+                entry.credit = entry.credit.checked_add(movement.credit).ok_or_else(|| {
+                    QantoDAGError::InvalidBlock("Block balance-credit overflow".to_string())
+                })?;
             }
         }
 
-        Ok((balance_deltas, removal_keys, additions))
+        Ok((balance_movements, removal_keys, additions))
     }
 }
 
@@ -5836,7 +5931,9 @@ impl QantoDAG {
             ChainWeightStrategy::Difficulty => self
                 .blocks
                 .get(block_id)
-                .map(|b| b.effort.max(b.difficulty as u128).max(1))
+                // `effort` is peer supplied and is neither signed nor
+                // independently reproducible, so it must not affect fork choice.
+                .map(|b| (b.difficulty as u128).max(1))
                 .unwrap_or(1),
             ChainWeightStrategy::StakeWeight => {
                 if let Some(block) = self.blocks.get(block_id) {
@@ -5881,7 +5978,13 @@ impl QantoDAG {
                 continue;
             }
             if block.height == 0 {
-                genesis_block = Some(block.clone());
+                if genesis_block
+                    .as_ref()
+                    .map(|current| block.id < current.id)
+                    .unwrap_or(true)
+                {
+                    genesis_block = Some(block.clone());
+                }
             }
             for parent_id in &block.parents {
                 children
@@ -5900,7 +6003,14 @@ impl QantoDAG {
                     let mut max_height = 0;
                     for tip_id in tips.value() {
                         if let Some(block) = self.blocks.get(tip_id) {
-                            if best_tip.is_none() || block.height > max_height {
+                            let replaces_best = best_tip
+                                .as_ref()
+                                .map(|current| {
+                                    block.height > max_height
+                                        || (block.height == max_height && block.id < current.id)
+                                })
+                                .unwrap_or(true);
+                            if replaces_best {
                                 max_height = block.height;
                                 best_tip = Some(block.clone());
                             }
@@ -5930,7 +6040,7 @@ impl QantoDAG {
             for child_id in child_ids {
                 let w = self
                     .calculate_branch_weight_recursive(child_id, &children, strategy, &mut memo);
-                if w > max_weight {
+                if w > max_weight || (w == max_weight && child_id < best_child_id) {
                     max_weight = w;
                     best_child_id = child_id;
                 }
@@ -6069,7 +6179,7 @@ impl QantoDAGOptimizations for QantoDAG {
             parallel_writers: 4,                // Number of parallel writers
             enable_write_batching: true,
             enable_bloom_filters: true,
-            enable_async_io: true,
+            enable_async_io: false,
             sync_interval: Duration::from_millis(100),
             compression_level: 3,
         };
@@ -6173,6 +6283,246 @@ mod determinism_tests {
     use tokio::sync::RwLock;
     // Explicitly import ValidationOutcome to ensure type resolution within test module
     use crate::qantodag::ValidationOutcome;
+
+    #[test]
+    fn block_signature_cannot_claim_a_different_validator() {
+        let (_public_key, signing_key) =
+            generate_pq_keypair(Some([29u8; 32])).expect("validator keypair");
+        let network_chain_id = crate::transaction::GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32;
+        let validator_id = qanto_core::protocol_identity::validator_id_v2(
+            network_chain_id,
+            signing_key.public_key().as_bytes(),
+        )
+        .expect("validator id");
+        let mut block = QantoBlock::new(QantoBlockCreationData {
+            validator_private_key: signing_key.clone(),
+            chain_id: 0,
+            parents: vec!["1".repeat(64)],
+            transactions: vec![Transaction::new_dummy()],
+            difficulty: INITIAL_DIFFICULTY,
+            validator: validator_id.clone(),
+            miner: validator_id,
+            timestamp: 1_700_000_000,
+            current_epoch: 0,
+            height: 1,
+            reward: 0,
+            nonce: 0,
+            effort: 0,
+            chain_work: U256::ZERO,
+            paillier_pk: vec![],
+        })
+        .expect("bound block");
+        assert!(block.verify_signature().expect("valid signature"));
+
+        block.validator = "3".repeat(64);
+        let forged_payload = SigningData {
+            protocol_version: block.protocol_version,
+            network_chain_id,
+            parents: &block.parents,
+            transactions: &block.transactions,
+            timestamp: block.timestamp,
+            difficulty: block.difficulty,
+            validator: &block.validator,
+            miner: &block.miner,
+            chain_id: block.chain_id,
+            merkle_root: &block.merkle_root,
+            height: block.height,
+            epoch: block.epoch,
+            reward: block.reward,
+            nonce: block.nonce,
+            effort: block.effort,
+            cross_chain_references: &block.cross_chain_references,
+        };
+        let forged_bytes = QantoBlock::serialize_for_signing(&forged_payload).unwrap();
+        let forged_signature = pq_sign(&signing_key, &forged_bytes).unwrap();
+        block.signature.signature = forged_signature.as_bytes().to_vec();
+        block.id = block.compute_block_id().unwrap();
+
+        assert!(matches!(
+            block.verify_signature(),
+            Err(QantoDAGError::InvalidBlock(message))
+                if message.contains("not bound to the declared validator")
+        ));
+    }
+
+    fn make_canonical_bound_block() -> (QantoBlock, QantoPQPrivateKey) {
+        let (_public_key, signing_key) =
+            generate_pq_keypair(Some([91u8; 32])).expect("validator keypair");
+        let network_chain_id = crate::transaction::GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32;
+        let validator_id = qanto_core::protocol_identity::validator_id_v2(
+            network_chain_id,
+            signing_key.public_key().as_bytes(),
+        )
+        .expect("validator id");
+        let block = QantoBlock::new(QantoBlockCreationData {
+            validator_private_key: signing_key.clone(),
+            chain_id: 0,
+            parents: vec!["a".repeat(64)],
+            transactions: vec![],
+            difficulty: INITIAL_DIFFICULTY,
+            validator: validator_id.clone(),
+            miner: validator_id,
+            timestamp: 1_700_000_123,
+            current_epoch: 17,
+            height: 9,
+            reward: 123_456_789,
+            nonce: 44,
+            effort: u128::from(u64::MAX) + 99,
+            chain_work: U256::ZERO,
+            paillier_pk: vec![],
+        })
+        .expect("canonical block");
+        (block, signing_key)
+    }
+
+    fn assert_signed_field_tamper_rejected(original: &QantoBlock, tampered: &QantoBlock) {
+        assert!(
+            !tampered.verify_signature().unwrap_or(false),
+            "tampered field retained a valid block signature"
+        );
+        assert_ne!(
+            tampered.compute_block_id().expect("tampered block id"),
+            original.id,
+            "tampered field did not change the V2 block-ID commitment"
+        );
+    }
+
+    #[test]
+    fn v2_signature_and_id_bind_every_accepted_consensus_field() {
+        let (original, signing_key) = make_canonical_bound_block();
+        assert!(original.verify_signature().expect("original signature"));
+        assert_eq!(original.compute_block_id().unwrap(), original.id);
+
+        let mut tampered = original.clone();
+        tampered.chain_id ^= 1;
+        assert_signed_field_tamper_rejected(&original, &tampered);
+
+        let mut tampered = original.clone();
+        tampered.parents.push("b".repeat(64));
+        assert_signed_field_tamper_rejected(&original, &tampered);
+
+        let mut tampered = original.clone();
+        tampered.transactions.push(Transaction::new_dummy());
+        assert_signed_field_tamper_rejected(&original, &tampered);
+
+        let mut tampered = original.clone();
+        tampered.difficulty += 1;
+        assert_signed_field_tamper_rejected(&original, &tampered);
+
+        let mut tampered = original.clone();
+        tampered.validator = "c".repeat(64);
+        assert_signed_field_tamper_rejected(&original, &tampered);
+
+        let mut tampered = original.clone();
+        tampered.miner = "d".repeat(64);
+        assert_signed_field_tamper_rejected(&original, &tampered);
+
+        let mut tampered = original.clone();
+        tampered.nonce += 1;
+        assert_signed_field_tamper_rejected(&original, &tampered);
+
+        let mut tampered = original.clone();
+        tampered.timestamp += 1;
+        assert_signed_field_tamper_rejected(&original, &tampered);
+
+        let mut tampered = original.clone();
+        tampered.height += 1;
+        assert_signed_field_tamper_rejected(&original, &tampered);
+
+        let mut tampered = original.clone();
+        tampered.reward += 1;
+        assert_signed_field_tamper_rejected(&original, &tampered);
+
+        let mut tampered = original.clone();
+        tampered.effort += 1;
+        assert_signed_field_tamper_rejected(&original, &tampered);
+
+        let mut tampered = original.clone();
+        tampered.merkle_root.push('0');
+        assert_signed_field_tamper_rejected(&original, &tampered);
+
+        let mut tampered = original.clone();
+        tampered.epoch += 1;
+        assert_signed_field_tamper_rejected(&original, &tampered);
+
+        let mut tampered = original.clone();
+        tampered.signature.signature[0] ^= 1;
+        assert_signed_field_tamper_rejected(&original, &tampered);
+
+        let mut unknown_version = original.clone();
+        unknown_version.protocol_version = 3;
+        assert!(unknown_version.verify_signature().is_err());
+        assert!(unknown_version.compute_block_id().is_err());
+
+        let mut unsupported_extension = original.clone();
+        unsupported_extension.finality_proof = Some("not-a-finality-certificate".to_string());
+        assert!(unsupported_extension.verify_signature().is_err());
+        assert!(unsupported_extension.compute_block_id().is_err());
+
+        let mut already_sealed = original.clone();
+        assert!(already_sealed.seal(&signing_key).is_err());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn canonical_v2_block_hash_golden_vectors() {
+        crate::transaction::GLOBAL_CHAIN_ID.store(1234, Ordering::Relaxed);
+        let parents = vec!["parent-a".to_string(), "parent-b".to_string()];
+        let transactions = Vec::<Transaction>::new();
+        let references = Vec::<(u32, String)>::new();
+        let signing_digest = {
+            let signing_data = SigningData {
+                protocol_version: QANTO_BLOCK_PROTOCOL_VERSION_V2,
+                network_chain_id: 1234,
+                parents: &parents,
+                transactions: &transactions,
+                timestamp: 1_700_000_000,
+                difficulty: 1_000_000_000,
+                validator: "validator-v2",
+                miner: "validator-v2",
+                chain_id: 0,
+                merkle_root: "merkle-root-v2",
+                height: 7,
+                epoch: 3,
+                reward: 99,
+                nonce: 42,
+                effort: u128::from(u64::MAX) + 5,
+                cross_chain_references: &references,
+            };
+            QantoBlock::serialize_for_signing(&signing_data).unwrap()
+        };
+
+        let mut synthetic = QantoBlock::new_test_block(String::new());
+        synthetic.protocol_version = QANTO_BLOCK_PROTOCOL_VERSION_V2;
+        synthetic.chain_id = 0;
+        synthetic.parents = parents;
+        synthetic.transactions = transactions;
+        synthetic.difficulty = 1_000_000_000;
+        synthetic.validator = "validator-v2".to_string();
+        synthetic.miner = "validator-v2".to_string();
+        synthetic.nonce = 42;
+        synthetic.timestamp = 1_700_000_000;
+        synthetic.height = 7;
+        synthetic.reward = 99;
+        synthetic.effort = u128::from(u64::MAX) + 5;
+        synthetic.cross_chain_references = references;
+        synthetic.merkle_root = "merkle-root-v2".to_string();
+        synthetic.signature = QuantumResistantSignature {
+            signer_public_key: vec![1, 2, 3, 4],
+            signature: vec![5, 6, 7, 8, 9],
+        };
+        synthetic.homomorphic_encrypted.clear();
+        synthetic.epoch = 3;
+
+        assert_eq!(
+            hex::encode(signing_digest),
+            "e1f3965cd9e983a7b61d7fff5ae2e7ac07d792903f04e8e9d88bcac34cc6da31"
+        );
+        assert_eq!(
+            synthetic.compute_block_id().unwrap(),
+            "d7bc6c3bd1c474525026134baee14b6003e5ae9f38e87146917cf157463dbe35"
+        );
+    }
 
     #[test]
     fn witness_invariant_to_ordering_of_inputs_and_parents() {
