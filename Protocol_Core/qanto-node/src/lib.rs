@@ -40,6 +40,7 @@ pub mod performance_monitoring;
 pub mod performance_optimizations;
 pub mod performance_validation;
 pub mod persistence;
+pub mod pipeline;
 pub mod post_quantum_crypto;
 pub mod pq_crypto;
 pub mod pq_suite;

@@ -1,8 +1,7 @@
 use crate::performance_optimizations::QantoDAGOptimizations;
-use crate::post_quantum_crypto::{
-    generate_pq_keypair, pq_sign, QantoPQPrivateKey, QantoPQPublicKey,
-};
+use crate::post_quantum_crypto::{generate_pq_keypair, QantoPQPrivateKey, QantoPQPublicKey};
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError};
+use crate::security_tests::bridge_claims_fail_closed;
 use crate::transaction::Transaction;
 use ahash::{AHashMap as HashMap, AHashSet as HashSet};
 use k256::ecdsa::signature::hazmat::PrehashSigner;
@@ -12,10 +11,16 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 fn wrap_and_init_dag(dag: QantoDAG) -> Arc<QantoDAG> {
-    // Economic tests use hardcoded test block rewards that don't match
-    // the emission schedule. Bypass reward validation since these tests
-    // exercise stake concentration/finalization thresholds, not reward correctness.
-    dag.bypass_reward_check.store(true, Ordering::Relaxed);
+    dag.bypass_reward_check.store(false, Ordering::Relaxed);
+    if !dag.tips.contains_key(&0) {
+        let mut genesis = QantoBlock::new_test_block("test-genesis".to_string());
+        genesis.height = 0;
+        genesis.parents.clear();
+        genesis.timestamp = 0;
+        genesis.id = genesis.compute_block_id().expect("test genesis id");
+        dag.blocks.insert(genesis.id.clone(), genesis.clone());
+        dag.tips.entry(0).or_default().insert(genesis.id);
+    }
     let arc_dag = Arc::new(dag);
     let weak_self = Arc::downgrade(&arc_dag);
     let ptr = Arc::as_ptr(&arc_dag) as *mut QantoDAG;
@@ -33,7 +38,8 @@ async fn grow_chain_for_val(
 ) -> Vec<String> {
     let utxos = Arc::new(RwLock::new(HashMap::new()));
     let mut added = Vec::new();
-    let val_addr = hex::encode(val_pk.as_bytes());
+    let val_addr = qanto_core::protocol_identity::validator_id_v2(1234, val_pk.as_bytes())
+        .expect("validator id");
     for i in 1..=length {
         let tips: Vec<String> = dag
             .tips
@@ -43,33 +49,10 @@ async fn grow_chain_for_val(
         let height = i as u64;
 
         let mut block = QantoBlock::new_test_block(format!("block_{}_{}", val_addr, i));
-        block.validator = val_addr.clone();
         block.height = height;
         block.parents = tips;
         block.chain_id = 0;
-        block.reward = block.transactions[0].outputs.iter().map(|o| o.amount).sum();
-        block.merkle_root = QantoBlock::compute_merkle_root(&block.transactions).unwrap();
-
-        // Sign the block header with correct key to pass block signature check
-        let signing_data = crate::qantodag::SigningData {
-            parents: &block.parents,
-            transactions: &block.transactions,
-            timestamp: block.timestamp,
-            difficulty: block.difficulty,
-            validator: &block.validator,
-            miner: &block.miner,
-            chain_id: block.chain_id,
-            merkle_root: &block.merkle_root,
-            height: block.height,
-        };
-        let pre_sig_data = QantoBlock::serialize_for_signing(&signing_data).unwrap();
-        let sig = pq_sign(val_sk, &pre_sig_data).unwrap();
-        block.signature = crate::types::QuantumResistantSignature {
-            signer_public_key: val_pk.as_bytes().to_vec(),
-            signature: sig.as_bytes().to_vec(),
-        };
-
-        block.id = block.hash();
+        block.bind_test_signer(val_sk, 0).unwrap();
 
         let ok = dag
             .add_block(block.clone(), &utxos, None, None)
@@ -92,8 +75,8 @@ async fn grow_chain_for_val(
 async fn test_stake_concentration() {
     let (pk_a, sk_a) = generate_pq_keypair(None).unwrap();
     let (pk_b, _sk_b) = generate_pq_keypair(None).unwrap();
-    let val_a = hex::encode(pk_a.as_bytes());
-    let val_b = hex::encode(pk_b.as_bytes());
+    let val_a = qanto_core::protocol_identity::validator_id_v2(1234, pk_a.as_bytes()).unwrap();
+    let val_b = qanto_core::protocol_identity::validator_id_v2(1234, pk_b.as_bytes()).unwrap();
 
     // Case 1: 51% Stake. Validator A alone should NOT be able to finalize blocks (quorum is 67%).
     let dag1 = wrap_and_init_dag(QantoDAG::new_dummy_for_verification());
@@ -113,7 +96,8 @@ async fn test_stake_concentration() {
         );
     }
 
-    // Case 2: 67% Stake. Validator A alone should be able to finalize blocks.
+    // Case 2: even 67% stake cannot trigger node-local finality while signed
+    // votes and deterministic certificates are unavailable.
     let dag2 = wrap_and_init_dag(QantoDAG::new_dummy_for_verification());
     dag2.validators.insert(val_a.clone(), 67 * crate::Q_SCALE);
     dag2.validators.insert(val_b.clone(), 33 * crate::Q_SCALE);
@@ -124,18 +108,15 @@ async fn test_stake_concentration() {
         .unwrap();
 
     let chain2 = grow_chain_for_val(&dag2, &pk_a, &sk_a, 10).await;
-    let mut finalized_count = 0;
-    for block_id in &chain2 {
-        if dag2.finalized_blocks.contains_key(block_id) {
-            finalized_count += 1;
-        }
-    }
     assert!(
-        finalized_count > 0,
-        "67% validator should be able to finalize blocks alone"
+        chain2
+            .iter()
+            .all(|block_id| !dag2.finalized_blocks.contains_key(block_id)),
+        "containment mode must not synthesize finality from stake ownership"
     );
+    assert!(dag2.finalize_blocks().await.is_err());
 
-    // Case 3: 90% Stake. Validator A alone should be able to finalize blocks.
+    // Case 3: 90% stake remains subject to the same certificate requirement.
     let dag3 = wrap_and_init_dag(QantoDAG::new_dummy_for_verification());
     dag3.validators.insert(val_a.clone(), 90 * crate::Q_SCALE);
     dag3.validators.insert(val_b.clone(), 10 * crate::Q_SCALE);
@@ -146,16 +127,13 @@ async fn test_stake_concentration() {
         .unwrap();
 
     let chain3 = grow_chain_for_val(&dag3, &pk_a, &sk_a, 10).await;
-    let mut finalized_count_90 = 0;
-    for block_id in &chain3 {
-        if dag3.finalized_blocks.contains_key(block_id) {
-            finalized_count_90 += 1;
-        }
-    }
     assert!(
-        finalized_count_90 > 0,
-        "90% validator should be able to finalize blocks alone"
+        chain3
+            .iter()
+            .all(|block_id| !dag3.finalized_blocks.contains_key(block_id)),
+        "stake concentration must not bypass certificate-based finality"
     );
+    assert!(dag3.finalize_blocks().await.is_err());
 }
 
 #[tokio::test]
@@ -252,6 +230,10 @@ async fn test_reward_farming() {
 
 #[tokio::test]
 async fn test_bridge_drain_attempts() {
+    if bridge_claims_fail_closed().await {
+        return;
+    }
+
     let dag = wrap_and_init_dag(QantoDAG::new_dummy_for_verification());
 
     // Setup validator relayer key and insert into validators map

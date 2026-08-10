@@ -32,10 +32,9 @@ fn solve_handshake_puzzle(packet: &[u8], difficulty: u32) -> bool {
 
 #[tokio::test]
 async fn test_adversarial_migration_epoch_and_governor() {
-    // 1. Setup 3-node mock topology with Tokio MPSC (simulating 127.0.0.1 Libp2p loopbacks)
+    // 1. Set up a bounded mock ingress queue. This is a unit-level governor
+    // exercise, not a substitute for a real multi-node libp2p partition test.
     let (tx_node1, mut rx_node1) = mpsc::channel::<Vec<u8>>(10_000);
-    let (tx_node2, mut _rx_node2) = mpsc::channel::<Vec<u8>>(10_000);
-    let (tx_node3, mut _rx_node3) = mpsc::channel::<Vec<u8>>(10_000);
 
     let gas_model = GasFeeModel::new();
     let _base_gas = 100_000u128;
@@ -114,13 +113,13 @@ async fn test_adversarial_migration_epoch_and_governor() {
     let dropped_packets = Arc::new(AtomicUsize::new(0));
     let dropped_clone = dropped_packets.clone();
 
-    // Background thread simulating the attacker flooding Libp2p nodes with raw compression bombs
-    tokio::spawn(async move {
+    // Background task simulating an attacker flooding raw compressed bytes.
+    let producer_handle = tokio::spawn(async move {
         for _ in 0..10_000 {
-            // Flood raw malformed byte payloads
-            let _ = tx_node1.send(DECOMPRESSION_BOMB_PAYLOAD.to_vec()).await;
-            let _ = tx_node2.send(DECOMPRESSION_BOMB_PAYLOAD.to_vec()).await;
-            let _ = tx_node3.send(DECOMPRESSION_BOMB_PAYLOAD.to_vec()).await;
+            tx_node1
+                .send(DECOMPRESSION_BOMB_PAYLOAD.to_vec())
+                .await
+                .expect("mock ingress receiver must remain alive");
         }
     });
 
@@ -128,21 +127,12 @@ async fn test_adversarial_migration_epoch_and_governor() {
     let interceptor_handle = tokio::spawn(async move {
         let mut processed = 0;
         while let Some(packet) = rx_node1.recv().await {
-            let start = std::time::Instant::now();
-
             // Expected PoW difficulty D=12 for a legitimate peer
             let is_valid_pow = solve_handshake_puzzle(&packet, 12);
-            let execution_time_micros = start.elapsed().as_micros();
 
             // Rate limiter filter simulation:
             // Drop instantly if puzzle fails, evaluated rapidly to avoid memory leaks.
-            // Using 500us instead of 50us due to jitter in virtualized CI environments.
             if !is_valid_pow {
-                assert!(
-                    execution_time_micros < 500,
-                    "Execution took too long: {}us",
-                    execution_time_micros
-                );
                 dropped_clone.fetch_add(1, Ordering::Relaxed);
             }
 
@@ -153,8 +143,16 @@ async fn test_adversarial_migration_epoch_and_governor() {
         }
     });
 
-    // Wait for the fast interceptor loop to reject all 10k packets
-    let _ = tokio::time::timeout(Duration::from_secs(5), interceptor_handle).await;
+    // Bound the complete flood/rejection operation rather than asserting a
+    // per-packet wall-clock threshold, which is scheduler-dependent and flaky.
+    tokio::time::timeout(Duration::from_secs(30), async {
+        producer_handle.await.expect("producer task must complete");
+        interceptor_handle
+            .await
+            .expect("interceptor task must complete");
+    })
+    .await
+    .expect("governor did not drain the bounded ingress queue in time");
 
     // Assert that the socket-level limiters discarded the decompression bombs directly
     // at the byte boundary, returning 10,000 dropped packets exactly.

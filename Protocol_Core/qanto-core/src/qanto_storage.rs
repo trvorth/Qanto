@@ -104,7 +104,10 @@ impl Default for StorageConfig {
             parallel_writers: 8,
             enable_write_batching: true,
             enable_bloom_filters: true,
-            enable_async_io: true,
+            // Disabled until the async processor owns a durable storage handle.
+            // The prior self-referential Weak handle could never be upgraded
+            // after construction and silently dropped queued writes.
+            enable_async_io: false,
             sync_interval: Duration::from_millis(100),
             compression_level: 3,
         }
@@ -609,10 +612,36 @@ impl Transaction {
     }
 }
 
+#[cfg(test)]
+#[derive(Clone)]
+struct BatchApplyTestHook {
+    pause_after_operations: usize,
+    reached: Arc<std::sync::Barrier>,
+    resume: Arc<std::sync::Barrier>,
+}
+
+#[cfg(test)]
+impl std::fmt::Debug for BatchApplyTestHook {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("BatchApplyTestHook")
+            .field("pause_after_operations", &self.pause_after_operations)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Main storage engine with optimized concurrent access
 #[derive(Debug)]
 pub struct QantoStorage {
     config: StorageConfig,
+    /// Serializes state publication and gives readers an all-or-nothing view
+    /// of a committed write batch. All public state readers take a shared
+    /// guard; state writers and memtable flushes take an exclusive guard.
+    visibility_gate: RwLock<()>,
+    /// Set when durable WAL state could not be published completely to the
+    /// live memtable/cache. Once poisoned, callers must close and reopen the
+    /// storage so WAL recovery can rebuild a coherent view.
+    poisoned: AtomicBool,
     segments: RwLock<Vec<StorageSegment>>,
     sharded_memtable: ShardedMemtable,
     cache: DashMap<Vec<u8>, CacheEntry>,
@@ -626,6 +655,8 @@ pub struct QantoStorage {
     async_io_processor: Option<AsyncIOProcessor>,
     #[allow(dead_code)]
     write_semaphore: Arc<Semaphore>,
+    #[cfg(test)]
+    batch_apply_hook: Mutex<Option<BatchApplyTestHook>>,
 }
 
 impl Clone for QantoStorage {
@@ -637,6 +668,34 @@ impl Clone for QantoStorage {
 }
 
 impl QantoStorage {
+    fn ensure_healthy(&self) -> Result<(), QantoStorageError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(QantoStorageError::Corruption(
+                "storage state is poisoned; close and reopen to recover from the WAL".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn poison(&self) {
+        self.poisoned.store(true, Ordering::Release);
+    }
+
+    #[cfg(test)]
+    fn pause_after_batch_operation_for_test(&self, applied_operations: usize) {
+        let hook = self
+            .batch_apply_hook
+            .lock()
+            .expect("batch apply test hook lock poisoned")
+            .clone();
+        if let Some(hook) = hook {
+            if hook.pause_after_operations == applied_operations {
+                hook.reached.wait();
+                hook.resume.wait();
+            }
+        }
+    }
+
     /// Create a mining-optimized storage configuration
     pub fn mining_optimized_config(data_dir: PathBuf) -> StorageConfig {
         StorageConfig {
@@ -645,7 +704,7 @@ impl QantoStorage {
             compression_enabled: false,       // Disable compression for mining speed
             encryption_enabled: false,        // Disable encryption for mining speed
             wal_enabled: true,                // Keep WAL for safety
-            sync_writes: false, // Critical: disable sync writes for mining performance
+            sync_writes: true, // Consensus state must reach the WAL before acknowledgement.
             cache_size: 1024 * 1024 * 50, // 50MB cache for better performance
             compaction_threshold: 2, // Higher threshold to reduce compaction frequency (changed to usize)
             max_open_files: 500,     // Reasonable limit
@@ -655,7 +714,7 @@ impl QantoStorage {
             parallel_writers: 4,     // Number of parallel writers
             enable_write_batching: true,
             enable_bloom_filters: true,
-            enable_async_io: true,
+            enable_async_io: false,
             sync_interval: Duration::from_millis(100),
             compression_level: 3,
         }
@@ -674,92 +733,32 @@ impl QantoStorage {
 
     /// Optimized batch write for mining operations with sharded writes
     pub fn write_mining_batch(&self, batch: WriteBatch) -> Result<(), QantoStorageError> {
-        if batch.is_empty() {
-            return Ok(());
-        }
-
-        let _tx_id = self.begin_transaction();
-
-        // Collect all keys and values for batch processing
-        let mut operations = Vec::new();
-
-        for entry in &batch.operations {
-            match entry {
-                LogEntry::Put { key, value } => {
-                    operations.push((key.clone(), Some(value.clone())));
-                }
-                LogEntry::Delete { key } => {
-                    operations.push((key.clone(), None));
-                }
-                _ => {}
-            }
-        }
-
-        // Log to WAL first for durability
-        if let Some(ref mut wal) = *self.wal.lock().unwrap() {
-            for entry in &batch.operations {
-                wal.append(entry)?;
-            }
-            if self.config.sync_writes {
-                wal.sync()?;
-            }
-        }
-
-        // Batch update sharded memtable
-        for (key, value_opt) in operations {
-            match value_opt {
-                Some(value) => {
-                    self.sharded_memtable.put(key.clone(), value.clone())?;
-
-                    // Update cache using DashMap for lock-free access
-                    let entry = CacheEntry::new(value.clone());
-                    self.cache.insert(key.clone(), entry);
-
-                    // Update cache size atomically
-                    let value_size = key.len() + value.len();
-                    let current_size = self.cache_size.fetch_add(value_size, Ordering::Relaxed);
-
-                    // Evict cache if too large
-                    if current_size + value_size > self.config.cache_size {
-                        self.evict_cache_lockfree();
-                    }
-                }
-                None => {
-                    self.sharded_memtable.delete(&key)?;
-                    self.cache.remove(&key);
-                }
-            }
-        }
-
-        // Update stats
-        {
-            let mut stats = self
-                .stats
-                .write()
-                .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?;
-            stats.writes += batch.len() as u64;
-        }
-
-        // Check if memtable needs flushing
-        let memtable_size = self.sharded_memtable.size() * 1024; // Rough estimate
-        if memtable_size > self.config.memtable_size {
-            let _flushed_data = self.sharded_memtable.flush_all()?;
-        }
-
-        Ok(())
+        // Mining state is consensus state. It must use the same atomic,
+        // WAL-committed publication path as every other batch.
+        self.write_batch(batch)
     }
 
     /// Flush and sync for mining checkpoint (called after block mining)
     pub fn mining_checkpoint(&self) -> Result<(), QantoStorageError> {
+        let _visibility = self
+            .visibility_gate
+            .write()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
+        self.ensure_healthy()?;
+
         // Flush memtable if needed
         let memtable_size = self.sharded_memtable.size() * 1024; // Rough estimate
 
         if memtable_size > self.config.cache_size / 8 {
-            self.flush_memtable()?;
+            self.flush_or_poison_unlocked()?;
         }
 
         // Force sync WAL for checkpoint
-        if let Some(ref mut wal) = *self.wal.lock().unwrap() {
+        if let Some(ref mut wal) = *self
+            .wal
+            .lock()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?
+        {
             wal.sync()?;
         }
 
@@ -769,6 +768,13 @@ impl QantoStorage {
 
     /// Create a new storage engine with enhanced parallel processing
     pub fn new(config: StorageConfig) -> Result<Self, QantoStorageError> {
+        if config.enable_async_io {
+            return Err(QantoStorageError::Initialization(
+                "async storage writes are disabled: the processor cannot currently guarantee WAL durability"
+                    .to_string(),
+            ));
+        }
+
         // Create data directory
         std::fs::create_dir_all(&config.data_dir)?;
 
@@ -777,6 +783,8 @@ impl QantoStorage {
 
         let storage = Arc::new(Self {
             config: config.clone(),
+            visibility_gate: RwLock::new(()),
+            poisoned: AtomicBool::new(false),
             segments: RwLock::new(Vec::new()),
             sharded_memtable: ShardedMemtable::new(shard_count),
             cache: DashMap::with_capacity(config.cache_size / 1024),
@@ -789,6 +797,8 @@ impl QantoStorage {
             compaction_in_progress: AtomicBool::new(false),
             async_io_processor: None,
             write_semaphore: Arc::new(Semaphore::new(config.parallel_writers)),
+            #[cfg(test)]
+            batch_apply_hook: Mutex::new(None),
         });
 
         // Initialize WAL if enabled
@@ -798,25 +808,11 @@ impl QantoStorage {
             *storage.wal.lock().unwrap() = Some(wal);
         }
 
-        // Initialize async I/O processor if enabled
-        let mut storage_mut = Arc::try_unwrap(storage).map_err(|_| {
+        // Recover the owned storage value. Async writes are rejected above
+        // until the processor has a non-self-referential durable owner.
+        let storage_mut = Arc::try_unwrap(storage).map_err(|_| {
             QantoStorageError::Initialization("Failed to initialize storage".to_string())
         })?;
-
-        if config.enable_async_io {
-            let storage_arc = Arc::new(storage_mut);
-            let storage_weak = Arc::downgrade(&storage_arc);
-            let processor =
-                AsyncIOProcessor::new(storage_weak, config.batch_size, config.sync_interval);
-
-            // This is a bit tricky - we need to get the storage back
-            let mut storage_final = Arc::try_unwrap(storage_arc).map_err(|_| {
-                QantoStorageError::Initialization("Failed to finalize storage".to_string())
-            })?;
-
-            storage_final.async_io_processor = Some(processor);
-            storage_mut = storage_final;
-        }
 
         // Load existing segments
         storage_mut.load_segments()?;
@@ -832,6 +828,18 @@ impl QantoStorage {
     /// Check if key exists
     /// Check if a key exists in the storage
     pub fn contains_key(&self, key: &[u8]) -> Result<bool, QantoStorageError> {
+        let _visibility = self
+            .visibility_gate
+            .read()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
+        self.ensure_healthy()?;
+        self.contains_key_unlocked(key)
+    }
+
+    /// Read a key's presence while the caller already holds the visibility
+    /// gate. Keeping this separate prevents recursive-lock deadlocks in
+    /// transaction and recovery code.
+    fn contains_key_unlocked(&self, key: &[u8]) -> Result<bool, QantoStorageError> {
         // Check cache first
         if self.cache.contains_key(key) {
             return Ok(true);
@@ -868,6 +876,16 @@ impl QantoStorage {
     /// Get all keys with a prefix
     /// Get all keys with a given prefix using sharded memtable
     pub fn keys_with_prefix(&self, prefix: &[u8]) -> Result<Vec<Vec<u8>>, QantoStorageError> {
+        let _visibility = self
+            .visibility_gate
+            .read()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
+        self.ensure_healthy()?;
+        self.keys_with_prefix_unlocked(prefix)
+    }
+
+    /// Enumerate keys while the caller already holds the visibility gate.
+    fn keys_with_prefix_unlocked(&self, prefix: &[u8]) -> Result<Vec<Vec<u8>>, QantoStorageError> {
         let mut keys = HashSet::new();
         let mut tombstoned = HashSet::new();
 
@@ -911,7 +929,9 @@ impl QantoStorage {
             }
         }
 
-        Ok(keys.into_iter().collect())
+        let mut ordered_keys: Vec<Vec<u8>> = keys.into_iter().collect();
+        ordered_keys.sort_unstable();
+        Ok(ordered_keys)
     }
 
     /// Start a new transaction
@@ -929,105 +949,100 @@ impl QantoStorage {
 
     /// Commit a transaction
     pub fn commit_transaction(&self, tx_id: u64) -> Result<(), QantoStorageError> {
+        let _visibility = self
+            .visibility_gate
+            .write()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
+        self.ensure_healthy()?;
+        self.commit_transaction_unlocked(tx_id)
+    }
+
+    /// Commit while the caller owns the exclusive visibility gate.
+    ///
+    /// The WAL transaction and commit marker are synced before publishing any
+    /// operation to the readable memtable/cache. If publication subsequently
+    /// fails, the live instance is poisoned and must be reopened; recovery
+    /// will replay the already durable, complete transaction.
+    fn commit_transaction_unlocked(&self, tx_id: u64) -> Result<(), QantoStorageError> {
         // Extract and remove transaction from active set
         let transaction = {
-            let mut transactions = self.active_transactions.write().unwrap();
+            let mut transactions = self
+                .active_transactions
+                .write()
+                .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
             transactions.remove(&tx_id).ok_or_else(|| {
                 QantoStorageError::Transaction(format!("Transaction {tx_id} not found"))
             })?
         };
 
-        // 1) Write Transaction envelope to WAL first for durability
-        if let Some(ref mut wal) = *self.wal.lock().unwrap() {
-            let entry = LogEntry::Transaction {
-                id: tx_id,
-                entries: transaction.operations.clone(),
-            };
-            wal.append(&entry)?;
+        if transaction
+            .operations
+            .iter()
+            .any(|operation| !matches!(operation, LogEntry::Put { .. } | LogEntry::Delete { .. }))
+        {
+            return Err(QantoStorageError::InvalidOperation(
+                "transactions may contain only put and delete operations".to_string(),
+            ));
         }
 
-        // 2) Apply operations directly to memtable/cache without duplicating WAL entries
-        //    Prepare inverse ops to enable rollback in case of failure
-        let mut inverses: Vec<LogEntry> = Vec::with_capacity(transaction.operations.len());
-        let mut applied_count: usize = 0;
-        let apply_result: Result<(), QantoStorageError> = (|| {
-            for operation in &transaction.operations {
-                match operation {
-                    LogEntry::Put { key, value } => {
-                        // Capture previous value to form inverse
-                        let prev = self.get(key.as_slice())?;
-                        match prev {
-                            Some(prev_val) => {
-                                inverses.push(LogEntry::Put {
-                                    key: key.clone(),
-                                    value: prev_val,
-                                });
-                            }
-                            None => {
-                                inverses.push(LogEntry::Delete { key: key.clone() });
-                            }
-                        }
-                        // Apply directly
-                        self.apply_put_direct(key.clone(), value.clone())?;
-                        applied_count += 1;
-                    }
-                    LogEntry::Delete { key } => {
-                        // Capture previous value to form inverse
-                        let prev = self.get(key.as_slice())?;
-                        if let Some(prev_val) = prev {
-                            inverses.push(LogEntry::Put {
-                                key: key.clone(),
-                                value: prev_val,
-                            });
-                        } else {
-                            // No-op inverse if key did not exist
-                            inverses.push(LogEntry::Delete { key: key.clone() });
-                        }
-                        // Apply directly
-                        self.apply_delete_direct(key.as_slice())?;
-                        applied_count += 1;
-                    }
-                    _ => {}
-                }
+        // Make the complete transaction durable before exposing it. Batch
+        // durability is stronger than standalone sync_writes configuration:
+        // if a WAL exists, a successful write_batch always includes fsync.
+        let wal_result = (|| -> Result<(), QantoStorageError> {
+            let mut wal_guard = self
+                .wal
+                .lock()
+                .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
+            if let Some(wal) = wal_guard.as_mut() {
+                wal.append(&LogEntry::Transaction {
+                    id: tx_id,
+                    entries: transaction.operations.clone(),
+                })?;
+                wal.append(&LogEntry::Commit {
+                    transaction_id: tx_id,
+                })?;
+                wal.sync()?;
+            } else if self.config.wal_enabled {
+                return Err(QantoStorageError::Corruption(
+                    "WAL is enabled but unavailable during transaction commit".to_string(),
+                ));
             }
             Ok(())
         })();
-
-        if let Err(e) = apply_result {
-            // Append Rollback entry and revert applied changes in reverse order
-            if let Some(ref mut wal) = *self.wal.lock().unwrap() {
-                let rollback_entry = LogEntry::Rollback {
-                    transaction_id: tx_id,
-                };
-                wal.append(&rollback_entry)?;
-                if self.config.sync_writes {
-                    wal.sync()?;
-                }
-            }
-            // Revert only the operations that were successfully applied
-            for inverse in inverses.into_iter().take(applied_count).rev() {
-                match inverse {
-                    LogEntry::Put { key, value } => {
-                        // Use direct apply to avoid WAL duplication during rollback
-                        let _ = self.apply_put_direct(key, value);
-                    }
-                    LogEntry::Delete { key } => {
-                        let _ = self.apply_delete_direct(key.as_slice());
-                    }
-                    _ => {}
-                }
-            }
-            return Err(e);
+        if let Err(error) = wal_result {
+            self.poison();
+            return Err(error);
         }
 
-        // 3) Append Commit entry after successful application; sync if configured
-        if let Some(ref mut wal) = *self.wal.lock().unwrap() {
-            let commit_entry = LogEntry::Commit {
-                transaction_id: tx_id,
+        for (index, operation) in transaction.operations.iter().enumerate() {
+            let apply_result = match operation {
+                LogEntry::Put { key, value } => self.apply_put_direct(key.clone(), value.clone()),
+                LogEntry::Delete { key } => self.apply_delete_direct(key),
+                _ => unreachable!("transaction operations were validated above"),
             };
-            wal.append(&commit_entry)?;
-            if self.config.sync_writes {
-                wal.sync()?;
+
+            if let Err(error) = apply_result {
+                // The commit is already durable. Hiding the partial live view
+                // and forcing WAL recovery is safer than attempting an
+                // in-process rollback whose own writes can also fail.
+                self.poison();
+                return Err(QantoStorageError::Corruption(format!(
+                    "durable transaction {tx_id} could not be published after operation {}: {error}; reopen required",
+                    index + 1
+                )));
+            }
+
+            #[cfg(test)]
+            self.pause_after_batch_operation_for_test(index + 1);
+        }
+
+        // WAL-disabled stores retain atomic visibility but cannot promise
+        // crash durability unless synchronous writes were requested. In that
+        // configuration, flush the completed view before acknowledging it.
+        if !self.config.wal_enabled && self.config.sync_writes {
+            if let Err(error) = self.flush_or_poison_unlocked() {
+                self.poison();
+                return Err(error);
             }
         }
 
@@ -1036,15 +1051,27 @@ impl QantoStorage {
 
     /// Rollback a transaction
     pub fn rollback_transaction(&self, tx_id: u64) -> Result<(), QantoStorageError> {
+        let _visibility = self
+            .visibility_gate
+            .write()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
+        self.ensure_healthy()?;
         {
-            let mut transactions = self.active_transactions.write().unwrap();
+            let mut transactions = self
+                .active_transactions
+                .write()
+                .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
             transactions.remove(&tx_id).ok_or_else(|| {
                 QantoStorageError::Transaction(format!("Transaction {tx_id} not found"))
             })?;
         }
 
         // Log rollback to WAL
-        if let Some(ref mut wal) = *self.wal.lock().unwrap() {
+        if let Some(ref mut wal) = *self
+            .wal
+            .lock()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?
+        {
             let entry = LogEntry::Rollback {
                 transaction_id: tx_id,
             };
@@ -1064,11 +1091,21 @@ impl QantoStorage {
 
     /// Flush memtable to disk
     pub fn flush(&self) -> Result<(), QantoStorageError> {
-        self.flush_memtable()
+        let _visibility = self
+            .visibility_gate
+            .write()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
+        self.ensure_healthy()?;
+        self.flush_or_poison_unlocked()
     }
 
     /// Compact storage segments
     pub fn compact(&self) -> Result<(), QantoStorageError> {
+        let _visibility = self
+            .visibility_gate
+            .write()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
+        self.ensure_healthy()?;
         if self.compaction_in_progress.load(Ordering::Acquire) {
             return Ok(()); // Already compacting
         }
@@ -1084,7 +1121,16 @@ impl QantoStorage {
 
     /// Sync all data to disk
     pub fn sync(&self) -> Result<(), QantoStorageError> {
-        if let Some(ref mut wal) = *self.wal.lock().unwrap() {
+        let _visibility = self
+            .visibility_gate
+            .write()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
+        self.ensure_healthy()?;
+        if let Some(ref mut wal) = *self
+            .wal
+            .lock()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?
+        {
             wal.sync()?;
         }
         Ok(())
@@ -1092,11 +1138,21 @@ impl QantoStorage {
 
     /// Close the storage engine
     pub fn close(&self) -> Result<(), QantoStorageError> {
+        let _visibility = self
+            .visibility_gate
+            .write()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
+        self.ensure_healthy()?;
+
         // Flush memtable
-        self.flush_memtable()?;
+        self.flush_or_poison_unlocked()?;
 
         // Sync WAL
-        if let Some(ref mut wal) = *self.wal.lock().unwrap() {
+        if let Some(ref mut wal) = *self
+            .wal
+            .lock()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?
+        {
             wal.checkpoint()?;
         }
 
@@ -1119,13 +1175,23 @@ impl QantoStorage {
     ) -> Result<(), QantoStorageError> {
         use std::fs;
 
+        let _visibility = self
+            .visibility_gate
+            .write()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
+        self.ensure_healthy()?;
+
         tracing::info!("Creating QantoStorage checkpoint at {:?}", checkpoint_dir);
 
         // Step 1: Flush memtable to ensure all in-memory data is on disk
-        self.flush_memtable()?;
+        self.flush_or_poison_unlocked()?;
 
         // Step 2: Sync WAL with checkpoint marker
-        if let Some(ref mut wal) = *self.wal.lock().unwrap() {
+        if let Some(ref mut wal) = *self
+            .wal
+            .lock()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?
+        {
             wal.checkpoint()?;
         }
 
@@ -1407,7 +1473,19 @@ impl QantoStorage {
         Ok(())
     }
 
-    fn flush_memtable(&self) -> Result<(), QantoStorageError> {
+    fn flush_or_poison_unlocked(&self) -> Result<(), QantoStorageError> {
+        if let Err(error) = self.flush_memtable_unlocked() {
+            // flush_all drains the memtable before the segment write. WAL
+            // recovery is therefore required if segment creation fails.
+            self.poison();
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    /// Flush while the caller owns the exclusive visibility gate or while the
+    /// storage is still single-threaded during initialization.
+    fn flush_memtable_unlocked(&self) -> Result<(), QantoStorageError> {
         // Get all data from sharded memtable
         let memtable_data = self.sharded_memtable.flush_all()?;
 
@@ -1516,24 +1594,26 @@ impl QantoStorage {
 
     /// Put a key-value pair with optimized cache operations
     pub fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), QantoStorageError> {
+        let _visibility = self
+            .visibility_gate
+            .write()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
+        self.ensure_healthy()?;
+        if let Err(error) = self.put_unlocked(key, value) {
+            self.poison();
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    /// Put while the caller owns the exclusive visibility gate.
+    fn put_unlocked(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), QantoStorageError> {
         let value_size = key.len() + value.len();
 
-        // If async I/O is enabled, queue the write and update cache for read-your-writes
-        if let Some(ref processor) = self.async_io_processor {
-            processor.queue_write(key.clone(), value.clone())?;
-
-            // Update cache using DashMap for lock-free access
-            let entry = CacheEntry::new(value.clone());
-            self.cache.insert(key, entry);
-
-            // Update cache size atomically and evict if necessary
-            let current_size = self.cache_size.fetch_add(value_size, Ordering::Relaxed);
-            if current_size + value_size > self.config.cache_size {
-                self.evict_cache_lockfree();
-            }
-
-            // Defer WAL and memtable updates to the async processor batch
-            return Ok(());
+        if self.async_io_processor.is_some() {
+            return Err(QantoStorageError::InvalidOperation(
+                "async storage writes are disabled".to_string(),
+            ));
         }
 
         // Log to WAL first
@@ -1580,7 +1660,7 @@ impl QantoStorage {
         let memtable_size = self.sharded_memtable.size() * 1024; // Rough estimate
 
         if memtable_size > self.config.cache_size / 4 {
-            self.flush_memtable()?;
+            self.flush_or_poison_unlocked()?;
         }
 
         Ok(())
@@ -1588,6 +1668,16 @@ impl QantoStorage {
 
     /// High-performance get operation with sharded reads
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, QantoStorageError> {
+        let _visibility = self
+            .visibility_gate
+            .read()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
+        self.ensure_healthy()?;
+        self.get_unlocked(key)
+    }
+
+    /// Read while the caller already owns the visibility gate.
+    fn get_unlocked(&self, key: &[u8]) -> Result<Option<Vec<u8>>, QantoStorageError> {
         // Check cache first (lock-free with DashMap)
         if let Some(entry) = self.cache.get(key) {
             let mut stats = self
@@ -1659,24 +1749,32 @@ impl QantoStorage {
 
     /// Delete a key with optimized cache removal
     pub fn delete(&self, key: &[u8]) -> Result<(), QantoStorageError> {
-        // If async I/O is enabled, queue the delete and update cache
-        if let Some(ref processor) = self.async_io_processor {
-            processor.queue_delete(key.to_vec())?;
-
-            // Remove from cache and update size atomically
-            if let Some((_, entry)) = self.cache.remove(key) {
-                let value_size = key.len() + entry.value.len();
-                self.cache_size.fetch_sub(value_size, Ordering::Relaxed);
-            }
-
-            // Immediately insert tombstone in memtable for consistency
-            self.sharded_memtable.delete(key)?;
-
-            // Defer WAL updates to the async processor batch
-            return Ok(());
+        let _visibility = self
+            .visibility_gate
+            .write()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
+        self.ensure_healthy()?;
+        if let Err(error) = self.delete_unlocked(key) {
+            self.poison();
+            return Err(error);
         }
+        Ok(())
+    }
+
+    /// Delete while the caller owns the exclusive visibility gate.
+    fn delete_unlocked(&self, key: &[u8]) -> Result<(), QantoStorageError> {
+        if self.async_io_processor.is_some() {
+            return Err(QantoStorageError::InvalidOperation(
+                "async storage writes are disabled".to_string(),
+            ));
+        }
+
         // Log to WAL first
-        if let Some(ref mut wal) = *self.wal.lock().unwrap() {
+        if let Some(ref mut wal) = *self
+            .wal
+            .lock()
+            .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?
+        {
             let entry = LogEntry::Delete { key: key.to_vec() };
             wal.append(&entry)?;
             if self.config.sync_writes {
@@ -1695,7 +1793,10 @@ impl QantoStorage {
 
         // Update stats
         {
-            let mut stats = self.stats.write().unwrap();
+            let mut stats = self
+                .stats
+                .write()
+                .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
             stats.deletes += 1;
         }
 
@@ -1933,6 +2034,9 @@ struct AsyncIOProcessor {
     runtime_guard: Option<tokio::runtime::Runtime>,
 }
 
+// Retained as quarantined implementation scaffolding. QantoStorage::new
+// rejects async mode until this processor can own a durable storage handle.
+#[allow(dead_code)]
 impl AsyncIOProcessor {
     fn new(storage_weak: Weak<QantoStorage>, batch_size: usize, flush_interval: Duration) -> Self {
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -2048,6 +2152,8 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::{mpsc, Barrier};
+    use std::thread;
 
     fn temp_db_dir() -> PathBuf {
         let mut dir = std::env::temp_dir();
@@ -2055,16 +2161,186 @@ mod tests {
         dir
     }
 
+    fn durable_test_config(data_dir: PathBuf) -> StorageConfig {
+        StorageConfig {
+            data_dir,
+            compression_enabled: false,
+            encryption_enabled: false,
+            wal_enabled: true,
+            sync_writes: true,
+            enable_async_io: false,
+            ..StorageConfig::default()
+        }
+    }
+
+    #[test]
+    fn rejects_async_storage_until_it_has_a_durable_owner() {
+        let db_dir = temp_db_dir();
+        let mut config = durable_test_config(db_dir.clone());
+        config.enable_async_io = true;
+
+        let error = QantoStorage::new(config).expect_err("async storage must fail closed");
+        assert!(matches!(error, QantoStorageError::Initialization(_)));
+        assert!(
+            !db_dir.exists(),
+            "rejection must happen before creating files"
+        );
+    }
+
+    #[test]
+    fn readers_cannot_observe_a_partially_published_batch() {
+        let db_dir = temp_db_dir();
+        let config = durable_test_config(db_dir.clone());
+        let db = Arc::new(QantoStorage::new(config).expect("create storage"));
+        db.put(b"batch:a".to_vec(), b"old-a".to_vec())
+            .expect("seed a");
+        db.put(b"batch:b".to_vec(), b"old-b".to_vec())
+            .expect("seed b");
+
+        let reached = Arc::new(Barrier::new(2));
+        let resume = Arc::new(Barrier::new(2));
+        *db.batch_apply_hook.lock().expect("set batch hook") = Some(BatchApplyTestHook {
+            pause_after_operations: 1,
+            reached: reached.clone(),
+            resume: resume.clone(),
+        });
+
+        let writer_db = db.clone();
+        let writer = thread::spawn(move || {
+            let mut batch = WriteBatch::new();
+            batch.put(b"batch:a".to_vec(), b"new-a".to_vec());
+            batch.put(b"batch:b".to_vec(), b"new-b".to_vec());
+            writer_db.write_batch(batch)
+        });
+
+        // The writer has published the first operation internally but still
+        // owns the exclusive visibility guard.
+        reached.wait();
+
+        let reader_db = db.clone();
+        let (result_sender, result_receiver) = mpsc::channel();
+        let reader = thread::spawn(move || {
+            let result = (
+                reader_db.get(b"batch:a"),
+                reader_db.get(b"batch:b"),
+                reader_db.contains_key(b"batch:a"),
+                reader_db.keys_with_prefix(b"batch:"),
+            );
+            result_sender.send(result).expect("send reader result");
+        });
+
+        assert!(matches!(
+            result_receiver.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        ));
+
+        resume.wait();
+        writer.join().expect("writer thread").expect("batch commit");
+        let (a, b, contains_a, keys) = result_receiver
+            .recv_timeout(Duration::from_secs(2))
+            .expect("reader completed after publication");
+        reader.join().expect("reader thread");
+
+        assert_eq!(a.expect("read a"), Some(b"new-a".to_vec()));
+        assert_eq!(b.expect("read b"), Some(b"new-b".to_vec()));
+        assert!(contains_a.expect("contains a"));
+        assert_eq!(
+            keys.expect("prefix keys"),
+            vec![b"batch:a".to_vec(), b"batch:b".to_vec()]
+        );
+
+        *db.batch_apply_hook.lock().expect("clear batch hook") = None;
+        drop(db);
+        let _ = fs::remove_dir_all(db_dir);
+    }
+
+    #[test]
+    fn committed_batch_reopens_as_a_complete_state_transition() {
+        let db_dir = temp_db_dir();
+        let config = durable_test_config(db_dir.clone());
+
+        {
+            let db = QantoStorage::new(config.clone()).expect("create storage");
+            db.put(b"batch:deleted".to_vec(), b"old".to_vec())
+                .expect("seed deleted key");
+
+            let mut batch = WriteBatch::new();
+            batch.put(b"batch:a".to_vec(), b"value-a".to_vec());
+            batch.put(b"batch:b".to_vec(), b"value-b".to_vec());
+            batch.delete(b"batch:deleted".to_vec());
+            db.write_batch(batch).expect("commit durable batch");
+        }
+
+        {
+            let reopened = QantoStorage::new(config).expect("reopen storage");
+            assert_eq!(
+                reopened.get(b"batch:a").expect("read a"),
+                Some(b"value-a".to_vec())
+            );
+            assert_eq!(
+                reopened.get(b"batch:b").expect("read b"),
+                Some(b"value-b".to_vec())
+            );
+            assert_eq!(reopened.get(b"batch:deleted").expect("read delete"), None);
+        }
+
+        let _ = fs::remove_dir_all(db_dir);
+    }
+
+    #[test]
+    fn post_commit_publish_failure_poisoned_instance_recovers_on_reopen() {
+        let db_dir = temp_db_dir();
+        let config = durable_test_config(db_dir.clone());
+        let db = Arc::new(QantoStorage::new(config.clone()).expect("create storage"));
+        let poisoned_key = b"batch:poisoned".to_vec();
+        let shard_index = db.sharded_memtable.get_shard_index(&poisoned_key);
+
+        let poisoner_db = db.clone();
+        let poisoner = thread::spawn(move || {
+            let shard = poisoner_db
+                .sharded_memtable
+                .get_shard(shard_index)
+                .expect("target shard");
+            let _guard = shard.write().expect("acquire target shard");
+            panic!("intentional shard-lock poison");
+        });
+        assert!(poisoner.join().is_err());
+
+        let mut batch = WriteBatch::new();
+        batch.put(poisoned_key.clone(), b"recovered-a".to_vec());
+        batch.put(b"batch:also-committed".to_vec(), b"recovered-b".to_vec());
+        let error = db
+            .write_batch(batch)
+            .expect_err("live publication must fail on poisoned shard");
+        assert!(matches!(error, QantoStorageError::Corruption(_)));
+        assert!(matches!(
+            db.get(b"batch:also-committed"),
+            Err(QantoStorageError::Corruption(_))
+        ));
+
+        drop(db);
+
+        let reopened = QantoStorage::new(config).expect("WAL recovery reopens storage");
+        assert_eq!(
+            reopened.get(&poisoned_key).expect("recover first key"),
+            Some(b"recovered-a".to_vec())
+        );
+        assert_eq!(
+            reopened
+                .get(b"batch:also-committed")
+                .expect("recover second key"),
+            Some(b"recovered-b".to_vec())
+        );
+
+        let _ = fs::remove_dir_all(db_dir);
+    }
+
     #[test]
     fn test_checkpoint_and_recovery() {
         let db_dir = temp_db_dir();
         let checkpoint_dir = temp_db_dir();
 
-        let mut config = StorageConfig::default();
-        config.data_dir = db_dir.clone();
-        config.wal_enabled = true;
-        config.sync_writes = true;
-        config.enable_async_io = false;
+        let config = durable_test_config(db_dir.clone());
 
         // 1. Create a storage engine and write some keys
         let db = QantoStorage::new(config.clone()).expect("Failed to create storage");
@@ -2084,8 +2360,10 @@ mod tests {
         assert!(marker.exists(), "Checkpoint complete marker should exist");
 
         // 3. Open checkpointed DB and verify keys are present
-        let mut checkpoint_config = config.clone();
-        checkpoint_config.data_dir = checkpoint_dir.clone();
+        let checkpoint_config = StorageConfig {
+            data_dir: checkpoint_dir.clone(),
+            ..config.clone()
+        };
         let db_checkpoint =
             QantoStorage::new(checkpoint_config).expect("Failed to open checkpointed db");
         assert_eq!(
@@ -2106,11 +2384,7 @@ mod tests {
     fn test_wal_recovery() {
         let db_dir = temp_db_dir();
 
-        let mut config = StorageConfig::default();
-        config.data_dir = db_dir.clone();
-        config.wal_enabled = true;
-        config.sync_writes = true;
-        config.enable_async_io = false;
+        let config = durable_test_config(db_dir.clone());
 
         // 1. Write some keys
         {

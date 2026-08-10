@@ -12,6 +12,8 @@
 //! - Byzantine fault tolerance
 //! - Shard coordination and cross-shard communication
 
+#![allow(clippy::manual_checked_ops)]
+
 use crate::consensus::{Consensus, ConsensusError};
 use crate::metrics::QantoMetrics;
 
@@ -900,7 +902,7 @@ impl DecentralizationEngine {
         }
 
         // Sort by score (descending)
-        scored_validators.sort_by(|a, b| b.1.cmp(&a.1));
+        scored_validators.sort_by_key(|a| std::cmp::Reverse(a.1));
 
         Ok(scored_validators)
     }

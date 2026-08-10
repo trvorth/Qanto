@@ -284,7 +284,7 @@ impl OptimizedDecoupledProducer {
                         // Create optimized candidate block using DAG-aware mempool
                         match Self::create_optimized_candidate_block(
                             &dag, &mempool, &dag_mempool, &utxos, &miner,
-                            wallet.address().as_str(), &signing_key, &public_key,
+                            wallet.validator_id().as_str(), &signing_key, &public_key,
                         ).await {
                             Ok(block) => {
                                 let creation_time = creation_start.elapsed();
@@ -753,6 +753,7 @@ impl OptimizedDecoupledProducer {
         mut mined_rx: mpsc::Receiver<OptimizedMinedBlock>,
     ) -> tokio::task::JoinHandle<Result<(), QantoDAGError>> {
         let dag = Arc::clone(&self.dag);
+        let wallet = Arc::clone(&self.wallet);
         let mempool = Arc::clone(&self.mempool);
         let dag_mempool = Arc::clone(&self.dag_mempool);
         let utxos = Arc::clone(&self.utxos);
@@ -779,7 +780,18 @@ impl OptimizedDecoupledProducer {
                     }
                     mined = mined_rx.recv() => {
                         match mined {
-                            Some(mined_block) => {
+                            Some(mut mined_block) => {
+                                let (signing_key, _) = match wallet.get_keypair() {
+                                    Ok(keypair) => keypair,
+                                    Err(error) => {
+                                        error!("BATCH BLOCK PROCESSOR: Cannot obtain sealing key: {}", error);
+                                        continue;
+                                    }
+                                };
+                                if let Err(error) = mined_block.block.seal(&signing_key) {
+                                    error!("BATCH BLOCK PROCESSOR: Refusing unsealed mined block: {}", error);
+                                    continue;
+                                }
                                 // Add block celebration display if enabled
                                 if dag.logging_config.enable_block_celebrations {
                                     let celebration_level = &dag.logging_config.celebration_log_level;
@@ -885,9 +897,7 @@ impl OptimizedDecoupledProducer {
         for mined_block in batch.iter() {
             let _permit = processing_semaphore.acquire().await;
             if _permit.is_ok() {
-                let mut block_to_add = mined_block.block.clone();
-                let finality_hex = format!("{}", block_to_add.hash_for_pow());
-                block_to_add.finality_proof = Some(finality_hex);
+                let block_to_add = mined_block.block.clone();
 
                 match dag
                     .add_block(

@@ -898,6 +898,7 @@ impl EnhancedOmegaOrchestrator {
         // Note: This is a simplified version - in a real implementation,
         // you would need to properly construct all required fields
         let block = crate::qantodag::QantoBlock {
+            protocol_version: crate::qantodag::QANTO_BLOCK_PROTOCOL_VERSION_V2,
             chain_id: 1, // Default chain ID
             signature: crate::types::QuantumResistantSignature {
                 signer_public_key: vec![],
@@ -919,6 +920,7 @@ impl EnhancedOmegaOrchestrator {
             height: 0, // Would need proper height calculation
             reward: 0,
             effort: result.gas_used as u128,
+            chain_work: crate::miner::U256::ZERO,
             cross_chain_references: vec![],
             cross_chain_swaps: vec![],
             merkle_root: hex::encode(&transaction_data[..32.min(transaction_data.len())]),
@@ -1137,7 +1139,7 @@ pub mod enhanced_simulation {
             parallel_writers: 4,                // Number of parallel writers
             enable_write_batching: true,
             enable_bloom_filters: true,
-            enable_async_io: true,
+            enable_async_io: false,
             sync_interval: Duration::from_millis(100),
             compression_level: 3,
         };

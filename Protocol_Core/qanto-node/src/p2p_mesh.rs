@@ -2,9 +2,11 @@
 use futures::StreamExt;
 use governor::{Quota, RateLimiter};
 use libp2p::{
-    identity, kad::{store::MemoryStore, Behaviour as KadBehaviour, Event as KadEvent}, 
-    noise, PeerId, SwarmBuilder, swarm::{NetworkBehaviour, SwarmEvent}, 
-    tcp, yamux
+    identity,
+    kad::{store::MemoryStore, Behaviour as KadBehaviour, Event as KadEvent},
+    noise,
+    swarm::{NetworkBehaviour, SwarmEvent},
+    tcp, yamux, PeerId, SwarmBuilder,
 };
 use std::error::Error;
 use std::num::NonZeroU32;
@@ -25,7 +27,7 @@ pub async fn initialize_p2p_mesh() -> Result<(), Box<dyn Error>> {
 
     let store = MemoryStore::new(local_peer_id);
     let kademlia = KadBehaviour::new(local_peer_id, store);
-    
+
     let behaviour = MeshBehaviour { kademlia };
 
     let mut swarm = SwarmBuilder::with_existing_identity(local_key)

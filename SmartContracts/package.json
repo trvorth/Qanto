@@ -4,17 +4,26 @@
   "description": "",
   "main": "deploy_wqnto.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "hardhat test"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
   "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^7.0.0",
+    "@nomicfoundation/hardhat-ethers": "^4.0.15",
+    "@nomicfoundation/hardhat-ethers-chai-matchers": "^3.0.11",
+    "@nomicfoundation/hardhat-mocha": "^3.1.0",
+    "@nomicfoundation/hardhat-network-helpers": "^3.0.11",
     "@openzeppelin/contracts": "^5.6.1",
+    "chai": "^6.2.2",
     "dotenv": "^17.4.2",
     "ethers": "^6.17.0",
-    "hardhat": "^3.9.1"
+    "hardhat": "^3.12.0",
+    "mocha": "^11.8.0"
+  },
+  "overrides": {
+    "diff": "8.0.3",
+    "serialize-javascript": "7.0.5"
   }
 }

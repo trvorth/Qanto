@@ -16,6 +16,11 @@ use dhat;
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
+fn validate_adaptive_mining_cli_request(requested: bool) -> io::Result<()> {
+    crate::adaptive_mining::validate_adaptive_mining_activation(requested)
+        .map_err(|reason| io::Error::new(io::ErrorKind::Unsupported, reason))
+}
+
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     std::panic::set_hook(Box::new(|info| {
         eprintln!("🚨 CRITICAL NODE EXCEPTION DETECTED: {}", info);
@@ -74,7 +79,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .arg(
             Arg::new("adaptive-mining")
                 .long("adaptive-mining")
-                .help("Enable adaptive mining with difficulty adjustments")
+                .help("Unavailable: adaptive mining is fail-closed pending consensus hardening")
                 .action(ArgAction::SetTrue),
         )
         .arg(
@@ -102,6 +107,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .action(ArgAction::SetTrue),
         )
         .get_matches();
+
+    // Reject the explicit activation flag before loading configuration, creating
+    // files, initializing telemetry, or opening a wallet.
+    validate_adaptive_mining_cli_request(matches.get_flag("adaptive-mining"))?;
 
     // Load configuration
     let config_path = matches.get_one::<String>("config").unwrap();
@@ -135,6 +144,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         None, // listen
         None, // bootnodes
     );
+
+    // Revalidate CLI-derived state. This also protects against future override
+    // paths that attempt to enable the contained adaptive miner.
+    config.validate()?;
 
     // Initialize tracing (console + optional file) using config.logging.level
     let env_filter =
@@ -300,8 +313,17 @@ impl Write for LockedWriter {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    fn test_placeholder() {
-        // Reference test to prevent test runner warnings
+    fn adaptive_mining_cli_request_fails_before_startup() {
+        validate_adaptive_mining_cli_request(false).unwrap();
+
+        let error = validate_adaptive_mining_cli_request(true).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+        assert_eq!(
+            error.to_string(),
+            crate::adaptive_mining::ADAPTIVE_MINING_DISABLED_REASON
+        );
     }
 }

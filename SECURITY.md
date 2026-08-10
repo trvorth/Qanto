@@ -10,19 +10,17 @@ As Qanto is in pre-release development, no versions are currently supported with
 
 ## Reporting a Vulnerability
 
-How to report a vulnerability, where to go, how often can expect to get an update on a reported vulnerability, what to expect if the vulnerability is accepted or declined, etc.
-
 ### Reporting Process
 Qanto welcomes responsible disclosure of security vulnerabilities to strengthen the protocol. To report a vulnerability, please follow these steps:
 
-1. **Contact the Security Team**: Until a dedicated security email is established, submit reports via a GitHub issue marked as "confidential" in the [Qanto repository](https://github.com/trvorth/qanto/issues/new?assignees=&labels=confidential&template=security_issue.md). Include a clear description of the issue, the affected component (e.g., `qantodag.rs`, `consensus.rs`), steps to reproduce, potential impact, and any proposed mitigation.
+1. **Contact the Security Team Privately**: Submit a [private vulnerability report](https://github.com/trvorth/qanto/security/advisories/new). Do not open a public issue. If GitHub reports that private vulnerability reporting is unavailable, contact the repository owners through the project channels without including exploit details and request a private channel.
 2. **Provide Details**: Ensure your report includes sufficient technical detail to allow our team to assess the issue.
 3. **Confidentiality**: Do not disclose the vulnerability publicly until it has been addressed. We will treat all reports with strict confidentiality.
 
 ### Response Timeline
-- **Acknowledgment**: You will receive an initial confirmation within 48 hours of submission via GitHub or a private communication channel if necessary.
-- **Assessment**: Our security team, in collaboration with the on-chain Intrusion Detection System (IDS) module, will evaluate the report within 7 days.
-- **Updates**: We will provide weekly progress updates (every 7 days) via the same channel used for acknowledgment.
+- **Acknowledgment target**: We aim to confirm receipt within 48 hours.
+- **Assessment target**: We aim to provide an initial severity assessment within 7 calendar days.
+- **Updates**: For accepted reports, we aim to provide an update at least every 7 calendar days until remediation or coordinated disclosure.
 - **Resolution**: Once validated, vulnerabilities will be patched in the next development milestone, with a timeline communicated to the reporter.
 
 ### Outcome Expectations
@@ -31,26 +29,23 @@ Qanto welcomes responsible disclosure of security vulnerabilities to strengthen 
 - **Coordination**: For critical issues (e.g., those affecting post-quantum cryptographic integrity), we may request additional collaboration with the reporter and third-party auditors.
 
 ### Rewards Program
-No formal bug bounty program is active during Phase 1. We plan to introduce a rewards system with the testnet launch, with details to be included in the Testnet Launch Plan (docs/testnet_launch_plan.md).
+No formal bug bounty or guaranteed monetary reward is active during Phase 1.
 
 ## Security Development Practices
 
 ### Current Status
-As a pre-release project, Qanto is actively developing its security infrastructure. Key measures include:
-- Implementation of lattice-based signatures (CRYSTALS-Dilithium) for post-quantum security.
-- Integration of an on-chain IDS to detect validator anomalies.
-- Regular code reviews by the core development team.
+As a pre-release project, Qanto is actively developing its security infrastructure. Cryptographic, consensus, bridge, and operational claims remain subject to the launch gates documented under `Docs/audits/`; the presence of an implementation is not a claim of independent certification.
 
 ### Future Audits
-We are preparing for a comprehensive third-party security audit prior to broader public testnet expansion. The audit plan, including scope and timeline, will be detailed in our Security Audit Plan (docs/security_audit_plan.md) once available.
+An independent third-party audit and remediation verification are required before mainnet. Internal engineering reviews are stored under `Docs/audits/` and do not substitute for that independent review.
 
 ### Community Involvement
 We encourage the community to contribute to security through code reviews and vulnerability reports. Please refer to our Contribution Guidelines (CONTRIBUTING.md) for participation details. All contributors are expected to adhere to our Code of Conduct.
 
 ## Legal and Ethical Considerations
 
-Reporting vulnerabilities to Qanto implies agreement to act in good faith. Malicious exploitation, public disclosure without coordination, or unauthorized access attempts will be treated as violations of the MIT License and may result in legal action.
+We ask researchers to act in good faith, avoid privacy violations and service disruption, and allow reasonable time for coordinated remediation. The repository license does not itself define a vulnerability-disclosure safe harbor.
 
 ## Contact
 
-For security-related inquiries beyond vulnerability reports, use the [Qanto GitHub Discussions](https://github.com/trvorth/Qanto/discussions) until a dedicated contact method is established. For general support, refer to community channels to be announced with the project website (https://Qanto.pro, forthcoming).
+For non-sensitive security questions, use [Qanto GitHub Discussions](https://github.com/trvorth/qanto/discussions). Vulnerability details must use the private reporting process above.

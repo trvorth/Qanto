@@ -21,7 +21,8 @@
 //!   node performance and network activity.
 
 use crate::absolute_genesis::{
-    load_persisted_utxos, load_validated_genesis, persist_genesis_state, GenesisLoaderError,
+    load_persisted_utxos, load_validated_genesis, persist_genesis_state,
+    verify_persisted_genesis_commitment, GenesisLoaderError,
 };
 use crate::adaptive_mining::AdaptiveMiningLoop;
 use crate::analytics_dashboard::{AnalyticsDashboard, DashboardConfig};
@@ -73,7 +74,7 @@ use qanto_core::balance_stream::BalanceBroadcaster;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
@@ -316,7 +317,7 @@ impl Node {
 
         info!("Validating wallet address against genesis validator");
         // Validate that the wallet address matches the genesis validator specified in the config.
-        let initial_validator = wallet.address().trim().to_lowercase();
+        let initial_validator = wallet.validator_id().trim().to_lowercase();
         if initial_validator != config.genesis_validator.trim().to_lowercase() {
             return Err(NodeError::Config(ConfigError::Validation(
                 "Wallet address does not match genesis validator".to_string(),
@@ -376,7 +377,7 @@ impl Node {
             parallel_writers: 4, // Number of parallel writers
             enable_write_batching: true,
             enable_bloom_filters: true,
-            enable_async_io: true,
+            enable_async_io: false,
             sync_interval: Duration::from_millis(100),
             compression_level: 3,
         };
@@ -396,6 +397,13 @@ impl Node {
             NodeError::GenesisLoader(err)
         })?;
 
+        if genesis_exists {
+            verify_persisted_genesis_commitment(&db, &genesis_state).map_err(|err| {
+                error!("Persisted genesis commitment verification failed: {}", err);
+                NodeError::GenesisLoader(err)
+            })?;
+        }
+
         if !genesis_exists {
             persist_genesis_state(&db, &genesis_state).map_err(|err| {
                 error!(
@@ -412,6 +420,10 @@ impl Node {
                 genesis_state.total_allocated_base_units
             );
         }
+        info!(
+            "Pinned genesis manifest {} with allocation state root {}",
+            genesis_state.manifest_hash, genesis_state.allocation_state_root
+        );
 
         info!("Configuring QantoDagConfig");
         // Configure and create the core DAG structure.
@@ -960,17 +972,14 @@ impl Node {
                                 blocks.len(),
                                 utxos.len()
                             );
-                            // Extend the local UTXO set with the synced data.
-                            {
-                                let mut utxos_writer = utxos_clone.write().await;
-                                let initial_utxo_count = utxos_writer.len();
-                                utxos_writer.extend(utxos);
-
-                                info!(
-                                    "UTXO set updated with {} new entries from sync.",
-                                    utxos_writer.len() - initial_utxo_count
-                                );
-                            }
+                            // A peer-supplied snapshot has no authenticated state root or
+                            // finalized checkpoint today. Never merge those UTXOs into live
+                            // consensus state. The sequentially validated blocks below must
+                            // derive every accepted UTXO from the existing local state.
+                            warn!(
+                                "Discarding {} unverified peer-supplied UTXOs; authenticated snapshot sync is disabled",
+                                utxos.len()
+                            );
                             // Topologically sort and add the received blocks to the DAG.
                             if let Ok(sorted_blocks) =
                                 Self::topological_sort_blocks(blocks, &dag_clone).await
@@ -1844,6 +1853,8 @@ impl Node {
         let Some(child_ids) = pending_children_by_parent.get(committed_parent_id).cloned() else {
             return Vec::new();
         };
+        let mut child_ids: Vec<String> = child_ids.into_iter().collect();
+        child_ids.sort_unstable();
 
         let mut ready_blocks = Vec::new();
         let mut still_pending = Vec::new();
@@ -1873,6 +1884,8 @@ impl Node {
                 missing_parents,
             );
         }
+
+        ready_blocks.sort_unstable_by(|left, right| left.id.cmp(&right.id));
 
         ready_blocks
     }
@@ -1916,7 +1929,7 @@ impl Node {
         }
 
         // Initialize the queue with all nodes that have an in-degree of 0.
-        let mut queue: VecDeque<String> = in_degree
+        let mut queue: BTreeSet<String> = in_degree
             .iter()
             .filter(|(_, &degree)| degree == 0)
             .map(|(id, _)| id.clone())
@@ -1925,13 +1938,13 @@ impl Node {
         let mut sorted_blocks = Vec::with_capacity(block_map.len());
 
         // Process the queue (Kahn's algorithm).
-        while let Some(id) = queue.pop_front() {
+        while let Some(id) = queue.pop_first() {
             if let Some(children) = children_map.get(&id) {
                 for child_id in children {
                     if let Some(degree) = in_degree.get_mut(child_id) {
                         *degree -= 1;
                         if *degree == 0 {
-                            queue.push_back(child_id.clone());
+                            queue.insert(child_id.clone());
                         }
                     }
                 }
@@ -4264,10 +4277,7 @@ async fn jsonrpc_handler(
                     Ok(execution) => {
                         state
                             .websocket_state
-                            .broadcast_balance_update(
-                                execution.recipient.clone(),
-                                execution.amount,
-                            )
+                            .broadcast_balance_update(execution.recipient.clone(), execution.amount)
                             .await;
                         serde_json::json!(format!("0x{}", execution.tx_id))
                     }
@@ -4378,7 +4388,7 @@ async fn metrics_json_handler(
 
 async fn metrics_prometheus_handler(State(_state): State<AppState>) -> Result<String, StatusCode> {
     let metrics = crate::metrics::get_global_metrics();
-    Ok(metrics.export_prometheus())
+    Ok(metrics.export_prometheus().await)
 }
 
 #[cfg(test)]

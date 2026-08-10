@@ -19,8 +19,8 @@ rand = "0.8"
 anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { workspace = true }
-my-blockchain = { path = "../../../Protocol_Core/myblockchain" }
-qanto = { path = "../../../Protocol_Core/qanto-node" }
+my-blockchain = { version = "0.1.0", path = "../../../Protocol_Core/myblockchain" }
+qanto = { version = "0.1.0", path = "../../../Protocol_Core/qanto-node" }
 
 psutil = "3.2"
 
@@ -30,4 +30,3 @@ path = "src/main.rs"
 
 [features]
 analyzer = []
-

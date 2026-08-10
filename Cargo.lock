@@ -375,7 +375,7 @@ dependencies = [
  "ark-std",
  "tracing 0.1.41",
  "tracing-core 0.1.34",
- "tracing-subscriber",
+ "tracing-subscriber 0.3.20",
 ]
 
 [[package]]
@@ -1927,9 +1927,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-epoch"
-version = "0.9.18"
+version = "0.9.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -2285,7 +2285,8 @@ dependencies = [
 [[package]]
 name = "derivative"
 version = "2.2.0"
-source = "git+https://github.com/mcarton/rust-derivative?branch=master#5179a968ca6d70792f62dfe6727ab8d5b8b5cf5e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2737,6 +2738,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "env_home"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7f84e12ccf0a7ddc17a6c41c93326024c42920d7ee630d04950e6926645c0fe"
+
+[[package]]
 name = "env_logger"
 version = "0.11.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2798,11 +2805,10 @@ dependencies = [
 
 [[package]]
 name = "event-listener"
-version = "5.4.1"
+version = "5.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e13b66accf52311f30a0db42147dadea9850cb48cd070028831ae5f5d4b856ab"
+checksum = "5a23add41df1562121a9393cb065eab5146a1242410f23a644851e90cfd669d2"
 dependencies = [
- "concurrent-queue",
  "parking",
  "pin-project-lite",
 ]
@@ -3602,7 +3608,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
  "allocator-api2",
- "equivalent",
  "foldhash 0.1.5",
 ]
 
@@ -5197,11 +5202,11 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
 name = "lru"
-version = "0.12.5"
+version = "0.16.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "234cf4f4a04dc1f57e24b96cc0cd600cf2af460d4161ac5ecdd0af8e1f3b2a38"
+checksum = "7f66e8d5d03f609abc3a39e6f08e4164ebf1447a732906d39eb9b99b7919ef39"
 dependencies = [
- "hashbrown 0.15.5",
+ "hashbrown 0.16.1",
 ]
 
 [[package]]
@@ -5209,6 +5214,25 @@ name = "lru-slab"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
+
+[[package]]
+name = "lua-src"
+version = "547.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1edaf29e3517b49b8b746701e5648ccb5785cde1c119062cbabbc5d5cd115e42"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "luajit-src"
+version = "210.5.12+a4f56a4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3a8e7962a5368d5f264d045a5a255e90f9aa3fc1941ae15a8d2940d42cac671"
+dependencies = [
+ "cc",
+ "which",
+]
 
 [[package]]
 name = "lz4-sys"
@@ -5422,6 +5446,34 @@ dependencies = [
  "kem",
  "rand_core 0.6.4",
  "sha3",
+]
+
+[[package]]
+name = "mlua"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1f5f8fbebc7db5f671671134b9321c4b9aa9adeafccfd9a8c020ae45c6a35d0"
+dependencies = [
+ "bstr",
+ "either",
+ "mlua-sys",
+ "num-traits 0.2.19",
+ "parking_lot",
+ "rustc-hash 2.1.3",
+ "rustversion",
+]
+
+[[package]]
+name = "mlua-sys"
+version = "0.6.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "380c1f7e2099cafcf40e51d3a9f20a346977587aa4d012eae1f043149a728a93"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "lua-src",
+ "luajit-src",
+ "pkg-config",
 ]
 
 [[package]]
@@ -6560,7 +6612,9 @@ checksum = "e8d0eef3571242013a0d5dc84861c3ae4a652e56e12adf8bdc26ff5f8cb34c94"
 
 [[package]]
 name = "plist"
-version = "1.9.0"
+version = "1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7da1d65da6dd5d1e44199ac0f58712d241c0f439f80adea8924d832384087f85"
 dependencies = [
  "base64 0.22.1",
  "indexmap 2.14.0",
@@ -7234,6 +7288,7 @@ dependencies = [
  "lru",
  "memmap2",
  "mimalloc",
+ "mlua",
  "mockall",
  "my-blockchain",
  "nonzero_ext",
@@ -7250,6 +7305,7 @@ dependencies = [
  "prometheus 0.13.4",
  "proptest",
  "prost 0.12.6",
+ "qanto-consensus-primitives",
  "qanto-core",
  "qanto-rpc",
  "quick-xml",
@@ -7284,12 +7340,19 @@ dependencies = [
  "toml 0.8.23",
  "tower-http",
  "tracing 0.1.44",
- "tracing-subscriber",
+ "tracing-subscriber 0.3.23",
  "typenum",
  "url",
  "uuid",
  "zeroize",
  "zstd 0.13.3",
+]
+
+[[package]]
+name = "qanto-consensus-primitives"
+version = "0.1.0"
+dependencies = [
+ "sha3",
 ]
 
 [[package]]
@@ -7321,11 +7384,12 @@ dependencies = [
  "rand 0.8.6",
  "serde",
  "serde_json",
+ "sha3",
  "subtle",
  "thiserror 1.0.69",
  "tokio",
  "tracing 0.1.44",
- "tracing-subscriber",
+ "tracing-subscriber 0.3.23",
  "zeroize",
  "zstd 0.12.4",
 ]
@@ -7349,7 +7413,6 @@ dependencies = [
  "pqcrypto-traits",
  "qanto-core",
  "qanto-rpc",
- "qanto-zk-sdk",
  "rand 0.8.6",
  "serde",
  "serde_json",
@@ -7380,13 +7443,14 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing 0.1.44",
- "tracing-subscriber",
+ "tracing-subscriber 0.3.23",
 ]
 
 [[package]]
 name = "qanto-relayer"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "hex",
  "k256",
  "qanto-zk-sdk",
@@ -7394,6 +7458,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha3",
+ "thiserror 1.0.69",
  "tokio",
 ]
 
@@ -7423,7 +7488,6 @@ dependencies = [
  "hex",
  "ml-kem",
  "num-bigint",
- "pqcrypto-traits",
  "rand 0.8.6",
  "serde",
  "sha3",
@@ -9873,7 +9937,6 @@ version = "0.1.34"
 source = "git+https://github.com/tokio-rs/tracing?tag=tracing-subscriber-0.3.20#4c52ca5266a3920fc5dfeebda2accf15ee7fb278"
 dependencies = [
  "once_cell",
- "valuable",
 ]
 
 [[package]]
@@ -9883,31 +9946,49 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
+ "valuable",
 ]
 
 [[package]]
 name = "tracing-log"
 version = "0.2.0"
-source = "git+https://github.com/tokio-rs/tracing?tag=tracing-subscriber-0.3.20#4c52ca5266a3920fc5dfeebda2accf15ee7fb278"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
 dependencies = [
  "log",
  "once_cell",
- "tracing-core 0.1.34",
+ "tracing-core 0.1.36",
 ]
 
 [[package]]
 name = "tracing-serde"
 version = "0.2.0"
-source = "git+https://github.com/tokio-rs/tracing?tag=tracing-subscriber-0.3.20#4c52ca5266a3920fc5dfeebda2accf15ee7fb278"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "704b1aeb7be0d0a84fc9828cae51dab5970fee5088f83d1dd7ee6f6246fc6ff1"
 dependencies = [
  "serde",
- "tracing-core 0.1.34",
+ "tracing-core 0.1.36",
 ]
 
 [[package]]
 name = "tracing-subscriber"
 version = "0.3.20"
 source = "git+https://github.com/tokio-rs/tracing?tag=tracing-subscriber-0.3.20#4c52ca5266a3920fc5dfeebda2accf15ee7fb278"
+dependencies = [
+ "matchers",
+ "once_cell",
+ "regex-automata",
+ "sharded-slab",
+ "thread_local",
+ "tracing 0.1.41",
+ "tracing-core 0.1.34",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
 dependencies = [
  "matchers",
  "nu-ansi-term",
@@ -9918,8 +9999,8 @@ dependencies = [
  "sharded-slab",
  "smallvec",
  "thread_local",
- "tracing 0.1.41",
- "tracing-core 0.1.34",
+ "tracing 0.1.44",
+ "tracing-core 0.1.36",
  "tracing-log",
  "tracing-serde",
 ]
@@ -10504,6 +10585,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "which"
+version = "7.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24d643ce3fd3e5b54854602a080f34fb10ab75e0b813ee32d00ca2b44fa74762"
+dependencies = [
+ "either",
+ "env_home",
+ "rustix 1.1.4",
+ "winsafe",
+]
+
+[[package]]
 name = "widestring"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11060,6 +11153,12 @@ dependencies = [
  "cfg-if",
  "windows-sys 0.59.0",
 ]
+
+[[package]]
+name = "winsafe"
+version = "0.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
 
 [[package]]
 name = "wit-bindgen"

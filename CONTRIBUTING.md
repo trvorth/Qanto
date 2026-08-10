@@ -8,12 +8,12 @@ Thank you for your interest in contributing to the Qanto Layer-0 protocol. We we
 
 To build and run Qanto, you will need:
 
-1.  **Rust**: Install the latest stable version using [rustup](https://rustup.rs/). Nightly is recommended for some advanced ZK optimizations.
+1.  **Rust**: Install [rustup](https://rustup.rs/). The repository's `rust-toolchain.toml` selects the exact pinned nightly toolchain and required components.
     ```bash
-    rustup default nightly
+    rustup show
     ```
-2.  **Node.js**: Version 18.x or higher for the frontend build pipeline.
-3.  **Vite**: The enterprise website and explorer use Vite for lightning-fast development and optimized production builds.
+2.  **Node.js and npm**: Use a version supported by the lockfiles and current Hardhat toolchain.
+3.  **cargo-nextest**: Recommended for the canonical Rust test profile under `.config/nextest.toml`.
 
 ### Environment Setup
 
@@ -22,12 +22,21 @@ To build and run Qanto, you will need:
     git clone https://github.com/trvorth/Qanto.git
     cd Qanto
     ```
-2.  Install frontend dependencies:
+2.  Check the Rust workspace:
     ```bash
-    cd website && npm install
+    cargo check --workspace --locked
     ```
-3.  Configure environment variables:
-    Create a `.env` file in the root directory and add the necessary configuration (see `.env.example`).
+3.  Run the Rust tests:
+    ```bash
+    cargo nextest run --workspace --locked
+    ```
+4.  Install and test the Solidity workspace:
+    ```bash
+    cd SmartContracts
+    npm ci
+    npm test
+    ```
+5.  Configure local environment variables from `.env.example`. Never commit `.env`, private keys, seed phrases, or production credentials.
 
 ## Development Workflow
 
@@ -35,33 +44,33 @@ To build and run Qanto, you will need:
 
 We follow a structured branching model for institutional stability:
 
--   **`main`**: The production-ready branch. Only merges from `release` are permitted.
+-   **`main`**: The integration branch. Its presence does not imply production or mainnet readiness.
 -   **`release/*`**: Pre-production staging branches for final audit and hardening.
 -   **`feature/*`**: Development branches for new features or protocol enhancements.
 -   **`fix/*`**: Critical bug fixes or security patches.
 
 ### Code Style
 
--   **Rust**: Use `cargo fmt` and ensure all code passes `cargo clippy` with zero warnings.
+-   **Rust**: Run `cargo fmt --all -- --check` and `cargo clippy --workspace --all-targets --locked -- -D warnings`.
 -   **JavaScript/CSS**: Use Prettier for consistent formatting across the frontend.
 
 ## Adding New ZK-Circuits
 
 Qanto uses a modular ZK-proof system based on **arkworks**. To add a new circuit:
 
-1.  **Define the Circuit Structure**: Create a new struct in `src/zkp.rs` implementing `ConstraintSynthesizer<ConstraintF>`.
+1.  **Define the Circuit Structure**: Create a new struct in `Protocol_Core/qanto-node/src/zkp.rs` implementing `ConstraintSynthesizer<ConstraintF>`.
 2.  **Define Constraints**: Implement the `generate_constraints` method using R1CS gadgets.
 3.  **Integrate with ZKManager**: 
     - Add the new variant to `ZKProofType`.
     - Update `ZKProofSystem::generate_proof` to handle the new type.
-4.  **Add Unit Tests**: Every circuit must have a corresponding `#[test]` verifying successful proof/verification cycles.
+4.  **Add Tests and Setup Review**: Every circuit must include positive and negative proof tests, deterministic public-input encoding, versioned parameters, and a documented trusted-setup or transparent-setup process. Mock or per-process verifier keys are not acceptable for a production bridge.
 
 ## Submitting Changes
 
 1.  Create a feature branch.
 2.  Write tests for your changes.
 3.  Submit a Pull Request with a clear description of the problem and the proposed solution.
-4.  Ensure all CI/CD pipelines pass.
+4.  Ensure all applicable local and CI checks pass, and document any unavailable platform-specific checks.
 
 ## Security
 

@@ -1,6 +1,6 @@
 # QANTO Layer-0 Protocol: System Architecture & Technical Overview
 
-Welcome to the comprehensive technical documentation and system overview of **QANTO** — the world’s first post-quantum, AI-governed Layer-0 blockchain infrastructure. 
+This document maps the **Qanto pre-release Layer-0 research codebase**. Several described mechanisms are design targets or experimental modules rather than active, production-safe protocol rules; the implementation-status matrix and current audit reports take precedence over marketing language.
 
 This document provides a system-wide analysis of the Qanto codebase, structured across three core perspectives: **Software Architecture**, **Software Development**, and **Product Management**.
 
@@ -307,19 +307,11 @@ stateDiagram-v2
 Based on our analysis of the codebase, we've identified the following technical areas for review and development:
 
 1.  **Reconciling Decimal Standards**:
-    *   *Finding*: The root `README.md` lists `Decimals: 6` under Tokenomics, but both the Rust kernel core ([lib.rs](file:///Users/trvorth/qanto/Protocol_Core/qanto-node/src/lib.rs)) and the solidity wrapped token ([WQNTO.sol](file:///Users/trvorth/qanto/SmartContracts/contracts/WQNTO.sol)) use a **9-decimal** standard (`1_000_000_000` base units).
-    *   *Action*: We recommend updating the developer documentation and marketing resources to reflect the 9-decimal standard to prevent integration issues with exchanges.
+    *   *Status*: The Rust kernel core, WQNTO contract, root README, deployment tooling, and maintained integration guide now use the canonical **9-decimal** standard (`1_000_000_000` base units). Historical 6-decimal examples must not be used.
 2.  **Zero-Knowledge Proof Implementation**:
-    *   *Finding*: The ZK verification function in `qanto-zk-sdk` contains a mock validation check:
-        ```rust
-        pub fn verify_bridge_transaction(proof: &ZKProof, inputs: &PublicInputs) -> Result<bool, &'static str> {
-            // MOCK: In production, this utilizes elliptic curve pairings (e.g. BLS12-381)
-            ...
-        }
-        ```
-    *   *Action*: Complete the implementation of the zero-knowledge verification pipeline by integrating the local patched `ark-relations` dependencies.
+    *   *Status*: The previous synthetic bridge verifier no longer authorizes claims; the verifier and native bridge claim path fail closed. A real, versioned verifier with stable verification keys and complete public-input binding remains unimplemented, so the bridge is not launchable.
 3.  **Local Node Synchronization Details**:
-    *   *Finding*: In `qantodag.rs`, block synchronization uses `FAST_SYNC_BATCH_SIZE = 5000`. If peer connections are dropped during bulk synchronization, the node may stall.
+    *   *Finding*: Reconnection backoff exists, but state-request handling and snapshot trust are not a complete production synchronization protocol. Current containment discards peer-supplied live UTXO state; deterministic block-based recovery remains a launch gate.
     *   *Action*: Implement an exponential backoff system for peer retries within `p2p_mesh.rs` to improve network stability during node sync.
 4.  **Green Mining Validation Framework**:
     *   *Finding*: SAGA's geospatial consistency scoring for carbon credits is simulated.

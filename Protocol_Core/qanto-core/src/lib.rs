@@ -31,6 +31,7 @@ pub mod docs;
 pub mod mining_celebration;
 #[cfg(test)]
 pub mod perf_bench;
+pub mod protocol_identity;
 pub mod qanto_compat;
 pub mod qanto_native_crypto;
 pub mod qanto_net;
@@ -44,6 +45,9 @@ pub mod storage_traits;
 pub use balance_stream::{BalanceBroadcaster, BalanceSubscribe, BalanceUpdate};
 pub use dag_aware_mempool::{
     DAGAwareMempool, DAGMempoolError, DAGTransaction, TransactionDependencyGraph,
+};
+pub use protocol_identity::{
+    account_address_v2, validate_account_address_v2, validator_id_v2, IdentityError,
 };
 pub use qanto_compat::QantoNativeCrypto;
 pub use qanto_native_crypto::QantoNativeCryptoError as QantoCompatError;

@@ -89,6 +89,10 @@ pub struct Config {
 
     // --- Blockchain Configuration ---
     pub genesis_validator: String,
+    /// Byte-exact QIP-002 genesis-manifest commitment. Node startup rejects
+    /// missing, malformed, all-zero, or mismatched values.
+    #[serde(default)]
+    pub genesis_manifest_hash: Option<String>,
     pub contract_address: String,
     pub target_block_time: u64, // Now in milliseconds
     pub difficulty: u64,
@@ -112,9 +116,9 @@ pub struct Config {
     // --- Adaptive Difficulty Configuration ---
     pub block_target_ms: Option<u64>, // Target block time in milliseconds
     pub solve_timeout_ms: Option<u64>, // Mining timeout in milliseconds
-    pub difficulty_max_adjust_pct: Option<u128>, // Maximum difficulty adjustment percentage
-    pub difficulty_smoothing_factor: Option<u128>, // Smoothing factor for difficulty adjustments
-    pub difficulty_min: Option<u64>,  // Minimum difficulty value
+    pub difficulty_max_adjust_pct: Option<u64>, // Maximum difficulty adjustment percentage (scaled 1e9)
+    pub difficulty_smoothing_factor: Option<u64>, // Smoothing factor for difficulty adjustments (scaled 1e9)
+    pub difficulty_min: Option<u64>,              // Minimum difficulty value
 
     // --- Memory & Profiling Configuration ---
     pub db_cache_bytes: Option<usize>, // Database cache size in bytes
@@ -237,6 +241,7 @@ impl Default for Config {
             chain_id: Some(1234),
             genesis_validator: "0000000000000000000000000000000000000000000000000000000000000000"
                 .to_string(),
+            genesis_manifest_hash: None,
             contract_address: "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"
                 .to_string(),
             target_block_time: 1000, // Evolved to 1 second for higher throughput
@@ -291,7 +296,7 @@ impl Default for Config {
             adaptive_batch_threshold: None,
             memory_soft_limit: None,
             memory_hard_limit: None,
-            dev_fee_rate: Some(100_000_000), // 10% dev fee (scaled 1e9)
+            dev_fee_rate: Some(0), // V2 allocations replace configurable coinbase dev fees
 
             // --- File & Database Paths ---
             data_dir: "./data".to_string(),
@@ -476,6 +481,7 @@ impl Config {
             network_id: "qanto-testnet".to_string(),
             genesis_validator: "ae527b01ffcb3baae0106fbb954acd184e02cb379a3319ff66d3cdfb4a63f9d3"
                 .to_string(),
+            genesis_manifest_hash: None,
             contract_address: "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"
                 .to_string(),
             target_block_time: 2000, // 2 seconds for free-tier stability
@@ -529,7 +535,7 @@ impl Config {
             adaptive_batch_threshold: Some(700_000_000), // 70% memory threshold for free-tier
             memory_soft_limit: Some(SOFT_MEMORY_LIMIT), // 8MB soft limit
             memory_hard_limit: Some(HARD_MEMORY_LIMIT), // 10MB hard limit
-            dev_fee_rate: Some(100_000_000), // 10% dev fee (scaled 1e9)
+            dev_fee_rate: Some(0),   // V2 allocations replace configurable coinbase dev fees
 
             // --- File & Database Paths ---
             data_dir: "./data".to_string(),
@@ -580,15 +586,16 @@ impl Config {
             network_id: "qanto-testnet".to_string(),
             genesis_validator: "0000000000000000000000000000000000000000000000000000000000000000"
                 .to_string(),
+            genesis_manifest_hash: None,
             contract_address: "4a8d50f24c5ffec79ac665d123a3bdecacaa95f9f26751385a5a925c647bd394"
                 .to_string(),
             target_block_time: 31, // 31ms for 32+ BPS (slightly above minimum for stability)
             difficulty: 1000,
             max_amount: 21_000_000_000,
-            use_gpu: true,                  // Enable GPU for high performance
-            zk_enabled: true,               // Enable ZK for security
-            mining_threads: thread_count,   // Use all available threads
-            mining_enabled: true,           // Enable mining for high performance
+            use_gpu: false, // Consensus-safe CPU oracle until accelerator conformance is proven
+            zk_enabled: true, // Enable ZK for security
+            mining_threads: thread_count, // Use all available threads
+            mining_enabled: true, // Enable mining for high performance
             adaptive_mining_enabled: false, // Disabled by default, can be enabled via CLI
 
             // --- Producer Configuration ---
@@ -633,7 +640,7 @@ impl Config {
             adaptive_batch_threshold: Some(800_000_000), // 80% memory threshold for adaptive batching
             memory_soft_limit: Some(memory_soft_limit),
             memory_hard_limit: Some(memory_hard_limit),
-            dev_fee_rate: Some(100_000_000), // 10% dev fee (scaled 1e9)
+            dev_fee_rate: Some(0), // V2 allocations replace configurable coinbase dev fees
 
             // --- File & Database Paths ---
             data_dir: "./data".to_string(),
@@ -668,6 +675,7 @@ impl Config {
     pub fn load(path: &str) -> Result<Self, ConfigError> {
         if !Path::new(path).exists() {
             let default_config = Config::default();
+            default_config.validate()?;
             default_config
                 .save(path)
                 .context("Failed to create a default configuration file.")
@@ -711,6 +719,9 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
+        crate::adaptive_mining::validate_adaptive_mining_activation(self.adaptive_mining_enabled)
+            .map_err(|reason| ConfigError::Validation(reason.to_string()))?;
+
         self.api_address.parse::<SocketAddr>().map_err(|_| {
             let mut error_msg = String::with_capacity(32 + self.api_address.len());
             error_msg.push_str("Invalid API address format: '");
@@ -774,23 +785,45 @@ impl Config {
             ));
         }
 
-        if self.genesis_validator.len() != 64 {
+        if self.genesis_validator.len() != 64
+            || !self
+                .genesis_validator
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            || hex::decode(&self.genesis_validator).is_err()
+        {
             return Err(ConfigError::Validation(
-                "Invalid genesis_validator address format".to_string(),
+                "genesis_validator must be canonical 64-character lowercase hexadecimal"
+                    .to_string(),
             ));
         }
-        hex::decode(&self.genesis_validator).unwrap_or_else(|_| {
-            panic!("Invalid hex in address");
-        });
 
-        if self.contract_address.len() != 64 {
+        if let Some(manifest_hash) = self.genesis_manifest_hash.as_deref() {
+            if manifest_hash.len() != 64
+                || manifest_hash.bytes().all(|byte| byte == b'0')
+                || !manifest_hash
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+                || hex::decode(manifest_hash).is_err()
+            {
+                return Err(ConfigError::Validation(
+                    "genesis_manifest_hash must be a nonzero canonical 32-byte lowercase hexadecimal commitment"
+                        .to_string(),
+                ));
+            }
+        }
+
+        if self.contract_address.len() != 64
+            || !self
+                .contract_address
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            || hex::decode(&self.contract_address).is_err()
+        {
             return Err(ConfigError::Validation(
-                "Invalid contract_address format".to_string(),
+                "contract_address must be canonical 64-character lowercase hexadecimal".to_string(),
             ));
         }
-        hex::decode(&self.contract_address).unwrap_or_else(|_| {
-            panic!("Invalid hex in address");
-        });
 
         // Validate mining configuration parameters (MICROSECOND PRECISION)
         if let Some(mining_interval) = self.mining_interval_ms {
@@ -1070,8 +1103,21 @@ mod tests {
 
         let err =
             Config::load(config_path.to_str().unwrap()).expect_err("unknown field should fail");
+        let err_str = err.to_string();
+        eprintln!("Full error string: {}", err_str); // DEBUG
         assert!(matches!(err, ConfigError::Load { .. }));
-        assert!(err.to_string().contains("unknown field `rogue_field`"));
+        // The error message format includes the source chain
+        // Check if the error string contains the unknown field
+        // If not in the main message, check the source chain
+        fn error_contains_field(e: &dyn std::error::Error, field: &str) -> bool {
+            e.to_string().contains(field)
+                || e.source().map_or(false, |s| error_contains_field(s, field))
+        }
+        assert!(
+            error_contains_field(&err, "unknown field `rogue_field`"),
+            "Expected 'unknown field `rogue_field`' in error or its sources: {}",
+            err_str
+        );
     }
 
     #[test]
@@ -1087,7 +1133,15 @@ mod tests {
         let err = Config::load(config_path.to_str().unwrap())
             .expect_err("unknown nested field should fail");
         assert!(matches!(err, ConfigError::Load { .. }));
-        assert!(err.to_string().contains("unknown field `rogue_nested`"));
+        fn error_contains_field(e: &dyn std::error::Error, field: &str) -> bool {
+            e.to_string().contains(field)
+                || e.source().map_or(false, |s| error_contains_field(s, field))
+        }
+        assert!(
+            error_contains_field(&err, "unknown field `rogue_nested`"),
+            "Expected 'unknown field `rogue_nested`' in error or its sources: {}",
+            err.to_string()
+        );
     }
 
     #[test]
@@ -1105,5 +1159,17 @@ mod tests {
         assert_eq!(loaded.api_address, original.api_address);
         assert_eq!(loaded.rpc.address, original.rpc.address);
         assert_eq!(loaded.mempool.capacity, original.mempool.capacity);
+    }
+
+    #[test]
+    fn rejects_adaptive_mining_before_node_startup() {
+        let mut config = Config::default();
+        config.adaptive_mining_enabled = true;
+
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::Validation(reason))
+                if reason == crate::adaptive_mining::ADAPTIVE_MINING_DISABLED_REASON
+        ));
     }
 }

@@ -1,8 +1,18 @@
-import "@nomicfoundation/hardhat-toolbox";
-import dotenv from "dotenv";
-dotenv.config({ path: "../.env" });
+import { configVariable, defineConfig } from "hardhat/config";
+import hardhatEthers from "@nomicfoundation/hardhat-ethers";
+import hardhatEthersChaiMatchers from "@nomicfoundation/hardhat-ethers-chai-matchers";
+import hardhatMocha from "@nomicfoundation/hardhat-mocha";
+import hardhatNetworkHelpers from "@nomicfoundation/hardhat-network-helpers";
 
-export default {
+export default defineConfig({
+  // Keep the test environment intentionally small: verification and Ignition
+  // plugins are not needed to compile or exercise this contract suite.
+  plugins: [
+    hardhatEthers,
+    hardhatEthersChaiMatchers,
+    hardhatMocha,
+    hardhatNetworkHelpers,
+  ],
   solidity: {
     version: "0.8.24",
     settings: {
@@ -15,9 +25,10 @@ export default {
   },
   networks: {
     qanto_testnet: {
-      url: "https://trvorth-qanto-testnet.hf.space/rpc",
-      chainId: 21313, // Standardize Qanto Testnet Chain ID
-      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []
+      type: "http",
+      url: configVariable("QANTO_TESTNET_RPC_URL"),
+      chainId: 1234, // Canonical Qanto testnet chain ID (0x4D2)
+      accounts: [configVariable("QANTO_DEPLOYER_PRIVATE_KEY")]
     }
   }
-};
+});

@@ -2,6 +2,8 @@
 pragma solidity ^0.8.24;
 
 contract QantoSwapFactory {
+    error AmmNotImplemented();
+
     address public feeTo;
     address public feeToSetter;
     mapping(address => mapping(address => address)) public getPair;
@@ -13,22 +15,13 @@ contract QantoSwapFactory {
         feeToSetter = _feeToSetter;
     }
 
-    function createPair(address tokenA, address tokenB) external returns (address pair) {
-        require(tokenA != tokenB, 'QantoSwap: IDENTICAL_ADDRESSES');
-        (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
-        require(token0 != address(0), 'QantoSwap: ZERO_ADDRESS');
-        require(getPair[token0][token1] == address(0), 'QantoSwap: PAIR_EXISTS');
-        
-        bytes memory bytecode = type(QantoSwapPair).creationCode;
-        bytes32 salt = keccak256(abi.encodePacked(token0, token1));
-        assembly {
-            pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
-        }
-        QantoSwapPair(pair).initialize(token0, token1);
-        getPair[token0][token1] = pair;
-        getPair[token1][token0] = pair;
-        allPairs.push(pair);
-        emit PairCreated(token0, token1, pair, allPairs.length);
+    function createPair(address tokenA, address tokenB) external pure returns (address pair) {
+        tokenA;
+        tokenB;
+        pair;
+        // The pair contract has no liquidity, reserve-update, LP-token, or
+        // invariant logic. Refuse deployment instead of creating a fund trap.
+        revert AmmNotImplemented();
     }
 }
 

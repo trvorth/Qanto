@@ -1,3 +1,5 @@
+#![allow(clippy::manual_saturating_arithmetic)]
+
 use crate::transaction::Transaction;
 use ahash::AHashMap as HashMap;
 use serde::{Deserialize, Serialize};

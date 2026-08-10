@@ -101,7 +101,18 @@ impl BlockProducer for SoloProducer {
                         &mut candidate_block,
                         &self.shutdown_token,
                     ).await {
-                        Ok((mined_block, mining_time)) => {
+                        Ok((mut mined_block, mining_time)) => {
+                            let (signing_key, _) = match self.wallet.get_keypair() {
+                                Ok(keypair) => keypair,
+                                Err(error) => {
+                                    error!("SOLO MINER: Cannot seal mined block: {}", error);
+                                    continue;
+                                }
+                            };
+                            if let Err(error) = mined_block.seal(&signing_key) {
+                                error!("SOLO MINER: Refusing unsealed mined block: {}", error);
+                                continue;
+                            }
                             mining_state.blocks_mined += 1;
                             if let Err(e) = self.process_mined_block(
                                 mined_block,
@@ -184,12 +195,13 @@ impl SoloProducer {
         utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
         miner: &Arc<Miner>,
     ) -> Result<crate::qantodag::QantoBlock, QantoDAGError> {
-        let miner_address = wallet.address();
+        let validator_id = wallet.validator_id();
         let chain_id_to_mine: u32 = 0;
 
         info!(
             "SOLO MINER: Creating candidate block for chain {} (rewards to validator: {})",
-            chain_id_to_mine, miner_address
+            chain_id_to_mine,
+            wallet.address()
         );
         let candidate_creation_start = std::time::Instant::now();
 
@@ -203,7 +215,7 @@ impl SoloProducer {
             .create_candidate_block(
                 &qr_signing_key,
                 &qr_public_key,
-                &miner_address,
+                &validator_id,
                 mempool,
                 utxos,
                 chain_id_to_mine,
@@ -518,11 +530,17 @@ mod tests {
     use crate::config::LoggingConfig;
     use crate::mempool::Mempool;
     use crate::miner::{Miner, MinerConfig};
-    use crate::qanto_storage::{QantoStorage, StorageConfig};
-    use crate::qantodag::{QantoDAG, QantoDagConfig, MAX_TRANSACTIONS_PER_BLOCK};
+    use crate::persistence::{genesis_id_key, GENESIS_BLOCK_ID_KEY};
+    use crate::post_quantum_crypto::{generate_pq_keypair, QantoPQPrivateKey};
+    use crate::qanto_storage::{QantoStorage, StorageConfig, WriteBatch};
+    use crate::qantodag::{
+        QantoBlock, QantoBlockCreationData, QantoDAG, QantoDagConfig, INITIAL_BLOCK_REWARD,
+        MAX_TRANSACTIONS_PER_BLOCK,
+    };
     use crate::saga::PalletSaga;
-    use crate::transaction::Transaction;
-    use crate::types::UTXO;
+    use crate::security_tests::create_valid_signed_tx;
+    use crate::transaction::{Input, Output};
+    use crate::types::{HomomorphicEncrypted, UTXO};
     use crate::wallet::Wallet;
 
     fn create_test_dag() -> Arc<QantoDAG> {
@@ -548,9 +566,45 @@ mod tests {
 
         let storage = QantoStorage::new(storage_config).expect("Failed to create storage");
 
+        // Pre-seed genesis block with valid PQ key to avoid dummy key signing failure
+        let (validator_pk, validator_sk) =
+            generate_pq_keypair(Some([42u8; 32])).expect("generate PQ keypair");
+        let genesis_timestamp = 1_717_250_400u64;
+        let genesis_data = QantoBlockCreationData {
+            validator_private_key: validator_sk,
+            chain_id: 0,
+            parents: vec![],
+            transactions: vec![],
+            difficulty: 1_000_000_000u64, // QANTO_SCALE = 1e9
+            validator: "test_validator".to_string(),
+            miner: "test_validator".to_string(),
+            timestamp: genesis_timestamp,
+            current_epoch: 0,
+            height: 0,
+            reward: INITIAL_BLOCK_REWARD,
+            nonce: 0,
+            effort: 0,
+            chain_work: crate::miner::U256::ZERO,
+            paillier_pk: HomomorphicEncrypted::generate_keypair().0,
+        };
+        let genesis_block = QantoBlock::new(genesis_data).expect("genesis block creation");
+        let genesis_id = genesis_block.id.clone();
+        let genesis_id_bytes = genesis_id.as_bytes().to_vec();
+        let genesis_block_bytes = serde_json::to_vec(&genesis_block).expect("genesis serialize");
+
+        // Store genesis block and markers
+        let mut batch = WriteBatch::new();
+        batch.put(genesis_id_bytes.clone(), genesis_block_bytes);
+        let gkey = genesis_id_key(0);
+        batch.put(gkey, genesis_id_bytes.clone());
+        batch.put(GENESIS_BLOCK_ID_KEY.to_vec(), genesis_id_bytes);
+        storage.write_batch(batch).expect("genesis write");
+        storage.flush().expect("genesis flush");
+        storage.sync().expect("genesis sync");
+
         let dag_config = QantoDagConfig {
             initial_validator: "test_validator".to_string(),
-            genesis_timestamp: 1_717_250_400,
+            genesis_timestamp,
             target_block_time: 1000,
             num_chains: 1,
             dev_fee_rate: 100_000_000,
@@ -572,32 +626,150 @@ mod tests {
             .expect("Failed to create DAG")
     }
 
+    fn create_test_dag_with_validator(validator_sk: QantoPQPrivateKey) -> Arc<QantoDAG> {
+        let storage_config = StorageConfig {
+            data_dir: std::env::temp_dir().join(format!(
+                "test_qanto_solo_producer_unit_{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            )),
+            max_file_size: 1024 * 1024,
+            compression_enabled: false,
+            encryption_enabled: false,
+            wal_enabled: false,
+            sync_writes: false,
+            cache_size: 1024,
+            compaction_threshold: 100,
+            max_open_files: 10,
+            ..StorageConfig::default()
+        };
+
+        let storage = QantoStorage::new(storage_config).expect("Failed to create storage");
+
+        // Use the provided validator private key for genesis
+        let validator_pk = validator_sk.public_key();
+        let genesis_timestamp = 1_717_250_400u64;
+        let genesis_data = QantoBlockCreationData {
+            validator_private_key: validator_sk,
+            chain_id: 0,
+            parents: vec![],
+            transactions: vec![],
+            difficulty: 1_000_000_000u64, // QANTO_SCALE = 1e9
+            validator: "test_validator".to_string(),
+            miner: "test_validator".to_string(),
+            timestamp: genesis_timestamp,
+            current_epoch: 0,
+            height: 0,
+            reward: INITIAL_BLOCK_REWARD,
+            nonce: 0,
+            effort: 0,
+            chain_work: crate::miner::U256::ZERO,
+            paillier_pk: HomomorphicEncrypted::generate_keypair().0,
+        };
+        let genesis_block = QantoBlock::new(genesis_data).expect("genesis block creation");
+        let genesis_id = genesis_block.id.clone();
+        let genesis_id_bytes = genesis_id.as_bytes().to_vec();
+        let genesis_block_bytes = serde_json::to_vec(&genesis_block).expect("genesis serialize");
+
+        // Store genesis block and markers
+        let mut batch = WriteBatch::new();
+        batch.put(genesis_id_bytes.clone(), genesis_block_bytes);
+        let gkey = genesis_id_key(0);
+        batch.put(gkey, genesis_id_bytes.clone());
+        batch.put(GENESIS_BLOCK_ID_KEY.to_vec(), genesis_id_bytes);
+        storage.write_batch(batch).expect("genesis write");
+        storage.flush().expect("genesis flush");
+        storage.sync().expect("genesis sync");
+
+        let dag_config = QantoDagConfig {
+            initial_validator: "test_validator".to_string(),
+            genesis_timestamp,
+            target_block_time: 1000,
+            num_chains: 1,
+            dev_fee_rate: 100_000_000,
+        };
+
+        let logging_config = LoggingConfig {
+            level: "info".to_string(),
+            enable_block_celebrations: false,
+            celebration_log_level: "info".to_string(),
+            celebration_throttle_per_min: Some(10),
+        };
+
+        let saga_pallet = Arc::new(PalletSaga::new(
+            #[cfg(feature = "infinite-strata")]
+            None,
+        ));
+
+        QantoDAG::new(dag_config, saga_pallet, storage, logging_config)
+            .expect("Failed to create DAG")
+    }
     #[tokio::test]
     async fn test_create_mining_candidate_populates_transactions() {
-        let dag_arc = create_test_dag();
+        let (validator_pk, validator_sk) =
+            generate_pq_keypair(Some([42u8; 32])).expect("generate PQ keypair");
+        let dag_arc = create_test_dag_with_validator(validator_sk.clone());
         let wallet_arc = Arc::new(Wallet::new().expect("Failed to create wallet"));
         let miner_address = wallet_arc.address();
+        let validator_id = wallet_arc.validator_id();
 
         // Satisfy validator preconditions
-        dag_arc.add_validator(miner_address.clone(), 1000).await;
+        dag_arc
+            .add_test_validator(validator_id.clone(), 50 * crate::Q_SCALE)
+            .await
+            .expect("register test validator");
 
         // Initialize mempool and UTXOs
         let mempool_arc = Arc::new(RwLock::new(Mempool::new(300, 1024 * 1024, 1000)));
         let utxos_arc: Arc<RwLock<HashMap<String, UTXO>>> = Arc::new(RwLock::new(HashMap::new()));
 
-        // Seed mempool with deterministic dummy transactions and track their IDs
+        // Seed the mempool with real, input-bearing signed transfers and track
+        // the UTXOs that candidate validation must read.
         let seed_tx_count = 3usize;
         let mut seeded_ids: Vec<String> = Vec::new();
-        for _ in 0..seed_tx_count {
-            let tx = Transaction::new_dummy();
+        let mut seeded_utxos = HashMap::new();
+        for index in 0..seed_tx_count {
+            let parent_id = format!("candidate_parent_{index}");
+            let input = Input {
+                tx_id: parent_id.clone(),
+                output_index: 0,
+            };
+            let output = Output {
+                address: "0x2222222222222222222222222222222222222222".to_string(),
+                amount: 100,
+                homomorphic_encrypted: HomomorphicEncrypted::default(),
+            };
+            let tx = create_valid_signed_tx(
+                &validator_sk,
+                &validator_pk,
+                1234,
+                vec![input],
+                vec![output],
+                10,
+            );
+            let sender = tx.sender.clone();
             seeded_ids.push(tx.id.clone());
+            seeded_utxos.insert(
+                format!("{parent_id}_0"),
+                UTXO {
+                    address: sender,
+                    amount: 200,
+                    tx_id: parent_id,
+                    output_index: 0,
+                    explorer_link: String::new(),
+                },
+            );
             mempool_arc
                 .write()
                 .await
-                .add_transaction(tx, &HashMap::new(), &dag_arc)
+                .add_transaction(tx, &seeded_utxos, &dag_arc)
                 .await
                 .expect("Failed to add transaction to mempool");
         }
+        *utxos_arc.write().await = seeded_utxos;
 
         // Create miner
         let miner_config = MinerConfig {
@@ -635,7 +807,8 @@ mod tests {
 
         // Assert candidate block structure and that seeded transactions are included
         assert_eq!(candidate.chain_id, 0);
-        assert_eq!(candidate.validator, miner_address);
+        assert_eq!(candidate.validator, validator_id);
+        assert_eq!(candidate.miner, candidate.validator);
         assert!(!candidate.parents.is_empty());
         assert!(!candidate.transactions.is_empty());
         assert!(candidate.transactions.len() <= MAX_TRANSACTIONS_PER_BLOCK);

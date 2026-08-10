@@ -23,7 +23,12 @@ async fn load_confirmed_balance_base_units(
         address.to_lowercase()
     };
 
-    if let Some(cached) = context.node.dag.account_state_cache.get_balance(&normalized_address) {
+    if let Some(cached) = context
+        .node
+        .dag
+        .account_state_cache
+        .get_balance(&normalized_address)
+    {
         return Ok(cached);
     }
 

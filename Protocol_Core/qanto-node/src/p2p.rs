@@ -53,7 +53,7 @@ use std::fs;
 use rand::Rng;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::{
     sync::{mpsc, RwLock},
@@ -71,6 +71,7 @@ const RECONNECT_MAX_DELAY_SECS: u64 = 300; // 5 minutes cap
 const RECONNECT_MULTIPLIER: f64 = 1.5;
 const RECONNECT_JITTER_FACTOR: f64 = 0.25; // ±25% jitter
 const KEEPALIVE_INTERVAL_SECS: u64 = 30; // WSS keep-alive ping interval
+const BLACKLIST_TTL_SECS: u64 = 86400; // 24-hour blacklist expiry
 
 lazy_static::lazy_static! {
     static ref MESSAGES_SENT: IntCounter = register_int_counter!("p2p_messages_sent_total", "Total messages sent").unwrap();
@@ -351,6 +352,7 @@ pub(crate) fn convert_proto_tx(
     let mut metadata: HashMap<String, String> = ptx.metadata.into_iter().collect();
     let transaction_kind = match metadata.get("transaction_kind") {
         Some(kind_str) => match kind_str.as_str() {
+            "COINBASE" => crate::transaction::TransactionKind::Coinbase,
             "STAKE" => crate::transaction::TransactionKind::Stake,
             "UNSTAKE" => crate::transaction::TransactionKind::Unstake,
             "DELEGATE" => crate::transaction::TransactionKind::Delegate,
@@ -360,9 +362,10 @@ pub(crate) fn convert_proto_tx(
             "BRIDGEOBSERVE" => crate::transaction::TransactionKind::BridgeObserve,
             "BRIDGECLAIM" => crate::transaction::TransactionKind::BridgeClaim,
             "AIRDROPCLAIM" => crate::transaction::TransactionKind::AirdropClaim,
-            _ => crate::transaction::TransactionKind::Transfer,
+            "TRANSFER" => crate::transaction::TransactionKind::Transfer,
+            unknown => return Err(format!("Unknown transaction kind: {unknown}")),
         },
-        None => crate::transaction::TransactionKind::Transfer,
+        None => return Err("Missing explicit transaction kind".to_string()),
     };
     metadata.remove("transaction_kind");
 
@@ -776,7 +779,7 @@ impl P2PServer {
         // query every KEEPALIVE_INTERVAL_SECS to exercise TCP/WSS connections
         // and simultaneously discover new peers.
         let mut keepalive_ticker = interval(Duration::from_secs(KEEPALIVE_INTERVAL_SECS));
-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
+        let blacklist = Arc::new(RwLock::new(HashMap::new()));
 
         let rate_limiters = GossipRateLimiters {
             block: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(10u32)))),
@@ -914,7 +917,7 @@ impl P2PServer {
                 message,
             })) => {
                 // Route gossip message through the static handler with fresh rate limiters
-                let blacklist = Arc::new(RwLock::new(HashSet::new()));
+                let blacklist = Arc::new(RwLock::new(HashMap::new()));
                 let rate_limiters = GossipRateLimiters {
                     block: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(10u32)))),
                     tx: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(50u32)))),
@@ -1210,7 +1213,7 @@ impl P2PServer {
     async fn static_process_gossip_message(
         message: gossipsub::Message,
         source: PeerId,
-        blacklist: Arc<RwLock<HashSet<PeerId>>>,
+        blacklist: Arc<RwLock<HashMap<PeerId, Instant>>>,
         p2p_command_sender: mpsc::Sender<P2PCommand>,
         rate_limiters: GossipRateLimiters,
     ) {
@@ -1220,7 +1223,13 @@ impl P2PServer {
             message.topic.as_str()
         );
 
-        if blacklist.read().await.contains(&source) {
+        let blacklisted = {
+            let mut bl = blacklist.write().await;
+            // Expire stale entries using BLACKLIST_TTL_SECS
+            bl.retain(|_, ts| ts.elapsed() < Duration::from_secs(BLACKLIST_TTL_SECS));
+            bl.contains_key(&source)
+        };
+        if blacklisted {
             warn!("Ignoring message from blacklisted peer: {}", source);
             return;
         }
@@ -1241,7 +1250,7 @@ impl P2PServer {
 
         if rate_limiter_to_use.check_key(&source).is_err() {
             let mut blacklist_writer = blacklist.write().await;
-            if blacklist_writer.insert(source) {
+            if blacklist_writer.insert(source, Instant::now()).is_none() {
                 warn!("Peer {} exceeded rate limit. Blacklisting.", source);
                 PEERS_BLACKLISTED.inc();
             }
@@ -1274,7 +1283,7 @@ impl P2PServer {
                 message.topic.as_str()
             );
             let mut blacklist_writer = blacklist.write().await;
-            if blacklist_writer.insert(source) {
+            if blacklist_writer.insert(source, Instant::now()).is_none() {
                 warn!("Peer {} failed HMAC check. Blacklisting.", source);
                 PEERS_BLACKLISTED.inc();
             }
@@ -1291,7 +1300,7 @@ impl P2PServer {
                     message.topic.as_str()
                 );
                 let mut blacklist_writer = blacklist.write().await;
-                if blacklist_writer.insert(source) {
+                if blacklist_writer.insert(source, Instant::now()).is_none() {
                     warn!("Peer {} failed signature check. Blacklisting.", source);
                     PEERS_BLACKLISTED.inc();
                 }
@@ -1309,7 +1318,7 @@ impl P2PServer {
                 message.topic.as_str()
             );
             let mut blacklist_writer = blacklist.write().await;
-            if blacklist_writer.insert(source) {
+            if blacklist_writer.insert(source, Instant::now()).is_none() {
                 warn!("Peer {} failed signature check. Blacklisting.", source);
                 PEERS_BLACKLISTED.inc();
             }
@@ -1726,107 +1735,36 @@ pub(crate) fn convert_internal_block_to_proto(
         .map(convert_internal_tx_to_proto)
         .collect::<Vec<_>>();
 
-    let cross_chain_references = b
-        .cross_chain_references
-        .iter()
-        .map(|(cid, bid)| proto::CrossChainReference {
-            chain_id: *cid,
-            block_id: bid.clone(),
-        })
-        .collect::<Vec<_>>();
-
-    let cross_chain_swaps = b
-        .cross_chain_swaps
-        .iter()
-        .map(|s| proto::CrossChainSwap {
-            swap_id: s.swap_id.clone(),
-            source_chain: s.source_chain,
-            target_chain: s.target_chain,
-            amount: format_monetary_value(s.amount),
-            initiator: s.initiator.clone(),
-            responder: s.responder.clone(),
-            timelock: s.timelock,
-            state: match s.state {
-                crate::qantodag::SwapState::Initiated => proto::SwapState::Initiated as i32,
-                crate::qantodag::SwapState::Redeemed => proto::SwapState::Redeemed as i32,
-                crate::qantodag::SwapState::Refunded => proto::SwapState::Refunded as i32,
-            },
-            secret_hash: s.secret_hash.clone(),
-            secret: s.secret.clone(),
-        })
-        .collect::<Vec<_>>();
-
     let signature = Some(proto::QuantumResistantSignature {
         signer_public_key: b.signature.signer_public_key.clone(),
         signature: b.signature.signature.clone(),
     });
-
-    let homomorphic_encrypted = b
-        .homomorphic_encrypted
-        .iter()
-        .map(|he| proto::HomomorphicEncrypted {
-            ciphertext: he.ciphertext.clone(),
-            public_key: he.public_key.clone(),
-        })
-        .collect::<Vec<_>>();
-
-    let smart_contracts = b
-        .smart_contracts
-        .iter()
-        .map(|sc| proto::SmartContract {
-            contract_id: sc.contract_id.clone(),
-            code: sc.code.clone(),
-            storage: sc
-                .storage
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect(),
-            owner: sc.owner.clone(),
-            gas_balance: format_monetary_value(sc.gas_balance),
-        })
-        .collect::<Vec<_>>();
-
-    let carbon_credentials = b
-        .carbon_credentials
-        .iter()
-        .map(|cc| proto::CarbonOffsetCredential {
-            id: cc.id.clone(),
-            issuer_id: cc.issuer_id.clone(),
-            beneficiary_node: cc.beneficiary_node.clone(),
-            tonnes_co2_sequestered: (cc.tonnes_co2_sequestered as f64) / crate::Q_SCALE as f64,
-            project_id: cc.project_id.clone(),
-            vintage_year: cc.vintage_year,
-            verification_signature: cc.verification_signature.clone(),
-            additionality_proof_hash: cc.additionality_proof_hash.clone(),
-            issuer_reputation_score: (cc.issuer_reputation_score as f64) / crate::Q_SCALE as f64,
-            geospatial_consistency_score: (cc.geospatial_consistency_score as f64)
-                / crate::Q_SCALE as f64,
-        })
-        .collect::<Vec<_>>();
 
     proto::QantoBlock {
         chain_id: b.chain_id,
         id: b.id.clone(),
         parents: b.parents.clone(),
         transactions,
-        difficulty: b.difficulty as f64,
+        difficulty: b.difficulty,
         validator: b.validator.clone(),
         miner: b.miner.clone(),
         nonce: b.nonce,
         timestamp: b.timestamp,
         height: b.height,
         reward: format_monetary_value(b.reward),
-        effort: b.effort as u64,
-        cross_chain_references,
-        cross_chain_swaps,
+        effort: b.effort.to_string(),
+        cross_chain_references: vec![],
+        cross_chain_swaps: vec![],
         merkle_root: b.merkle_root.clone(),
         signature,
-        homomorphic_encrypted,
-        smart_contracts,
-        carbon_credentials,
+        homomorphic_encrypted: vec![],
+        smart_contracts: vec![],
+        carbon_credentials: vec![],
         epoch: b.epoch,
-        finality_proof: b.finality_proof.clone(),
-        reservation_miner_id: b.reservation_miner_id.clone(),
+        finality_proof: None,
+        // Local reservation ownership is never consensus or wire state.
+        reservation_miner_id: None,
+        protocol_version: u32::from(b.protocol_version),
     }
 }
 
@@ -1835,6 +1773,27 @@ pub(crate) fn convert_proto_block(
 ) -> Result<crate::qantodag::QantoBlock, String> {
     use crate::qantodag::{CrossChainSwap, SmartContract, SwapState};
     use crate::types::{HomomorphicEncrypted, QuantumResistantSignature};
+
+    if pb.protocol_version != u32::from(crate::qantodag::QANTO_BLOCK_PROTOCOL_VERSION_V2) {
+        return Err(format!(
+            "Unsupported block protocol version {}; expected {}",
+            pb.protocol_version,
+            crate::qantodag::QANTO_BLOCK_PROTOCOL_VERSION_V2
+        ));
+    }
+    if !pb.cross_chain_references.is_empty()
+        || !pb.cross_chain_swaps.is_empty()
+        || !pb.homomorphic_encrypted.is_empty()
+        || !pb.smart_contracts.is_empty()
+        || !pb.carbon_credentials.is_empty()
+        || pb.finality_proof.is_some()
+        || pb.reservation_miner_id.is_some()
+    {
+        return Err(
+            "Unsupported V2 block extension or local reservation metadata present on wire"
+                .to_string(),
+        );
+    }
 
     // Transactions
     let transactions = pb
@@ -1921,18 +1880,20 @@ pub(crate) fn convert_proto_block(
         .collect::<Vec<_>>();
 
     Ok(crate::qantodag::QantoBlock {
+        protocol_version: u16::try_from(pb.protocol_version)
+            .map_err(|_| "Block protocol version does not fit u16".to_string())?,
         chain_id: pb.chain_id,
         id: pb.id,
         parents: pb.parents,
         transactions,
-        difficulty: pb.difficulty as u64,
+        difficulty: pb.difficulty,
         validator: pb.validator,
         miner: pb.miner,
         nonce: pb.nonce,
         timestamp: pb.timestamp,
         height: pb.height,
         reward: parse_monetary_value("block.reward", &pb.reward)?,
-        effort: pb.effort as u128,
+        effort: parse_consensus_u128("block.effort", &pb.effort)?,
         cross_chain_references,
         cross_chain_swaps,
         merkle_root: pb.merkle_root,
@@ -1941,7 +1902,8 @@ pub(crate) fn convert_proto_block(
         smart_contracts,
         carbon_credentials,
         epoch: pb.epoch,
-        reservation_miner_id: pb.reservation_miner_id,
+        chain_work: crate::miner::U256::ZERO,
+        reservation_miner_id: None,
         finality_proof: pb.finality_proof,
     })
 }
@@ -1954,6 +1916,20 @@ fn parse_monetary_value(field: &str, value: &str) -> Result<u128, String> {
     value
         .parse::<u128>()
         .map_err(|err| format!("Invalid monetary value for {field}: '{value}' ({err})"))
+}
+
+fn parse_consensus_u128(field: &str, value: &str) -> Result<u128, String> {
+    if value.is_empty()
+        || (value.len() > 1 && value.starts_with('0'))
+        || !value.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return Err(format!(
+            "Invalid canonical unsigned integer for {field}: '{value}'"
+        ));
+    }
+    value
+        .parse::<u128>()
+        .map_err(|error| format!("Invalid unsigned integer for {field}: '{value}' ({error})"))
 }
 
 fn convert_proto_credential(
@@ -2066,7 +2042,7 @@ mod tests {
         let bytes = msg.encode_to_vec();
         let message = make_message("/qanto/transactions/1", bytes);
         let source = gen_peer_id();
-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
+        let blacklist = Arc::new(RwLock::new(HashMap::new()));
         let rate_limiters = make_default_rate_limiters();
         let (cmd_tx, mut cmd_rx) = mpsc::channel(1);
 
@@ -2084,7 +2060,7 @@ mod tests {
             P2PCommand::BroadcastTransaction(t) => assert_eq!(t.id, tx.id),
             _ => panic!("unexpected command variant"),
         }
-        assert!(!blacklist.read().await.contains(&source));
+        assert!(!blacklist.read().await.contains_key(&source));
         if let Some(s) = orig_secret {
             std::env::set_var("HMAC_SECRET", s);
         } else {
@@ -2118,7 +2094,7 @@ mod tests {
 
         let message = make_message("/qanto/transactions/1", bytes);
         let source = gen_peer_id();
-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
+        let blacklist = Arc::new(RwLock::new(HashMap::new()));
         let rate_limiters = make_default_rate_limiters();
         let (cmd_tx, mut cmd_rx) = mpsc::channel(1);
 
@@ -2134,7 +2110,7 @@ mod tests {
         )
         .await;
 
-        assert!(blacklist.read().await.contains(&source));
+        assert!(blacklist.read().await.contains_key(&source));
         assert!(cmd_rx.try_recv().is_err());
         if let Some(s) = orig_secret {
             std::env::set_var("HMAC_SECRET", s);
@@ -2175,7 +2151,7 @@ mod tests {
         let bytes = msg_tampered.encode_to_vec();
         let message = make_message("/qanto/transactions/1", bytes);
         let source = gen_peer_id();
-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
+        let blacklist = Arc::new(RwLock::new(HashMap::new()));
         let rate_limiters = make_default_rate_limiters();
         let (cmd_tx, mut cmd_rx) = mpsc::channel(1);
 
@@ -2188,7 +2164,7 @@ mod tests {
         )
         .await;
 
-        assert!(blacklist.read().await.contains(&source));
+        assert!(blacklist.read().await.contains_key(&source));
         assert!(cmd_rx.try_recv().is_err());
         if let Some(s) = orig_secret {
             std::env::set_var("HMAC_SECRET", s);
@@ -2235,7 +2211,7 @@ mod tests {
         );
 
         let source = gen_peer_id();
-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
+        let blacklist = Arc::new(RwLock::new(HashMap::new()));
         let rate_limiters = make_rate_limiters_tx_1();
         let (cmd_tx, mut cmd_rx) = mpsc::channel(2);
 
@@ -2270,7 +2246,7 @@ mod tests {
         )
         .await;
 
-        assert!(blacklist.read().await.contains(&source));
+        assert!(blacklist.read().await.contains_key(&source));
         if let Some(s) = orig_secret {
             std::env::set_var("HMAC_SECRET", s);
         } else {

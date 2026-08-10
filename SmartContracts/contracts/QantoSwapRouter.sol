@@ -4,10 +4,14 @@ pragma solidity ^0.8.24;
 interface IQantoSwapFactory { function getPair(address tokenA, address tokenB) external view returns (address pair); }
 
 contract QantoSwapRouter {
+    error AmmNotImplemented();
+
     address public immutable factory;
     address public immutable WQNTO;
 
     constructor(address _factory, address _WQNTO) {
+        require(_factory != address(0), 'QantoSwap: ZERO_FACTORY');
+        require(_WQNTO != address(0), 'QantoSwap: ZERO_WQNTO');
         factory = _factory;
         WQNTO = _WQNTO;
     }
@@ -22,10 +26,14 @@ contract QantoSwapRouter {
         address[] calldata path,
         address to,
         uint deadline
-    ) external returns (uint[] memory amounts) {
-        // High-throughput 10M TPS routing logic stub
+    ) external view returns (uint[] memory) {
         require(path.length >= 2, 'QantoSwap: INVALID_PATH');
         require(deadline >= block.timestamp, 'QantoSwap: EXPIRED');
-        // Logic handled by Qanto Layer-0 Core
+        amountIn;
+        amountOutMin;
+        to;
+        // Never report a successful swap until transfers, reserves, LP shares,
+        // slippage, and the constant-product invariant are fully implemented.
+        revert AmmNotImplemented();
     }
 }

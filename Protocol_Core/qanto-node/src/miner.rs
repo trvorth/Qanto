@@ -54,6 +54,8 @@ pub enum MiningError {
     KeyConversion,
     #[error("Mining operation timed out or was cancelled without finding a solution")]
     TimeoutOrCancelled,
+    #[error("GPU mining is disabled until every backend passes CPU-oracle consensus vectors")]
+    UnsafeAcceleratorDisabled,
 }
 
 /// Result type for mining operations that can either find a nonce or be cancelled
@@ -158,12 +160,14 @@ impl Clone for Miner {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-struct U256([u64; 4]);
+#[derive(
+    Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, serde::Serialize, serde::Deserialize,
+)]
+pub struct U256([u64; 4]);
 
 impl U256 {
-    const ZERO: U256 = U256([0, 0, 0, 0]);
-    const MAX: U256 = U256([u64::MAX, u64::MAX, u64::MAX, u64::MAX]);
+    pub const ZERO: U256 = U256([0, 0, 0, 0]);
+    pub const MAX: U256 = U256([u64::MAX, u64::MAX, u64::MAX, u64::MAX]);
 
     fn to_big_endian(self, bytes: &mut [u8; 32]) {
         bytes[0..8].copy_from_slice(&self.0[3].to_be_bytes());
@@ -351,37 +355,18 @@ impl Miner {
             return Err(MiningError::InvalidAddress(error_msg).into());
         }
 
-        let compiled_gpu = cfg!(feature = "gpu");
-        let effective_use_gpu = config.use_gpu && compiled_gpu;
-        // Explicit startup logs for GPU configuration scenarios
-        if compiled_gpu && config.use_gpu {
-            info!(target = "qanto::miner", "GPU feature compiled and 'gpu_enabled' is true in config.toml. Activating GPU miner.");
-        } else if compiled_gpu && !config.use_gpu {
-            info!(target = "qanto::miner", "GPU feature is compiled, but 'gpu_enabled' is false in config.toml. Defaulting to CPU miner.");
-        } else if !compiled_gpu && config.use_gpu {
-            warn!(target = "qanto::miner", "'gpu_enabled = true' in config.toml, but the node was not compiled with the 'gpu' feature. Defaulting to CPU miner. To enable GPU support, please re-compile using: cargo build --release --features gpu");
+        if config.use_gpu {
+            return Err(MiningError::UnsafeAcceleratorDisabled.into());
         }
+        let effective_use_gpu = false;
         let effective_zk_enabled = config.zk_enabled && cfg!(feature = "zk");
         if config.zk_enabled && !effective_zk_enabled {
             warn!("ZK proofs enabled in config but 'zk' feature is not compiled. Disabling ZK for this session.");
         }
 
-        // Configure QanHash miner with optimal settings for high throughput
-        // Try GPU first if available and enabled, then fallback to CPU
-        let mining_device = if effective_use_gpu {
-            #[cfg(feature = "gpu")]
-            {
-                info!("GPU feature enabled; selecting Auto device (Metal/CUDA/OpenCL).");
-                MiningDevice::Auto
-            }
-            #[cfg(not(feature = "gpu"))]
-            {
-                warn!("GPU mining requested but 'gpu' feature not compiled, falling back to CPU");
-                MiningDevice::Cpu
-            }
-        } else {
-            MiningDevice::Cpu
-        };
+        // Consensus containment: accelerators are untrusted until every
+        // candidate is CPU-recomputed and cross-backend KATs pass.
+        let mining_device = MiningDevice::Cpu;
 
         // Determine effective thread count: default to (CPU cores - 1) if config.threads == 0
         let default_threads = num_cpus::get().saturating_sub(1).max(1);
@@ -438,6 +423,7 @@ impl Miner {
     /// This is the primary mining function called by the node's mining loop.
     /// It modifies the block in-place with the found nonce and effort.
     pub fn solve_pow(&self, block_template: &mut QantoBlock) -> Result<(), MiningError> {
+        block_template.ensure_unsealed_candidate()?;
         let mut solve_start = Instant::now();
         let adaptive_timeout = Duration::from_secs(self.target_block_time * 2);
         self.log_mining_start(block_template);
@@ -573,23 +559,7 @@ impl Miner {
             block_template.difficulty
         );
 
-        // Construct canonical header data (without nonce) to compute header hash
-        // Must match QantoBlock::hash_for_pow header serialization exactly.
-        let mut header_data = Vec::with_capacity(280 + (block_template.parents.len() * 64));
-        header_data.extend_from_slice(&block_template.timestamp.to_be_bytes());
-        header_data.extend_from_slice(&block_template.chain_id.to_be_bytes());
-        header_data.extend_from_slice(&block_template.height.to_be_bytes());
-        header_data.extend_from_slice(&block_template.difficulty.to_be_bytes());
-        header_data.extend_from_slice(block_template.merkle_root.as_bytes());
-        header_data.extend_from_slice(block_template.validator.as_bytes());
-        header_data.extend_from_slice(block_template.miner.as_bytes());
-        for parent in &block_template.parents {
-            header_data.extend_from_slice(parent.as_bytes());
-        }
-
-        // Compute header hash using qanto_hash
-        let header_hash_qanto = my_blockchain::qanto_standalone::hash::qanto_hash(&header_data);
-        let header_hash = *header_hash_qanto.as_bytes();
+        let header_hash = block_template.pow_header_hash()?;
 
         let target = self.convert_to_target_array(target_hash_bytes);
 
@@ -684,6 +654,7 @@ impl Miner {
         block_template: &mut QantoBlock,
         cancellation_token: tokio_util::sync::CancellationToken,
     ) -> Result<(), MiningError> {
+        block_template.ensure_unsealed_candidate()?;
         // Immediate cancellation check for pre-cancelled tokens
         if cancellation_token.is_cancelled() {
             debug!("Mining cancelled before starting - token was pre-cancelled");
@@ -1569,6 +1540,7 @@ impl Miner {
         block_template: &mut QantoBlock,
         cancellation_token: tokio_util::sync::CancellationToken,
     ) -> Result<(), MiningError> {
+        block_template.ensure_unsealed_candidate()?;
         // Check for shutdown before starting
         if self.should_stop_for_shutdown() {
             return Err(MiningError::TimeoutOrCancelled);
@@ -1807,20 +1779,9 @@ pub async fn mine_cpu_with_dag_inner(
     let nonce_range_per_thread = u64::MAX / thread_count as u64;
     let base_nonce = get_nonce_with_deterministic_fallback();
 
-    // Precompute canonical header hash (nonce-independent) to avoid redundant work per nonce
-    // Must exactly match QantoBlock::hash_for_pow header serialization.
-    let mut header_data = Vec::with_capacity(280 + (block_template.parents.len() * 64));
-    header_data.extend_from_slice(&block_template.timestamp.to_be_bytes());
-    header_data.extend_from_slice(&block_template.chain_id.to_be_bytes());
-    header_data.extend_from_slice(&block_template.height.to_be_bytes());
-    header_data.extend_from_slice(&block_template.difficulty.to_be_bytes());
-    header_data.extend_from_slice(block_template.merkle_root.as_bytes());
-    header_data.extend_from_slice(block_template.validator.as_bytes());
-    header_data.extend_from_slice(block_template.miner.as_bytes());
-    for parent in &block_template.parents {
-        header_data.extend_from_slice(parent.as_bytes());
-    }
-    let precomputed_header_hash = my_blockchain::qanto_standalone::hash::qanto_hash(&header_data);
+    // Precompute the exact V2 BlockCore digest used by validation.
+    let precomputed_header_hash =
+        my_blockchain::qanto_standalone::hash::QantoHash::new(block_template.pow_header_hash()?);
 
     // Spawn parallel mining threads using mine_with_dag
     for thread_id in 0..thread_count {

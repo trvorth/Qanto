@@ -36,7 +36,7 @@ data:
     adaptive_batch_threshold = 700000000
     memory_soft_limit = 8388608
     memory_hard_limit = 10485760
-    dev_fee_rate = 100000000
+    dev_fee_rate = 0
     data_dir = "/opt/qanto/data"
     db_path = "/opt/qanto/data/qanto.db"
     wallet_path = "/opt/qanto/keys/wallet.key"

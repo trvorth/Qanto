@@ -64,7 +64,11 @@ pub struct BridgeClaimExecution {
 }
 
 impl BridgeMintRequest {
-    fn normalize_hex_field(field: &str, value: &str, expected_len: Option<usize>) -> Result<String, String> {
+    fn normalize_hex_field(
+        field: &str,
+        value: &str,
+        expected_len: Option<usize>,
+    ) -> Result<String, String> {
         let trimmed = value.trim();
         if trimmed.is_empty() {
             return Err(format!("{field} cannot be empty"));
@@ -128,9 +132,7 @@ impl BridgeMintRequest {
             .collect()
     }
 
-    fn build_transaction(
-        &self,
-    ) -> Result<(crate::transaction::Transaction, String, u128), String> {
+    fn build_transaction(&self) -> Result<(crate::transaction::Transaction, String, u128), String> {
         let source_tx_hash =
             Self::normalize_hex_field("source_tx_hash", &self.source_tx_hash, Some(64))?;
         let recipient = self.normalize_recipient()?;
@@ -147,12 +149,9 @@ impl BridgeMintRequest {
             return Err("source_chain cannot be empty".to_string());
         }
         let relayer_signatures = self.normalized_signatures()?;
-        let merkle_proof =
-            Self::normalize_hex_field("merkle_proof", &self.merkle_proof, None)?;
-        let receipt_proof =
-            Self::normalize_hex_field("receipt_proof", &self.receipt_proof, None)?;
-        let block_header =
-            Self::normalize_hex_field("block_header", &self.block_header, None)?;
+        let merkle_proof = Self::normalize_hex_field("merkle_proof", &self.merkle_proof, None)?;
+        let receipt_proof = Self::normalize_hex_field("receipt_proof", &self.receipt_proof, None)?;
+        let block_header = Self::normalize_hex_field("block_header", &self.block_header, None)?;
 
         let mut metadata = HashMap::new();
         metadata.insert("bridge_source_tx_hash".to_string(), source_tx_hash.clone());
@@ -203,8 +202,8 @@ impl BridgeMintRequest {
             },
             fee_breakdown: None,
             transaction_kind: crate::transaction::TransactionKind::BridgeClaim,
-            chain_id: crate::transaction::GLOBAL_CHAIN_ID
-                .load(std::sync::atomic::Ordering::Relaxed) as u32,
+            chain_id: crate::transaction::GLOBAL_CHAIN_ID.load(std::sync::atomic::Ordering::Relaxed)
+                as u32,
         };
 
         Ok((tx, recipient, amount))

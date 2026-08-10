@@ -1,8 +1,9 @@
 {
   "projectInfo": {
+    "status": "DRAFT_DO_NOT_SUBMIT",
     "name": "QANTO",
     "symbol": "QNTO",
-    "description": "The Ultimate Layer-0 Ecosystem Synchronization & QA Protocol. Fully autonomous, AI-governed blockchain infrastructure with post-quantum security.",
+    "description": "Pre-release Layer-0 protocol research prototype. Public-network, finality, bridge, performance, and end-to-end post-quantum claims are not yet approved.",
     "website": "https://qanto.org",
     "documentation": "https://docs.qanto.org",
     "github": "https://github.com/trvorth/Qanto",
@@ -13,9 +14,10 @@
     "maxSupply": 21000000000,
     "maxSupplyFormatted": "21,000,000,000 QNTO",
     "emissionStrategy": {
-      "type": "Deflationary with asymptotic halving",
-      "initialBlockReward": 2.5,
-      "initialBlockRewardFormatted": "2.5 QNTO",
+      "status": "UNRESOLVED_DO_NOT_INTEGRATE",
+      "type": "Intended integer asymptotic schedule; not the current safe live consensus path",
+      "initialBlockReward": null,
+      "initialBlockRewardFormatted": null,
       "halvingPeriodSeconds": 8400000,
       "halvingPeriodHumanReadable": "~97.2 days",
       "halvingFactor": 0.999,
@@ -24,52 +26,22 @@
     }
   },
   "networkData": {
-    "chainId": "0x1234",
-    "chainIdDecimal": 4660,
+    "chainId": "0x4D2",
+    "chainIdDecimal": 1234,
     "networkName": "QANTO Testnet",
     "nativeCurrency": {
       "name": "QNTO",
       "symbol": "QNTO",
       "decimals": 9
     },
-    "rpcEndpoint": "https://trvorth-qanto-testnet.hf.space/rpc",
-    "webSocketEndpoint": "wss://trvorth-qanto-testnet.hf.space/ws",
+    "rpcEndpoint": null,
+    "webSocketEndpoint": null,
     "blockExplorer": {
-      "url": "https://qanto.org/public/explorer/index.html",
-      "apiEndpoint": "https://trvorth-qanto-testnet.hf.space/api/v1/explorer"
+      "url": null,
+      "apiEndpoint": null
     }
   },
-  "apiEndpoints": {
-    "circulatingSupply": {
-      "url": "https://trvorth-qanto-testnet.hf.space/api/v1/supply/circulating",
-      "method": "GET",
-      "responseFormat": "text/plain",
-      "description": "Returns raw circulating supply as a plain number (CoinMarketCap/CoinGecko compatible)"
-    },
-    "totalSupply": {
-      "url": "https://trvorth-qanto-testnet.hf.space/api/v1/supply/total",
-      "method": "GET",
-      "responseFormat": "text/plain",
-      "description": "Returns total supply as a plain number: 21000000000"
-    },
-    "maxSupply": {
-      "url": "https://trvorth-qanto-testnet.hf.space/api/v1/supply/max",
-      "method": "GET",
-      "responseFormat": "text/plain",
-      "description": "Returns fixed max supply: 21000000000"
-    },
-    "blockHeight": {
-      "url": "https://trvorth-qanto-testnet.hf.space/rpc",
-      "method": "POST",
-      "body": "{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"params\":[],\"id\":1}",
-      "description": "Standard JSON-RPC eth_blockNumber, returns hex-encoded block number"
-    },
-    "richList": {
-      "url": "https://trvorth-qanto-testnet.hf.space/api/v1/accounts/rich-list",
-      "method": "GET",
-      "description": "Top 100 holders by balance"
-    }
-  },
+  "apiEndpoints": {},
   "smartContracts": {
     "dexWrapper": {
       "name": "WQNTO",
@@ -83,11 +55,8 @@
     }
   },
   "compliance": {
-    "securityAudits": [
-      "Passed internal recursive QA",
-      "Post-quantum cryptography peer review (CRYSTALS-Dilithium)"
-    ],
-    "legalDisclaimer": "Testnet environment active. WQNTO wrapper contract verified. Not financial advice.",
+    "securityAudits": [],
+    "legalDisclaimer": "Draft metadata only. No active public-testnet, independent security-audit, bridge, exchange-listing, or WQNTO-deployment claim is made.",
     "contactEmail": "listing@qanto.org"
   }
 }

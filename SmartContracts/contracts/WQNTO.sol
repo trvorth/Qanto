@@ -2,8 +2,9 @@
 pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract WQNTO is ERC20 {
+contract WQNTO is ERC20, ReentrancyGuard {
     event Deposit(address indexed dst, uint wad);
     event Withdrawal(address indexed src, uint wad);
 
@@ -22,10 +23,11 @@ contract WQNTO is ERC20 {
         emit Deposit(msg.sender, msg.value);
     }
 
-    function withdraw(uint wad) public {
+    function withdraw(uint wad) public nonReentrant {
         require(balanceOf(msg.sender) >= wad, "WQNTO: Insufficient balance");
         _burn(msg.sender, wad);
-        payable(msg.sender).transfer(wad);
+        (bool success, ) = payable(msg.sender).call{value: wad}("");
+        require(success, "WQNTO: Native transfer failed");
         emit Withdrawal(msg.sender, wad);
     }
 }
