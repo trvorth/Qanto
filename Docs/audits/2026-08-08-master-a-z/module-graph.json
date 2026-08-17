@@ -1,0 +1,1719 @@
+{
+  "evidence": "lexical",
+  "modules": [
+    {
+      "name": "adaptive_mining",
+      "path": "Protocol_Core/qanto-node/src/adaptive_mining.rs",
+      "lines": 1063,
+      "incoming": [
+        "node"
+      ],
+      "outgoing": [
+        "diagnostics",
+        "mempool",
+        "miner",
+        "mining_metrics",
+        "p2p",
+        "qantodag",
+        "types",
+        "wallet"
+      ],
+      "stub_markers": 3,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "analytics_dashboard",
+      "path": "Protocol_Core/qanto-node/src/analytics_dashboard.rs",
+      "lines": 1577,
+      "incoming": [
+        "node",
+        "websocket_server"
+      ],
+      "outgoing": [
+        "decentralization",
+        "metrics",
+        "qanto_ai_metrics",
+        "qantodag",
+        "saga"
+      ],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "block_producer",
+      "path": "Protocol_Core/qanto-node/src/block_producer.rs",
+      "lines": 779,
+      "incoming": [
+        "decoupled_producer",
+        "node",
+        "optimized_decoupled_producer"
+      ],
+      "outgoing": [
+        "config",
+        "decoupled_producer",
+        "mempool",
+        "miner",
+        "persistence",
+        "post_quantum_crypto",
+        "qantodag",
+        "saga",
+        "transaction",
+        "types",
+        "wallet"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "config",
+      "path": "Protocol_Core/qanto-node/src/config.rs",
+      "lines": 1130,
+      "incoming": [
+        "absolute_genesis",
+        "block_producer",
+        "byzantine_tests",
+        "decoupled_producer",
+        "get_address",
+        "import_wallet",
+        "ipc_server",
+        "miner",
+        "mining_celebration",
+        "node",
+        "omega_enhanced",
+        "p2p",
+        "performance_validation",
+        "qanto",
+        "qantodag",
+        "qantodag_testnet",
+        "qantowallet",
+        "security_tests",
+        "start_node",
+        "x_phyrus"
+      ],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "config_validator",
+      "path": "Protocol_Core/qanto-node/src/config_validator.rs",
+      "lines": 771,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "consensus",
+      "path": "Protocol_Core/qanto-node/src/consensus.rs",
+      "lines": 346,
+      "incoming": [
+        "decentralization",
+        "miner",
+        "qantodag"
+      ],
+      "outgoing": [
+        "miner",
+        "qantodag",
+        "saga",
+        "transaction",
+        "types"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "decentralization",
+      "path": "Protocol_Core/qanto-node/src/decentralization.rs",
+      "lines": 2352,
+      "incoming": [
+        "analytics_dashboard",
+        "monitor"
+      ],
+      "outgoing": [
+        "consensus",
+        "math",
+        "metrics",
+        "qantodag",
+        "saga",
+        "transaction",
+        "zkp"
+      ],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "decoupled_producer",
+      "path": "Protocol_Core/qanto-node/src/decoupled_producer.rs",
+      "lines": 1122,
+      "incoming": [
+        "block_producer"
+      ],
+      "outgoing": [
+        "block_producer",
+        "config",
+        "mempool",
+        "miner",
+        "p2p",
+        "post_quantum_crypto",
+        "qantodag",
+        "types",
+        "wallet"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "deterministic_mining",
+      "path": "Protocol_Core/qanto-node/src/deterministic_mining.rs",
+      "lines": 104,
+      "incoming": [
+        "miner"
+      ],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "diagnostics",
+      "path": "Protocol_Core/qanto-node/src/diagnostics.rs",
+      "lines": 443,
+      "incoming": [
+        "adaptive_mining",
+        "qanto"
+      ],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "elite_mempool",
+      "path": "Protocol_Core/qanto-node/src/elite_mempool.rs",
+      "lines": 804,
+      "incoming": [
+        "node"
+      ],
+      "outgoing": [
+        "memory_optimization",
+        "qantodag",
+        "transaction",
+        "types"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "emission",
+      "path": "Protocol_Core/qanto-node/src/emission.rs",
+      "lines": 154,
+      "incoming": [
+        "qantodag",
+        "security_tests"
+      ],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "formal_verifier",
+      "path": "Protocol_Core/qanto-node/src/formal_verifier.rs",
+      "lines": 119,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 2,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "gas_fee_model",
+      "path": "Protocol_Core/qanto-node/src/gas_fee_model.rs",
+      "lines": 785,
+      "incoming": [
+        "p2p",
+        "transaction"
+      ],
+      "outgoing": [
+        "transaction",
+        "types"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "graphql_api",
+      "path": "Protocol_Core/qanto-node/src/graphql_api.rs",
+      "lines": 546,
+      "incoming": [
+        "graphql_server"
+      ],
+      "outgoing": [
+        "graphql_server",
+        "persistence",
+        "saga",
+        "transaction",
+        "types"
+      ],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "graphql_server",
+      "path": "Protocol_Core/qanto-node/src/graphql_server.rs",
+      "lines": 419,
+      "incoming": [
+        "graphql_api",
+        "node"
+      ],
+      "outgoing": [
+        "graphql_api",
+        "node",
+        "qantodag",
+        "transaction"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "hame",
+      "path": "Protocol_Core/qanto-node/src/hame.rs",
+      "lines": 372,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "heritage_archive",
+      "path": "Protocol_Core/qanto-node/src/heritage_archive.rs",
+      "lines": 150,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "holo_mesh",
+      "path": "Protocol_Core/qanto-node/src/holo_mesh.rs",
+      "lines": 65,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "interoperability",
+      "path": "Protocol_Core/qanto-node/src/interoperability.rs",
+      "lines": 3021,
+      "incoming": [
+        "state_sync"
+      ],
+      "outgoing": [
+        "metrics",
+        "performance_optimizations",
+        "post_quantum_crypto",
+        "qantodag"
+      ],
+      "stub_markers": 5,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "interplanetary",
+      "path": "Protocol_Core/qanto-node/src/interplanetary.rs",
+      "lines": 169,
+      "incoming": [
+        "node"
+      ],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "kernel_boot",
+      "path": "Protocol_Core/qanto-node/src/kernel_boot.rs",
+      "lines": 128,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 2,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "keygen",
+      "path": "Protocol_Core/qanto-node/src/keygen.rs",
+      "lines": 38,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "mempool",
+      "path": "Protocol_Core/qanto-node/src/mempool.rs",
+      "lines": 2214,
+      "incoming": [
+        "adaptive_mining",
+        "block_producer",
+        "byzantine_tests",
+        "decoupled_producer",
+        "memory_optimization",
+        "node",
+        "optimized_decoupled_producer",
+        "p2p",
+        "performance_optimizations",
+        "qantodag",
+        "rpc_backend",
+        "security_tests"
+      ],
+      "outgoing": [
+        "memory_optimization",
+        "qantodag",
+        "transaction",
+        "types"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "metrics",
+      "path": "Protocol_Core/qanto-node/src/metrics.rs",
+      "lines": 1677,
+      "incoming": [
+        "analytics_dashboard",
+        "decentralization",
+        "interoperability",
+        "metrics_server",
+        "miner",
+        "node",
+        "omega_enhanced",
+        "p2p",
+        "qantodag",
+        "recursive_evolution",
+        "saga",
+        "security_tests",
+        "telemetry"
+      ],
+      "outgoing": [],
+      "stub_markers": 5,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "miner",
+      "path": "Protocol_Core/qanto-node/src/miner.rs",
+      "lines": 1940,
+      "incoming": [
+        "adaptive_mining",
+        "block_producer",
+        "byzantine_tests",
+        "consensus",
+        "decoupled_producer",
+        "node",
+        "optimized_decoupled_producer",
+        "qantodag"
+      ],
+      "outgoing": [
+        "config",
+        "consensus",
+        "deterministic_mining",
+        "metrics",
+        "mining_celebration",
+        "qantodag",
+        "shutdown",
+        "telemetry",
+        "transaction",
+        "types",
+        "wallet"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "mining_celebration",
+      "path": "Protocol_Core/qanto-node/src/mining_celebration.rs",
+      "lines": 548,
+      "incoming": [
+        "miner"
+      ],
+      "outgoing": [
+        "config"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "mining_metrics",
+      "path": "Protocol_Core/qanto-node/src/mining_metrics.rs",
+      "lines": 229,
+      "incoming": [
+        "adaptive_mining",
+        "node",
+        "qantodag",
+        "security_tests"
+      ],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "node",
+      "path": "Protocol_Core/qanto-node/src/node.rs",
+      "lines": 4500,
+      "incoming": [
+        "graphql_server",
+        "p2p",
+        "qanto",
+        "qantodag_testnet",
+        "start_node"
+      ],
+      "outgoing": [
+        "absolute_genesis",
+        "adaptive_mining",
+        "analytics_dashboard",
+        "block_producer",
+        "config",
+        "elite_mempool",
+        "graphql_server",
+        "infinite_strata_node",
+        "interplanetary",
+        "ipc_server",
+        "math",
+        "mempool",
+        "metrics",
+        "miner",
+        "mining_metrics",
+        "omega",
+        "p2p",
+        "p2p_mesh",
+        "performance_optimizations",
+        "persistence",
+        "qantodag",
+        "resource_cleanup",
+        "rpc_backend",
+        "saga",
+        "telemetry",
+        "transaction",
+        "types",
+        "wallet",
+        "websocket_server"
+      ],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "omega",
+      "path": "Protocol_Core/qanto-node/src/omega.rs",
+      "lines": 524,
+      "incoming": [
+        "node",
+        "omega_enhanced",
+        "saga",
+        "transaction"
+      ],
+      "outgoing": [
+        "qantodag"
+      ],
+      "stub_markers": 11,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "omega_enhanced",
+      "path": "Protocol_Core/qanto-node/src/omega_enhanced.rs",
+      "lines": 1508,
+      "incoming": [],
+      "outgoing": [
+        "config",
+        "metrics",
+        "omega",
+        "qantodag",
+        "saga",
+        "types"
+      ],
+      "stub_markers": 23,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "optimized_decoupled_producer",
+      "path": "Protocol_Core/qanto-node/src/optimized_decoupled_producer.rs",
+      "lines": 1227,
+      "incoming": [],
+      "outgoing": [
+        "block_producer",
+        "mempool",
+        "miner",
+        "post_quantum_crypto",
+        "qantodag",
+        "transaction",
+        "types",
+        "wallet"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "optimized_qdag",
+      "path": "Protocol_Core/qanto-node/src/optimized_qdag.rs",
+      "lines": 667,
+      "incoming": [
+        "qantodag",
+        "security_tests"
+      ],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "p2p",
+      "path": "Protocol_Core/qanto-node/src/p2p.rs",
+      "lines": 2322,
+      "incoming": [
+        "adaptive_mining",
+        "decoupled_producer",
+        "node",
+        "rpc_backend",
+        "security_tests"
+      ],
+      "outgoing": [
+        "config",
+        "gas_fee_model",
+        "mempool",
+        "metrics",
+        "node",
+        "post_quantum_crypto",
+        "qantodag",
+        "qds",
+        "saga",
+        "transaction",
+        "types"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "p2p_mesh",
+      "path": "Protocol_Core/qanto-node/src/p2p_mesh.rs",
+      "lines": 84,
+      "incoming": [
+        "node"
+      ],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "password_utils",
+      "path": "Protocol_Core/qanto-node/src/password_utils.rs",
+      "lines": 89,
+      "incoming": [
+        "generate_wallet",
+        "import_wallet",
+        "qanto",
+        "qantowallet",
+        "start_node"
+      ],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "performance_monitoring",
+      "path": "Protocol_Core/qanto-node/src/performance_monitoring.rs",
+      "lines": 729,
+      "incoming": [
+        "qantodag",
+        "security_tests"
+      ],
+      "outgoing": [
+        "qantodag"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "performance_optimizations",
+      "path": "Protocol_Core/qanto-node/src/performance_optimizations.rs",
+      "lines": 692,
+      "incoming": [
+        "economic_attack_tests",
+        "interoperability",
+        "node",
+        "performance_validation",
+        "qantodag",
+        "security_tests",
+        "telemetry",
+        "transaction",
+        "websocket_server"
+      ],
+      "outgoing": [
+        "mempool",
+        "qantodag",
+        "transaction",
+        "types"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "performance_validation",
+      "path": "Protocol_Core/qanto-node/src/performance_validation.rs",
+      "lines": 674,
+      "incoming": [],
+      "outgoing": [
+        "config",
+        "performance_optimizations",
+        "post_quantum_crypto",
+        "qantodag",
+        "saga",
+        "transaction",
+        "types",
+        "wallet"
+      ],
+      "stub_markers": 4,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "persistence",
+      "path": "Protocol_Core/qanto-node/src/persistence.rs",
+      "lines": 402,
+      "incoming": [
+        "absolute_genesis",
+        "block_producer",
+        "graphql_api",
+        "node",
+        "qantodag",
+        "qantowallet",
+        "rpc_backend",
+        "security_tests"
+      ],
+      "outgoing": [
+        "types"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "pipeline",
+      "path": "Protocol_Core/qanto-node/src/pipeline/mod.rs",
+      "lines": 2,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "post_quantum_crypto",
+      "path": "Protocol_Core/qanto-node/src/post_quantum_crypto.rs",
+      "lines": 165,
+      "incoming": [
+        "block_producer",
+        "byzantine_tests",
+        "decoupled_producer",
+        "economic_attack_tests",
+        "infinite_strata_node",
+        "interoperability",
+        "optimized_decoupled_producer",
+        "p2p",
+        "partition_tests",
+        "performance_validation",
+        "pq_suite",
+        "qantodag",
+        "security_tests",
+        "transaction",
+        "types",
+        "wallet"
+      ],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "pq_crypto",
+      "path": "Protocol_Core/qanto-node/src/pq_crypto.rs",
+      "lines": 24,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "pq_suite",
+      "path": "Protocol_Core/qanto-node/src/pq_suite.rs",
+      "lines": 86,
+      "incoming": [],
+      "outgoing": [
+        "post_quantum_crypto",
+        "types"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "privacy",
+      "path": "Protocol_Core/qanto-node/src/privacy.rs",
+      "lines": 2054,
+      "incoming": [],
+      "outgoing": [
+        "transaction",
+        "types",
+        "zkp"
+      ],
+      "stub_markers": 2,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "resource_cleanup",
+      "path": "Protocol_Core/qanto-node/src/resource_cleanup.rs",
+      "lines": 1005,
+      "incoming": [
+        "node"
+      ],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "safe_interval",
+      "path": "Protocol_Core/qanto-node/src/safe_interval.rs",
+      "lines": 218,
+      "incoming": [],
+      "outgoing": [
+        "wallet"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "saga_ai",
+      "path": "Protocol_Core/qanto-node/src/saga_ai.rs",
+      "lines": 124,
+      "incoming": [
+        "transaction"
+      ],
+      "outgoing": [
+        "telemetry"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "shutdown",
+      "path": "Protocol_Core/qanto-node/src/shutdown.rs",
+      "lines": 676,
+      "incoming": [
+        "miner"
+      ],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "storage_mesh",
+      "path": "Protocol_Core/qanto-node/src/storage_mesh.rs",
+      "lines": 75,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "telemetry",
+      "path": "Protocol_Core/qanto-node/src/telemetry.rs",
+      "lines": 613,
+      "incoming": [
+        "miner",
+        "node",
+        "saga_ai",
+        "websocket_server"
+      ],
+      "outgoing": [
+        "metrics",
+        "performance_optimizations",
+        "qantodag"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "timing",
+      "path": "Protocol_Core/qanto-node/src/timing.rs",
+      "lines": 883,
+      "incoming": [
+        "qantodag",
+        "security_tests"
+      ],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "a2a_material",
+      "path": "Protocol_Core/qanto-node/src/a2a_material.rs",
+      "lines": 85,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 1,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "absolute_genesis",
+      "path": "Protocol_Core/qanto-node/src/absolute_genesis.rs",
+      "lines": 499,
+      "incoming": [
+        "node"
+      ],
+      "outgoing": [
+        "config",
+        "persistence",
+        "transaction",
+        "types"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "absolute_singularity",
+      "path": "Protocol_Core/qanto-node/src/absolute_singularity.rs",
+      "lines": 91,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "config_validation",
+      "path": "Protocol_Core/qanto-node/src/config_validation.rs",
+      "lines": 593,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "cosmic_consensus",
+      "path": "Protocol_Core/qanto-node/src/cosmic_consensus.rs",
+      "lines": 119,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "entropy_shield",
+      "path": "Protocol_Core/qanto-node/src/entropy_shield.rs",
+      "lines": 60,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "eternal_existence",
+      "path": "Protocol_Core/qanto-node/src/eternal_existence.rs",
+      "lines": 91,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "final_transcendence",
+      "path": "Protocol_Core/qanto-node/src/final_transcendence.rs",
+      "lines": 93,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "futarchy_market",
+      "path": "Protocol_Core/qanto-node/src/futarchy_market.rs",
+      "lines": 119,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "global_synthesis",
+      "path": "Protocol_Core/qanto-node/src/global_synthesis.rs",
+      "lines": 94,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "inference_mesh",
+      "path": "Protocol_Core/qanto-node/src/inference_mesh.rs",
+      "lines": 86,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "infinite_omnipresence",
+      "path": "Protocol_Core/qanto-node/src/infinite_omnipresence.rs",
+      "lines": 88,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "mesh_finality",
+      "path": "Protocol_Core/qanto-node/src/mesh_finality.rs",
+      "lines": 81,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "mesh_optimizer",
+      "path": "Protocol_Core/qanto-node/src/mesh_optimizer.rs",
+      "lines": 105,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "mesh_recovery",
+      "path": "Protocol_Core/qanto-node/src/mesh_recovery.rs",
+      "lines": 83,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "neural_arbitrage",
+      "path": "Protocol_Core/qanto-node/src/neural_arbitrage.rs",
+      "lines": 77,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "neural_consensus",
+      "path": "Protocol_Core/qanto-node/src/neural_consensus.rs",
+      "lines": 93,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "neural_link",
+      "path": "Protocol_Core/qanto-node/src/neural_link.rs",
+      "lines": 89,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 1,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "neural_mirror",
+      "path": "Protocol_Core/qanto-node/src/neural_mirror.rs",
+      "lines": 103,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "qantodag_testnet",
+      "path": "Protocol_Core/qanto-node/src/qantodag_testnet.rs",
+      "lines": 86,
+      "incoming": [],
+      "outgoing": [
+        "config",
+        "node",
+        "wallet"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "quantum_bridge",
+      "path": "Protocol_Core/qanto-node/src/quantum_bridge.rs",
+      "lines": 68,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "recursive_evolution",
+      "path": "Protocol_Core/qanto-node/src/recursive_evolution.rs",
+      "lines": 66,
+      "incoming": [],
+      "outgoing": [
+        "metrics"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "self_sovereign_code",
+      "path": "Protocol_Core/qanto-node/src/self_sovereign_code.rs",
+      "lines": 78,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "sharding",
+      "path": "Protocol_Core/qanto-node/src/sharding.rs",
+      "lines": 91,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "swarm_orchestrator",
+      "path": "Protocol_Core/qanto-node/src/swarm_orchestrator.rs",
+      "lines": 82,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "truth_engine",
+      "path": "Protocol_Core/qanto-node/src/truth_engine.rs",
+      "lines": 91,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "ubi_credits",
+      "path": "Protocol_Core/qanto-node/src/ubi_credits.rs",
+      "lines": 86,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "zk",
+      "path": "Protocol_Core/qanto-node/src/zk.rs",
+      "lines": 123,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": true
+    },
+    {
+      "name": "derive_genesis_key",
+      "path": "Protocol_Core/qanto-node/src/derive_genesis_key.rs",
+      "lines": 67,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "generate_wallet",
+      "path": "Protocol_Core/qanto-node/src/generate_wallet.rs",
+      "lines": 45,
+      "incoming": [],
+      "outgoing": [
+        "password_utils",
+        "wallet"
+      ],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "get_address",
+      "path": "Protocol_Core/qanto-node/src/get_address.rs",
+      "lines": 52,
+      "incoming": [],
+      "outgoing": [
+        "config",
+        "wallet"
+      ],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "import_wallet",
+      "path": "Protocol_Core/qanto-node/src/import_wallet.rs",
+      "lines": 61,
+      "incoming": [],
+      "outgoing": [
+        "config",
+        "password_utils",
+        "wallet"
+      ],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "metrics_server",
+      "path": "Protocol_Core/qanto-node/src/metrics_server.rs",
+      "lines": 111,
+      "incoming": [],
+      "outgoing": [
+        "metrics"
+      ],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "mock_traits",
+      "path": "Protocol_Core/qanto-node/src/mock_traits.rs",
+      "lines": 412,
+      "incoming": [],
+      "outgoing": [
+        "zkp"
+      ],
+      "stub_markers": 10,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "monitor",
+      "path": "Protocol_Core/qanto-node/src/monitor.rs",
+      "lines": 177,
+      "incoming": [],
+      "outgoing": [
+        "decentralization"
+      ],
+      "stub_markers": 2,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "qanto",
+      "path": "Protocol_Core/qanto-node/src/qanto.rs",
+      "lines": 464,
+      "incoming": [],
+      "outgoing": [
+        "config",
+        "diagnostics",
+        "node",
+        "password_utils",
+        "wallet"
+      ],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "qanto_ai_metrics",
+      "path": "Protocol_Core/qanto-node/src/qanto_ai_metrics.rs",
+      "lines": 753,
+      "incoming": [
+        "analytics_dashboard"
+      ],
+      "outgoing": [],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "qantodag",
+      "path": "Protocol_Core/qanto-node/src/qantodag.rs",
+      "lines": 6499,
+      "incoming": [
+        "adaptive_mining",
+        "analytics_dashboard",
+        "block_producer",
+        "byzantine_tests",
+        "consensus",
+        "decentralization",
+        "decoupled_producer",
+        "economic_attack_tests",
+        "elite_mempool",
+        "graphql_server",
+        "interoperability",
+        "ipc_server",
+        "mempool",
+        "miner",
+        "node",
+        "omega",
+        "omega_enhanced",
+        "optimized_decoupled_producer",
+        "p2p",
+        "partition_tests",
+        "performance_monitoring",
+        "performance_optimizations",
+        "performance_validation",
+        "qantowallet",
+        "qds",
+        "rpc_backend",
+        "saga",
+        "security_tests",
+        "state_sync",
+        "telemetry",
+        "transaction",
+        "websocket_server"
+      ],
+      "outgoing": [
+        "config",
+        "consensus",
+        "emission",
+        "mempool",
+        "metrics",
+        "miner",
+        "mining_metrics",
+        "optimized_qdag",
+        "performance_monitoring",
+        "performance_optimizations",
+        "persistence",
+        "post_quantum_crypto",
+        "saga",
+        "timing",
+        "transaction",
+        "types",
+        "wallet",
+        "websocket_server"
+      ],
+      "stub_markers": 2,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "rpc_backend",
+      "path": "Protocol_Core/qanto-node/src/rpc_backend.rs",
+      "lines": 814,
+      "incoming": [
+        "node"
+      ],
+      "outgoing": [
+        "mempool",
+        "p2p",
+        "persistence",
+        "qantodag",
+        "transaction",
+        "types",
+        "wallet",
+        "websocket_server"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "saga",
+      "path": "Protocol_Core/qanto-node/src/saga.rs",
+      "lines": 4874,
+      "incoming": [
+        "analytics_dashboard",
+        "block_producer",
+        "consensus",
+        "decentralization",
+        "graphql_api",
+        "node",
+        "omega_enhanced",
+        "p2p",
+        "performance_validation",
+        "qantodag",
+        "security_tests",
+        "websocket_server"
+      ],
+      "outgoing": [
+        "infinite_strata_node",
+        "metrics",
+        "omega",
+        "qantodag",
+        "transaction"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "transaction",
+      "path": "Protocol_Core/qanto-node/src/transaction.rs",
+      "lines": 1651,
+      "incoming": [
+        "absolute_genesis",
+        "block_producer",
+        "byzantine_tests",
+        "consensus",
+        "decentralization",
+        "economic_attack_tests",
+        "elite_mempool",
+        "gas_fee_model",
+        "graphql_api",
+        "graphql_server",
+        "memory_optimization",
+        "mempool",
+        "miner",
+        "node",
+        "optimized_decoupled_producer",
+        "p2p",
+        "performance_optimizations",
+        "performance_validation",
+        "privacy",
+        "qantodag",
+        "qantowallet",
+        "rpc_backend",
+        "saga",
+        "security_tests",
+        "websocket_server"
+      ],
+      "outgoing": [
+        "gas_fee_model",
+        "omega",
+        "performance_optimizations",
+        "post_quantum_crypto",
+        "qantodag",
+        "saga_ai",
+        "types",
+        "wallet"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "types",
+      "path": "Protocol_Core/qanto-node/src/types.rs",
+      "lines": 115,
+      "incoming": [
+        "absolute_genesis",
+        "adaptive_mining",
+        "block_producer",
+        "byzantine_tests",
+        "consensus",
+        "decoupled_producer",
+        "economic_attack_tests",
+        "elite_mempool",
+        "gas_fee_model",
+        "graphql_api",
+        "mempool",
+        "miner",
+        "node",
+        "omega_enhanced",
+        "optimized_decoupled_producer",
+        "p2p",
+        "partition_tests",
+        "performance_optimizations",
+        "performance_validation",
+        "persistence",
+        "pq_suite",
+        "privacy",
+        "qantodag",
+        "qantowallet",
+        "rpc_backend",
+        "security_tests",
+        "transaction"
+      ],
+      "outgoing": [
+        "post_quantum_crypto"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "wallet",
+      "path": "Protocol_Core/qanto-node/src/wallet.rs",
+      "lines": 421,
+      "incoming": [
+        "adaptive_mining",
+        "block_producer",
+        "decoupled_producer",
+        "generate_wallet",
+        "get_address",
+        "import_wallet",
+        "miner",
+        "node",
+        "optimized_decoupled_producer",
+        "performance_validation",
+        "qanto",
+        "qantodag",
+        "qantodag_testnet",
+        "qantowallet",
+        "rpc_backend",
+        "safe_interval",
+        "start_node",
+        "transaction"
+      ],
+      "outgoing": [
+        "post_quantum_crypto"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "websocket_server",
+      "path": "Protocol_Core/qanto-node/src/websocket_server.rs",
+      "lines": 788,
+      "incoming": [
+        "node",
+        "qantodag",
+        "rpc_backend"
+      ],
+      "outgoing": [
+        "analytics_dashboard",
+        "performance_optimizations",
+        "qantodag",
+        "saga",
+        "telemetry",
+        "transaction"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "x_phyrus",
+      "path": "Protocol_Core/qanto-node/src/x_phyrus.rs",
+      "lines": 2054,
+      "incoming": [],
+      "outgoing": [
+        "config"
+      ],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "infinite_strata_node",
+      "path": "Protocol_Core/qanto-node/src/infinite_strata_node.rs",
+      "lines": 1358,
+      "incoming": [
+        "node",
+        "saga"
+      ],
+      "outgoing": [
+        "post_quantum_crypto"
+      ],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "zkp",
+      "path": "Protocol_Core/qanto-node/src/zkp.rs",
+      "lines": 2265,
+      "incoming": [
+        "decentralization",
+        "mock_traits",
+        "privacy"
+      ],
+      "outgoing": [],
+      "stub_markers": 6,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "zk_sequencer",
+      "path": "Protocol_Core/qanto-node/src/zk_sequencer.rs",
+      "lines": 63,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "memory_optimization",
+      "path": "Protocol_Core/qanto-node/src/memory_optimization.rs",
+      "lines": 642,
+      "incoming": [
+        "elite_mempool",
+        "mempool"
+      ],
+      "outgoing": [
+        "mempool",
+        "transaction"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "qantowallet",
+      "path": "Protocol_Core/qanto-node/src/qantowallet.rs",
+      "lines": 1716,
+      "incoming": [],
+      "outgoing": [
+        "config",
+        "password_utils",
+        "persistence",
+        "qantodag",
+        "qds",
+        "transaction",
+        "types",
+        "wallet"
+      ],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "qds",
+      "path": "Protocol_Core/qanto-node/src/qds.rs",
+      "lines": 93,
+      "incoming": [
+        "p2p",
+        "qantowallet"
+      ],
+      "outgoing": [
+        "qantodag"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "byzantine_tests",
+      "path": "Protocol_Core/qanto-node/src/byzantine_tests.rs",
+      "lines": 483,
+      "incoming": [],
+      "outgoing": [
+        "config",
+        "mempool",
+        "miner",
+        "post_quantum_crypto",
+        "qantodag",
+        "security_tests",
+        "transaction",
+        "types"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "corruption_tests",
+      "path": "Protocol_Core/qanto-node/src/corruption_tests.rs",
+      "lines": 161,
+      "incoming": [],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "economic_attack_tests",
+      "path": "Protocol_Core/qanto-node/src/economic_attack_tests.rs",
+      "lines": 388,
+      "incoming": [],
+      "outgoing": [
+        "performance_optimizations",
+        "post_quantum_crypto",
+        "qantodag",
+        "transaction",
+        "types"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "partition_tests",
+      "path": "Protocol_Core/qanto-node/src/partition_tests.rs",
+      "lines": 360,
+      "incoming": [],
+      "outgoing": [
+        "post_quantum_crypto",
+        "qantodag",
+        "security_tests",
+        "types"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "security_tests",
+      "path": "Protocol_Core/qanto-node/src/security_tests.rs",
+      "lines": 1317,
+      "incoming": [
+        "byzantine_tests",
+        "partition_tests"
+      ],
+      "outgoing": [
+        "config",
+        "emission",
+        "mempool",
+        "metrics",
+        "mining_metrics",
+        "optimized_qdag",
+        "p2p",
+        "performance_monitoring",
+        "performance_optimizations",
+        "persistence",
+        "post_quantum_crypto",
+        "qantodag",
+        "saga",
+        "timing",
+        "transaction",
+        "types"
+      ],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "start_node",
+      "path": "Protocol_Core/qanto-node/src/start_node.rs",
+      "lines": 307,
+      "incoming": [],
+      "outgoing": [
+        "config",
+        "node",
+        "password_utils",
+        "wallet"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "state_sync",
+      "path": "Protocol_Core/qanto-node/src/state_sync.rs",
+      "lines": 141,
+      "incoming": [],
+      "outgoing": [
+        "interoperability",
+        "qantodag"
+      ],
+      "stub_markers": 1,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "ipc_server",
+      "path": "Protocol_Core/qanto-node/src/ipc_server.rs",
+      "lines": 442,
+      "incoming": [
+        "node"
+      ],
+      "outgoing": [
+        "config",
+        "qantodag"
+      ],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    },
+    {
+      "name": "math",
+      "path": "Protocol_Core/qanto-node/src/math.rs",
+      "lines": 51,
+      "incoming": [
+        "decentralization",
+        "node"
+      ],
+      "outgoing": [],
+      "stub_markers": 0,
+      "declared_unreferenced": false
+    }
+  ],
+  "cycles": [
+    [
+      "analytics_dashboard",
+      "consensus",
+      "decentralization",
+      "gas_fee_model",
+      "memory_optimization",
+      "mempool",
+      "miner",
+      "omega",
+      "performance_monitoring",
+      "performance_optimizations",
+      "qantodag",
+      "saga",
+      "saga_ai",
+      "telemetry",
+      "transaction",
+      "websocket_server"
+    ],
+    [
+      "adaptive_mining",
+      "block_producer",
+      "decoupled_producer",
+      "graphql_api",
+      "graphql_server",
+      "node",
+      "p2p",
+      "rpc_backend"
+    ]
+  ],
+  "missing": []
+}

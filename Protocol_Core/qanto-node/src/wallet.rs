@@ -295,8 +295,11 @@ impl Wallet {
 
     /// Returns the canonical validator identity for a specific network.
     pub fn validator_id_for_chain(&self, network_chain_id: u32) -> Result<String, WalletError> {
-        qanto_core::protocol_identity::validator_id_v2(network_chain_id, &self.data.qr_public_key)
-            .map_err(|error| WalletError::PqCrypto(error.to_string()))
+        qanto_core::protocol_identity::validator_address_v2(
+            network_chain_id,
+            &self.data.qr_public_key,
+        )
+        .map_err(|error| WalletError::PqCrypto(error.to_string()))
     }
 
     /// Returns the legacy Ed25519 identifier for explicit migration tooling.

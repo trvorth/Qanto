@@ -16,6 +16,11 @@ use anyhow::Result;
 use hex;
 use my_blockchain::qanhash::{MiningConfig, MiningDevice, QanhashMiner};
 use my_blockchain::qanto_standalone::hash::QantoHash;
+use qanto_consensus_primitives::{
+    consensus_parameters::{is_v2_active, ConsensusParametersV2, ProtocolVersion},
+    hash::{hash_v2, DomainV2, HashV2},
+    pow::{verify_qanhash_v2, work_target_v2},
+};
 use regex::Regex;
 use std::ops::Div;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -168,6 +173,18 @@ pub struct U256([u64; 4]);
 impl U256 {
     pub const ZERO: U256 = U256([0, 0, 0, 0]);
     pub const MAX: U256 = U256([u64::MAX, u64::MAX, u64::MAX, u64::MAX]);
+
+    pub fn is_zero(&self) -> bool {
+        self.0[0] == 0 && self.0[1] == 0 && self.0[2] == 0 && self.0[3] == 0
+    }
+
+    pub fn to_be_bytes<const N: usize>(&self) -> [u8; N] {
+        let mut result = [0u8; N];
+        let src = self.to_big_endian_vec();
+        let start = if N > src.len() { N - src.len() } else { 0 };
+        result[start..N].copy_from_slice(&src[src.len().saturating_sub(N)..]);
+        result
+    }
 
     fn to_big_endian(self, bytes: &mut [u8; 32]) {
         bytes[0..8].copy_from_slice(&self.0[3].to_be_bytes());
@@ -422,7 +439,7 @@ impl Miner {
     /// Solves the Proof-of-Work for a given block template by finding a valid nonce.
     /// This is the primary mining function called by the node's mining loop.
     /// It modifies the block in-place with the found nonce and effort.
-    pub fn solve_pow(&self, block_template: &mut QantoBlock) -> Result<(), MiningError> {
+    pub fn solve_pow_v1(&self, block_template: &mut QantoBlock) -> Result<(), MiningError> {
         block_template.ensure_unsealed_candidate()?;
         let mut solve_start = Instant::now();
         let adaptive_timeout = Duration::from_secs(self.target_block_time * 2);
@@ -474,16 +491,82 @@ impl Miner {
             if elapsed > adaptive_timeout {
                 failed_attempts += 1;
 
-                // Adjust difficulty every 3 failed attempts
-                if failed_attempts % 3 == 0 {
-                    block_template.difficulty /= 2;
-                    target_hash_bytes =
-                        Self::calculate_target_from_difficulty(block_template.difficulty);
-                    let (new_header_hash, new_target) =
-                        self.prepare_mining_data(block_template, &target_hash_bytes)?;
-                    qanto_hash = QantoHash::new(new_header_hash);
-                    target = new_target;
+                // Record solve time
+                if let Ok(mut times) = self.solve_times.lock() {
+                    times.push(elapsed);
+                    if times.len() > 100 {
+                        times.remove(0);
+                    }
                 }
+
+                // Prevent infinite looping by limiting max failed attempts
+                if failed_attempts > 9 {
+                    return Err(MiningError::TimeoutOrCancelled);
+                }
+
+                // Reset timer for next attempt with adjusted parameters
+                solve_start = Instant::now();
+            }
+        }
+    }
+
+    pub fn solve_pow_v2(
+        &self,
+        block_template: &mut QantoBlock,
+        consensus_params: &ConsensusParametersV2,
+    ) -> Result<(), MiningError> {
+        // V2 mining uses the same mining algorithm but with V2-specific target calculation and validation
+        block_template.ensure_unsealed_candidate()?;
+        let mut solve_start = Instant::now();
+        let adaptive_timeout = Duration::from_secs(self.target_block_time * 2);
+        self.log_mining_start(block_template);
+
+        // V2 target calculation using canonical V2 hashing
+        let mut target_hash_bytes =
+            Self::calculate_target_from_difficulty(block_template.difficulty);
+        let (header_hash, mut target) =
+            self.prepare_mining_data(block_template, &target_hash_bytes)?;
+        let block_index = block_template.height;
+
+        let dag = my_blockchain::qanhash::get_qdag_sync(block_index);
+
+        let mut qanto_hash = QantoHash::new(header_hash);
+
+        let mut nonce = get_nonce_with_deterministic_fallback();
+
+        let mut failed_attempts = 0;
+
+        // Main mining loop using batch processing with precomputed DAG
+        let should_stop = std::sync::atomic::AtomicBool::new(false);
+
+        loop {
+            let batch_size = 1024u64;
+            // FIX: Removed the extra `Some(batch_size)` argument.
+            if let Some((found_nonce, hash)) =
+                self.qanhash_miner
+                    .mine_with_dag(&qanto_hash, nonce, target, dag.clone())
+            {
+                let tries = found_nonce - nonce + 1; // Removed unnecessary cast
+                self.total_hashes.fetch_add(tries, Ordering::Relaxed);
+                block_template.nonce = found_nonce;
+                block_template.effort = self.total_hashes.load(Ordering::Relaxed) as u128;
+                return self.process_mining_result_v2(
+                    block_template,
+                    MiningResult::Found {
+                        nonce: found_nonce,
+                        hash,
+                    },
+                    consensus_params,
+                );
+            }
+            nonce += batch_size;
+            self.total_hashes.fetch_add(batch_size, Ordering::Relaxed);
+            if should_stop.load(Ordering::Relaxed) {
+                return Err(MiningError::TimeoutOrCancelled);
+            }
+            let elapsed = solve_start.elapsed();
+            if elapsed > adaptive_timeout {
+                failed_attempts += 1;
 
                 // Record solve time
                 if let Ok(mut times) = self.solve_times.lock() {
@@ -501,6 +584,15 @@ impl Miner {
                 // Reset timer for next attempt with adjusted parameters
                 solve_start = Instant::now();
             }
+        }
+    }
+
+    pub fn solve_pow(&self, block_template: &mut QantoBlock) -> Result<(), MiningError> {
+        let consensus_params = ConsensusParametersV2::for_private_engineering();
+        if is_v2_active(block_template.height, &consensus_params) {
+            self.solve_pow_v2(block_template, &consensus_params)
+        } else {
+            self.solve_pow_v1(block_template)
         }
     }
 
@@ -591,7 +683,7 @@ impl Miner {
         target
     }
 
-    /// Process the mining result and update block template
+    /// Process the mining result and update block template for V1
     fn process_mining_result(
         &self,
         block_template: &mut QantoBlock,
@@ -635,6 +727,64 @@ impl Miner {
                     effort,
                     total_blocks_mined: 1,
                     chain_id: 0,
+                    block_reward: 50 * crate::transaction::SMALLEST_UNITS_PER_QAN, // 50 QAN unified 9-decimal units
+                    compact: false,
+                };
+
+                on_block_mined(celebration_params, &self.logging_config);
+
+                Ok(())
+            }
+            MiningResult::Cancelled => Err(MiningError::TimeoutOrCancelled),
+            MiningResult::Timeout => Err(MiningError::TimeoutOrCancelled),
+        }
+    }
+
+    /// Process the mining result and update block template for V2
+    fn process_mining_result_v2(
+        &self,
+        block_template: &mut QantoBlock,
+        mining_result: MiningResult,
+        consensus_params: &ConsensusParametersV2,
+    ) -> Result<(), MiningError> {
+        match mining_result {
+            MiningResult::Found {
+                nonce: found_nonce,
+                hash: final_hash,
+            } => {
+                block_template.nonce = found_nonce;
+                // Convert hash to effort (u64) for compatibility
+                let effort = u64::from_be_bytes([
+                    final_hash[0],
+                    final_hash[1],
+                    final_hash[2],
+                    final_hash[3],
+                    final_hash[4],
+                    final_hash[5],
+                    final_hash[6],
+                    final_hash[7],
+                ]);
+                block_template.effort = effort as u128;
+                debug!(
+                    "V2 PoW solved for block ID (pre-hash) {} with nonce {} and effort {}. Block is ready for finalization.",
+                    block_template.id, found_nonce, effort
+                );
+
+                // Use the detailed mining celebration with proper parameters
+                let _mining_time = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default();
+
+                let celebration_params = MiningCelebrationParams {
+                    block_height: block_template.height,
+                    block_hash: hex::encode(&final_hash[..8]), // First 8 bytes as hex
+                    nonce: found_nonce,
+                    difficulty: block_template.difficulty as u128 / crate::QANTO_SCALE, // Convert for display
+                    transactions_count: block_template.transactions.len(),
+                    mining_time: Duration::from_secs(30), // Approximate mining time
+                    effort,
+                    total_blocks_mined: 1,
+                    chain_id: consensus_params.chain_id, // V2 chain ID
                     block_reward: 50 * crate::transaction::SMALLEST_UNITS_PER_QAN, // 50 QAN unified 9-decimal units
                     compact: false,
                 };

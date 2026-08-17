@@ -880,6 +880,9 @@ impl PerformanceBenchmark {
                                             TransactionError::LegacySchemeDeprecated => {
                                                 std_tx_other_c.fetch_add(1, Ordering::Relaxed);
                                             }
+                                            TransactionError::Record(_) => {
+                                                std_tx_other_c.fetch_add(1, Ordering::Relaxed);
+                                            }
                                         }
                                     }
                                 }
@@ -1006,6 +1009,9 @@ impl PerformanceBenchmark {
                                                 elite_tx_gas.fetch_add(1, Ordering::Relaxed);
                                             }
                                             TransactionError::LegacySchemeDeprecated => {
+                                                elite_tx_other_c.fetch_add(1, Ordering::Relaxed);
+                                            }
+                                            TransactionError::Record(_) => {
                                                 elite_tx_other_c.fetch_add(1, Ordering::Relaxed);
                                             }
                                         }

@@ -421,11 +421,17 @@ pub fn compute_genesis_commitments(
     state_record
         .push_u128(3, total)
         .map_err(|error| record_error("state total", error))?;
-    let allocation_state_root = state_root_v2(
-        network_chain_id,
-        GENESIS_STATE_SCHEMA,
-        &state_record.finish(),
+    let state_root_hash = qanto_consensus_primitives::hash::HashV2::from_bytes(
+        qanto_consensus_primitives::hash::hash_v2(
+            qanto_consensus_primitives::hash::DomainV2::StateRoot,
+            network_chain_id,
+            GENESIS_STATE_SCHEMA as u16,
+            &state_record.finish(),
+        )
+        .into_bytes(),
     );
+    let allocation_state_root =
+        state_root_v2(state_root_hash, network_chain_id, SchemaVersion::V2_INITIAL);
 
     let validator_id = decode_hash32(&document.genesis_validator, "genesisValidator")?;
     let validator_public_key_hex = required_public_key(
@@ -437,8 +443,17 @@ pub fn compute_genesis_commitments(
         "genesisValidatorPublicKey",
         QANTO_PQ_PUBLIC_KEY_LENGTH,
     )?;
-    let derived_validator = validator_id_v2(network_chain_id, &validator_public_key)
-        .map_err(|error| GenesisLoaderError::Validation(error.to_string()))?;
+    use qanto_consensus_primitives::consensus_parameters::SchemaVersion;
+    let validator_pubkey_bytes: &[u8; 1952] =
+        validator_public_key.as_slice().try_into().map_err(|_| {
+            GenesisLoaderError::Validation("Validator public key must be 1952 bytes".to_string())
+        })?;
+    let derived_validator = validator_id_v2(
+        validator_pubkey_bytes,
+        network_chain_id,
+        SchemaVersion::V2_INITIAL,
+    )
+    .to_string();
     if derived_validator != document.genesis_validator {
         return Err(GenesisLoaderError::Validation(
             "genesisValidator is not derived from genesisValidatorPublicKey for this chain"
@@ -620,8 +635,17 @@ fn validate_genesis_document(
         "genesisValidatorPublicKey",
         QANTO_PQ_PUBLIC_KEY_LENGTH,
     )?;
-    let derived_validator = validator_id_v2(network_chain_id, &validator_public_key)
-        .map_err(|error| GenesisLoaderError::Validation(error.to_string()))?;
+    use qanto_consensus_primitives::consensus_parameters::SchemaVersion;
+    let validator_pubkey_bytes: &[u8; 1952] =
+        validator_public_key.as_slice().try_into().map_err(|_| {
+            GenesisLoaderError::Validation("Validator public key must be 1952 bytes".to_string())
+        })?;
+    let derived_validator = validator_id_v2(
+        validator_pubkey_bytes,
+        network_chain_id,
+        SchemaVersion::V2_INITIAL,
+    )
+    .to_string();
     if derived_validator != genesis_validator {
         return Err(GenesisLoaderError::Validation(
             "genesisValidator is not derived from genesisValidatorPublicKey for this chain"
@@ -925,12 +949,18 @@ mod tests {
     fn sample_document() -> GenesisDocument {
         let validator_public_key = vec![7_u8; QANTO_PQ_PUBLIC_KEY_LENGTH];
         let account_public_key = vec![9_u8; QANTO_PQ_PUBLIC_KEY_LENGTH];
+        let pk_bytes: &[u8; 1952] = validator_public_key.as_slice().try_into().unwrap();
         GenesisDocument {
             protocol_version: Some(GENESIS_PROTOCOL_VERSION),
             network_id: "qanto-testnet".to_string(),
             chain_id: 1234,
             genesis_timestamp: 1_717_250_400,
-            genesis_validator: validator_id_v2(1234, &validator_public_key).unwrap(),
+            genesis_validator: validator_id_v2(
+                pk_bytes,
+                1234,
+                qanto_consensus_primitives::consensus_parameters::SchemaVersion::V2_INITIAL,
+            )
+            .to_string(),
             genesis_validator_public_key: Some(hex::encode(validator_public_key)),
             contract_address: Some("1".repeat(64)),
             tokenomics: GenesisTokenomics {
@@ -1021,11 +1051,11 @@ mod tests {
         assert_ne!(first.0, first.1);
         assert_eq!(
             first.0,
-            "f41fd016cacdbf388c70aa37d00daaa9a2c5194fa449cba2a21b59ef2bc41331"
+            "5ff53ee5ad9f0cde6056d8b4b7f00a009799d25c446bf37bb4e68dc240eb33e2"
         );
         assert_eq!(
             first.1,
-            "3c576a1ba02764c0e14a20b1f8380ddb0b82ec816997ba8ea625d9238afb52ad"
+            "922d201773c5e90b6e84c3e905de7f99d712f5d1ca4be875f393cec790239c8f"
         );
     }
 

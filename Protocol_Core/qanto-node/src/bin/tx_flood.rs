@@ -20,8 +20,10 @@ use tokio::time::{interval, sleep};
 use my_blockchain::qanto_hash;
 use qanto::transaction::{
     calculate_dynamic_fee, Input, Output, Transaction, TransactionConfig, TransactionError,
+    TransactionKind,
 };
 use qanto::types::{HomomorphicEncrypted, UTXO};
+use qanto_consensus_primitives::consensus_parameters::ConsensusParametersV2;
 use qanto_core::qanto_native_crypto::QantoPQPrivateKey;
 
 #[derive(Parser, Debug)]
@@ -300,8 +302,10 @@ async fn build_funding_tx(
         metadata: None,
         tx_timestamps,
         chain_id: qanto::transaction::GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32,
+        tx_kind: TransactionKind::Transfer,
     };
-    Transaction::new(cfg, master_sk).await
+    let consensus_params = ConsensusParametersV2::for_private_engineering();
+    Transaction::new(cfg, master_sk, &consensus_params, 0).await
 }
 
 // Lock-free UTXO pool using crossbeam SegQueue for better concurrency
@@ -735,10 +739,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 chain_id: qanto::transaction::GLOBAL_CHAIN_ID
                                     .load(Ordering::Relaxed)
                                     as u32,
+                                tx_kind: TransactionKind::Transfer,
                             };
+                            let consensus_params = ConsensusParametersV2::for_private_engineering();
 
                             // Build transaction synchronously where possible
-                            match rt.block_on(Transaction::new(cfg, &master_sk_clone)) {
+                            match rt.block_on(Transaction::new(
+                                cfg,
+                                &master_sk_clone,
+                                &consensus_params,
+                                0,
+                            )) {
                                 Ok(tx) => Some((tx, utxo)),
                                 Err(_) => None,
                             }

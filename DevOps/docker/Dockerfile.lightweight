@@ -1,0 +1,33 @@
+# Multi-Stage Alpine Dockerfile for Qanto Node (AWS Sub-$10/mo Lightweight Build)
+# Container size: <25MB | Memory footprint: <256MB RAM
+
+FROM rust:1.80-alpine AS builder
+
+RUN apk add --no-cache musl-dev gcc g++ make openssl-dev openssl-libs-static pkgconfig git
+
+WORKDIR /usr/src/qanto
+COPY . .
+
+# Build with AWS lightweight profile (opt-level = "z", fat LTO, stripped binary)
+ENV RUSTFLAGS="-C target-feature=-crt-static"
+RUN cargo build --profile release-aws-small --package qanto-node
+
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates tzdata libgcc
+
+WORKDIR /opt/qanto
+RUN mkdir -p /opt/qanto/data /opt/qanto/logs /opt/qanto/config /opt/qanto/keys
+
+COPY --from=builder /usr/src/qanto/target/release-aws-small/qanto-node /usr/local/bin/qanto-node
+COPY config.aws-lightweight.toml /opt/qanto/config/config.toml
+
+ENV CONFIG_PATH=/opt/qanto/config/config.toml \
+    DATA_DIR=/opt/qanto/data \
+    LOG_DIR=/opt/qanto/logs \
+    QANTO_PROFILE=aws-lightweight
+
+EXPOSE 30303 8081 50051
+
+ENTRYPOINT ["/usr/local/bin/qanto-node"]
+CMD ["--config", "/opt/qanto/config/config.toml"]

@@ -61,8 +61,12 @@ async fn test_byzantine_double_signing_rejected_without_unbound_slashing() {
     let dag = wrap_and_init_dag(new_dummy_with_storage_path(path));
 
     let (pk, sk) = generate_pq_keypair(None).unwrap();
-    let validator_address =
-        qanto_core::protocol_identity::validator_id_v2(1234, pk.as_bytes()).expect("validator id");
+    let validator_address = qanto_core::protocol_identity::validator_id_v2(
+        pk.as_array(),
+        1234,
+        qanto_consensus_primitives::consensus_parameters::SchemaVersion::V2_INITIAL,
+    )
+    .to_string();
     let initial_stake = 1_000_000 * crate::Q_SCALE;
     dag.validators
         .insert(validator_address.clone(), initial_stake);
@@ -199,8 +203,12 @@ async fn test_clock_drift_guard_positive_and_negative() {
     let dag = wrap_and_init_dag(new_dummy_with_storage_path(path));
 
     let (pk, sk) = generate_pq_keypair(None).unwrap();
-    let validator_address =
-        qanto_core::protocol_identity::validator_id_v2(1234, pk.as_bytes()).expect("validator id");
+    let validator_address = qanto_core::protocol_identity::validator_id_v2(
+        pk.as_array(),
+        1234,
+        qanto_consensus_primitives::consensus_parameters::SchemaVersion::V2_INITIAL,
+    )
+    .to_string();
     dag.validators
         .insert(validator_address.clone(), 1_000_000 * crate::Q_SCALE);
     dag.emission

@@ -1,0 +1,14 @@
+stage = "private-engineering"
+network_id = "qanto-engineering-private-v1"
+bind_private_only = true
+resettable = true
+external_value_claims = false
+consensus_mode = "current-v1-contained"
+difficulty_mode = "fixed"
+emission_mode = "legacy-fee-only"
+bridge_enabled = false
+evm_call_enabled = false
+dynamic_sharding_enabled = false
+saga_consensus_enabled = false
+omega_consensus_enabled = false
+heterogeneous_mining_enabled = false

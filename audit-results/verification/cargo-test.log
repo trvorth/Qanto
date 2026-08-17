@@ -1,0 +1,468 @@
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.67s
+     Running unittests src/lib.rs (target/debug/deps/my_blockchain-ec6507e44768089f)
+
+running 3 tests
+test jsonrpc_server::tests::json_rpc_rejects_public_bind_addresses ... ok
+test qanhash::qanhash_zk_tests::unconstrained_qanhash_gadget_fails_closed ... ok
+test jsonrpc_server::tests::raw_transaction_submission_returns_error_not_fake_hash ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running benches/main.rs (target/debug/deps/main-015b8f8edfbf956d)
+Gnuplot not found, using plotters backend
+Testing Qanhash/CPU Qanhash single operation
+Success
+Testing Qanhash/Qanhash32x post-quantum operation
+Success
+
+Testing Block Mining/CPU Hash Rate (1k Hashes)
+Success
+
+Testing Transaction Creation/Create Transaction
+Success
+
+Testing Execution Layer/Add 16 Concurrent Batches (16000 txs total)
+Success
+
+Testing Hyperscale Execution/Raw Sharded Execution (1600000 txs total)
+Success
+
+     Running unittests src/lib.rs (target/debug/deps/qanto-2eb18e2ff5495748)
+
+running 250 tests
+test analytics_dashboard::tests::threat_thresholds_use_normalized_risk_scores ... ok
+test absolute_genesis::tests::rejects_genesis_with_invalid_tokenomics ... ok
+test config::tests::rejects_public_control_plane_bind_addresses ... ok
+test config::tests::rejects_malformed_or_zero_genesis_validator_without_panicking ... ok
+test absolute_genesis::tests::loads_valid_genesis_file_into_utxo_state ... ok
+test byzantine_tests::test_byzantine_invalid_merkle_root ... ok
+test byzantine_tests::test_byzantine_invalid_coinbase_signature ... ok
+test byzantine_tests::test_byzantine_forged_coinbase_reward ... ok
+test config::tests::rejects_unknown_top_level_fields ... ok
+test config::tests::round_trips_default_config_under_strict_schema ... ok
+test byzantine_tests::test_byzantine_double_signing_slashing ... ok
+test derive_genesis_key::tests::legacy_genesis_key_derivation_fails_closed ... ok
+test deterministic_mining::tests::test_deterministic_nonce_generation ... ok
+test deterministic_mining::tests::test_different_seeds_produce_different_nonces ... ok
+test deterministic_mining::tests::test_env_var_deterministic_nonce ... ok
+test config::tests::rejects_unknown_nested_fields ... ok
+test economic_attack_tests::test_delegation_cartels ... ok
+test economic_attack_tests::test_reward_farming ... ok
+test elite_mempool::tests::test_sharded_queue_operations ... ok
+test emission::tests::test_annual_50_percent_halving_schedule ... ok
+test gas_fee_model::tests::test_batch_fee_calculation ... ok
+test gas_fee_model::tests::test_congestion_multiplier ... ok
+test gas_fee_model::tests::test_fee_estimator ... ok
+test gas_fee_model::tests::test_gas_limit_exceeded ... ok
+test elite_mempool::tests::test_elite_mempool_creation ... ok
+test corruption_tests::test_wal_mid_record_corruption_recovery ... ok
+test gas_fee_model::tests::test_pqc_migration_epoch_gas_penalty ... ok
+test gas_fee_model::tests::test_simple_transfer_fee_calculation ... ok
+test generate_wallet::tests::placeholder ... ok
+test get_address::tests::placeholder ... ok
+test import_wallet::tests::placeholder ... ok
+test corruption_tests::test_crash_consistency ... ok
+test byzantine_tests::test_clock_drift_guard_positive_and_negative ... ok
+test block_producer::tests::test_create_mining_candidate_populates_transactions ... ok
+test interoperability::tests::test_dilithium_zk_aggregator_fails_closed ... ok
+test economic_attack_tests::test_bridge_drain_attempts ... ok
+test corruption_tests::test_wal_tail_corruption_recovery ... ok
+test corruption_tests::test_segment_file_corruption_detection ... ok
+test interoperability::tests::refund_swap_only_after_expiration_and_by_initiator ... ok
+test interoperability::tests::redeem_swap_respects_timeout_and_marks_expired ... ok
+test interoperability::tests::verify_client_header_untrusted_signer_fails ... ok
+test mempool::tests::dynamic_fee_threshold_saturates_when_average_exceeds_u64 ... ok
+test mempool::tests::saturating_fee_sum_does_not_wrap_at_u128_max ... ok
+test interoperability::tests::verify_client_header_timestamp_not_increasing_error ... ok
+test mempool::tests::total_fee_reporting_saturates_at_u128_max ... ok
+test metrics::tests::test_compute_hash_rate ... ok
+test metrics::tests::test_format_hash_rate_units ... ok
+test metrics_server::tests::placeholder ... ok
+test mining_celebration::tests::test_format_hash_rate_gh ... ok
+test mining_celebration::tests::test_format_hash_rate_h ... ok
+test mining_celebration::tests::test_format_hash_rate_kh ... ok
+test mining_celebration::tests::test_format_hash_rate_mh ... ok
+test monitor::tests::missing_status_transport_never_reports_success ... ok
+test node::balance_tests::administrative_bearer_token_is_required_and_constant_time_compatible ... ok
+test node::balance_tests::balance_fractional_qan ... ok
+test node::balance_tests::balance_sum_multiple_utxos ... ok
+test node::balance_tests::balance_whole_qan ... ok
+test node::balance_tests::balance_zero ... ok
+test node::balance_tests::reporting_sums_saturate_at_u128_max ... ok
+test node::balance_tests::rpc_transaction_arithmetic_rejects_u128_boundaries ... ok
+test node::balance_tests::unimplemented_evm_methods_fail_closed_instead_of_returning_mock_success ... ok
+test omega_enhanced::consensus_quarantine_tests::omega_module_cannot_insert_blocks_directly ... ok
+test optimized_decoupled_producer::tests::test_block_priority_calculation ... ok
+test optimized_decoupled_producer::tests::test_optimized_producer_metrics ... ok
+test optimized_qdag::tests::test_memory_adaptive_sizing ... ok
+test interoperability::tests::verify_client_header_valid_signature ... ok
+test interoperability::tests::ibc_channel_handshake_rejects_structural_only_proof ... ok
+test p2p::tests::envelope_rejects_replay_window_and_authenticated_field_tampering ... ok
+test p2p::tests::invalid_transaction_amount_string_is_rejected ... ok
+test interoperability::tests::verify_client_header_invalid_signature_fails ... ok
+test p2p::tests::private_hmac_rejects_malformed_or_zero_keys ... ok
+test optimized_qdag::tests::test_cache_functionality ... ok
+test interoperability::tests::verify_client_header_height_progression_error ... ok
+test p2p::tests::transaction_proto_monetary_fields_round_trip_as_strings ... ok
+test interplanetary::tests::experimental_interplanetary_paths_fail_closed ... ok
+test interoperability::tests::ibc_packet_submission_fails_closed_without_commitment_verifier ... ok
+test interoperability::tests::bridge_asset_movement_fails_closed_without_audited_verifier ... ok
+test optimized_qdag::tests::test_optimized_qdag_generation ... ok
+test economic_attack_tests::test_stake_concentration ... ok
+test password_utils::tests::empty_password_is_rejected ... ok
+test password_utils::tests::raw_password_is_normalized_without_environment_mutation ... ok
+test password_utils::tests::test_password_mismatch_logic ... ok
+test pq_crypto::tests::unavailable_pq_verifier_never_accepts_a_signature ... ok
+test pq_suite::tests::sign_verify_roundtrip ... ok
+test protocol::compact_block::tests::test_block_txn_serialization ... ok
+test protocol::compact_block::tests::test_get_block_txn_serialization ... ok
+test protocol::compact_block::tests::test_serialize_deserialize_announcement ... ok
+test protocol::compact_block::tests::test_short_id_collision_detection ... ok
+test protocol::compact_block::tests::test_short_id_display ... ok
+test protocol::compact_block::tests::test_short_id_from_txid ... ok
+test protocol::header_sync::tests::test_get_block_by_height ... ok
+test protocol::header_sync::tests::test_header_from_block ... ok
+test protocol::header_sync::tests::test_headers_request_serialization ... ok
+test protocol::header_sync::tests::test_headers_response_serialization ... ok
+test protocol::peer_scoring::tests::test_duplicate_ratio ... ok
+test protocol::peer_scoring::tests::test_min_viable_score_filters ... ok
+test protocol::peer_scoring::tests::test_peer_score_new_defaults ... ok
+test protocol::peer_scoring::tests::test_peer_scoring_selection_orders_by_score ... ok
+test protocol::peer_scoring::tests::test_prune_stale_removes_old_peers ... ok
+test protocol::peer_scoring::tests::test_rtt_clamped ... ok
+test protocol::peer_scoring::tests::test_rtt_ewma_update ... ok
+test protocol::peer_scoring::tests::test_score_favors_low_rtt_high_success ... ok
+test protocol::peer_scoring::tests::test_success_rate_pct ... ok
+test qanto::tests::placeholder ... ok
+test qanto_ai_metrics::tests::empty_metrics_do_not_fabricate_model_evidence ... ok
+test partition_tests::test_partition_scenario_b_70_30 ... ok
+test qantodag::determinism_tests::block_coinbase_receiver_and_first_output_must_match_validator ... ok
+test qantodag::determinism_tests::block_validator_must_match_the_pq_header_signer ... ok
+test qantodag::determinism_tests::balance_plan_rejects_u128_to_i128_wraparound ... ok
+test partition_tests::test_partition_healing_convergence ... ok
+test partition_tests::test_partition_scenario_a_60_40 ... ok
+test qantodag::determinism_tests::consensus_arithmetic_rejects_u128_boundaries ... ok
+test qantodag::determinism_tests::bridge_claims_fail_closed_without_a_trusted_light_client ... ok
+test qantodag::determinism_tests::branch_weight_overflow_fails_closed ... ok
+test qantodag::determinism_tests::order_outcomes_sorts_by_height_then_timestamp_then_id ... ok
+test qantodag::determinism_tests::quorum_boundaries_are_precise_and_overflow_safe ... ok
+test qantodag::determinism_tests::select_non_conflicting_skips_invalid_and_conflicting_inputs ... ok
+test qantodag::determinism_tests::consensus_block_production_rejects_missing_or_dummy_signers ... ok
+test qantodag::determinism_tests::governance_and_bridge_totals_cannot_wrap ... ok
+test qantodag::determinism_tests::inbound_validator_must_be_registered_and_sufficiently_staked ... ok
+test partition_tests::test_partition_scenario_c_34_33_33 ... ok
+test qantodag::determinism_tests::witness_invariant_to_ordering_of_inputs_and_parents ... ok
+test qantowallet::tests::test_basic_arithmetic ... ok
+test qantowallet::tests::test_cli_parses_qds_multiaddr_and_lightweight_mode ... ok
+test qantowallet::tests::test_qds_single_shot_unreachable_fast_timeout ... ok
+test qantodag::determinism_tests::test_ghost_heaviest_tip ... ok
+test qantodag::determinism_tests::test_fork_lca_and_depth ... ok
+test qantodag::determinism_tests::validate_block_with_witness_coinbase_only_has_no_utxo_inputs_and_consistent_witness ... ok
+test p2p::tests::invalid_hmac_blacklists_peer ... ok
+test p2p::tests::payload_type_topic_mismatch_blacklists_peer ... ok
+test p2p::tests::tampered_signature_blacklists_peer ... ok
+test p2p::tests::valid_transaction_message_is_forwarded ... ok
+test runtime_manager::tests::test_cancellation_token_propagation ... ok
+test runtime_context::tests::test_runtime_context_debug ... ok
+test runtime_context::tests::test_runtime_context_creation ... ok
+test runtime_manager::tests::test_drop_without_shutdown_requests_cancellation ... ok
+test runtime_manager::tests::test_force_shutdown_terminates_all ... ok
+test runtime_manager::tests::test_aggregated_shutdown_failures ... ok
+test runtime_manager::tests::test_dependency_order_startup ... ok
+test p2p::tests::rate_limit_exceeded_drops_message_without_permanent_blacklist ... ok
+test runtime_manager::tests::test_integration_snapshot_service ... ok
+test runtime_manager::tests::test_integration_diagnostics_service ... ok
+test qantodag::determinism_tests::zero_total_stake_never_auto_finalizes ... ok
+test runtime_manager::tests::test_runtime_metrics ... ok
+test runtime_manager::tests::test_register_after_start_rejected ... ok
+test runtime_manager::tests::test_integration_telemetry_service ... ok
+test qantowallet::tests::test_wallet_balance_integrity ... ok
+test runtime_manager::tests::test_state_machine_created_to_running ... ok
+test runtime_manager::tests::test_shutdown_error_aggregation ... ok
+test runtime_manager::tests::test_state_machine_invalid_transition ... ok
+test runtime_manager::tests::test_shutdown_without_start_rejected ... ok
+test runtime_manager::tests::test_integration_state_pruning_service ... ok
+test runtime_manager::tests::test_transactional_startup_rollback_at_initialize ... ok
+test runtime_manager::tests::test_validation_cycle_detection ... ok
+test runtime_manager::tests::test_transactional_startup_rollback ... ok
+test runtime_manager::tests::test_validation_duplicate_detection ... ok
+test runtime_manager::tests::test_runtime_state_machine_validation ... ok
+test runtime_manager::tests::test_successful_startup_and_shutdown ... ok
+test runtime_service::tests::test_dependencies_default_is_empty ... ok
+test runtime_service::tests::test_restart_policy_default_is_never ... ok
+test runtime_service::tests::test_service_health_defaults ... ok
+test runtime_service::tests::test_service_status_display ... ok
+test saga::governance_fixed_point_tests::test_governance_from_integer ... ok
+test saga::governance_fixed_point_tests::test_governance_from_ratio ... ok
+test saga::governance_fixed_point_tests::test_governance_to_u128 ... ok
+test saga::governance_fixed_point_tests::test_legacy_epoch_rule_conversion ... ok
+test saga::governance_fixed_point_tests::test_legacy_deserialization ... ok
+test saga::governance_fixed_point_tests::test_reject_invalid_legacy ... ok
+test saga::governance_fixed_point_tests::test_serialization_round_trip ... ok
+test saga::tests_decision_tree::classify_beneficial_when_high_perf_significant_stake_and_poco ... ok
+test saga::tests_decision_tree::classify_malicious_when_low_perf_and_low_stake ... ok
+test saga::tests_decision_tree::classify_neutral_otherwise ... ok
+test security_tests::test_randomized_transaction_parsing_fuzz ... ok
+test runtime_manager::tests::test_validation_missing_dependency_detection ... ok
+test runtime_manager::tests::test_validation_dependency_resolution ... ok
+test security_tests::test_block_roundtrip_determinism ... ok
+test runtime_manager::tests::test_stress_100_services ... ok
+test security_tests::test_security_bridge_claim_zero_signers ... ok
+test security_tests::test_security_bridge_double_claim ... ok
+test security_tests::test_security_coinbase_signature_validation ... ok
+test security_tests::test_security_bridge_claim_insufficient_quorum ... ok
+test security_tests::test_security_high_s_signature_rejected ... ok
+test security_tests::test_security_bridge_claim_exceeds_locked ... ok
+test security_tests::test_security_mempool_dos_limits ... ok
+test security_tests::test_security_signature_malleability_low_s_enforced ... ok
+test security_tests::test_security_1000_vote_precision ... ok
+test security_tests::test_security_chain_id_replay_protection ... ok
+test security_tests::test_security_duplicate_tx_mempool ... ok
+test security_tests::test_security_stake_insufficient_balance ... ok
+test security_tests::test_security_supply_conservation ... ok
+test service_registry::tests::test_cycle_detection ... ok
+test security_tests::test_transaction_roundtrip_determinism ... ok
+test security_tests::test_security_stake_immediate_unstake_cooldown ... ok
+test service_registry::tests::test_diamond_dependency_order ... ok
+test service_registry::tests::test_list_services ... ok
+test service_registry::tests::test_empty_registry_startup_order ... ok
+test service_registry::tests::test_health_state_tracking ... ok
+test service_registry::tests::test_missing_dependency_detection ... ok
+test service_registry::tests::test_registry_duplicate_rejected ... ok
+test service_registry::tests::test_shutdown_order_is_reverse ... ok
+test service_registry::tests::test_simple_linear_dependency_order ... ok
+test service_registry::tests::test_registry_register_and_get ... ok
+test service_registry::tests::test_validate_dependencies ... ok
+test services::production_api::tests::api_control_plane_is_loopback_only ... ok
+test shutdown::tests::test_cancellation_token ... ok
+test shutdown::tests::test_force_shutdown ... ok
+test shutdown::tests::test_multiple_subscribers ... ok
+test shutdown::tests::test_no_panic_without_subscribers ... ok
+test shutdown::tests::test_shutdown_controller_basic ... ok
+test shutdown::tests::test_shutdown_signals ... ok
+test shutdown::tests::test_shutdown_stats ... ok
+test security_tests::test_security_node_restart_claim_replay ... ok
+test shutdown::tests::test_shutdown_tasks ... ok
+test start_node::tests::test_placeholder ... ok
+test state_sync::header_sync_tests::rejects_out_of_order_headers_and_unassigned_blocks ... ok
+test state_sync::header_sync_tests::rejects_unbounded_or_reversed_sync_ranges ... ok
+test state_sync::header_sync_tests::test_block_download_transitions_to_done ... ok
+test state_sync::header_sync_tests::test_build_next_headers_request ... ok
+test state_sync::header_sync_tests::test_header_phase_transitions_to_block_download ... ok
+test state_sync::header_sync_tests::test_peer_chunk_assignment ... ok
+test state_sync::header_sync_tests::test_progress_percentage_tracks_phases ... ok
+test telemetry::tests::test_conversion_accuracy ... ok
+test telemetry::tests::test_edge_cases ... ok
+test security_tests::test_security_tampered_genesis_load ... ok
+test telemetry::tests::test_hash_rate_calculation ... ok
+test telemetry::tests::test_hash_rate_formatting ... ok
+test telemetry::tests::test_precision_and_rounding ... ok
+test telemetry::tests::test_telemetry_manager_creation ... ok
+test transaction::tests::canonical_serialization_is_deterministic_across_metadata_order ... ok
+test telemetry::tests::test_get_consensus_health ... ok
+test transaction::tests::coinbase_is_internal_only_and_bound_to_its_signer ... ok
+test transaction::tests::effective_fee_rate_fails_closed_when_scaling_overflows ... ok
+test transaction::tests::coinbase_output_sum_rejects_u128_wraparound ... ok
+test transaction::tests::valid_evm_recovery_remains_independent_of_native_pq_addresses ... ok
+test transaction::tests::pq_sender_spoofing_fails_across_submission_and_block_paths ... ok
+test transaction::tests::verify_paths_fail_fast_on_invalid_signature ... ok
+test shutdown::tests::test_wait_for_shutdown_with_timeout ... ok
+test wallet::tests::native_address_is_bound_to_the_wallet_pq_key ... ok
+test transaction::tests::wrapping_output_sum_cannot_mint_value_in_any_validation_path ... ok
+test wallet::tests::new_wallet_files_require_a_nontrivial_passphrase ... ok
+test websocket_server::tests::broadcasts_reach_subscribers ... ok
+test wallet::tests::encrypted_wallet_round_trip_detects_tampering ... ok
+test websocket_server::tests::websocket_state_initializes_with_dummy_dag ... ok
+test shutdown::tests::test_graceful_shutdown_with_timeout ... ok
+test shutdown::tests::test_shutdown_phases ... ok
+test runtime_manager::tests::test_integration_metrics_service ... ok
+test runtime_manager::tests::test_integration_ipc_service ... ok
+test runtime_manager::tests::test_integration_rpc_service ... ok
+test runtime_manager::tests::test_integration_api_service ... ok
+test runtime_manager::tests::test_integration_p2p_service ... ok
+
+test result: ok. 250 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 26.48s
+
+     Running unittests src/bin/derive_genesis_key.rs (target/debug/deps/derive_genesis_key-aed887fbfc2deab7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/gen_wallet.rs (target/debug/deps/gen_wallet-4a3b1cb012944e31)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/generate_wallet.rs (target/debug/deps/generate_wallet-3b3732cb5db99ca2)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/genesis_flood.rs (target/debug/deps/genesis_flood-9ffe07fe7bf2b1b8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/get_address.rs (target/debug/deps/get_address-6c58c68b8eda36df)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/import_wallet.rs (target/debug/deps/import_wallet-4907c88b58a48388)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/metrics_server.rs (target/debug/deps/metrics_server-2ebc2119791980c0)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/monitor.rs (target/debug/deps/monitor-93ff539ef68cabc2)
+
+running 1 test
+test tests::missing_status_transport_never_reports_success ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/network_stress_test.rs (target/debug/deps/network_stress_test-78a9cea1dcedac00)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/qanto.rs (target/debug/deps/qanto-bf14c2aefa2e8b84)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/qantowallet.rs (target/debug/deps/qantowallet-490261cbfe81c253)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/start_node.rs (target/debug/deps/start_node-60b7dffd910ee1a8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/stress_test.rs (target/debug/deps/stress_test-89f9f40ddf9ce46c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/tx_flood.rs (target/debug/deps/tx_flood-821ebcb2ec5ff0bf)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/e2e_pqc_migration.rs (target/debug/deps/e2e_pqc_migration-b0b48e5e17904dc7)
+
+running 1 test
+test test_adversarial_migration_epoch_and_governor ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/fast_sync_tests.rs (target/debug/deps/fast_sync_tests-221ff6a0b552efcd)
+
+running 3 tests
+test snapshot_rejects_out_of_order_chunks_before_decompression ... ok
+test test_state_sync_corrupted_payload_severing ... ok
+test snapshot_with_synthetic_proof_fails_closed ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/fuzz_pqc_math.rs (target/debug/deps/fuzz_pqc_math-cb7a2ec98afd1d76)
+
+running 1 test
+test test_montgomery_reduction_fuzz ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/interoperability_zk_tests.rs (target/debug/deps/interoperability_zk_tests-949226db1a3f359b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/pqc_mempool_tests.rs (target/debug/deps/pqc_mempool_tests-ce5387423a64fd1a)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running benches/mining_bench.rs (target/debug/deps/mining_bench-52a5c27951bc805c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/qanto_core-33465c6a9ac7d56b)
+
+running 30 tests
+test mining_celebration::tests::test_format_hash_rate_h ... ok
+test mining_celebration::tests::test_format_hash_rate_gh ... ok
+test mining_celebration::tests::test_format_hash_rate_kh ... ok
+test mining_celebration::tests::test_format_hash_rate_mh ... ok
+test qanto_compat::fail_closed_compatibility_tests::unavailable_kem_compatibility_providers_do_not_emit_zero_keys ... ok
+test qanto_compat::pqcrypto_falcon::falcon1024::tests::falcon_compatibility_api_fails_closed_without_provider ... ok
+test qanto_native_crypto::tests::all_zero_pq_private_key_cannot_sign ... ok
+test dag_aware_mempool::tests::test_dag_mempool_creation ... ok
+test dag_aware_mempool::tests::test_transaction_addition ... ok
+test dag_aware_mempool::tests::test_dependency_graph ... ok
+test balance_stream::tests::broadcast_immediate_update ... ok
+test balance_stream::tests::apply_delta_accumulates_correctly ... ok
+test qanto_net::display_tests::qantoblock_display_shows_short_parent ... ok
+test qanto_net::display_tests::qantoblock_display_truncates_and_handles_none_parent ... ok
+test qanto_net::tests::legacy_network_stack_is_quarantined ... ok
+test qanto_native_crypto::tests::ed25519_standard_round_trip_works ... ok
+test qanto_native_crypto::tests::legacy_hash_forgery_formula_is_rejected ... ok
+test qanto_p2p::tests::start_fails_closed_before_binding_when_authentication_is_unavailable ... ok
+test qanto_native_crypto::tests::keypair_tuple_order_is_public_then_private ... ok
+test qanto_storage::tests::state_commitment_is_unambiguous_and_proofs_fail_closed ... ok
+test qanto_native_crypto::tests::pq_standard_round_trip_works ... ok
+test storage_adapter::tests::placeholder_network_adapter_fails_closed ... ok
+test qanto_native_crypto::tests::p256_old_hash_construction_forgery_is_rejected ... ok
+test qanto_native_crypto::tests::p256_real_ecdsa_round_trip_works ... ok
+test qanto_storage::tests::unsupported_database_encryption_never_silently_writes_plaintext ... ok
+test storage_adapter::tests::storage_encryption_is_authenticated_and_nonce_randomized ... ok
+test perf_bench::benches::bench_balance_broadcast_throughput ... ok
+test qanto_storage::tests::test_wal_recovery ... ok
+test qanto_storage::tests::test_checkpoint_and_recovery ... ok
+test perf_bench::benches::bench_display_throughput ... ok
+
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.16s
+
+     Running unittests src/lib.rs (target/debug/deps/qanto_rpc-a40c8a1d3bd5d175)
+
+running 4 tests
+test server::tests::public_rpc_bind_is_rejected_before_socket_use ... ok
+test server::tests::wallet_balance_returns_full_precision_strings ... ok
+test server::tests::get_balance_returns_full_precision_strings ... ok
+test server::tests::submit_transaction_rejects_invalid_monetary_strings ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/qanto_zk_sdk-fcc799f3edc30dab)
+
+running 5 tests
+test tests::bridge_verification_fails_closed ... ok
+test tests::parses_string_monetary_value_into_u128 ... ok
+test tests::parses_large_rpc_balance_strings_into_biguint ... ok
+test tests::rejects_invalid_rpc_balance_strings ... ok
+test tests::bridge_proof_pipeline_is_disabled_without_an_audited_verifier ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

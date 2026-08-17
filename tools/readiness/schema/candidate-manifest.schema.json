@@ -1,0 +1,166 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Qanto Candidate Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "candidate_id",
+    "captured_at_utc",
+    "git",
+    "inputs",
+    "release"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [1]
+    },
+    "candidate_id": {
+      "type": "string",
+      "pattern": "^sha3-256:[0-9a-f]{64}$"
+    },
+    "captured_at_utc": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "head",
+        "branch",
+        "tracked_diff_sha3_256",
+        "untracked_inventory_sha3_256",
+        "dirty"
+      ],
+      "properties": {
+        "head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "tracked_diff_sha3_256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "untracked_inventory_sha3_256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "dirty": {
+          "type": "boolean"
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cargo_lock_sha3_256",
+        "rust_toolchain_sha3_256",
+        "rustc_verbose",
+        "cargo_verbose",
+        "feature_allowlist",
+        "workspace_members",
+        "config_sha3_256",
+        "chain_id",
+        "network_id",
+        "genesis_manifest_sha3_256",
+        "genesis_commitment",
+        "allocation_state_root",
+        "consensus_parameters_sha3_256"
+      ],
+      "properties": {
+        "cargo_lock_sha3_256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "rust_toolchain_sha3_256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "rustc_verbose": {
+          "type": "string"
+        },
+        "cargo_verbose": {
+          "type": "string"
+        },
+        "feature_allowlist": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "sorted": true
+        },
+        "workspace_members": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "config_sha3_256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "chain_id": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "network_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "genesis_manifest_sha3_256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "genesis_commitment": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "allocation_state_root": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "consensus_parameters_sha3_256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stage",
+        "included_binaries",
+        "excluded_capabilities"
+      ],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": ["private-engineering", "public-candidate"]
+        },
+        "included_binaries": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "sorted": true
+        },
+        "excluded_capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

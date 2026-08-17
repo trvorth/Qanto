@@ -18,17 +18,21 @@ impl std::error::Error for PowError {}
 
 /// Normative portable CPU oracle for inactive QanHashV2.
 ///
-/// The payload is a canonical two-field record: field 1 is the 32-byte `BLOCK_CORE` hash and
-/// field 2 is the big-endian `u64` nonce. The resulting record is hashed in the `POW_WORK`
-/// domain. Accelerator output must be rechecked against this function before it can be trusted.
+/// The payload is a canonical two-field record (including 2-byte field count):
+/// field 1 is the 32-byte `BLOCK_CORE` hash and field 2 is the big-endian `u64` nonce.
+/// The resulting record is hashed in the `POW_WORK` domain.
+/// Accelerator output must be rechecked against this function before it can be trusted.
 #[must_use]
 pub fn qanhash_v2(chain_id: u32, schema: u16, block_core_hash: HashV2, nonce: u64) -> WorkHashV2 {
     let mut payload = Vec::with_capacity(56);
+    // Field count (2 fields)
     payload.extend_from_slice(&2u16.to_be_bytes());
+    // Field 1: block_core_hash (hash32)
     payload.extend_from_slice(&1u16.to_be_bytes());
     payload.push(0x07); // hash32
     payload.extend_from_slice(&32u32.to_be_bytes());
     payload.extend_from_slice(block_core_hash.as_bytes());
+    // Field 2: nonce (u64)
     payload.extend_from_slice(&2u16.to_be_bytes());
     payload.push(0x04); // u64
     payload.extend_from_slice(&8u32.to_be_bytes());

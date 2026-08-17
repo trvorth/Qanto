@@ -45,6 +45,7 @@ pub mod post_quantum_crypto;
 pub mod pq_crypto;
 pub mod pq_suite;
 pub mod privacy;
+pub mod protocol;
 pub mod resource_cleanup;
 pub mod safe_interval;
 pub mod saga_ai;
@@ -84,6 +85,7 @@ pub mod ubi_credits;
 pub mod zk;
 
 pub mod derive_genesis_key;
+pub mod difficulty_retarget;
 pub mod generate_wallet;
 pub mod get_address;
 pub mod import_wallet;
@@ -128,6 +130,32 @@ pub use my_blockchain::qanhash;
 pub mod qantowallet;
 pub mod qds;
 
+#[cfg(test)]
+pub mod attack_10_blocks_map_performance;
+#[cfg(test)]
+pub mod attack_11_saga_f64_nondeterminism;
+#[cfg(test)]
+pub mod attack_12_omega_threat_manipulation;
+#[cfg(test)]
+pub mod attack_1_single_parent_dag_safety_violation;
+#[cfg(test)]
+pub mod attack_2_liveness_failure_fixed_difficulty;
+#[cfg(test)]
+pub mod attack_3_finality_absence_reorg_any_depth;
+#[cfg(test)]
+pub mod attack_4_evm_raw_tx_bypass_pq;
+#[cfg(test)]
+pub mod attack_5_bridge_claim_forged_signature;
+#[cfg(test)]
+pub mod attack_6_rpc_ws_unauthenticated;
+#[cfg(test)]
+pub mod attack_7_p2p_eclipse_fixed_topics;
+#[cfg(test)]
+pub mod attack_8_miner_reservation_griefing;
+#[cfg(test)]
+pub mod attack_9_consensus_lock_bottleneck;
+#[cfg(test)]
+pub mod attack_tests;
 #[cfg(test)]
 pub mod byzantine_tests;
 #[cfg(test)]

@@ -34,8 +34,12 @@ async fn grow_chain(
     let mut added_block_ids = Vec::new();
     for i in 1..=length {
         let (val_pk, val_sk) = validators[(i - 1) % validators.len()];
-        let val_addr = qanto_core::protocol_identity::validator_id_v2(1234, val_pk.as_bytes())
-            .expect("validator id");
+        let val_addr = qanto_core::protocol_identity::validator_id_v2(
+            val_pk.as_array(),
+            1234,
+            qanto_consensus_primitives::consensus_parameters::SchemaVersion::V2_INITIAL,
+        )
+        .to_string();
         // Collect tips
         let tips: Vec<String> = dag
             .tips
@@ -69,10 +73,18 @@ async fn partitioned_single_tip_views_never_synthesize_finality() {
     let dag_b = wrap_and_init_dag(new_dummy_with_storage_path(temp_b.path()));
     let (pk_a, sk_a) = generate_pq_keypair(None).unwrap();
     let (pk_b, sk_b) = generate_pq_keypair(None).unwrap();
-    let validator_a =
-        qanto_core::protocol_identity::validator_id_v2(1234, pk_a.as_bytes()).unwrap();
-    let validator_b =
-        qanto_core::protocol_identity::validator_id_v2(1234, pk_b.as_bytes()).unwrap();
+    let validator_a = qanto_core::protocol_identity::validator_id_v2(
+        pk_a.as_array(),
+        1234,
+        qanto_consensus_primitives::consensus_parameters::SchemaVersion::V2_INITIAL,
+    )
+    .to_string();
+    let validator_b = qanto_core::protocol_identity::validator_id_v2(
+        pk_b.as_array(),
+        1234,
+        qanto_consensus_primitives::consensus_parameters::SchemaVersion::V2_INITIAL,
+    )
+    .to_string();
 
     dag_a
         .validators
@@ -118,10 +130,18 @@ async fn partition_healing_rejects_a_non_tip_branch_without_branch_state() {
     let dag_b = wrap_and_init_dag(new_dummy_with_storage_path(temp_b.path()));
     let (pk_a, sk_a) = generate_pq_keypair(None).unwrap();
     let (pk_b, sk_b) = generate_pq_keypair(None).unwrap();
-    let validator_a =
-        qanto_core::protocol_identity::validator_id_v2(1234, pk_a.as_bytes()).unwrap();
-    let validator_b =
-        qanto_core::protocol_identity::validator_id_v2(1234, pk_b.as_bytes()).unwrap();
+    let validator_a = qanto_core::protocol_identity::validator_id_v2(
+        pk_a.as_array(),
+        1234,
+        qanto_consensus_primitives::consensus_parameters::SchemaVersion::V2_INITIAL,
+    )
+    .to_string();
+    let validator_b = qanto_core::protocol_identity::validator_id_v2(
+        pk_b.as_array(),
+        1234,
+        qanto_consensus_primitives::consensus_parameters::SchemaVersion::V2_INITIAL,
+    )
+    .to_string();
     for dag in [&dag_a, &dag_b] {
         dag.validators
             .insert(validator_a.clone(), 50 * crate::Q_SCALE);

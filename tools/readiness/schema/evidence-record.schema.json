@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Qanto Evidence Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_id",
+    "candidate_id",
+    "timestamp",
+    "command",
+    "exit_code",
+    "gate_status",
+    "stdout_hash",
+    "stderr_hash",
+    "host_class",
+    "record_hash"
+  ],
+  "properties": {
+    "record_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$"
+    },
+    "candidate_id": {
+      "type": "string",
+      "pattern": "^sha3-256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "command": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "exit_code": {
+      "type": "integer"
+    },
+    "gate_status": {
+      "type": "string",
+      "enum": ["PASS", "FAIL", "BLOCKED"]
+    },
+    "stdout_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "stderr_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "host_class": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "record_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

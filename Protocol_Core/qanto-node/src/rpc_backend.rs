@@ -781,9 +781,12 @@ pub async fn handle_request_faucet_funds(
         tx_timestamps: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         chain_id: crate::transaction::GLOBAL_CHAIN_ID.load(std::sync::atomic::Ordering::Relaxed)
             as u32,
+        tx_kind: crate::transaction::TransactionKind::Transfer,
     };
 
-    let tx = crate::transaction::Transaction::new(cfg, &sk)
+    let consensus_params = _dag.consensus_params.as_ref();
+    let height = 0u64;
+    let tx = crate::transaction::Transaction::new(cfg, &sk, consensus_params, height)
         .await
         .map_err(|e| format!("Failed to create transaction: {e}"))?;
 

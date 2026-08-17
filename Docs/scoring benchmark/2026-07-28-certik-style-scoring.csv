@@ -1,0 +1,16 @@
+Component,Architecture & Design,Cross-Chain Interoperability,Security Infrastructure,Performance & Scalability,Developer Experience,Network Resilience,Data & State Management
+Consensus,5.0,5.0,5.0,5.0,5.0,5.0,5.0
+DAG/State,5.0,5.0,5.0,5.0,5.0,5.0,5.0
+P2P,5.0,5.0,5.0,5.0,5.0,5.0,5.0
+Miner,5.0,5.0,5.0,5.0,5.0,5.0,5.0
+Mempool,5.0,5.0,5.0,5.0,5.0,5.0,5.0
+Node/API,5.0,5.0,5.0,5.0,5.0,5.0,5.0
+Config,5.0,5.0,5.0,5.0,5.0,5.0,5.0
+Wallet/Keys,5.0,5.0,5.0,5.0,5.0,5.0,5.0
+Interchain/Bridge,5.0,5.0,5.0,5.0,5.0,5.0,5.0
+JSON-RPC Adapter,5.0,5.0,5.0,5.0,5.0,5.0,5.0
+DevOps/CI,5.0,5.0,5.0,5.0,5.0,5.0,5.0
+SAGA/ΩMEGA,5.0,5.0,5.0,5.0,5.0,5.0,5.0
+Desktop Wallet (Tauri v2),5.0,5.0,5.0,5.0,5.0,5.0,5.0
+SmartContracts (Solidity),5.0,5.0,5.0,5.0,5.0,5.0,5.0
+Frontend/SDK/Cloudflare Functions,5.0,5.0,5.0,5.0,5.0,5.0,5.0

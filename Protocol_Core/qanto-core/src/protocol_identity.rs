@@ -6,6 +6,7 @@
 //! networks, suites, or ambiguous concatenations.
 
 use crate::qanto_native_crypto::QANTO_PQ_PUBLIC_KEY_LENGTH;
+use qanto_consensus_primitives::{consensus_parameters::SchemaVersion, hash_v2, DomainV2, HashV2};
 use sha3::{Digest, Sha3_256};
 use subtle::ConstantTimeEq;
 use thiserror::Error;
@@ -35,7 +36,7 @@ pub enum IdentityError {
     AddressMismatch,
 }
 
-/// Derive the canonical account address for an ML-DSA-65 public key.
+/// Derive the canonical account address for an ML-DSA-65 public key (V1 legacy).
 pub fn account_address_v2(
     network_chain_id: u32,
     public_key: &[u8],
@@ -43,15 +44,18 @@ pub fn account_address_v2(
     derive_identity_v2(ACCOUNT_DOMAIN_V2, network_chain_id, public_key)
 }
 
-/// Derive the canonical validator identity for an ML-DSA-65 public key.
+/// Derive the canonical validator address for an ML-DSA-65 public key (V1 legacy).
 ///
 /// Validators and accounts deliberately use distinct domains so an identifier
 /// cannot silently change roles without an explicit protocol rule.
-pub fn validator_id_v2(network_chain_id: u32, public_key: &[u8]) -> Result<String, IdentityError> {
+pub fn validator_address_v2(
+    network_chain_id: u32,
+    public_key: &[u8],
+) -> Result<String, IdentityError> {
     derive_identity_v2(VALIDATOR_DOMAIN_V2, network_chain_id, public_key)
 }
 
-/// Validate an account address without leaking mismatch position information.
+/// Validate an account address without leaking mismatch position information (V1 legacy).
 pub fn validate_account_address_v2(
     declared_address: &str,
     network_chain_id: u32,
@@ -65,6 +69,32 @@ pub fn validate_account_address_v2(
     } else {
         Err(IdentityError::AddressMismatch)
     }
+}
+
+/// Derive the canonical AccountIdV2 from ML-DSA-65 public key.
+pub fn account_id_v2(pubkey: &[u8; 1952], chain_id: u32, schema: SchemaVersion) -> HashV2 {
+    use qanto_consensus_primitives::v2_records::account_id_record;
+    let record = account_id_record(pubkey);
+    let bytes = record.finish();
+    hash_v2(DomainV2::AccountId, chain_id, schema as u16, &bytes)
+}
+
+/// Derive the canonical ValidatorIdV2 from ML-DSA-65 public key.
+pub fn validator_id_v2(pubkey: &[u8; 1952], chain_id: u32, schema: SchemaVersion) -> HashV2 {
+    use qanto_consensus_primitives::v2_records::validator_id_record;
+    let record = validator_id_record(pubkey);
+    let bytes = record.finish();
+    hash_v2(DomainV2::ValidatorId, chain_id, schema as u16, &bytes)
+}
+
+/// Validate AccountIdV2 equality using constant-time comparison.
+pub fn account_ids_equal_constant_time(a: &HashV2, b: &HashV2) -> bool {
+    a.as_ref().ct_eq(b.as_ref()).into()
+}
+
+/// Validate ValidatorIdV2 equality using constant-time comparison.
+pub fn validator_ids_equal_constant_time(a: &HashV2, b: &HashV2) -> bool {
+    a.as_ref().ct_eq(b.as_ref()).into()
 }
 
 fn derive_identity_v2(
@@ -133,7 +163,7 @@ mod tests {
 
         assert_ne!(
             account_address_v2(1234, &public_key).unwrap(),
-            validator_id_v2(1234, &public_key).unwrap()
+            validator_id_v2(&public_key, 1234, SchemaVersion::V2_INITIAL).to_string()
         );
         assert_ne!(
             account_address_v2(1234, &public_key).unwrap(),

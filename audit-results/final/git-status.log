@@ -1,0 +1,791 @@
+## main...origin/main
+ M .github/dependabot.yml
+ M .github/workflows/ci.yml
+ M .github/workflows/cloudflare-pages-coming-soon.yml
+ M .github/workflows/codeql.yml
+ M .github/workflows/main.yml
+ M .github/workflows/release-wallet.yml
+ M .github/workflows/release.yml
+ M .github/workflows/rust_ci.yml
+ M .gitignore
+ M Cargo.lock
+ M Cargo.toml
+ D DevOps/docker/.env.example
+ D DevOps/docker/Caddyfile
+ D DevOps/docker/Dockerfile
+ D DevOps/docker/README.md
+ D DevOps/docker/config/config.toml
+ D DevOps/docker/docker-compose.prod.yml
+ D DevOps/docker/docker-compose.yml
+ D DevOps/docker/join-testnet.sh
+ D DevOps/docker/monitoring/grafana/dashboards/qanto-node-overview.json
+ D DevOps/docker/monitoring/grafana/dashboards/system-overview.json
+ D DevOps/docker/monitoring/grafana/provisioning/dashboards/dashboards.yml
+ D DevOps/docker/monitoring/grafana/provisioning/datasources/datasources.yml
+ D DevOps/docker/monitoring/loki/local-config.yaml
+ D DevOps/docker/monitoring/prometheus/prometheus.yml
+ D DevOps/docker/monitoring/promtail/config.yml
+ D DevOps/docker/testnet-cloud-ops-check.sh
+ D DevOps/docker/ubuntu-testnet-ignite.sh
+ M DevOps/infrastructure/bot/saga_agent.rs
+ M DevOps/infrastructure/hardware/node_v1_specs.rs
+ M DevOps/infrastructure/hardware/swarm_logic.rs
+ M DevOps/infrastructure/media/zk_attestation.rs
+ M DevOps/infrastructure/sentinel/attestation.rs
+ M DevOps/infrastructure/sentinel/mobile_node.rs
+ M DevOps/infrastructure/sentinel/shard_registry.rs
+ M DevOps/infrastructure/shipping/fulfillment_engine.rs
+ M DevOps/k8s/statefulset.yaml
+ D Dockerfile
+ D Dockerfile.bootnode
+D  Docs/ROADMAP.md
+D  Docs/bridge-wqnto.md
+D  Docs/cohort-a-rehearsal.md
+D  Docs/external_review_package.md
+D  Docs/guide/airdrop_guide.md
+D  Docs/guide/cloudflare-pages-coming-soon.md
+D  Docs/guide/join-testnet-guide.md
+D  Docs/guide/qantowallet-guide.md
+D  Docs/guide/qds-wallet-guide.md
+D  Docs/guide/testnet-guide.md
+D  Docs/guide/wallet-env-password-guide.md
+D  Docs/node-operator-guide.md
+D  Docs/plans/2026-06-30-codebase-audit-report.md
+D  Docs/plans/2026-06-30-remediation-and-compliance-plan.md
+D  Docs/plans/architecture-detail.md
+D  Docs/plans/architecture.md
+D  Docs/plans/cohort-a-operational-launch-plan.md
+D  Docs/plans/dependency-migration-plan.md
+D  Docs/plans/deployment-plan.md
+D  Docs/plans/fee-model-plan.md
+D  Docs/plans/optimizations-plan.md
+D  Docs/plans/security-audit-plan.md
+D  Docs/plans/testnet-plan.md
+D  Docs/plans/tokenomics-plan.md
+D  Docs/qanto/high_throughput_storage.md
+D  Docs/qanto/network_compression.md
+D  Docs/qanto/qanhash_profiling.md
+D  Docs/qanto/real_time_wallet_balance.md
+D  Docs/qanto/serialization_simd.md
+D  Docs/rpc-api.md
+D  "Docs/scoring benchmark/SCORING_SUMMARY.md"
+D  "Docs/scoring benchmark/layer0_rubric.md"
+D  "Docs/scoring benchmark/scoring_matrix.csv"
+D  "Docs/scoring benchmark/scoring_matrix.json"
+D  Docs/threat_model.md
+D  Docs/upgrade-procedure.md
+D  Docs/whitepaper/Qanto-Protocol-Executive-Summary.md
+D  Docs/whitepaper/Qanto-whitepaper.pdf
+D  Frontend/package.json
+D  Frontend/qanto-dapp/.gitignore
+D  Frontend/qanto-dapp/README.md
+D  Frontend/qanto-dapp/eslint.config.js
+D  Frontend/qanto-dapp/index.html
+D  Frontend/qanto-dapp/package-lock.json
+D  Frontend/qanto-dapp/package.json
+D  Frontend/qanto-dapp/postcss.config.js
+D  Frontend/qanto-dapp/public/favicon.svg
+D  Frontend/qanto-dapp/public/icons.svg
+D  Frontend/qanto-dapp/src/App.css
+D  Frontend/qanto-dapp/src/App.tsx
+D  Frontend/qanto-dapp/src/Web3Provider.tsx
+D  Frontend/qanto-dapp/src/assets/hero.png
+D  Frontend/qanto-dapp/src/assets/react.svg
+D  Frontend/qanto-dapp/src/assets/vite.svg
+D  Frontend/qanto-dapp/src/components/AddressDisplay.tsx
+D  Frontend/qanto-dapp/src/components/AirdropClaim.tsx
+D  Frontend/qanto-dapp/src/components/CreateProposal.tsx
+D  Frontend/qanto-dapp/src/components/Explorer.tsx
+D  Frontend/qanto-dapp/src/components/Governance.tsx
+D  Frontend/qanto-dapp/src/components/Hero.tsx
+D  Frontend/qanto-dapp/src/components/HoloExplorer.tsx
+D  Frontend/qanto-dapp/src/components/Layout.tsx
+D  Frontend/qanto-dapp/src/components/QuantumCanvas.tsx
+D  Frontend/qanto-dapp/src/components/TechStack.tsx
+D  Frontend/qanto-dapp/src/components/TelemetryDashboard.tsx
+D  Frontend/qanto-dapp/src/components/TokenSale.tsx
+D  Frontend/qanto-dapp/src/hooks/useQantoBalance.ts
+D  Frontend/qanto-dapp/src/index.css
+D  Frontend/qanto-dapp/src/lib/qanto-wallet.tsx
+D  Frontend/qanto-dapp/src/main.tsx
+D  Frontend/qanto-dapp/src/pages/Bridge.tsx
+D  Frontend/qanto-dapp/src/pages/Codex.tsx
+D  Frontend/qanto-dapp/src/pages/DEX.tsx
+D  Frontend/qanto-dapp/src/pages/Staking.tsx
+D  Frontend/qanto-dapp/src/vendor-shims.d.ts
+D  Frontend/qanto-dapp/tailwind.config.js
+D  Frontend/qanto-dapp/tsconfig.app.json
+D  Frontend/qanto-dapp/tsconfig.json
+D  Frontend/qanto-dapp/tsconfig.node.json
+D  Frontend/qanto-dapp/vercel.json
+D  Frontend/qanto-dapp/vite.config.ts
+D  Frontend/qantoscan/.docker/default.conf.template
+D  Frontend/qantoscan/.docker/entrypoint.sh
+D  Frontend/qantoscan/.dockerignore
+D  Frontend/qantoscan/.gitignore
+D  Frontend/qantoscan/.oxlintrc.json
+D  Frontend/qantoscan/Dockerfile
+D  Frontend/qantoscan/README.md
+D  Frontend/qantoscan/index.html
+D  Frontend/qantoscan/nginx.conf
+D  Frontend/qantoscan/package-lock.json
+D  Frontend/qantoscan/package.json
+D  Frontend/qantoscan/public/_headers
+D  Frontend/qantoscan/public/_redirects
+D  Frontend/qantoscan/public/favicon.svg
+D  Frontend/qantoscan/public/icons.svg
+D  Frontend/qantoscan/src/App.tsx
+D  Frontend/qantoscan/src/api.ts
+D  Frontend/qantoscan/src/hooks/useLiveData.ts
+D  Frontend/qantoscan/src/index.css
+D  Frontend/qantoscan/src/main.tsx
+D  Frontend/qantoscan/src/vite-env.d.ts
+D  Frontend/qantoscan/tsconfig.app.json
+D  Frontend/qantoscan/tsconfig.json
+D  Frontend/qantoscan/tsconfig.node.json
+D  Frontend/qantoscan/vite.config.ts
+D  Frontend/website/.dev.vars.example
+D  Frontend/website/WAITLIST_BACKEND_SETUP.md
+D  Frontend/website/airdrop.html
+D  Frontend/website/analytics.html
+D  Frontend/website/assets/css/animations.css
+D  Frontend/website/assets/css/coming-soon.css
+D  Frontend/website/assets/css/components.css
+D  Frontend/website/assets/css/main.css
+D  Frontend/website/assets/img/quantum_landscape.jpg
+D  Frontend/website/assets/js/animations.js
+D  Frontend/website/assets/js/coming-soon.js
+D  Frontend/website/assets/js/faucet-controller.js
+D  Frontend/website/assets/js/faucet.js
+D  Frontend/website/assets/js/keep-alive.js
+D  Frontend/website/assets/js/main.js
+D  Frontend/website/assets/js/os.js
+D  Frontend/website/assets/js/qantoswap-controller.js
+D  Frontend/website/assets/js/quantum-mesh.js
+D  Frontend/website/assets/js/quests.js
+D  Frontend/website/assets/js/swap.js
+D  Frontend/website/assets/js/telemetry-sync.js
+D  Frontend/website/assets/js/visualizations.js
+D  Frontend/website/assets/js/web3-provider.js
+D  Frontend/website/assets/json/explorer-mock.json
+D  Frontend/website/bridge.html
+D  Frontend/website/dist/_headers
+D  Frontend/website/dist/_redirects
+D  Frontend/website/dist/assets/index-B5kJBFwg.js
+D  Frontend/website/dist/assets/index-DFKjokM_.css
+D  Frontend/website/dist/index.html
+D  Frontend/website/explorer.html
+D  Frontend/website/faucet.html
+D  Frontend/website/functions/_lib/waitlist.js
+D  Frontend/website/functions/api/health.js
+D  Frontend/website/functions/api/subscribe.js
+D  Frontend/website/functions/api/subscribers.js
+D  Frontend/website/genesis.html
+D  Frontend/website/index.html
+D  Frontend/website/manifest.json
+D  Frontend/website/package-lock.json
+D  Frontend/website/package.json
+D  Frontend/website/postcss.config.cjs
+D  Frontend/website/public/airdrop/index.html
+D  Frontend/website/public/assets/images/icon-192.png
+D  Frontend/website/public/assets/images/icon-512.png
+D  Frontend/website/public/bridge/index.html
+D  Frontend/website/public/citizen/index.html
+D  Frontend/website/public/darkpool/index.html
+D  Frontend/website/public/doc/index.html
+D  Frontend/website/public/ecosystem/index.html
+D  Frontend/website/public/explorer/index.html
+D  Frontend/website/public/farm/index.html
+D  Frontend/website/public/gov/index.html
+D  Frontend/website/public/leaderboard/index.html
+D  Frontend/website/public/manifest.json
+D  Frontend/website/public/os/apps.html
+D  Frontend/website/public/os/autonomy.html
+D  Frontend/website/public/os/checkout.html
+D  Frontend/website/public/os/command.html
+D  Frontend/website/public/os/consciousness.html
+D  Frontend/website/public/os/consensus.html
+D  Frontend/website/public/os/diplomacy.html
+D  Frontend/website/public/os/docs.html
+D  Frontend/website/public/os/eternity.html
+D  Frontend/website/public/os/existence.html
+D  Frontend/website/public/os/finality.html
+D  Frontend/website/public/os/gateway.html
+D  Frontend/website/public/os/genesis.html
+D  Frontend/website/public/os/ghost.html
+D  Frontend/website/public/os/governance.html
+D  Frontend/website/public/os/harmony.html
+D  Frontend/website/public/os/index.html
+D  Frontend/website/public/os/inference.html
+D  Frontend/website/public/os/integration.html
+D  Frontend/website/public/os/intelligence.html
+D  Frontend/website/public/os/judge.html
+D  Frontend/website/public/os/legacy.html
+D  Frontend/website/public/os/market.html
+D  Frontend/website/public/os/mirror.html
+D  Frontend/website/public/os/mobile.html
+D  Frontend/website/public/os/monitor.html
+D  Frontend/website/public/os/mutation.html
+D  Frontend/website/public/os/omnipresence.html
+D  Frontend/website/public/os/optimizer.html
+D  Frontend/website/public/os/parliament.html
+D  Frontend/website/public/os/predict.html
+D  Frontend/website/public/os/reality.html
+D  Frontend/website/public/os/rebalancer.html
+D  Frontend/website/public/os/recovery.html
+D  Frontend/website/public/os/registry.html
+D  Frontend/website/public/os/singularity.html
+D  Frontend/website/public/os/sovereignty.html
+D  Frontend/website/public/os/style.css
+D  Frontend/website/public/os/synthesis.html
+D  Frontend/website/public/os/terminal.html
+D  Frontend/website/public/os/transcendence.html
+D  Frontend/website/public/os/treasury_v2.html
+D  Frontend/website/public/os/ubi.html
+D  Frontend/website/public/os/ubiquity.html
+D  Frontend/website/public/os/unboxing.html
+D  Frontend/website/public/os/unity.html
+D  Frontend/website/public/os/universe.html
+D  Frontend/website/public/os/uptime.html
+D  Frontend/website/public/os/vault.html
+D  Frontend/website/public/os/veracity.html
+D  Frontend/website/public/os/workflow.html
+D  Frontend/website/public/quests/index.html
+D  Frontend/website/public/referral/index.html
+D  Frontend/website/public/sw.js
+D  Frontend/website/public/treasury/index.html
+D  Frontend/website/public/whitepaper/index.html
+D  Frontend/website/qantoswap.html
+D  Frontend/website/saga.html
+D  Frontend/website/schema.sql
+D  Frontend/website/splash-1024.svg
+D  Frontend/website/staking.html
+D  Frontend/website/status.html
+D  Frontend/website/sw.js
+D  Frontend/website/tests/waitlist.test.mjs
+D  Frontend/website/tge.html
+D  Frontend/website/vercel.json
+D  Frontend/website/vite.config.js
+D  Frontend/website/whitepaper.html
+D  Frontend/website/wrangler.toml
+ M LICENSE
+ M OVERVIEW.md
+ D PUBLIC_TESTNET_LAUNCH.md
+ M Protocol_Core/myblockchain/Cargo.toml
+ M Protocol_Core/myblockchain/benches/main.rs
+ M Protocol_Core/myblockchain/src/cuda_gpu.rs
+ M Protocol_Core/myblockchain/src/error.rs
+ M Protocol_Core/myblockchain/src/jsonrpc_server.rs
+ M Protocol_Core/myblockchain/src/lib.rs
+ M Protocol_Core/myblockchain/src/metal_gpu.rs
+ M Protocol_Core/myblockchain/src/qanhash.rs
+ M Protocol_Core/myblockchain/src/qanhash32x.rs
+ M Protocol_Core/qanto-core/Cargo.toml
+ M Protocol_Core/qanto-core/src/balance_stream.rs
+ M Protocol_Core/qanto-core/src/dag_aware_mempool.rs
+ M Protocol_Core/qanto-core/src/docs.rs
+ M Protocol_Core/qanto-core/src/lib.rs
+ M Protocol_Core/qanto-core/src/mining_celebration.rs
+ M Protocol_Core/qanto-core/src/perf_bench.rs
+ M Protocol_Core/qanto-core/src/qanto_compat.rs
+ M Protocol_Core/qanto-core/src/qanto_native_crypto.rs
+ M Protocol_Core/qanto-core/src/qanto_net.rs
+ M Protocol_Core/qanto-core/src/qanto_p2p.rs
+ M Protocol_Core/qanto-core/src/qanto_serde.rs
+ M Protocol_Core/qanto-core/src/qanto_storage.rs
+ M Protocol_Core/qanto-core/src/storage_adapter.rs
+ M Protocol_Core/qanto-core/src/storage_traits.rs
+ M Protocol_Core/qanto-node/Cargo.toml
+ M Protocol_Core/qanto-node/config.toml
+ M Protocol_Core/qanto-node/fuzz/fuzz_targets/fuzz_bridge_proofs.rs
+ M Protocol_Core/qanto-node/fuzz/fuzz_targets/fuzz_tx_parsing.rs
+ M Protocol_Core/qanto-node/src/a2a_material.rs
+ M Protocol_Core/qanto-node/src/absolute_genesis.rs
+ M Protocol_Core/qanto-node/src/absolute_singularity.rs
+ M Protocol_Core/qanto-node/src/adaptive_mining.rs
+ M Protocol_Core/qanto-node/src/analytics_dashboard.rs
+ M Protocol_Core/qanto-node/src/bin/derive_genesis_key.rs
+ M Protocol_Core/qanto-node/src/bin/gen_wallet.rs
+ M Protocol_Core/qanto-node/src/bin/generate_wallet.rs
+ M Protocol_Core/qanto-node/src/bin/genesis_flood.rs
+ M Protocol_Core/qanto-node/src/bin/get_address.rs
+ M Protocol_Core/qanto-node/src/bin/import_wallet.rs
+ M Protocol_Core/qanto-node/src/bin/metrics_server.rs
+ M Protocol_Core/qanto-node/src/bin/monitor.rs
+ M Protocol_Core/qanto-node/src/bin/network_stress_test.rs
+ M Protocol_Core/qanto-node/src/bin/qanto.rs
+ M Protocol_Core/qanto-node/src/bin/qantowallet.rs
+ M Protocol_Core/qanto-node/src/bin/start_node.rs
+ M Protocol_Core/qanto-node/src/bin/stress_test.rs
+ M Protocol_Core/qanto-node/src/bin/tx_flood.rs
+ M Protocol_Core/qanto-node/src/block_producer.rs
+ M Protocol_Core/qanto-node/src/byzantine_tests.rs
+MM Protocol_Core/qanto-node/src/config.rs
+ M Protocol_Core/qanto-node/src/config_validation.rs
+ M Protocol_Core/qanto-node/src/config_validator.rs
+ M Protocol_Core/qanto-node/src/consensus.rs
+ M Protocol_Core/qanto-node/src/corruption_tests.rs
+ M Protocol_Core/qanto-node/src/cosmic_consensus.rs
+ M Protocol_Core/qanto-node/src/decentralization.rs
+ M Protocol_Core/qanto-node/src/decoupled_producer.rs
+ M Protocol_Core/qanto-node/src/derive_genesis_key.rs
+ M Protocol_Core/qanto-node/src/deterministic_mining.rs
+ M Protocol_Core/qanto-node/src/diagnostics.rs
+ M Protocol_Core/qanto-node/src/economic_attack_tests.rs
+ M Protocol_Core/qanto-node/src/elite_mempool.rs
+ M Protocol_Core/qanto-node/src/emission.rs
+ M Protocol_Core/qanto-node/src/entropy_shield.rs
+ M Protocol_Core/qanto-node/src/eternal_existence.rs
+ M Protocol_Core/qanto-node/src/final_transcendence.rs
+ M Protocol_Core/qanto-node/src/formal_verifier.rs
+ M Protocol_Core/qanto-node/src/futarchy_market.rs
+ M Protocol_Core/qanto-node/src/gas_fee_model.rs
+ M Protocol_Core/qanto-node/src/generate_wallet.rs
+ M Protocol_Core/qanto-node/src/get_address.rs
+ M Protocol_Core/qanto-node/src/global_synthesis.rs
+ M Protocol_Core/qanto-node/src/graphql_api.rs
+ M Protocol_Core/qanto-node/src/graphql_server.rs
+ M Protocol_Core/qanto-node/src/hame.rs
+ M Protocol_Core/qanto-node/src/heritage_archive.rs
+ M Protocol_Core/qanto-node/src/holo_mesh.rs
+ M Protocol_Core/qanto-node/src/import_wallet.rs
+ M Protocol_Core/qanto-node/src/inference_mesh.rs
+ M Protocol_Core/qanto-node/src/infinite_omnipresence.rs
+ M Protocol_Core/qanto-node/src/infinite_strata_node.rs
+ M Protocol_Core/qanto-node/src/interoperability.rs
+ M Protocol_Core/qanto-node/src/interplanetary.rs
+ M Protocol_Core/qanto-node/src/ipc_server.rs
+ M Protocol_Core/qanto-node/src/kernel_boot.rs
+ M Protocol_Core/qanto-node/src/keygen.rs
+ M Protocol_Core/qanto-node/src/lib.rs
+ M Protocol_Core/qanto-node/src/math.rs
+ M Protocol_Core/qanto-node/src/memory_optimization.rs
+ M Protocol_Core/qanto-node/src/mempool.rs
+ M Protocol_Core/qanto-node/src/mesh_finality.rs
+ M Protocol_Core/qanto-node/src/mesh_optimizer.rs
+ M Protocol_Core/qanto-node/src/mesh_recovery.rs
+ M Protocol_Core/qanto-node/src/metrics.rs
+ M Protocol_Core/qanto-node/src/metrics_server.rs
+ M Protocol_Core/qanto-node/src/miner.rs
+ M Protocol_Core/qanto-node/src/mining_celebration.rs
+ M Protocol_Core/qanto-node/src/mining_metrics.rs
+ M Protocol_Core/qanto-node/src/mock_traits.rs
+ M Protocol_Core/qanto-node/src/monitor.rs
+ M Protocol_Core/qanto-node/src/neural_arbitrage.rs
+ M Protocol_Core/qanto-node/src/neural_consensus.rs
+ M Protocol_Core/qanto-node/src/neural_link.rs
+ M Protocol_Core/qanto-node/src/neural_mirror.rs
+ M Protocol_Core/qanto-node/src/node.rs
+ M Protocol_Core/qanto-node/src/omega.rs
+ M Protocol_Core/qanto-node/src/omega_enhanced.rs
+ M Protocol_Core/qanto-node/src/optimized_decoupled_producer.rs
+ M Protocol_Core/qanto-node/src/optimized_qdag.rs
+ M Protocol_Core/qanto-node/src/p2p.rs
+ M Protocol_Core/qanto-node/src/p2p_mesh.rs
+ M Protocol_Core/qanto-node/src/partition_tests.rs
+ M Protocol_Core/qanto-node/src/password_utils.rs
+ M Protocol_Core/qanto-node/src/performance_benchmark.rs
+ M Protocol_Core/qanto-node/src/performance_monitoring.rs
+ M Protocol_Core/qanto-node/src/performance_optimizations.rs
+ M Protocol_Core/qanto-node/src/performance_validation.rs
+ M Protocol_Core/qanto-node/src/persistence.rs
+ M Protocol_Core/qanto-node/src/post_quantum_crypto.rs
+ M Protocol_Core/qanto-node/src/pq_crypto.rs
+ M Protocol_Core/qanto-node/src/pq_suite.rs
+ M Protocol_Core/qanto-node/src/privacy.rs
+ M Protocol_Core/qanto-node/src/qanto.rs
+ M Protocol_Core/qanto-node/src/qanto_ai_metrics.rs
+ M Protocol_Core/qanto-node/src/qantodag.rs
+ M Protocol_Core/qanto-node/src/qantodag_testnet.rs
+ M Protocol_Core/qanto-node/src/qantowallet.rs
+ M Protocol_Core/qanto-node/src/qds.rs
+ M Protocol_Core/qanto-node/src/quantum_bridge.rs
+ M Protocol_Core/qanto-node/src/recursive_evolution.rs
+ M Protocol_Core/qanto-node/src/resource_cleanup.rs
+ M Protocol_Core/qanto-node/src/rpc_backend.rs
+ M Protocol_Core/qanto-node/src/safe_interval.rs
+ M Protocol_Core/qanto-node/src/saga.rs
+ M Protocol_Core/qanto-node/src/saga_ai.rs
+ M Protocol_Core/qanto-node/src/security_tests.rs
+ M Protocol_Core/qanto-node/src/self_sovereign_code.rs
+ M Protocol_Core/qanto-node/src/sharding.rs
+ M Protocol_Core/qanto-node/src/shutdown.rs
+ M Protocol_Core/qanto-node/src/start_node.rs
+ M Protocol_Core/qanto-node/src/state_sync.rs
+ M Protocol_Core/qanto-node/src/storage_mesh.rs
+ M Protocol_Core/qanto-node/src/swarm_orchestrator.rs
+ M Protocol_Core/qanto-node/src/telemetry.rs
+ M Protocol_Core/qanto-node/src/timing.rs
+ M Protocol_Core/qanto-node/src/transaction.rs
+ M Protocol_Core/qanto-node/src/truth_engine.rs
+ M Protocol_Core/qanto-node/src/types.rs
+ M Protocol_Core/qanto-node/src/ubi_credits.rs
+ M Protocol_Core/qanto-node/src/wallet.rs
+ M Protocol_Core/qanto-node/src/websocket_server.rs
+ M Protocol_Core/qanto-node/src/x_phyrus.rs
+ M Protocol_Core/qanto-node/src/zk.rs
+ M Protocol_Core/qanto-node/src/zk_sequencer.rs
+ M Protocol_Core/qanto-node/src/zkp.rs
+ M Protocol_Core/qanto-node/src/zkp_stub.rs
+ M Protocol_Core/qanto-node/tests/e2e_pqc_migration.rs
+ M Protocol_Core/qanto-node/tests/fast_sync_tests.rs
+ M Protocol_Core/qanto-node/tests/fuzz_pqc_math.rs
+ M Protocol_Core/qanto-node/tests/interoperability_zk_tests.rs
+ M Protocol_Core/qanto-node/tests/pqc_mempool_tests.rs
+D  Protocol_Core/qanto-relayer/Cargo.toml
+D  Protocol_Core/qanto-relayer/src/main.rs
+ M Protocol_Core/qanto-rpc/Cargo.toml
+ M Protocol_Core/qanto-rpc/proto/qanto.proto
+ M Protocol_Core/qanto-rpc/src/generated/qanto.rs
+ M Protocol_Core/qanto-rpc/src/lib.rs
+ M Protocol_Core/qanto-rpc/src/server.rs
+ M Protocol_Core/qanto-zk-sdk/Cargo.toml
+ M Protocol_Core/qanto-zk-sdk/src/lib.rs
+ M README.md
+ M SECURITY.md
+ D Scripts/burn_admin_keys.js
+ D Scripts/chaos_engine.rs
+ D Scripts/check_local_testnet_health.sh
+ D Scripts/deploy_farming.js
+ D Scripts/deploy_production.sh
+ D Scripts/generate_snapshot.js
+ D Scripts/initialize_economic.js
+ D Scripts/perpetual_maintenance.rs
+ D Scripts/run_local_testnet.sh
+ D Scripts/soak_test.sh
+D  Scripts/tools/relayer/Cargo.toml
+D  Scripts/tools/relayer/README.md
+D  Scripts/tools/relayer/src/main.rs
+D  SmartContracts/cex-listing-payload.json
+D  SmartContracts/contracts/QUSD.sol
+D  SmartContracts/contracts/QantoDrop.sol
+D  SmartContracts/contracts/QantoGovernor.sol
+D  SmartContracts/contracts/QantoSwapFactory.sol
+D  SmartContracts/contracts/QantoSwapRouter.sol
+D  SmartContracts/contracts/QantoTGE.sol
+D  SmartContracts/contracts/QantoTimelock.sol
+D  SmartContracts/contracts/SentinelNFT.sol
+D  SmartContracts/contracts/WQNTO.sol
+D  SmartContracts/deploy_wqnto.js
+D  SmartContracts/hardhat.config.js
+D  SmartContracts/package-lock.json
+D  SmartContracts/package.json
+D  SmartContracts/scripts/deploy_dex.js
+D  SmartContracts/scripts/deploy_phase11.js
+D  SmartContracts/scripts/test_provider.js
+D  SmartContracts/scripts/test_provider2.js
+D  SmartContracts/scripts/test_provider3.js
+D  SmartContracts/scripts/test_provider4.js
+D  SmartContracts/token-info.json
+ D TESTNET_ARCHITECTURE.md
+ D TESTNET_READINESS_AUDIT.md
+ D audit.toml
+ M config.toml
+ D contracts/templates/QantoFaucet.sol
+ D debug-block-signature-failure.md
+ D debug-rpcnode-sync-height.md
+ D debug-wallet-live-e2e.md
+ D docker-compose.yml
+ D hf_bootnode/Dockerfile
+ D hf_bootnode/README.md
+ D install.sh
+D  qanto-desktop-wallet/.gitignore
+D  qanto-desktop-wallet/README.md
+D  qanto-desktop-wallet/index.html
+D  qanto-desktop-wallet/package-lock.json
+D  qanto-desktop-wallet/package.json
+D  qanto-desktop-wallet/public/tauri.svg
+D  qanto-desktop-wallet/public/vite.svg
+D  qanto-desktop-wallet/src-tauri/.gitignore
+D  qanto-desktop-wallet/src-tauri/Cargo.toml
+D  qanto-desktop-wallet/src-tauri/build.rs
+D  qanto-desktop-wallet/src-tauri/capabilities/default.json
+D  qanto-desktop-wallet/src-tauri/icons/128x128.png
+D  qanto-desktop-wallet/src-tauri/icons/128x128@2x.png
+D  qanto-desktop-wallet/src-tauri/icons/32x32.png
+D  qanto-desktop-wallet/src-tauri/icons/Square107x107Logo.png
+D  qanto-desktop-wallet/src-tauri/icons/Square142x142Logo.png
+D  qanto-desktop-wallet/src-tauri/icons/Square150x150Logo.png
+D  qanto-desktop-wallet/src-tauri/icons/Square284x284Logo.png
+D  qanto-desktop-wallet/src-tauri/icons/Square30x30Logo.png
+D  qanto-desktop-wallet/src-tauri/icons/Square310x310Logo.png
+D  qanto-desktop-wallet/src-tauri/icons/Square44x44Logo.png
+D  qanto-desktop-wallet/src-tauri/icons/Square71x71Logo.png
+D  qanto-desktop-wallet/src-tauri/icons/Square89x89Logo.png
+D  qanto-desktop-wallet/src-tauri/icons/StoreLogo.png
+D  qanto-desktop-wallet/src-tauri/icons/icon.icns
+D  qanto-desktop-wallet/src-tauri/icons/icon.ico
+D  qanto-desktop-wallet/src-tauri/icons/icon.png
+D  qanto-desktop-wallet/src-tauri/src/app.rs
+D  qanto-desktop-wallet/src-tauri/src/keystore.rs
+D  qanto-desktop-wallet/src-tauri/src/lib.rs
+D  qanto-desktop-wallet/src-tauri/src/main.rs
+D  qanto-desktop-wallet/src-tauri/src/tx.rs
+D  qanto-desktop-wallet/src-tauri/tauri.conf.json
+D  qanto-desktop-wallet/src/App.css
+D  qanto-desktop-wallet/src/App.tsx
+D  qanto-desktop-wallet/src/assets/react.svg
+D  qanto-desktop-wallet/src/main.tsx
+D  qanto-desktop-wallet/src/store.ts
+D  qanto-desktop-wallet/src/vite-env.d.ts
+D  qanto-desktop-wallet/tsconfig.json
+D  qanto-desktop-wallet/tsconfig.node.json
+D  qanto-desktop-wallet/vite.config.ts
+ M qanto-desktop/src-tauri/Cargo.toml
+?? .github/workflows/security.yml
+?? .github/workflows/solidity.yml
+?? BENCHMARKING.md
+?? Protocol_Core/myblockchain/src/qanto_standalone.rs
+?? Protocol_Core/qanto-node/benches/
+?? Protocol_Core/qanto-node/fuzz/Cargo.lock
+?? Protocol_Core/qanto-node/src/ipc_handler.rs
+?? Protocol_Core/qanto-node/src/loop_runtime.rs
+?? Protocol_Core/qanto-node/src/p2p_runnable.rs
+?? Protocol_Core/qanto-node/src/protocol/
+?? Protocol_Core/qanto-node/src/runtime_context.rs
+?? Protocol_Core/qanto-node/src/runtime_manager.rs
+?? Protocol_Core/qanto-node/src/runtime_service.rs
+?? Protocol_Core/qanto-node/src/service_registry.rs
+?? Protocol_Core/qanto-node/src/services/
+?? SCORING_REMEDIATION.md
+?? audit-results/
+?? patches/block/
+?? rust-toolchain.toml
+main
+0478b60368df86ece44b9ad30766a724dfc60d50
+ .github/dependabot.yml                             |   25 +-
+ .github/workflows/ci.yml                           |  116 +-
+ .github/workflows/cloudflare-pages-coming-soon.yml |   16 +-
+ .github/workflows/codeql.yml                       |    8 +-
+ .github/workflows/main.yml                         |   46 +-
+ .github/workflows/release-wallet.yml               |  111 +-
+ .github/workflows/release.yml                      |   42 +-
+ .github/workflows/rust_ci.yml                      |   50 +-
+ .gitignore                                         |   25 +
+ Cargo.lock                                         | 4588 ++++----------------
+ Cargo.toml                                         |   19 +-
+ DevOps/docker/.env.example                         |   80 -
+ DevOps/docker/Caddyfile                            |   16 -
+ DevOps/docker/Dockerfile                           |  139 -
+ DevOps/docker/README.md                            |   81 -
+ DevOps/docker/config/config.toml                   |   55 -
+ DevOps/docker/docker-compose.prod.yml              |  257 --
+ DevOps/docker/docker-compose.yml                   |  316 --
+ DevOps/docker/join-testnet.sh                      |  236 -
+ .../grafana/dashboards/qanto-node-overview.json    |  567 ---
+ .../grafana/dashboards/system-overview.json        |  545 ---
+ .../grafana/provisioning/dashboards/dashboards.yml |   27 -
+ .../provisioning/datasources/datasources.yml       |   47 -
+ DevOps/docker/monitoring/loki/local-config.yaml    |  109 -
+ DevOps/docker/monitoring/prometheus/prometheus.yml |   92 -
+ DevOps/docker/monitoring/promtail/config.yml       |  203 -
+ DevOps/docker/testnet-cloud-ops-check.sh           |   98 -
+ DevOps/docker/ubuntu-testnet-ignite.sh             |  438 --
+ DevOps/infrastructure/bot/saga_agent.rs            |   15 +
+ DevOps/infrastructure/hardware/node_v1_specs.rs    |   15 +
+ DevOps/infrastructure/hardware/swarm_logic.rs      |   15 +
+ DevOps/infrastructure/media/zk_attestation.rs      |   15 +
+ DevOps/infrastructure/sentinel/attestation.rs      |   15 +
+ DevOps/infrastructure/sentinel/mobile_node.rs      |   15 +
+ DevOps/infrastructure/sentinel/shard_registry.rs   |   15 +
+ .../infrastructure/shipping/fulfillment_engine.rs  |   15 +
+ DevOps/k8s/statefulset.yaml                        |    8 +-
+ Dockerfile                                         |   26 -
+ Dockerfile.bootnode                                |   26 -
+ LICENSE                                            |  443 +-
+ OVERVIEW.md                                        |  478 +-
+ PUBLIC_TESTNET_LAUNCH.md                           |  394 --
+ Protocol_Core/myblockchain/Cargo.toml              |   19 +-
+ Protocol_Core/myblockchain/benches/main.rs         |  140 +-
+ Protocol_Core/myblockchain/src/cuda_gpu.rs         |  314 +-
+ Protocol_Core/myblockchain/src/error.rs            |   15 +
+ Protocol_Core/myblockchain/src/jsonrpc_server.rs   |  265 +-
+ Protocol_Core/myblockchain/src/lib.rs              |  868 +---
+ Protocol_Core/myblockchain/src/metal_gpu.rs        |  613 +--
+ Protocol_Core/myblockchain/src/qanhash.rs          |  240 +-
+ Protocol_Core/myblockchain/src/qanhash32x.rs       |   67 +-
+ Protocol_Core/qanto-core/Cargo.toml                |   24 +-
+ Protocol_Core/qanto-core/src/balance_stream.rs     |   15 +
+ Protocol_Core/qanto-core/src/dag_aware_mempool.rs  |   32 +-
+ Protocol_Core/qanto-core/src/docs.rs               |   15 +
+ Protocol_Core/qanto-core/src/lib.rs                |   15 +
+ Protocol_Core/qanto-core/src/mining_celebration.rs |   15 +
+ Protocol_Core/qanto-core/src/perf_bench.rs         |   15 +
+ Protocol_Core/qanto-core/src/qanto_compat.rs       |  199 +-
+ .../qanto-core/src/qanto_native_crypto.rs          |  397 +-
+ Protocol_Core/qanto-core/src/qanto_net.rs          |   46 +
+ Protocol_Core/qanto-core/src/qanto_p2p.rs          |  152 +-
+ Protocol_Core/qanto-core/src/qanto_serde.rs        |   24 +-
+ Protocol_Core/qanto-core/src/qanto_storage.rs      |  235 +-
+ Protocol_Core/qanto-core/src/storage_adapter.rs    |  143 +-
+ Protocol_Core/qanto-core/src/storage_traits.rs     |   15 +
+ Protocol_Core/qanto-node/Cargo.toml                |   73 +-
+ Protocol_Core/qanto-node/config.toml               |    2 +-
+ .../fuzz/fuzz_targets/fuzz_bridge_proofs.rs        |   15 +
+ .../fuzz/fuzz_targets/fuzz_tx_parsing.rs           |   15 +
+ Protocol_Core/qanto-node/src/a2a_material.rs       |   21 +
+ Protocol_Core/qanto-node/src/absolute_genesis.rs   |   33 +-
+ .../qanto-node/src/absolute_singularity.rs         |   21 +
+ Protocol_Core/qanto-node/src/adaptive_mining.rs    |  134 +-
+ .../qanto-node/src/analytics_dashboard.rs          |  258 +-
+ .../qanto-node/src/bin/derive_genesis_key.rs       |   20 +-
+ Protocol_Core/qanto-node/src/bin/gen_wallet.rs     |   22 +-
+ .../qanto-node/src/bin/generate_wallet.rs          |   15 +
+ Protocol_Core/qanto-node/src/bin/genesis_flood.rs  |   15 +
+ Protocol_Core/qanto-node/src/bin/get_address.rs    |   15 +
+ Protocol_Core/qanto-node/src/bin/import_wallet.rs  |   15 +
+ Protocol_Core/qanto-node/src/bin/metrics_server.rs |   15 +
+ Protocol_Core/qanto-node/src/bin/monitor.rs        |   53 +-
+ .../qanto-node/src/bin/network_stress_test.rs      |   15 +
+ Protocol_Core/qanto-node/src/bin/qanto.rs          |    3 -
+ Protocol_Core/qanto-node/src/bin/qantowallet.rs    |   15 +
+ Protocol_Core/qanto-node/src/bin/start_node.rs     |   15 +
+ Protocol_Core/qanto-node/src/bin/stress_test.rs    |   15 +
+ Protocol_Core/qanto-node/src/bin/tx_flood.rs       |   97 +-
+ Protocol_Core/qanto-node/src/block_producer.rs     |   78 +-
+ Protocol_Core/qanto-node/src/byzantine_tests.rs    |  296 +-
+ Protocol_Core/qanto-node/src/config.rs             |  288 +-
+ Protocol_Core/qanto-node/src/config_validation.rs  |   15 +
+ Protocol_Core/qanto-node/src/config_validator.rs   |   15 +
+ Protocol_Core/qanto-node/src/consensus.rs          |   49 +-
+ Protocol_Core/qanto-node/src/corruption_tests.rs   |   15 +
+ Protocol_Core/qanto-node/src/cosmic_consensus.rs   |   25 +-
+ Protocol_Core/qanto-node/src/decentralization.rs   |  169 +-
+ Protocol_Core/qanto-node/src/decoupled_producer.rs |   15 +
+ Protocol_Core/qanto-node/src/derive_genesis_key.rs |   81 +-
+ .../qanto-node/src/deterministic_mining.rs         |   15 +
+ Protocol_Core/qanto-node/src/diagnostics.rs        |   15 +
+ .../qanto-node/src/economic_attack_tests.rs        |   72 +-
+ Protocol_Core/qanto-node/src/elite_mempool.rs      |   19 +-
+ Protocol_Core/qanto-node/src/emission.rs           |   53 +-
+ Protocol_Core/qanto-node/src/entropy_shield.rs     |   21 +
+ Protocol_Core/qanto-node/src/eternal_existence.rs  |   21 +
+ .../qanto-node/src/final_transcendence.rs          |   23 +-
+ Protocol_Core/qanto-node/src/formal_verifier.rs    |   15 +
+ Protocol_Core/qanto-node/src/futarchy_market.rs    |   21 +
+ Protocol_Core/qanto-node/src/gas_fee_model.rs      |   27 +-
+ Protocol_Core/qanto-node/src/generate_wallet.rs    |   15 +
+ Protocol_Core/qanto-node/src/get_address.rs        |   23 +-
+ Protocol_Core/qanto-node/src/global_synthesis.rs   |   21 +
+ Protocol_Core/qanto-node/src/graphql_api.rs        |  152 +-
+ Protocol_Core/qanto-node/src/graphql_server.rs     |   21 +-
+ Protocol_Core/qanto-node/src/hame.rs               |   19 +-
+ Protocol_Core/qanto-node/src/heritage_archive.rs   |   15 +
+ Protocol_Core/qanto-node/src/holo_mesh.rs          |   15 +
+ Protocol_Core/qanto-node/src/import_wallet.rs      |   15 +
+ Protocol_Core/qanto-node/src/inference_mesh.rs     |   21 +
+ .../qanto-node/src/infinite_omnipresence.rs        |   21 +
+ .../qanto-node/src/infinite_strata_node.rs         |   89 +-
+ Protocol_Core/qanto-node/src/interoperability.rs   |  821 +---
+ Protocol_Core/qanto-node/src/interplanetary.rs     |  129 +-
+ Protocol_Core/qanto-node/src/ipc_server.rs         |   78 +-
+ Protocol_Core/qanto-node/src/kernel_boot.rs        |   15 +
+ Protocol_Core/qanto-node/src/keygen.rs             |   15 +
+ Protocol_Core/qanto-node/src/lib.rs                |   60 +-
+ Protocol_Core/qanto-node/src/math.rs               |   15 +
+ .../qanto-node/src/memory_optimization.rs          |   72 +-
+ Protocol_Core/qanto-node/src/mempool.rs            |  160 +-
+ Protocol_Core/qanto-node/src/mesh_finality.rs      |   21 +
+ Protocol_Core/qanto-node/src/mesh_optimizer.rs     |   21 +
+ Protocol_Core/qanto-node/src/mesh_recovery.rs      |   21 +
+ Protocol_Core/qanto-node/src/metrics.rs            |  242 +-
+ Protocol_Core/qanto-node/src/metrics_server.rs     |   40 +-
+ Protocol_Core/qanto-node/src/miner.rs              |  157 +-
+ Protocol_Core/qanto-node/src/mining_celebration.rs |   29 +-
+ Protocol_Core/qanto-node/src/mining_metrics.rs     |   21 +-
+ Protocol_Core/qanto-node/src/mock_traits.rs        |   15 +
+ Protocol_Core/qanto-node/src/monitor.rs            |   50 +-
+ Protocol_Core/qanto-node/src/neural_arbitrage.rs   |   21 +
+ Protocol_Core/qanto-node/src/neural_consensus.rs   |   21 +
+ Protocol_Core/qanto-node/src/neural_link.rs        |   21 +
+ Protocol_Core/qanto-node/src/neural_mirror.rs      |   21 +
+ Protocol_Core/qanto-node/src/node.rs               | 1315 ++++--
+ Protocol_Core/qanto-node/src/omega.rs              |   15 +
+ Protocol_Core/qanto-node/src/omega_enhanced.rs     |  105 +-
+ .../qanto-node/src/optimized_decoupled_producer.rs |   30 +-
+ Protocol_Core/qanto-node/src/optimized_qdag.rs     |   29 +-
+ Protocol_Core/qanto-node/src/p2p.rs                | 1052 +++--
+ Protocol_Core/qanto-node/src/p2p_mesh.rs           |   27 +-
+ Protocol_Core/qanto-node/src/partition_tests.rs    |  151 +-
+ Protocol_Core/qanto-node/src/password_utils.rs     |   76 +-
+ .../qanto-node/src/performance_benchmark.rs        |   25 +-
+ .../qanto-node/src/performance_monitoring.rs       |  101 +-
+ .../qanto-node/src/performance_optimizations.rs    |   15 +
+ .../qanto-node/src/performance_validation.rs       |   59 +-
+ Protocol_Core/qanto-node/src/persistence.rs        |   15 +
+ .../qanto-node/src/post_quantum_crypto.rs          |   25 +-
+ Protocol_Core/qanto-node/src/pq_crypto.rs          |   34 +-
+ Protocol_Core/qanto-node/src/pq_suite.rs           |   15 +
+ Protocol_Core/qanto-node/src/privacy.rs            |  146 +-
+ Protocol_Core/qanto-node/src/qanto.rs              |   89 +-
+ Protocol_Core/qanto-node/src/qanto_ai_metrics.rs   |  214 +-
+ Protocol_Core/qanto-node/src/qantodag.rs           | 2172 ++++++---
+ Protocol_Core/qanto-node/src/qantodag_testnet.rs   |   17 +-
+ Protocol_Core/qanto-node/src/qantowallet.rs        |  219 +-
+ Protocol_Core/qanto-node/src/qds.rs                |   21 +-
+ Protocol_Core/qanto-node/src/quantum_bridge.rs     |   60 +-
+ .../qanto-node/src/recursive_evolution.rs          |   21 +
+ Protocol_Core/qanto-node/src/resource_cleanup.rs   |   15 +
+ Protocol_Core/qanto-node/src/rpc_backend.rs        |   52 +-
+ Protocol_Core/qanto-node/src/safe_interval.rs      |   15 +
+ Protocol_Core/qanto-node/src/saga.rs               |  723 ++-
+ Protocol_Core/qanto-node/src/saga_ai.rs            |  154 +-
+ Protocol_Core/qanto-node/src/security_tests.rs     |   98 +-
+ .../qanto-node/src/self_sovereign_code.rs          |   21 +
+ Protocol_Core/qanto-node/src/sharding.rs           |   21 +
+ Protocol_Core/qanto-node/src/shutdown.rs           |   15 +
+ Protocol_Core/qanto-node/src/start_node.rs         |   85 +-
+ Protocol_Core/qanto-node/src/state_sync.rs         |  656 ++-
+ Protocol_Core/qanto-node/src/storage_mesh.rs       |   15 +
+ Protocol_Core/qanto-node/src/swarm_orchestrator.rs |   21 +
+ Protocol_Core/qanto-node/src/telemetry.rs          |  228 +-
+ Protocol_Core/qanto-node/src/timing.rs             |   27 +-
+ Protocol_Core/qanto-node/src/transaction.rs        |  876 +++-
+ Protocol_Core/qanto-node/src/truth_engine.rs       |   23 +-
+ Protocol_Core/qanto-node/src/types.rs              |   21 +-
+ Protocol_Core/qanto-node/src/ubi_credits.rs        |   21 +
+ Protocol_Core/qanto-node/src/wallet.rs             |  201 +-
+ Protocol_Core/qanto-node/src/websocket_server.rs   |   80 +-
+ Protocol_Core/qanto-node/src/x_phyrus.rs           |   19 +-
+ Protocol_Core/qanto-node/src/zk.rs                 |   15 +
+ Protocol_Core/qanto-node/src/zk_sequencer.rs       |   15 +
+ Protocol_Core/qanto-node/src/zkp.rs                |   92 +-
+ Protocol_Core/qanto-node/src/zkp_stub.rs           |   15 +
+ .../qanto-node/tests/e2e_pqc_migration.rs          |   15 +
+ Protocol_Core/qanto-node/tests/fast_sync_tests.rs  |   83 +-
+ Protocol_Core/qanto-node/tests/fuzz_pqc_math.rs    |   15 +
+ .../qanto-node/tests/interoperability_zk_tests.rs  |   15 +
+ .../qanto-node/tests/pqc_mempool_tests.rs          |   15 +
+ Protocol_Core/qanto-rpc/Cargo.toml                 |    7 +
+ Protocol_Core/qanto-rpc/proto/qanto.proto          |    3 +
+ Protocol_Core/qanto-rpc/src/generated/qanto.rs     |   15 +
+ Protocol_Core/qanto-rpc/src/lib.rs                 |   29 +
+ Protocol_Core/qanto-rpc/src/server.rs              |  121 +-
+ Protocol_Core/qanto-zk-sdk/Cargo.toml              |   13 +-
+ Protocol_Core/qanto-zk-sdk/src/lib.rs              |  208 +-
+ README.md                                          |  529 +--
+ SECURITY.md                                        |  251 +-
+ Scripts/burn_admin_keys.js                         |   52 -
+ Scripts/chaos_engine.rs                            |   39 -
+ Scripts/check_local_testnet_health.sh              |  141 -
+ Scripts/deploy_farming.js                          |   38 -
+ Scripts/deploy_production.sh                       |   64 -
+ Scripts/generate_snapshot.js                       |   49 -
+ Scripts/initialize_economic.js                     |   48 -
+ Scripts/perpetual_maintenance.rs                   |   54 -
+ Scripts/run_local_testnet.sh                       |  512 ---
+ Scripts/soak_test.sh                               |  464 --
+ TESTNET_ARCHITECTURE.md                            |  115 -
+ TESTNET_READINESS_AUDIT.md                         |  116 -
+ audit.toml                                         |   22 -
+ config.toml                                        |   38 +-
+ contracts/templates/QantoFaucet.sol                |   38 -
+ debug-block-signature-failure.md                   |   34 -
+ debug-rpcnode-sync-height.md                       |   56 -
+ debug-wallet-live-e2e.md                           |   42 -
+ docker-compose.yml                                 |   51 -
+ hf_bootnode/Dockerfile                             |   35 -
+ hf_bootnode/README.md                              |   16 -
+ install.sh                                         |  354 --
+ qanto-desktop/src-tauri/Cargo.toml                 |    1 +
+ 235 files changed, 14692 insertions(+), 17051 deletions(-)

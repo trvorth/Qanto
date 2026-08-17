@@ -1,0 +1,6 @@
+bridge_enabled = false
+evm_call_enabled = false
+dynamic_sharding_enabled = false
+saga_consensus_enabled = false
+omega_consensus_enabled = false
+heterogeneous_mining_enabled = false

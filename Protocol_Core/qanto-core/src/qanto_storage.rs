@@ -114,6 +114,52 @@ impl Default for StorageConfig {
     }
 }
 
+/// Column family identifiers for StateV2 branch-scoped state
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum ColumnFamily {
+    /// Block ID -> StateRootV2 (32 bytes)
+    StateRoots,
+    /// Block ID -> Block ID (state parent)
+    StateParents,
+    /// UTXO key -> UTXO data
+    UTXOs,
+    /// Address -> Balance (u128)
+    Balances,
+    /// Issuance tracking key -> issuance data
+    Issuance,
+    /// Finality checkpoint key -> finality metadata
+    Finality,
+    /// Default/legacy column family
+    Default,
+}
+
+/// Prefix for each column family to namespace keys
+impl ColumnFamily {
+    pub fn prefix(&self) -> &'static [u8] {
+        match self {
+            ColumnFamily::StateRoots => b"sr:",
+            ColumnFamily::StateParents => b"sp:",
+            ColumnFamily::UTXOs => b"ut:",
+            ColumnFamily::Balances => b"ba:",
+            ColumnFamily::Issuance => b"is:",
+            ColumnFamily::Finality => b"fi:",
+            ColumnFamily::Default => b"",
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            ColumnFamily::StateRoots => "state_roots_v2",
+            ColumnFamily::StateParents => "state_parents_v2",
+            ColumnFamily::UTXOs => "utxos_v2",
+            ColumnFamily::Balances => "balances_v2",
+            ColumnFamily::Issuance => "issuance_v2",
+            ColumnFamily::Finality => "finality_v2",
+            ColumnFamily::Default => "default",
+        }
+    }
+}
+
 /// Batch operation for efficient writes
 #[derive(Debug, Clone)]
 pub struct WriteBatch {
@@ -141,6 +187,29 @@ impl WriteBatch {
         self.operations.push(LogEntry::Delete { key });
     }
 
+    /// Put with column family (StateV2)
+    pub fn put_cf(&mut self, cf: ColumnFamily, key: Vec<u8>, value: Vec<u8>) {
+        self.operations.push(LogEntry::Put {
+            key: Self::cf_key(cf, &key),
+            value,
+        });
+    }
+
+    /// Delete with column family (StateV2)
+    pub fn delete_cf(&mut self, cf: ColumnFamily, key: Vec<u8>) {
+        self.operations.push(LogEntry::Delete {
+            key: Self::cf_key(cf, &key),
+        });
+    }
+
+    /// Namespace a key with column family prefix
+    fn cf_key(cf: ColumnFamily, key: &[u8]) -> Vec<u8> {
+        let mut namespaced = Vec::with_capacity(cf.prefix().len() + key.len());
+        namespaced.extend_from_slice(cf.prefix());
+        namespaced.extend_from_slice(key);
+        namespaced
+    }
+
     pub fn is_empty(&self) -> bool {
         self.operations.is_empty()
     }
@@ -160,7 +229,34 @@ impl Default for WriteBatch {
     }
 }
 
-/// Log entry types
+/// Extended log entry with column family support for StateV2
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LogEntryV2 {
+    Put {
+        cf: ColumnFamily,
+        key: Vec<u8>,
+        value: Vec<u8>,
+    },
+    Delete {
+        cf: ColumnFamily,
+        key: Vec<u8>,
+    },
+    Transaction {
+        id: u64,
+        entries: Vec<LogEntryV2>,
+    },
+    Commit {
+        transaction_id: u64,
+    },
+    Rollback {
+        transaction_id: u64,
+    },
+    Checkpoint {
+        sequence: u64,
+    },
+}
+
+/// Legacy LogEntry for backward compatibility
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LogEntry {
     Put { key: Vec<u8>, value: Vec<u8> },
@@ -239,6 +335,102 @@ impl QantoDeserialize for LogEntry {
             5 => {
                 let sequence = QantoDeserialize::deserialize(deserializer)?;
                 Ok(LogEntry::Checkpoint { sequence })
+            }
+            _ => Err(crate::qanto_serde::QantoSerdeError::InvalidTypeTag(tag)),
+        }
+    }
+}
+
+impl QantoSerialize for LogEntryV2 {
+    fn serialize<W: QantoSerializer>(
+        &self,
+        serializer: &mut W,
+    ) -> Result<(), crate::qanto_serde::QantoSerdeError> {
+        match self {
+            LogEntryV2::Put { cf, key, value } => {
+                serializer.write_u8(0)?;
+                QantoSerialize::serialize(&(*cf as u8), serializer)?;
+                QantoSerialize::serialize(key, serializer)?;
+                QantoSerialize::serialize(value, serializer)?;
+            }
+            LogEntryV2::Delete { cf, key } => {
+                serializer.write_u8(1)?;
+                QantoSerialize::serialize(&(*cf as u8), serializer)?;
+                QantoSerialize::serialize(key, serializer)?;
+            }
+            LogEntryV2::Transaction { id, entries } => {
+                serializer.write_u8(2)?;
+                QantoSerialize::serialize(id, serializer)?;
+                QantoSerialize::serialize(entries, serializer)?;
+            }
+            LogEntryV2::Commit { transaction_id } => {
+                serializer.write_u8(3)?;
+                QantoSerialize::serialize(transaction_id, serializer)?;
+            }
+            LogEntryV2::Rollback { transaction_id } => {
+                serializer.write_u8(4)?;
+                QantoSerialize::serialize(transaction_id, serializer)?;
+            }
+            LogEntryV2::Checkpoint { sequence } => {
+                serializer.write_u8(5)?;
+                QantoSerialize::serialize(sequence, serializer)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl QantoDeserialize for LogEntryV2 {
+    fn deserialize<R: QantoDeserializer>(
+        deserializer: &mut R,
+    ) -> Result<Self, crate::qanto_serde::QantoSerdeError> {
+        let tag = deserializer.read_u8()?;
+        match tag {
+            0 => {
+                let cf_u8: u8 = QantoDeserialize::deserialize(deserializer)?;
+                let cf = match cf_u8 {
+                    0 => ColumnFamily::StateRoots,
+                    1 => ColumnFamily::StateParents,
+                    2 => ColumnFamily::UTXOs,
+                    3 => ColumnFamily::Balances,
+                    4 => ColumnFamily::Issuance,
+                    5 => ColumnFamily::Finality,
+                    _ => ColumnFamily::Default,
+                };
+                let key = QantoDeserialize::deserialize(deserializer)?;
+                let value = QantoDeserialize::deserialize(deserializer)?;
+                Ok(LogEntryV2::Put { cf, key, value })
+            }
+            1 => {
+                let cf_u8: u8 = QantoDeserialize::deserialize(deserializer)?;
+                let cf = match cf_u8 {
+                    0 => ColumnFamily::StateRoots,
+                    1 => ColumnFamily::StateParents,
+                    2 => ColumnFamily::UTXOs,
+                    3 => ColumnFamily::Balances,
+                    4 => ColumnFamily::Issuance,
+                    5 => ColumnFamily::Finality,
+                    _ => ColumnFamily::Default,
+                };
+                let key = QantoDeserialize::deserialize(deserializer)?;
+                Ok(LogEntryV2::Delete { cf, key })
+            }
+            2 => {
+                let id = QantoDeserialize::deserialize(deserializer)?;
+                let entries = QantoDeserialize::deserialize(deserializer)?;
+                Ok(LogEntryV2::Transaction { id, entries })
+            }
+            3 => {
+                let transaction_id = QantoDeserialize::deserialize(deserializer)?;
+                Ok(LogEntryV2::Commit { transaction_id })
+            }
+            4 => {
+                let transaction_id = QantoDeserialize::deserialize(deserializer)?;
+                Ok(LogEntryV2::Rollback { transaction_id })
+            }
+            5 => {
+                let sequence = QantoDeserialize::deserialize(deserializer)?;
+                Ok(LogEntryV2::Checkpoint { sequence })
             }
             _ => Err(crate::qanto_serde::QantoSerdeError::InvalidTypeTag(tag)),
         }
@@ -1592,23 +1784,44 @@ impl QantoStorage {
         Ok(())
     }
 
-    /// Put a key-value pair with optimized cache operations
+    /// Put a key-value pair with optimized cache operations (default column family)
     pub fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), QantoStorageError> {
+        self.put_cf(ColumnFamily::Default, key, value)
+    }
+
+    /// Put a key-value pair in a specific column family (StateV2)
+    pub fn put_cf(
+        &self,
+        cf: ColumnFamily,
+        key: Vec<u8>,
+        value: Vec<u8>,
+    ) -> Result<(), QantoStorageError> {
         let _visibility = self
             .visibility_gate
             .write()
             .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
         self.ensure_healthy()?;
-        if let Err(error) = self.put_unlocked(key, value) {
+        if let Err(error) = self.put_unlocked_cf(cf, key, value) {
             self.poison();
             return Err(error);
         }
         Ok(())
     }
 
-    /// Put while the caller owns the exclusive visibility gate.
+    /// Put while the caller owns the exclusive visibility gate (default column family)
     fn put_unlocked(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), QantoStorageError> {
-        let value_size = key.len() + value.len();
+        self.put_unlocked_cf(ColumnFamily::Default, key, value)
+    }
+
+    /// Put while the caller owns the exclusive visibility gate with column family
+    fn put_unlocked_cf(
+        &self,
+        cf: ColumnFamily,
+        key: Vec<u8>,
+        value: Vec<u8>,
+    ) -> Result<(), QantoStorageError> {
+        let namespaced_key = WriteBatch::cf_key(cf, &key);
+        let value_size = namespaced_key.len() + value.len();
 
         if self.async_io_processor.is_some() {
             return Err(QantoStorageError::InvalidOperation(
@@ -1623,7 +1836,7 @@ impl QantoStorage {
             .map_err(|e| QantoStorageError::LockPoisoned(e.to_string()))?
         {
             let entry = LogEntry::Put {
-                key: key.clone(),
+                key: namespaced_key.clone(),
                 value: value.clone(),
             };
             wal.append(&entry)?;
@@ -1633,11 +1846,12 @@ impl QantoStorage {
         }
 
         // Update memtable
-        self.sharded_memtable.put(key.clone(), value.clone())?;
+        self.sharded_memtable
+            .put(namespaced_key.clone(), value.clone())?;
 
         // Update cache using DashMap for lock-free access
         let entry = CacheEntry::new(value.clone());
-        self.cache.insert(key, entry);
+        self.cache.insert(namespaced_key, entry);
 
         // Update cache size atomically
         let current_size = self.cache_size.fetch_add(value_size, Ordering::Relaxed);
@@ -1666,20 +1880,50 @@ impl QantoStorage {
         Ok(())
     }
 
-    /// High-performance get operation with sharded reads
+    /// Put while the caller owns the exclusive visibility gate (LEGACY - kept for backward compatibility).
+    /// Now delegates to put_unlocked_cf with default column family.
+    #[deprecated(
+        since = "Task 4.2",
+        note = "Use put_unlocked_cf with ColumnFamily::Default instead"
+    )]
+    fn put_unlocked_legacy(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), QantoStorageError> {
+        self.put_unlocked_cf(ColumnFamily::Default, key, value)
+    }
+
+    /// High-performance get operation with sharded reads (default column family)
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, QantoStorageError> {
+        self.get_cf(ColumnFamily::Default, key)
+    }
+
+    /// Get a key from a specific column family (StateV2)
+    pub fn get_cf(
+        &self,
+        cf: ColumnFamily,
+        key: &[u8],
+    ) -> Result<Option<Vec<u8>>, QantoStorageError> {
         let _visibility = self
             .visibility_gate
             .read()
             .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
         self.ensure_healthy()?;
-        self.get_unlocked(key)
+        self.get_unlocked_cf(cf, key)
     }
 
-    /// Read while the caller already owns the visibility gate.
+    /// Read while the caller already owns the visibility gate (default column family)
     fn get_unlocked(&self, key: &[u8]) -> Result<Option<Vec<u8>>, QantoStorageError> {
+        self.get_unlocked_cf(ColumnFamily::Default, key)
+    }
+
+    /// Read while the caller already owns the visibility gate with column family
+    fn get_unlocked_cf(
+        &self,
+        cf: ColumnFamily,
+        key: &[u8],
+    ) -> Result<Option<Vec<u8>>, QantoStorageError> {
+        let namespaced_key = WriteBatch::cf_key(cf, key);
+
         // Check cache first (lock-free with DashMap)
-        if let Some(entry) = self.cache.get(key) {
+        if let Some(entry) = self.cache.get(&namespaced_key) {
             let mut stats = self
                 .stats
                 .write()
@@ -1689,16 +1933,16 @@ impl QantoStorage {
         }
 
         // Check sharded memtable (lock-free per shard)
-        if let Some(value) = self.sharded_memtable.get(key)? {
+        if let Some(value) = self.sharded_memtable.get(&namespaced_key)? {
             // Empty value indicates a tombstone; stop and return None
             if value.is_empty() {
                 return Ok(None);
             }
             // Update cache for future reads
             let entry = CacheEntry::new(value.clone());
-            self.cache.insert(key.to_vec(), entry);
+            self.cache.insert(namespaced_key.clone(), entry);
             self.cache_size
-                .fetch_add(key.len() + value.len(), Ordering::Relaxed);
+                .fetch_add(namespaced_key.len() + value.len(), Ordering::Relaxed);
 
             let mut stats = self
                 .stats
@@ -1716,15 +1960,15 @@ impl QantoStorage {
 
         for segment in segments.iter_mut().rev() {
             // If a tombstone exists in a newer segment, do not search older segments
-            if segment.is_tombstone(key) {
+            if segment.is_tombstone(&namespaced_key) {
                 return Ok(None);
             }
-            if let Some(value) = segment.get(key)? {
+            if let Some(value) = segment.get(&namespaced_key)? {
                 // Update cache for future reads
                 let entry = CacheEntry::new(value.clone());
-                self.cache.insert(key.to_vec(), entry);
+                self.cache.insert(namespaced_key.clone(), entry);
                 self.cache_size
-                    .fetch_add(key.len() + value.len(), Ordering::Relaxed);
+                    .fetch_add(namespaced_key.len() + value.len(), Ordering::Relaxed);
 
                 let mut stats = self
                     .stats
@@ -1747,22 +1991,34 @@ impl QantoStorage {
         Ok(None)
     }
 
-    /// Delete a key with optimized cache removal
+    /// Delete a key with optimized cache removal (default column family)
     pub fn delete(&self, key: &[u8]) -> Result<(), QantoStorageError> {
+        self.delete_cf(ColumnFamily::Default, key)
+    }
+
+    /// Delete a key from a specific column family (StateV2)
+    pub fn delete_cf(&self, cf: ColumnFamily, key: &[u8]) -> Result<(), QantoStorageError> {
         let _visibility = self
             .visibility_gate
             .write()
             .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?;
         self.ensure_healthy()?;
-        if let Err(error) = self.delete_unlocked(key) {
+        if let Err(error) = self.delete_unlocked_cf(cf, key) {
             self.poison();
             return Err(error);
         }
         Ok(())
     }
 
-    /// Delete while the caller owns the exclusive visibility gate.
+    /// Delete while the caller owns the exclusive visibility gate (default column family)
     fn delete_unlocked(&self, key: &[u8]) -> Result<(), QantoStorageError> {
+        self.delete_unlocked_cf(ColumnFamily::Default, key)
+    }
+
+    /// Delete while the caller owns the exclusive visibility gate with column family
+    fn delete_unlocked_cf(&self, cf: ColumnFamily, key: &[u8]) -> Result<(), QantoStorageError> {
+        let namespaced_key = WriteBatch::cf_key(cf, key);
+
         if self.async_io_processor.is_some() {
             return Err(QantoStorageError::InvalidOperation(
                 "async storage writes are disabled".to_string(),
@@ -1775,7 +2031,9 @@ impl QantoStorage {
             .lock()
             .map_err(|error| QantoStorageError::LockPoisoned(error.to_string()))?
         {
-            let entry = LogEntry::Delete { key: key.to_vec() };
+            let entry = LogEntry::Delete {
+                key: namespaced_key.clone(),
+            };
             wal.append(&entry)?;
             if self.config.sync_writes {
                 wal.sync()?;
@@ -1783,11 +2041,11 @@ impl QantoStorage {
         }
 
         // Remove from memtable
-        self.sharded_memtable.delete(key)?;
+        self.sharded_memtable.delete(&namespaced_key)?;
 
         // Remove from cache and update size atomically
-        if let Some((_, entry)) = self.cache.remove(key) {
-            let value_size = key.len() + entry.value.len();
+        if let Some((_, entry)) = self.cache.remove(&namespaced_key) {
+            let value_size = namespaced_key.len() + entry.value.len();
             self.cache_size.fetch_sub(value_size, Ordering::Relaxed);
         }
 

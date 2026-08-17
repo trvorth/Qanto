@@ -1,4 +1,5 @@
 use ahash::AHashMap as HashMap;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -11,6 +12,9 @@ use crate::miner::Miner;
 use crate::qantodag::{QantoDAG, QantoDAGError};
 use crate::types::UTXO;
 use crate::wallet::Wallet;
+use hex;
+use qanto_consensus_primitives::{is_v2_active, ConsensusParametersV2, SchemaVersion};
+use qanto_core::protocol_identity::{account_id_v2, validator_id_v2};
 
 // Re-export the decoupled producer
 pub use crate::decoupled_producer::DecoupledProducer;
@@ -195,7 +199,18 @@ impl SoloProducer {
         utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
         miner: &Arc<Miner>,
     ) -> Result<crate::qantodag::QantoBlock, QantoDAGError> {
-        let validator_id = wallet.validator_id();
+        // Use V2 validator_id derivation to match create_candidate_block validation
+        let (qr_signing_key, qr_public_key) = wallet.get_keypair().map_err(|e| {
+            QantoDAGError::WalletError(format!("Failed to get keypair from wallet: {e}"))
+        })?;
+        let qr_pk_array: &[u8; 1952] = qr_public_key.as_array();
+        let chain_id = crate::transaction::GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32;
+        let validator_id = qanto_core::protocol_identity::validator_id_v2(
+            qr_pk_array,
+            chain_id,
+            qanto_consensus_primitives::consensus_parameters::SchemaVersion::V2_INITIAL,
+        )
+        .to_string();
         let chain_id_to_mine: u32 = 0;
 
         info!(
@@ -204,10 +219,6 @@ impl SoloProducer {
             wallet.address()
         );
         let candidate_creation_start = std::time::Instant::now();
-
-        let (qr_signing_key, qr_public_key) = wallet.get_keypair().map_err(|e| {
-            QantoDAGError::WalletError(format!("Failed to get keypair from wallet: {e}"))
-        })?;
 
         let homomorphic_public_key = miner.get_homomorphic_public_key();
         match self
@@ -586,6 +597,7 @@ mod tests {
             effort: 0,
             chain_work: crate::miner::U256::ZERO,
             paillier_pk: HomomorphicEncrypted::generate_keypair().0,
+            state_parent: String::new(),
         };
         let genesis_block = QantoBlock::new(genesis_data).expect("genesis block creation");
         let genesis_id = genesis_block.id.clone();
@@ -626,7 +638,10 @@ mod tests {
             .expect("Failed to create DAG")
     }
 
-    fn create_test_dag_with_validator(validator_sk: QantoPQPrivateKey) -> Arc<QantoDAG> {
+    fn create_test_dag_with_validator(
+        validator_sk: QantoPQPrivateKey,
+        validator_id: String,
+    ) -> Arc<QantoDAG> {
         let storage_config = StorageConfig {
             data_dir: std::env::temp_dir().join(format!(
                 "test_qanto_solo_producer_unit_{}_{}",
@@ -658,8 +673,8 @@ mod tests {
             parents: vec![],
             transactions: vec![],
             difficulty: 1_000_000_000u64, // QANTO_SCALE = 1e9
-            validator: "test_validator".to_string(),
-            miner: "test_validator".to_string(),
+            validator: validator_id.clone(),
+            miner: validator_id.clone(),
             timestamp: genesis_timestamp,
             current_epoch: 0,
             height: 0,
@@ -668,6 +683,7 @@ mod tests {
             effort: 0,
             chain_work: crate::miner::U256::ZERO,
             paillier_pk: HomomorphicEncrypted::generate_keypair().0,
+            state_parent: String::new(),
         };
         let genesis_block = QantoBlock::new(genesis_data).expect("genesis block creation");
         let genesis_id = genesis_block.id.clone();
@@ -685,7 +701,7 @@ mod tests {
         storage.sync().expect("genesis sync");
 
         let dag_config = QantoDagConfig {
-            initial_validator: "test_validator".to_string(),
+            initial_validator: validator_id.clone(),
             genesis_timestamp,
             target_block_time: 1000,
             num_chains: 1,
@@ -709,16 +725,30 @@ mod tests {
     }
     #[tokio::test]
     async fn test_create_mining_candidate_populates_transactions() {
-        let (validator_pk, validator_sk) =
-            generate_pq_keypair(Some([42u8; 32])).expect("generate PQ keypair");
-        let dag_arc = create_test_dag_with_validator(validator_sk.clone());
         let wallet_arc = Arc::new(Wallet::new().expect("Failed to create wallet"));
+        let (validator_sk, validator_pk) = wallet_arc
+            .get_keypair()
+            .expect("wallet stores a validated ML-DSA-65 keypair");
+        // V2 validator_id for qantodag validation (uses DomainV2::ValidatorId)
+        let validator_pk_array: &[u8; 1952] = validator_pk.as_array();
+        let validator_id_v2 = qanto_core::protocol_identity::validator_id_v2(
+            validator_pk_array,
+            1234,
+            qanto_consensus_primitives::consensus_parameters::SchemaVersion::V2_INITIAL,
+        )
+        .to_string();
+        // Legacy validator_id for wallet.validator_id() (uses VALIDATOR_DOMAIN_V2)
+        let validator_id_legacy =
+            qanto_core::protocol_identity::validator_address_v2(1234, validator_pk.as_bytes())
+                .expect("validator address derivation");
+        crate::transaction::GLOBAL_CHAIN_ID.store(1234, std::sync::atomic::Ordering::Relaxed);
+        // Register the V2 validator_id in DAG (what create_candidate_block validates against)
+        let dag_arc = create_test_dag_with_validator(validator_sk.clone(), validator_id_v2.clone());
         let miner_address = wallet_arc.address();
-        let validator_id = wallet_arc.validator_id();
 
-        // Satisfy validator preconditions
+        // Satisfy validator preconditions - register V2 validator_id (what create_candidate_block validates against)
         dag_arc
-            .add_test_validator(validator_id.clone(), 50 * crate::Q_SCALE)
+            .add_test_validator(validator_id_v2.clone(), 50 * crate::Q_SCALE)
             .await
             .expect("register test validator");
 
@@ -738,18 +768,21 @@ mod tests {
                 output_index: 0,
             };
             let output = Output {
-                address: "0x2222222222222222222222222222222222222222".to_string(),
+                // 64-char hex without 0x prefix
+                address: "2222222222222222222222222222222222222222222222222222222222222222"
+                    .to_string(),
                 amount: 100,
                 homomorphic_encrypted: HomomorphicEncrypted::default(),
             };
-            let tx = create_valid_signed_tx(
+            let tx = crate::security_tests::create_valid_signed_tx(
                 &validator_sk,
                 &validator_pk,
                 1234,
                 vec![input],
                 vec![output],
-                10,
-            );
+                100, // Minimum required fee is 100
+            )
+            .await;
             let sender = tx.sender.clone();
             seeded_ids.push(tx.id.clone());
             seeded_utxos.insert(
@@ -806,8 +839,9 @@ mod tests {
             .expect("Failed to create mining candidate");
 
         // Assert candidate block structure and that seeded transactions are included
+        // SoloProducer now uses V2 validator_id consistently with create_candidate_block validation
         assert_eq!(candidate.chain_id, 0);
-        assert_eq!(candidate.validator, validator_id);
+        assert_eq!(candidate.validator, validator_id_v2);
         assert_eq!(candidate.miner, candidate.validator);
         assert!(!candidate.parents.is_empty());
         assert!(!candidate.transactions.is_empty());

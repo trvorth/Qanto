@@ -30,6 +30,10 @@ dilithium = { package = "dilithium-rs", version = "=0.2.0" }
 tokio = { version = "1.38.0", features = ["full", "rt-multi-thread", "time"] }
 futures = "0.3.30"
 
+# Qanto consensus primitives (V2)
+qanto-consensus-primitives = { version = "0.1.0", path = "../qanto-consensus-primitives" }
+
+
 # Logging and tracing
 tracing = "0.1.40"
 tracing-subscriber = { workspace = true }

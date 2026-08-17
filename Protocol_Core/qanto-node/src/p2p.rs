@@ -1905,6 +1905,8 @@ pub(crate) fn convert_proto_block(
         chain_work: crate::miner::U256::ZERO,
         reservation_miner_id: None,
         finality_proof: pb.finality_proof,
+        state_parent: String::new(),
+        state_root: String::new(),
     })
 }
 

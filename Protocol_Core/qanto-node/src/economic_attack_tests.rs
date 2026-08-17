@@ -38,8 +38,12 @@ async fn grow_chain_for_val(
 ) -> Vec<String> {
     let utxos = Arc::new(RwLock::new(HashMap::new()));
     let mut added = Vec::new();
-    let val_addr = qanto_core::protocol_identity::validator_id_v2(1234, val_pk.as_bytes())
-        .expect("validator id");
+    let val_addr = qanto_core::protocol_identity::validator_id_v2(
+        val_pk.as_array(),
+        1234,
+        qanto_consensus_primitives::consensus_parameters::SchemaVersion::V2_INITIAL,
+    )
+    .to_string();
     for i in 1..=length {
         let tips: Vec<String> = dag
             .tips
@@ -75,8 +79,18 @@ async fn grow_chain_for_val(
 async fn test_stake_concentration() {
     let (pk_a, sk_a) = generate_pq_keypair(None).unwrap();
     let (pk_b, _sk_b) = generate_pq_keypair(None).unwrap();
-    let val_a = qanto_core::protocol_identity::validator_id_v2(1234, pk_a.as_bytes()).unwrap();
-    let val_b = qanto_core::protocol_identity::validator_id_v2(1234, pk_b.as_bytes()).unwrap();
+    let val_a = qanto_core::protocol_identity::validator_id_v2(
+        pk_a.as_array(),
+        1234,
+        qanto_consensus_primitives::consensus_parameters::SchemaVersion::V2_INITIAL,
+    )
+    .to_string();
+    let val_b = qanto_core::protocol_identity::validator_id_v2(
+        pk_b.as_array(),
+        1234,
+        qanto_consensus_primitives::consensus_parameters::SchemaVersion::V2_INITIAL,
+    )
+    .to_string();
 
     // Case 1: 51% Stake. Validator A alone should NOT be able to finalize blocks (quorum is 67%).
     let dag1 = wrap_and_init_dag(QantoDAG::new_dummy_for_verification());

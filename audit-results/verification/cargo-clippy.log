@@ -1,0 +1,70 @@
+    Checking spin v0.9.9
+    Checking ark-std v0.5.0
+   Compiling cl-sys v0.4.3
+   Compiling opencl-sys v0.2.9
+   Compiling ocl-core v0.11.5
+    Checking num-traits v0.1.43
+   Compiling protobuf v3.7.2
+    Checking protobuf-support v3.7.2
+    Checking ocl-core-vector v0.1.1
+   Compiling foreign-types-macros v0.2.4
+    Checking lazy_static v1.5.0
+    Checking ark-serialize v0.5.0
+    Checking enum_primitive v0.1.1
+    Checking sharded-slab v0.1.7
+    Checking malloc_buf v0.0.6
+    Checking foreign-types-shared v0.3.1
+   Compiling prometheus v0.14.0
+    Checking ark-ff v0.5.0
+    Checking futures v0.1.31
+    Checking foreign-types v0.5.0
+    Checking tracing-subscriber v0.3.20 (https://github.com/tokio-rs/tracing?tag=tracing-subscriber-0.3.20#4c52ca52)
+    Checking objc v0.2.7
+    Checking core-graphics-types v0.2.0
+    Checking cl3 v0.9.5
+    Checking nodrop v0.1.14
+    Checking block v0.1.6 (/Users/cps/qanto/patches/block)
+    Checking bellman v0.14.0
+    Checking qutex v0.2.6
+    Checking metal v0.33.0
+   Compiling syn v1.0.109
+   Compiling object v0.37.3
+    Checking opencl3 v0.9.5
+   Compiling qanto-rpc v0.1.0 (/Users/cps/qanto/Protocol_Core/qanto-rpc)
+    Checking gimli v0.32.3
+    Checking adler2 v2.0.1
+    Checking miniz_oxide v0.8.9
+    Checking multer v3.1.0
+    Checking colored v2.2.0
+    Checking blake2b_simd v1.0.4
+   Compiling ark-crypto-primitives-macros v0.5.0
+    Checking rustc-demangle v0.1.28
+    Checking async-graphql v7.2.1
+    Checking pasta_curves v0.5.2
+    Checking ocl v0.19.7
+    Checking maybe-rayon v0.1.1
+    Checking mintex v0.1.4
+    Checking thousands v0.2.0
+    Checking rustc-hash v1.1.0
+    Checking halo2_proofs v0.3.4
+    Checking addr2line v0.25.1
+    Checking prometheus v0.13.4
+    Checking mockall v0.12.1
+    Checking serial_test v2.0.0
+    Checking qanto-zk-sdk v0.1.0 (/Users/cps/qanto/Protocol_Core/qanto-zk-sdk)
+    Checking ark-poly v0.5.0
+    Checking ark-relations v0.5.1 (/Users/cps/qanto/patches/ark-relations)
+   Compiling derivative v2.2.0 (https://github.com/mcarton/rust-derivative?branch=master#5179a968)
+    Checking ark-snark v0.5.1
+    Checking ark-ec v0.5.0
+    Checking backtrace v0.3.76
+    Checking dhat v0.3.3
+    Checking ark-r1cs-std v0.5.0
+    Checking ark-bls12-381 v0.5.0
+    Checking async-graphql-axum v7.2.1
+    Checking my-blockchain v0.1.0 (/Users/cps/qanto/Protocol_Core/myblockchain)
+    Checking ark-crypto-primitives v0.5.0
+    Checking qanto-core v0.1.0 (/Users/cps/qanto/Protocol_Core/qanto-core)
+    Checking ark-groth16 v0.5.0
+    Checking qanto v0.1.0 (/Users/cps/qanto/Protocol_Core/qanto-node)
+    Finished `dev` profile [optimized + debuginfo] target(s) in 27.53s

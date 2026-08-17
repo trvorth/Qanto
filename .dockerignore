@@ -1,0 +1,66 @@
+# Keep the Docker build context deterministic and free of local credentials.
+
+# Version-control metadata
+.git
+.git/**
+
+# Local environment files (documented templates remain available)
+**/.env
+**/.env.*
+**/.envrc
+**/.direnv/**
+!**/.env.example
+!**/.env.*.example
+!**/.env.template
+!**/.env.*.template
+
+# Language build output and dependency caches
+target
+**/target
+node_modules
+**/node_modules
+
+# Local databases and node state
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+**/*.sqlite3
+**/*.sqlite3-*
+**/.rocksdb/**
+**/.sled/**
+/data/**
+/storage/**
+/.qanto/**
+/qanto-data/**
+/qanto_data/**
+
+# Wallets, private keys, certificates, and secret material
+/Keystore/**
+**/keys/**
+**/wallets/**
+**/secrets/**
+**/*.key
+**/*.pem
+**/*.p12
+**/*.pfx
+**/*.jks
+**/keystore.json
+**/wallet.json
+**/secrets.json
+
+# Preserve documentation and explicitly named example templates.
+!**/keys/README.md
+!**/keys/.gitignore
+!**/keys/*.example
+!**/wallets/README.md
+!**/wallets/.gitignore
+!**/wallets/*.example
+!**/secrets/README.md
+!**/secrets/.gitignore
+!**/secrets/*.example
+!**/*.key.example
+!**/*.pem.example
+!**/keystore.example.json
+!**/wallet.example.json
+

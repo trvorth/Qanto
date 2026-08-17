@@ -514,6 +514,14 @@ impl QantoPQPublicKey {
         &self.0
     }
 
+    /// Get fixed-size array reference to the ML-DSA-65 public key
+    pub fn as_array(&self) -> &[u8; QANTO_PQ_PUBLIC_KEY_LENGTH] {
+        self.0
+            .as_slice()
+            .try_into()
+            .expect("QantoPQPublicKey has valid length")
+    }
+
     /// Verifies a post-quantum signature.
     /// This function implements a correct hash-based verification scheme. It re-calculates
     /// the 'S' portion of the signature using public data and compares it to the 'S' portion
@@ -782,6 +790,15 @@ impl QantoKeyPair {
             Self::P256 { .. } => QantoSignatureAlgorithm::P256,
         }
     }
+
+    /// Get the public key for this key pair
+    pub fn public_key(&self) -> &dyn AsRef<[u8]> {
+        match self {
+            Self::Ed25519 { public, .. } => public,
+            Self::PostQuantum { public, .. } => public,
+            Self::P256 { public, .. } => public,
+        }
+    }
 }
 
 /// Main cryptographic operations provider for Qanto blockchain
@@ -992,6 +1009,26 @@ impl QantoP256Signature {
 impl fmt::Debug for QantoP256Signature {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "QantoP256Signature({})", hex::encode(self.0))
+    }
+}
+
+// --- AsRef<[u8]> Implementations for Public Keys ---
+
+impl AsRef<[u8]> for QantoEd25519PublicKey {
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
+impl AsRef<[u8]> for QantoPQPublicKey {
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
+impl AsRef<[u8]> for QantoP256PublicKey {
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
     }
 }
 

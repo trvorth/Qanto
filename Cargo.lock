@@ -7302,6 +7302,7 @@ dependencies = [
  "password-hash",
  "pasta_curves",
  "predicates",
+ "primitive-types",
  "prometheus 0.13.4",
  "proptest",
  "prost 0.12.6",
@@ -7352,7 +7353,12 @@ dependencies = [
 name = "qanto-consensus-primitives"
 version = "0.1.0"
 dependencies = [
+ "hex",
+ "qanto-core",
+ "rand 0.8.6",
+ "serde_json",
  "sha3",
+ "subtle",
 ]
 
 [[package]]
@@ -7381,6 +7387,7 @@ dependencies = [
  "pqcrypto-dilithium",
  "pqcrypto-sphincsplus",
  "pqcrypto-traits",
+ "qanto-consensus-primitives",
  "rand 0.8.6",
  "serde",
  "serde_json",
@@ -7411,6 +7418,7 @@ dependencies = [
  "my-blockchain",
  "pqcrypto-dilithium",
  "pqcrypto-traits",
+ "qanto-consensus-primitives",
  "qanto-core",
  "qanto-rpc",
  "rand 0.8.6",

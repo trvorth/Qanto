@@ -2394,14 +2394,22 @@ async fn submit_transactions(
     }
 
     // Parallel signature verification across the batch
-    let sig_ok_all = Transaction::verify_signatures_batch_parallel(&tx_list);
+    let consensus_params = state.dag.consensus_params.as_ref();
+    let height = 0u64;
+    let sig_ok_all =
+        Transaction::verify_signatures_batch_parallel(&tx_list, consensus_params, height);
 
     // Parallel UTXO/DAG verification with bounded concurrency via semaphore
     let verification_semaphore = Arc::new(tokio::sync::Semaphore::new(
         state.config.mempool.parallel_verification_threads,
     ));
-    let verify_results =
-        Transaction::verify_batch_parallel(&tx_list, &utxos_read_guard, &verification_semaphore);
+    let verify_results = Transaction::verify_batch_parallel(
+        &tx_list,
+        &utxos_read_guard,
+        &verification_semaphore,
+        consensus_params,
+        height,
+    );
 
     // Collect accepted and rejected
     let mut accepted_ids: Vec<String> = Vec::new();

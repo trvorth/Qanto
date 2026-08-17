@@ -75,6 +75,8 @@ pub enum ValueError {
     NonCanonicalSet {
         index: u32,
     },
+    /// Cryptographic verification failed (signature, hash mismatch, etc.)
+    VerificationFailed,
 }
 
 /// Canonical record construction or decoding error.
@@ -358,6 +360,39 @@ impl<'a> DecodedField<'a> {
             field_id: self.id,
             error,
         })
+    }
+
+    /// Extract the raw bytes of a Hash32 field as a [u8; 32].
+    pub fn as_hash32(self) -> Result<[u8; 32], RecordError> {
+        if self.wire_type != WireType::Hash32 {
+            return Err(RecordError::WireTypeMismatch {
+                field_id: self.id,
+                expected: WireType::Hash32,
+                actual: self.wire_type,
+            });
+        }
+        self.value
+            .try_into()
+            .map_err(|_| RecordError::InvalidValue {
+                field_id: self.id,
+                error: ValueError::IncorrectLength {
+                    wire_type: WireType::Hash32,
+                    expected: 32,
+                    actual: self.value.len(),
+                },
+            })
+    }
+
+    /// Extract the raw bytes of a Bytes field.
+    pub fn as_bytes(self) -> Result<&'a [u8], RecordError> {
+        if self.wire_type != WireType::Bytes {
+            return Err(RecordError::WireTypeMismatch {
+                field_id: self.id,
+                expected: WireType::Bytes,
+                actual: self.wire_type,
+            });
+        }
+        Ok(self.value)
     }
 }
 

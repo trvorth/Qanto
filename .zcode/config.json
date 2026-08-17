@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "enabled": true,
+    "events": {
+      "PreToolUse": [
+        {
+          "matcher": "Read|Glob",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "/Users/cps/.local/bin/graphify hook-guard read",
+              "enabled": true
+            }
+          ]
+        },
+        {
+          "matcher": "Bash|Grep",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "/Users/cps/.local/bin/graphify hook-guard search",
+              "enabled": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,105 @@
+name: Solidity Security CI
+
+on:
+  push:
+    paths:
+      - "SmartContracts/**"
+      - ".github/workflows/solidity.yml"
+  pull_request:
+    paths:
+      - "SmartContracts/**"
+      - ".github/workflows/solidity.yml"
+
+# AUDIT FIX (MED-08): Add Solidity test, Slither static analysis, and coverage jobs.
+# Previously CI had no Solidity checks — this closes the gap.
+
+jobs:
+  hardhat-tests:
+    name: Hardhat Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: SmartContracts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: SmartContracts/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile contracts
+        run: npx hardhat compile
+
+      - name: Run unit tests
+        run: npx hardhat test --reporter spec
+
+      - name: Run coverage (informational)
+        run: npx hardhat coverage || true
+        continue-on-error: true
+
+  slither:
+    name: Slither Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Slither
+        run: pip install slither-analyzer
+
+      - name: Install contract dependencies
+        working-directory: SmartContracts
+        run: npm ci
+
+      - name: Compile for Slither
+        working-directory: SmartContracts
+        run: npx hardhat compile
+
+      - name: Run Slither (high + medium)
+        working-directory: SmartContracts
+        # Fail on high-severity findings; informational permitted
+        run: |
+          slither . \
+            --hardhat-artifacts-directory artifacts \
+            --filter-paths "node_modules,test" \
+            --exclude-informational \
+            --exclude-low \
+            || EXIT=$?
+          if [ "${EXIT:-0}" -eq 1 ]; then
+            echo "Slither found HIGH/MEDIUM severity issues — failing build"
+            exit 1
+          fi
+
+  scorecard-verify:
+    name: Verify CertiK Scorecard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify score
+        run: |
+          python3 tools/verify_certik_score.py --self-test
+          python3 tools/verify_certik_score.py --strict-reported
+          python3 tools/verify_certik_score.py --require-acceptance

@@ -1,0 +1,8 @@
+{
+  "description": "Golden vector for IdentityV2 canonical encoding and hash_v2",
+  "account_id_v2": "c95a0ffa9b231868ff5af658ba9c45ee649bd087356d02519f6566d49feaf561",
+  "validator_id_v2": "e26780e9f559a67fc4886582f4b54256f233eb7406ce94b702b3a25572730cb8",
+  "state_root_v2": "c37f4b0f00c145f8f135f0ffe606ef79d21c6e5917617006d6c53d7b00615890",
+  "empty_tx_body_hash_v2": "41e9a11ef7c8f4748466baeb8318fc1d2477d4d40deb96e5497949785b1a6e4e",
+  "empty_tx_signing_hash_v2": "819d940f5563eb4c5eb0f4b00f25e7617a8d2b5c10124dc996c48d3b337900c0"
+}

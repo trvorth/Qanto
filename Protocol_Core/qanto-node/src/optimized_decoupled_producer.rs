@@ -437,7 +437,7 @@ impl OptimizedDecoupledProducer {
     /// Process validation batch with parallel or sequential processing
     async fn process_validation_batch(
         batch: &mut Vec<OptimizedMiningCandidate>,
-        _dag: &Arc<QantoDAG>,
+        dag: &Arc<QantoDAG>,
         utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
         mining_tx: &mpsc::Sender<OptimizedMiningCandidate>,
         validation_semaphore: &Arc<Semaphore>,
@@ -448,6 +448,8 @@ impl OptimizedDecoupledProducer {
             return;
         }
 
+        let consensus_params = dag.consensus_params.as_ref();
+        let height = 0u64;
         let validation_start = Instant::now();
 
         if parallel_validation && batch.len() > 1 {
@@ -464,6 +466,8 @@ impl OptimizedDecoupledProducer {
                                 &candidate.block.transactions,
                                 &utxos_guard,
                                 validation_semaphore,
+                                consensus_params,
+                                height,
                             );
                             let is_valid = results.into_iter().all(|r| r.is_ok());
                             (candidate.sequence_id, is_valid)
@@ -500,6 +504,8 @@ impl OptimizedDecoupledProducer {
                         &candidate.block.transactions,
                         &utxos_guard,
                         validation_semaphore,
+                        consensus_params,
+                        height,
                     );
                     let is_valid = results.into_iter().all(|r| r.is_ok());
                     drop(utxos_guard);

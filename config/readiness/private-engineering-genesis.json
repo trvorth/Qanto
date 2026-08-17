@@ -1,0 +1,22 @@
+{
+  "networkId": "qanto-engineering-private-v1",
+  "chainId": 9024999,
+  "genesisTimestamp": 1717250400,
+  "genesisValidator": "0000000000000000000000000000000000000000000000000000000000000000",
+  "contractAddress": "0000000000000000000000000000000000000000000000000000000000000000",
+  "tokenomics": {
+    "symbol": "QNTO",
+    "maxSupply": "0",
+    "tokenDecimals": 9,
+    "smallestUnitsPerQanto": "1000000000",
+    "maxSupplyBaseUnits": "0"
+  },
+  "allocations": [
+    {
+      "address": "0000000000000000000000000000000000000000000000000000000000000000",
+      "amountQanto": "0",
+      "amountBaseUnits": "0",
+      "role": "private-engineering-prefund"
+    }
+  ]
+}

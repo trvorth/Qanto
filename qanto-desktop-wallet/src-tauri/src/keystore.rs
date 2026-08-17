@@ -3,8 +3,10 @@ use aes_gcm::{Aes256Gcm, Key, Nonce};
 use argon2::{Algorithm, Argon2, Params, Version};
 use base64::Engine;
 use hkdf::Hkdf;
+use qanto_consensus_primitives::consensus_parameters::SchemaVersion;
 use qanto_core::protocol_identity::{
-    account_address_v2, validate_account_address_v2, validator_id_v2, IDENTITY_VERSION_V2,
+    account_address_v2, account_id_v2, validate_account_address_v2, validator_id_v2,
+    IDENTITY_VERSION_V2,
 };
 use qanto_core::qanto_native_crypto::{QantoPQPrivateKey, QantoPQPublicKey};
 use rand::rngs::{OsRng, StdRng};
@@ -330,8 +332,15 @@ fn validate_wallet_payload(
 
     let expected_account = account_address_v2(WALLET_NETWORK_CHAIN_ID, &pq_public)
         .map_err(|e| format!("invalid wallet account identity: {e}"))?;
-    let expected_validator = validator_id_v2(WALLET_NETWORK_CHAIN_ID, &pq_public)
-        .map_err(|e| format!("invalid wallet validator identity: {e}"))?;
+    let pq_public_bytes: &[u8; 1952] = (&pq_public[..])
+        .try_into()
+        .map_err(|_| "invalid public key length".to_string())?;
+    let expected_validator = validator_id_v2(
+        pq_public_bytes,
+        WALLET_NETWORK_CHAIN_ID,
+        SchemaVersion::V2_INITIAL,
+    );
+    let expected_validator_str = expected_validator.to_string();
 
     let migrated_from_legacy = match keystore_version {
         LEGACY_KEYSTORE_VERSION => {
@@ -350,7 +359,7 @@ fn validate_wallet_payload(
             payload.address = expected_account.clone();
             payload.identity_version = Some(IDENTITY_VERSION_V2);
             payload.network_chain_id = Some(WALLET_NETWORK_CHAIN_ID);
-            payload.validator_id = Some(expected_validator.clone());
+            payload.validator_id = Some(expected_validator_str.clone());
             payload.legacy_ed25519_address = Some(expected_legacy_address);
             true
         }
@@ -363,7 +372,7 @@ fn validate_wallet_payload(
             }
             validate_account_address_v2(&payload.address, WALLET_NETWORK_CHAIN_ID, &pq_public)
                 .map_err(|e| format!("wallet account address/key mismatch: {e}"))?;
-            if payload.validator_id.as_deref() != Some(expected_validator.as_str()) {
+            if payload.validator_id.as_deref() != Some(&expected_validator_str) {
                 return Err("wallet validator ID/key mismatch".to_string());
             }
             match (
@@ -412,10 +421,16 @@ pub(crate) fn validate_unlocked_identity(material: &UnlockedKeyMaterial) -> Resu
         &material.dilithium3_public_key,
     )
     .map_err(|e| format!("wallet account address/key mismatch: {e}"))?;
-    let expected_validator =
-        validator_id_v2(material.network_chain_id, &material.dilithium3_public_key)
-            .map_err(|e| format!("invalid wallet validator identity: {e}"))?;
-    if material.validator_id != expected_validator {
+    let pq_public_bytes: &[u8; 1952] = (&material.dilithium3_public_key[..])
+        .try_into()
+        .map_err(|_| "invalid public key length".to_string())?;
+    let expected_validator = validator_id_v2(
+        pq_public_bytes,
+        material.network_chain_id,
+        SchemaVersion::V2_INITIAL,
+    );
+    let expected_validator_str = expected_validator.to_string();
+    if material.validator_id != expected_validator_str {
         return Err("wallet validator ID/key mismatch".to_string());
     }
     Ok(())
@@ -437,8 +452,14 @@ fn build_wallet_payload(mnemonic: String) -> Result<WalletSecretPayload, String>
     let pq_public_bytes = pq_pk.as_bytes().to_vec();
     let address = account_address_v2(WALLET_NETWORK_CHAIN_ID, &pq_public_bytes)
         .map_err(|e| format!("wallet account identity derivation failed: {e}"))?;
-    let validator_id = validator_id_v2(WALLET_NETWORK_CHAIN_ID, &pq_public_bytes)
-        .map_err(|e| format!("wallet validator identity derivation failed: {e}"))?;
+    let pq_pubkey_bytes: &[u8; 1952] = (&pq_public_bytes[..])
+        .try_into()
+        .map_err(|_| "invalid public key length".to_string())?;
+    let validator_id = validator_id_v2(
+        pq_pubkey_bytes,
+        WALLET_NETWORK_CHAIN_ID,
+        SchemaVersion::V2_INITIAL,
+    );
 
     Ok(WalletSecretPayload {
         mnemonic: normalized_mnemonic,
@@ -449,7 +470,7 @@ fn build_wallet_payload(mnemonic: String) -> Result<WalletSecretPayload, String>
         address,
         identity_version: Some(IDENTITY_VERSION_V2),
         network_chain_id: Some(WALLET_NETWORK_CHAIN_ID),
-        validator_id: Some(validator_id),
+        validator_id: Some(validator_id.to_string()),
         legacy_ed25519_address: None,
     })
 }
@@ -777,8 +798,13 @@ mod tests {
             "d45c7ef8ce3931b25ca2ea68342551b642ca4f5e1ad64d29c8e8629ecb7d30c8"
         );
         assert_eq!(
-            validator_id_v2(WALLET_NETWORK_CHAIN_ID, &public_key).expect("validator identity"),
-            "4c42338df578b73b1969971a6b32a4de8031f203d22101c9b40a571a4ba8971d"
+            validator_id_v2(
+                &public_key,
+                WALLET_NETWORK_CHAIN_ID,
+                qanto_consensus_primitives::consensus_parameters::SchemaVersion::V2_INITIAL
+            )
+            .to_string(),
+            "f80cd1235d801660b8d9d38f5858903c940c4514882f9945df24475cbe075553"
         );
     }
 

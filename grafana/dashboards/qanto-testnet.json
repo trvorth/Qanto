@@ -1,0 +1,119 @@
+{
+  "dashboard": {
+    "title": "Qanto Testnet Monitoring",
+    "uid": "qanto-testnet",
+    "tags": ["qanto", "blockchain", "testnet"],
+    "timezone": "utc",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Block Height",
+        "type": "stat",
+        "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "qanto_block_height",
+            "legendFormat": "Height",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Connected Peers",
+        "type": "stat",
+        "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+        "targets": [
+          {
+            "expr": "qanto_connected_peers",
+            "legendFormat": "Peers",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "TPS (Transactions Per Second)",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(qanto_transactions_total[1m])",
+            "legendFormat": "TPS",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Block Production Rate",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "rate(qanto_blocks_mined_total[5m])",
+            "legendFormat": "Blocks/min",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Mempool Size",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "qanto_mempool_size",
+            "legendFormat": "Pending TXs",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Hash Rate (H/s)",
+        "type": "graph",
+        "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "qanto_hash_rate",
+            "legendFormat": "H/s",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Peer Latency (RTT)",
+        "type": "graph",
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "qanto_peer_rtt_seconds",
+            "legendFormat": "{{peer}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Sync Status",
+        "type": "table",
+        "gridPos": {"x": 0, "y": 20, "w": 24, "h": 8},
+        "targets": [
+          {
+            "expr": "qanto_sync_status",
+            "format": "table",
+            "refId": "A"
+          }
+        ]
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "10s"
+  }
+}

@@ -126,6 +126,18 @@ impl HashV2 {
         Self(bytes)
     }
 
+    /// Construct from a byte slice.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the slice is not exactly 32 bytes long.
+    #[must_use]
+    pub fn from_slice(slice: &[u8]) -> Self {
+        let bytes = <[u8; 32]>::try_from(slice)
+            .expect("HashV2::from_slice called with slice that is not 32 bytes long");
+        Self::from_bytes(bytes)
+    }
+
     /// Borrow the canonical big-endian byte representation.
     #[must_use]
     pub const fn as_bytes(&self) -> &[u8; 32] {
@@ -222,8 +234,21 @@ macro_rules! typed_hash {
 
 typed_hash!(TxIdV2);
 typed_hash!(BlockIdV2);
+
+impl BlockIdV2 {
+    /// All-zero BlockIdV2 constant.
+    pub const ZERO: Self = Self(HashV2::ZERO);
+}
+
+impl AccountIdV2 {
+    /// All-zero AccountIdV2 constant (coinbase receiver).
+    pub const ZERO: Self = Self(HashV2::ZERO);
+}
+
 typed_hash!(StateRootV2);
 typed_hash!(WorkHashV2);
+typed_hash!(AccountIdV2);
+typed_hash!(ValidatorIdV2);
 
 /// Build the byte-exact input to SHA3-256.
 ///

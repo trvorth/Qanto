@@ -37,6 +37,16 @@ use zeroize::Zeroize;
 use k256::ecdsa::{RecoveryId, Signature as K256Signature, VerifyingKey};
 use sha3::{Digest, Keccak256};
 
+// V2 imports
+use qanto_consensus_primitives::{
+    consensus_parameters::{is_v2_active, ConsensusParametersV2, ProtocolVersion, SchemaVersion},
+    hash::{hash_v2, AccountIdV2, DomainV2, HashV2, TxIdV2},
+    identity_v2::account_id_v2,
+    transaction_v2::{TransactionBodyV2, TransactionEnvelopeV2, TransactionSigningV2},
+    v2_records::*,
+};
+use qanto_core::qanto_native_crypto::{QantoKeyPair, QantoPQPrivateKey, QantoPQPublicKey};
+
 // --- Performance & Fee Constants ---
 /// The maximum number of transactions allowed per minute to align with the 10M+ TPS goal.
 const MAX_TRANSACTIONS_PER_MINUTE: u64 = 600_000_000;
@@ -113,6 +123,8 @@ pub enum TransactionError {
     GasFee(#[from] GasFeeError),
     #[error("Legacy ECDSA schemes are deprecated. Please use a Hybrid Signature.")]
     LegacySchemeDeprecated,
+    #[error("Record error: {0}")]
+    Record(#[from] qanto_consensus_primitives::record::RecordError),
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
@@ -141,6 +153,7 @@ pub struct TransactionConfig {
     pub metadata: Option<HashMap<String, String>>,
     pub tx_timestamps: Arc<RwLock<HashMap<String, u64>>>,
     pub chain_id: u32,
+    pub tx_kind: TransactionKind,
 }
 
 #[derive(Debug, Serialize)]
@@ -587,11 +600,22 @@ impl Transaction {
         })
     }
 
-    /// Verifies the signature of the transaction (supports both post-quantum and EVM).
+    /// Verifies the signature of the transaction.
     pub fn verify_signature(
         &self,
         public_key: &crate::qanto_native_crypto::QantoPQPublicKey,
+        consensus_params: &ConsensusParametersV2,
+        height: u64,
     ) -> Result<(), TransactionError> {
+        // Check if V2 is active
+        let is_v2 = is_v2_active(height, consensus_params);
+
+        if is_v2 {
+            // V2 path - verify using canonical construction
+            return self.verify_signature_v2(public_key, consensus_params);
+        }
+
+        // V1 path - legacy verification (existing code without EVM bypass and ΩMEGA coupling)
         let expected_chain_id = GLOBAL_CHAIN_ID.load(std::sync::atomic::Ordering::Relaxed) as u32;
         if self.chain_id != expected_chain_id {
             return Err(TransactionError::InvalidStructure(format!(
@@ -610,28 +634,8 @@ impl Transaction {
             return Err(TransactionError::InvalidTransactionSignature);
         }
 
-        if let Some(raw_tx_hex) = self.metadata.get("evm_raw_tx") {
-            let raw_bytes = hex::decode(raw_tx_hex).map_err(|_| {
-                TransactionError::InvalidStructure("Invalid evm_raw_tx hex".to_string())
-            })?;
-            let (recovered_sender, recovered_receiver, recovered_amount, _tx_data) =
-                Self::recover_evm_sender(&raw_bytes).map_err(|e| {
-                    TransactionError::InvalidStructure(format!("EVM recovery failed: {}", e))
-                })?;
-
-            if recovered_sender != self.sender {
-                return Err(TransactionError::InvalidAddress);
-            }
-            if recovered_receiver != self.receiver {
-                return Err(TransactionError::InvalidAddress);
-            }
-            if recovered_amount != self.amount {
-                return Err(TransactionError::InvalidStructure(
-                    "Amount mismatch".to_string(),
-                ));
-            }
-            return Ok(());
-        }
+        // REMOVED: EVM bypass in verify_signature()
+        // REMOVED: ΩMEGA coupling in Transaction::new() (handled separately)
 
         self.validate_native_signer_binding()?;
 
@@ -643,11 +647,67 @@ impl Transaction {
         Ok(())
     }
 
+    /// Verifies the signature of a V2 transaction using canonical construction.
+    #[allow(dead_code)]
+    pub fn verify_signature_v2(
+        &self,
+        public_key: &QantoPQPublicKey,
+        consensus_params: &ConsensusParametersV2,
+    ) -> Result<(), TransactionError> {
+        // Verify that we're using V2 parameters
+        if consensus_params.version != ProtocolVersion::V2 {
+            return Err(TransactionError::InvalidStructure(
+                "V2 transaction requires V2 consensus parameters".to_string(),
+            ));
+        }
+
+        // In a full implementation, we would reconstruct the V2 transaction from self
+        // and validate it against the V2 canonical rules. For now, we do basic validation.
+
+        // Basic V2 validation: check that the transaction ID matches what we'd expect
+        // from the canonical construction (simplified)
+        if self.id.len() != 64 {
+            return Err(TransactionError::InvalidStructure(
+                "V2 transaction ID must be 64 hex characters".to_string(),
+            ));
+        }
+
+        // Verify the signature using the standard method (would be enhanced for V2)
+        if self.signature.signer_public_key != public_key.as_bytes() {
+            return Err(TransactionError::InvalidTransactionSignature);
+        }
+
+        let signature_data = Self::serialize_for_signing(&self.signing_payload_for_transaction())?;
+
+        if !QuantumResistantSignature::verify(&self.signature, &signature_data) {
+            return Err(TransactionError::InvalidTransactionSignature);
+        }
+
+        Ok(())
+    }
+
     /// Creates a new transaction with the given configuration.
     pub async fn new(
         config: TransactionConfig,
         signing_key: &crate::qanto_native_crypto::QantoPQPrivateKey,
+        consensus_params: &ConsensusParametersV2,
+        height: u64,
     ) -> Result<Self, TransactionError> {
+        // Check if V2 is active
+        let is_v2 = is_v2_active(height, consensus_params);
+
+        if is_v2 {
+            // V2 path - canonical transaction construction
+            // Convert QantoPQPrivateKey to QantoKeyPair::PostQuantum
+            let pq_public = signing_key.public_key();
+            let qanto_keypair = QantoKeyPair::PostQuantum {
+                public: pq_public,
+                private: signing_key.clone(),
+            };
+            return Self::new_v2(config, &qanto_keypair, consensus_params).await;
+        }
+
+        // V1 path - legacy transaction construction (existing code)
         if !config
             .metadata
             .as_ref()
@@ -741,6 +801,129 @@ impl Transaction {
             timestamps_guard
                 .retain(|_, &mut stored_ts| current_time.saturating_sub(stored_ts) < 3600);
         }
+        Ok(tx)
+    }
+
+    /// Creates a new V2 transaction with canonical encoding.
+    #[allow(dead_code)]
+    pub async fn new_v2(
+        config: TransactionConfig,
+        signing_key: &QantoKeyPair,
+        consensus_params: &ConsensusParametersV2,
+    ) -> Result<Self, TransactionError> {
+        // Validate that we're using V2 parameters
+        if consensus_params.version != ProtocolVersion::V2 {
+            return Err(TransactionError::InvalidStructure(
+                "V2 transaction requires V2 consensus parameters".to_string(),
+            ));
+        }
+
+        // Convert config to V2 transaction components
+        let kind = match config.tx_kind {
+            TransactionKind::Transfer => 0u8,
+            TransactionKind::Coinbase => 1u8,
+            _ => {
+                return Err(TransactionError::InvalidStructure(
+                    "Unsupported transaction kind for V2".to_string(),
+                ))
+            }
+        };
+
+        // For V2, we need to derive AccountIdV2 from public key
+        let sender_pubkey_bytes = signing_key.public_key().as_ref();
+        let mut sender_pubkey = [0u8; 1952];
+        sender_pubkey.copy_from_slice(sender_pubkey_bytes);
+        let sender_hash: AccountIdV2 = account_id_v2(
+            &sender_pubkey,
+            config.chain_id,
+            consensus_params.schema_version,
+        );
+
+        let receiver_hash = if config.receiver == "0".repeat(64) {
+            // Coinbase receiver
+            AccountIdV2::ZERO
+        } else {
+            // Regular receiver - derive from address (simplified for now)
+            let receiver_bytes =
+                hex::decode(&config.receiver).map_err(|_| TransactionError::InvalidAddress)?;
+            if receiver_bytes.len() != 32 {
+                return Err(TransactionError::InvalidAddress);
+            }
+            let mut hash_input = [0u8; 32];
+            hash_input.copy_from_slice(&receiver_bytes);
+            AccountIdV2::from_hash(HashV2::from_bytes(hash_input))
+        };
+
+        // Build V2 transaction body - AccountIdV2 wraps HashV2 so we extract the inner HashV2
+        let sender_hash_v2 = sender_hash.as_hash().clone();
+        let receiver_hash_v2 = receiver_hash.as_hash().clone();
+        let body = TransactionBodyV2::new(
+            kind,
+            0, // nonce
+            config.gas_limit,
+            config.gas_price,
+            config.priority_fee,
+            sender_hash_v2,
+            receiver_hash_v2,
+            config.amount,
+            &[],
+            config.chain_id,
+            consensus_params.schema_version,
+        );
+
+        // Sign the transaction using QantoKeyPair
+        let signature = signing_key
+            .sign(&body.canonical_bytes)
+            .map_err(|_| TransactionError::InvalidTransactionSignature)?;
+        let signature_bytes = match signature {
+            qanto_core::qanto_native_crypto::QantoSignature::PostQuantum(pq_sig) => {
+                pq_sig.as_bytes().to_vec()
+            }
+            _ => return Err(TransactionError::InvalidTransactionSignature),
+        };
+        let pubkey_bytes = signing_key.public_key().as_ref().to_vec();
+
+        // Create V2 transaction envelope
+        let envelope = TransactionEnvelopeV2::from_parts(
+            body.canonical_bytes.clone(),
+            signature_bytes.clone(),
+            pubkey_bytes,
+        );
+
+        // Verify the envelope
+        let _tx_id = envelope.verify(
+            sender_hash,
+            config.chain_id,
+            consensus_params.schema_version,
+        )?;
+
+        // Additional V2 validation would go here
+
+        // For compatibility with existing Transaction struct, we'll create a legacy transaction
+        // that contains the V2 data. In a full implementation, we would have a separate V2Transaction struct.
+        let tx = Self {
+            id: hex::encode(body.tx_id.as_bytes()),
+            sender: hex::encode(sender_hash.as_bytes()),
+            receiver: hex::encode(receiver_hash.as_bytes()),
+            amount: config.amount,
+            fee: config.fee,
+            gas_limit: config.gas_limit,
+            gas_used: 0,
+            gas_price: config.gas_price,
+            priority_fee: config.priority_fee,
+            inputs: config.inputs,
+            outputs: config.outputs,
+            timestamp: Self::get_current_timestamp()?,
+            metadata: HashMap::new(),
+            signature: QuantumResistantSignature {
+                signer_public_key: signing_key.public_key().as_ref().to_vec(),
+                signature: signature_bytes,
+            },
+            fee_breakdown: None,
+            transaction_kind: TransactionKind::Transfer,
+            chain_id: config.chain_id,
+        };
+
         Ok(tx)
     }
 
@@ -995,14 +1178,17 @@ impl Transaction {
     /// Memory-optimized verification using a shared UTXO reference.
     pub async fn verify_with_shared_utxos(
         &self,
-        _dag: &QantoDAG,
+        dag: &QantoDAG,
         utxos_arc: &Arc<RwLock<HashMap<String, UTXO>>>,
     ) -> Result<(), TransactionError> {
         let public_key = crate::qanto_native_crypto::QantoPQPublicKey::from_bytes(
             &self.signature.signer_public_key,
         )
         .map_err(|_| TransactionError::InvalidTransactionSignature)?;
-        self.verify_signature(&public_key)?;
+        // V1 consensus params at height 0
+        let consensus_params = dag.consensus_params.as_ref();
+        let height = 0u64;
+        self.verify_signature(&public_key, consensus_params, height)?;
 
         if self.is_coinbase() {
             if self.fee != 0 {
@@ -1056,14 +1242,17 @@ impl Transaction {
     /// Verifies the transaction against a given set of UTXOs.
     pub async fn verify(
         &self,
-        _dag: &QantoDAG,
+        dag: &QantoDAG,
         utxos: &HashMap<String, UTXO>,
     ) -> Result<(), TransactionError> {
         let public_key = crate::qanto_native_crypto::QantoPQPublicKey::from_bytes(
             &self.signature.signer_public_key,
         )
         .map_err(|_| TransactionError::InvalidTransactionSignature)?;
-        self.verify_signature(&public_key)?;
+        // V1 consensus params at height 0
+        let consensus_params = dag.consensus_params.as_ref();
+        let height = 0u64;
+        self.verify_signature(&public_key, consensus_params, height)?;
 
         if self.is_coinbase() {
             if self.fee != 0 {
@@ -1115,15 +1304,19 @@ impl Transaction {
         transactions: &[Transaction],
         utxos_map: &HashMap<String, UTXO>,
         _verification_semaphore: &Arc<Semaphore>,
+        consensus_params: &ConsensusParametersV2,
+        height: u64,
     ) -> Vec<Result<(), TransactionError>> {
         // Chunk the transactions to process in batches to reduce contention
         let chunk_size = transactions.len() / rayon::current_num_threads() + 1;
+        let consensus_params = std::sync::Arc::new(consensus_params.clone());
         transactions
             .par_chunks(chunk_size)
             .flat_map(|chunk| {
+                let params = consensus_params.clone();
                 chunk
                     .iter()
-                    .map(|tx| Self::verify_single_transaction(tx, utxos_map))
+                    .map(|tx| Self::verify_single_transaction(tx, utxos_map, &params, height))
                     .collect::<Vec<_>>()
             })
             .collect()
@@ -1133,12 +1326,14 @@ impl Transaction {
     pub fn verify_single_transaction(
         tx: &Transaction,
         utxos: &HashMap<String, UTXO>,
+        consensus_params: &ConsensusParametersV2,
+        height: u64,
     ) -> Result<(), TransactionError> {
         let public_key = crate::qanto_native_crypto::QantoPQPublicKey::from_bytes(
             &tx.signature.signer_public_key,
         )
         .map_err(|_| TransactionError::InvalidTransactionSignature)?;
-        tx.verify_signature(&public_key)?;
+        tx.verify_signature(&public_key, consensus_params, height)?;
 
         // --- CRITICAL: Enforce Min Fee and Gas in validation path (C-H1) ---
         if !tx.is_coinbase() {
@@ -1602,18 +1797,20 @@ mod tests {
         tx.outputs = vec![sample_output()];
         tx.rebuild_canonical_signature(&signing_key)
             .expect("canonical signature");
-        tx.verify_signature(&public_key)
+        let consensus_params = ConsensusParametersV2::for_private_engineering();
+        tx.verify_signature(&public_key, &consensus_params, 0)
             .expect("bound signer must verify");
 
         tx.sender = "d".repeat(64);
         tx.rebuild_canonical_signature(&signing_key)
             .expect("attacker can sign the forged payload with their own key");
         assert!(matches!(
-            tx.verify_signature(&public_key),
+            tx.verify_signature(&public_key, &consensus_params, 0),
             Err(TransactionError::SignerAddressMismatch)
         ));
+        let consensus_params = ConsensusParametersV2::for_private_engineering();
         assert_eq!(
-            Transaction::verify_signatures_batch_parallel(&[tx]),
+            Transaction::verify_signatures_batch_parallel(&[tx], &consensus_params, 0),
             vec![false]
         );
     }
@@ -1629,6 +1826,7 @@ mod tests {
             amount: 50,
             homomorphic_encrypted: HomomorphicEncrypted::default(),
         };
+        let consensus_params = ConsensusParametersV2::for_private_engineering();
 
         let coinbase = Transaction::new_coinbase(
             receiver.clone(),
@@ -1640,7 +1838,7 @@ mod tests {
         )
         .expect("bound coinbase");
         coinbase
-            .verify_signature(&public_key)
+            .verify_signature(&public_key, &consensus_params, 0)
             .expect("bound coinbase signature");
 
         assert!(matches!(
@@ -1658,13 +1856,18 @@ mod tests {
 }
 
 impl Transaction {
-    pub fn verify_signatures_batch_parallel(transactions: &[Transaction]) -> Vec<bool> {
-        let expected_chain_id = GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32;
+    pub fn verify_signatures_batch_parallel(
+        transactions: &[Transaction],
+        consensus_params: &ConsensusParametersV2,
+        height: u64,
+    ) -> Vec<bool> {
+        let consensus_params = std::sync::Arc::new(consensus_params.clone());
         use rayon::prelude::*;
         transactions
             .par_iter()
             .map(|tx| {
-                if tx.chain_id != expected_chain_id {
+                let params = consensus_params.clone();
+                if tx.chain_id != GLOBAL_CHAIN_ID.load(Ordering::Relaxed) as u32 {
                     return false;
                 }
                 if tx.id != tx.compute_hash() {

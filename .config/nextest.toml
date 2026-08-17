@@ -1,0 +1,47 @@
+# Nextest configuration for the Qanto workspace.
+# https://nexte.st/docs/configuration/
+
+[profile.default]
+# Mining tests can legitimately take several minutes.
+slow-timeout = "300s"
+retries = 1
+failure-output = "immediate-final"
+
+[profile.ci]
+inherits = "default"
+slow-timeout = "180s"
+retries = 0
+failure-output = "final"
+fail-fast = false
+
+[profile.slow-integration]
+inherits = "default"
+slow-timeout = "600s"
+retries = 2
+failure-output = "immediate-final"
+fail-fast = false
+
+[test-groups.mining]
+max-threads = 4
+
+[test-groups.integration]
+max-threads = 2
+
+[[profile.default.overrides]]
+filter = "test(test_basic_mining)"
+slow-timeout = "300s"
+test-group = "mining"
+
+[[profile.default.overrides]]
+filter = "test(test_integration_flow)"
+slow-timeout = "400s"
+test-group = "integration"
+
+[[profile.default.overrides]]
+filter = "test(test_cancellation_responsiveness)"
+slow-timeout = "120s"
+test-group = "mining"
+
+[[profile.default.overrides]]
+filter = "not test(integration) and not test(mining) and not test(slow)"
+slow-timeout = "30s"

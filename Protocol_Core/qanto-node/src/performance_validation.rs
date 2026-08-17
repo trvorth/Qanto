@@ -456,11 +456,17 @@ impl PerformanceValidator {
                 metadata: None,
                 chain_id: crate::transaction::GLOBAL_CHAIN_ID
                     .load(std::sync::atomic::Ordering::Relaxed) as u32,
+                tx_kind: crate::transaction::TransactionKind::Transfer,
             };
 
+            let consensus_params =
+                qanto_consensus_primitives::ConsensusParametersV2::for_testnet_candidate();
+            let height = 0u64;
             if let Ok(tx) = Transaction::new(
                 tx_config,
                 &crate::qanto_native_crypto::QantoPQPrivateKey::new_dummy(),
+                &consensus_params,
+                height,
             )
             .await
             {
@@ -512,6 +518,7 @@ impl PerformanceValidator {
             effort: 1_000,
             chain_work: crate::miner::U256::ZERO,
             paillier_pk,
+            state_parent: String::new(),
         };
         let block = QantoBlock::new(creation_data)?;
 

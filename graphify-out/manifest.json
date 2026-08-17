@@ -1,0 +1,3712 @@
+{
+  "Protocol_Core/myblockchain/benches/main.rs": {
+    "mtime": 1785994224.320375,
+    "ast_hash": "7f916bcc0fe3ffa19b89dcc97a87a3cd",
+    "semantic_hash": "7f916bcc0fe3ffa19b89dcc97a87a3cd"
+  },
+  "Protocol_Core/myblockchain/src/cuda_gpu.rs": {
+    "mtime": 1785994224.320507,
+    "ast_hash": "6ecab3efe52eed412896c6c87bc2fa67",
+    "semantic_hash": "6ecab3efe52eed412896c6c87bc2fa67"
+  },
+  "Protocol_Core/myblockchain/src/error.rs": {
+    "mtime": 1785994224.3205945,
+    "ast_hash": "78eee83dc97dc7504b732eecc46b015b",
+    "semantic_hash": "78eee83dc97dc7504b732eecc46b015b"
+  },
+  "Protocol_Core/myblockchain/src/jsonrpc_server.rs": {
+    "mtime": 1785994224.3208022,
+    "ast_hash": "34ff0f37340279d56d73ac1159838e61",
+    "semantic_hash": "34ff0f37340279d56d73ac1159838e61"
+  },
+  "Protocol_Core/myblockchain/src/lib.rs": {
+    "mtime": 1785994224.3209784,
+    "ast_hash": "218b6585f198b4419ba283008697e626",
+    "semantic_hash": "218b6585f198b4419ba283008697e626"
+  },
+  "Protocol_Core/myblockchain/src/metal_gpu.rs": {
+    "mtime": 1785994224.3211308,
+    "ast_hash": "e6f4854ee461ba70df794b927a4263f4",
+    "semantic_hash": "e6f4854ee461ba70df794b927a4263f4"
+  },
+  "Protocol_Core/myblockchain/src/qanhash.cu": {
+    "mtime": 1775491137.81294,
+    "ast_hash": "5d60fa9e4bb9397b0d9ffc9f426d8069",
+    "semantic_hash": "5d60fa9e4bb9397b0d9ffc9f426d8069"
+  },
+  "Protocol_Core/myblockchain/src/qanhash.metal": {
+    "mtime": 1775491137.8130076,
+    "ast_hash": "6d1a82b312bde5b23ce6604bb0a19f8f",
+    "semantic_hash": "6d1a82b312bde5b23ce6604bb0a19f8f"
+  },
+  "Protocol_Core/myblockchain/src/qanhash.rs": {
+    "mtime": 1786364235.2628767,
+    "ast_hash": "0f43b4d31bb56fd932c04d693d07abea",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/myblockchain/src/qanhash32x.rs": {
+    "mtime": 1785994224.321635,
+    "ast_hash": "013678fe64f8a073734f31e09da21439",
+    "semantic_hash": "013678fe64f8a073734f31e09da21439"
+  },
+  "Protocol_Core/myblockchain/src/qanto_standalone.rs": {
+    "mtime": 1784858921.7596312,
+    "ast_hash": "6029b9991550257cc017d90586bd872a",
+    "semantic_hash": "6029b9991550257cc017d90586bd872a"
+  },
+  "Protocol_Core/qanto-core/src/balance_stream.rs": {
+    "mtime": 1785994224.3218424,
+    "ast_hash": "3c3d0d4db7cb0010e6493e2a4e248c9b",
+    "semantic_hash": "3c3d0d4db7cb0010e6493e2a4e248c9b"
+  },
+  "Protocol_Core/qanto-core/src/dag_aware_mempool.rs": {
+    "mtime": 1785994224.3219664,
+    "ast_hash": "12fba716f70cf027cd1d39c0d7ac7123",
+    "semantic_hash": "12fba716f70cf027cd1d39c0d7ac7123"
+  },
+  "Protocol_Core/qanto-core/src/docs.rs": {
+    "mtime": 1785994224.322171,
+    "ast_hash": "b248d713394aa23b4ab97c8296fe27da",
+    "semantic_hash": "b248d713394aa23b4ab97c8296fe27da"
+  },
+  "Protocol_Core/qanto-core/src/lib.rs": {
+    "mtime": 1786364235.2641943,
+    "ast_hash": "c5d8b2829dd1d58fa8ad421d897490b9",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-core/src/mining_celebration.rs": {
+    "mtime": 1785994224.3223622,
+    "ast_hash": "f59e1370cc5f986f66f07c1a474b8adf",
+    "semantic_hash": "f59e1370cc5f986f66f07c1a474b8adf"
+  },
+  "Protocol_Core/qanto-core/src/perf_bench.rs": {
+    "mtime": 1785994224.32245,
+    "ast_hash": "c997fc495439dbb55b778180da2f2997",
+    "semantic_hash": "c997fc495439dbb55b778180da2f2997"
+  },
+  "Protocol_Core/qanto-core/src/qanto_compat.rs": {
+    "mtime": 1785994224.3226595,
+    "ast_hash": "0895afe32370bc1aff27ff3ce76b238e",
+    "semantic_hash": "0895afe32370bc1aff27ff3ce76b238e"
+  },
+  "Protocol_Core/qanto-core/src/qanto_native_crypto.rs": {
+    "mtime": 1786364235.2656772,
+    "ast_hash": "f954176ed3315384450b617058802192",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-core/src/qanto_net.rs": {
+    "mtime": 1785994224.3229592,
+    "ast_hash": "2ab50658b0dbac747387f34d89c87b3c",
+    "semantic_hash": "2ab50658b0dbac747387f34d89c87b3c"
+  },
+  "Protocol_Core/qanto-core/src/qanto_p2p.rs": {
+    "mtime": 1785994224.3232975,
+    "ast_hash": "7bf5c3454e2a7abd5631bf3dc05b95dd",
+    "semantic_hash": "7bf5c3454e2a7abd5631bf3dc05b95dd"
+  },
+  "Protocol_Core/qanto-core/src/qanto_serde.rs": {
+    "mtime": 1785994224.323457,
+    "ast_hash": "6845dc3fbe9db9c008dd661c1d324d32",
+    "semantic_hash": "6845dc3fbe9db9c008dd661c1d324d32"
+  },
+  "Protocol_Core/qanto-core/src/qanto_storage.rs": {
+    "mtime": 1786364235.266005,
+    "ast_hash": "0bb0243d536aa7325fda7eb2790992d1",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-core/src/storage_adapter.rs": {
+    "mtime": 1785994224.3245575,
+    "ast_hash": "58d638dc007c33cac468133c6653dc55",
+    "semantic_hash": "58d638dc007c33cac468133c6653dc55"
+  },
+  "Protocol_Core/qanto-core/src/storage_traits.rs": {
+    "mtime": 1785994224.3246372,
+    "ast_hash": "2031ecea0a80356e91bbe176190bfd53",
+    "semantic_hash": "2031ecea0a80356e91bbe176190bfd53"
+  },
+  "Protocol_Core/qanto-node/benches/mining_bench.rs": {
+    "mtime": 1786365889.6713943,
+    "ast_hash": "2d2075ba22b064143f36217fb1124938",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/fuzz/fuzz_targets/fuzz_bridge_proofs.rs": {
+    "mtime": 1785994224.3253596,
+    "ast_hash": "abf678c80c5a39cd22aca8d1f1340d23",
+    "semantic_hash": "abf678c80c5a39cd22aca8d1f1340d23"
+  },
+  "Protocol_Core/qanto-node/fuzz/fuzz_targets/fuzz_tx_parsing.rs": {
+    "mtime": 1785994224.325443,
+    "ast_hash": "892bf3dae3d32f020b0be2b26a6e47dc",
+    "semantic_hash": "892bf3dae3d32f020b0be2b26a6e47dc"
+  },
+  "Protocol_Core/qanto-node/src/a2a_material.rs": {
+    "mtime": 1785994224.3255706,
+    "ast_hash": "591459067720521a686eb4df2c810df2",
+    "semantic_hash": "591459067720521a686eb4df2c810df2"
+  },
+  "Protocol_Core/qanto-node/src/absolute_genesis.rs": {
+    "mtime": 1786364235.2666879,
+    "ast_hash": "d07b58c17a91b2167a269df4e15693b6",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/absolute_singularity.rs": {
+    "mtime": 1785994224.3257828,
+    "ast_hash": "1da58c4d007f7759918ff833eddf9a72",
+    "semantic_hash": "1da58c4d007f7759918ff833eddf9a72"
+  },
+  "Protocol_Core/qanto-node/src/adaptive_mining.rs": {
+    "mtime": 1786364235.2669697,
+    "ast_hash": "33a1530c2e3945e6d9aedf402b933008",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/analytics_dashboard.rs": {
+    "mtime": 1785994224.3262277,
+    "ast_hash": "3a4e6b02ea46dd13dec71be685cd640f",
+    "semantic_hash": "3a4e6b02ea46dd13dec71be685cd640f"
+  },
+  "Protocol_Core/qanto-node/src/bin/derive_genesis_key.rs": {
+    "mtime": 1785994224.3263304,
+    "ast_hash": "0414b9c159dc91563299c374834187a6",
+    "semantic_hash": "0414b9c159dc91563299c374834187a6"
+  },
+  "Protocol_Core/qanto-node/src/bin/gen_wallet.rs": {
+    "mtime": 1785994224.3264105,
+    "ast_hash": "e2ee43eeba3d6df81a139f17972d0f7f",
+    "semantic_hash": "e2ee43eeba3d6df81a139f17972d0f7f"
+  },
+  "Protocol_Core/qanto-node/src/bin/generate_wallet.rs": {
+    "mtime": 1785994224.3264802,
+    "ast_hash": "1f102e8bea6b7452635109174bc87ab4",
+    "semantic_hash": "1f102e8bea6b7452635109174bc87ab4"
+  },
+  "Protocol_Core/qanto-node/src/bin/genesis_flood.rs": {
+    "mtime": 1785994224.3265646,
+    "ast_hash": "65bbce1b80591763bf4118b821d571e2",
+    "semantic_hash": "65bbce1b80591763bf4118b821d571e2"
+  },
+  "Protocol_Core/qanto-node/src/bin/get_address.rs": {
+    "mtime": 1785994224.3267386,
+    "ast_hash": "3b78524bd62e9885c9a48712f58408b6",
+    "semantic_hash": "3b78524bd62e9885c9a48712f58408b6"
+  },
+  "Protocol_Core/qanto-node/src/bin/import_wallet.rs": {
+    "mtime": 1785994224.3269598,
+    "ast_hash": "f16a2b238cb2585a968f26ff99bc4a2b",
+    "semantic_hash": "f16a2b238cb2585a968f26ff99bc4a2b"
+  },
+  "Protocol_Core/qanto-node/src/bin/metrics_server.rs": {
+    "mtime": 1785994224.3270802,
+    "ast_hash": "778d3607f682e4af24fc039a29145b4b",
+    "semantic_hash": "778d3607f682e4af24fc039a29145b4b"
+  },
+  "Protocol_Core/qanto-node/src/bin/monitor.rs": {
+    "mtime": 1785994224.3272219,
+    "ast_hash": "25a77c207c0fb6666f39e9ce5f7b4c57",
+    "semantic_hash": "25a77c207c0fb6666f39e9ce5f7b4c57"
+  },
+  "Protocol_Core/qanto-node/src/bin/network_stress_test.rs": {
+    "mtime": 1785994224.3273222,
+    "ast_hash": "0b603b8d185da85d6380b3fce45acd0e",
+    "semantic_hash": "0b603b8d185da85d6380b3fce45acd0e"
+  },
+  "Protocol_Core/qanto-node/src/bin/qanto.rs": {
+    "mtime": 1786364235.2672098,
+    "ast_hash": "ee0500db93b8372c91aa98c2f835c826",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/bin/qantowallet.rs": {
+    "mtime": 1785994224.3275201,
+    "ast_hash": "7de860a43e31456a44ca6ac5a10b9b63",
+    "semantic_hash": "7de860a43e31456a44ca6ac5a10b9b63"
+  },
+  "Protocol_Core/qanto-node/src/bin/start_node.rs": {
+    "mtime": 1785994224.3277059,
+    "ast_hash": "ac703138ecf8cdeb9ff0e8ba66e40094",
+    "semantic_hash": "ac703138ecf8cdeb9ff0e8ba66e40094"
+  },
+  "Protocol_Core/qanto-node/src/bin/stress_test.rs": {
+    "mtime": 1785994224.327902,
+    "ast_hash": "19c4aa0f5045e03ab49aed1f60c0b0fe",
+    "semantic_hash": "19c4aa0f5045e03ab49aed1f60c0b0fe"
+  },
+  "Protocol_Core/qanto-node/src/bin/tx_flood.rs": {
+    "mtime": 1785994224.3280566,
+    "ast_hash": "43a038f64c08b89d46bf1fd7ddfe02b6",
+    "semantic_hash": "43a038f64c08b89d46bf1fd7ddfe02b6"
+  },
+  "Protocol_Core/qanto-node/src/block_producer.rs": {
+    "mtime": 1786551370.3943722,
+    "ast_hash": "280237ca4ab7a0469239e4dcca944bbc",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/byzantine_tests.rs": {
+    "mtime": 1786364235.267699,
+    "ast_hash": "2ec52b94db8cc9c69d79149d1e32d4fe",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/config.rs": {
+    "mtime": 1786364235.2679617,
+    "ast_hash": "264a0d2b5ca7f4c13be4da37eb334119",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/config_validation.rs": {
+    "mtime": 1785994224.3287897,
+    "ast_hash": "8852cdb8861e2b83087764641ab54852",
+    "semantic_hash": "8852cdb8861e2b83087764641ab54852"
+  },
+  "Protocol_Core/qanto-node/src/config_validator.rs": {
+    "mtime": 1785994224.3289301,
+    "ast_hash": "dc6a4a4e1933ae28c4765bb602fefcb6",
+    "semantic_hash": "dc6a4a4e1933ae28c4765bb602fefcb6"
+  },
+  "Protocol_Core/qanto-node/src/consensus.rs": {
+    "mtime": 1786364235.2682302,
+    "ast_hash": "b8cc9abda9018b1dfa3cd5e16593844d",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/corruption_tests.rs": {
+    "mtime": 1785994224.32919,
+    "ast_hash": "a1cfb0557fc2643de1ca82d3b0683d0c",
+    "semantic_hash": "a1cfb0557fc2643de1ca82d3b0683d0c"
+  },
+  "Protocol_Core/qanto-node/src/cosmic_consensus.rs": {
+    "mtime": 1785994224.3292801,
+    "ast_hash": "48f0b8c62ab794951df010643983eae1",
+    "semantic_hash": "48f0b8c62ab794951df010643983eae1"
+  },
+  "Protocol_Core/qanto-node/src/decentralization.rs": {
+    "mtime": 1786364235.2684073,
+    "ast_hash": "2f1e8691034301333ed6883296896ea0",
+    "semantic_hash": "2f1e8691034301333ed6883296896ea0"
+  },
+  "Protocol_Core/qanto-node/src/decoupled_producer.rs": {
+    "mtime": 1786364235.2686565,
+    "ast_hash": "bdd791fe78b42eb4e16ddd4da121c9f8",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/derive_genesis_key.rs": {
+    "mtime": 1785994224.329717,
+    "ast_hash": "a61aeefdcbc349f9721ac9d3dead5176",
+    "semantic_hash": "a61aeefdcbc349f9721ac9d3dead5176"
+  },
+  "Protocol_Core/qanto-node/src/deterministic_mining.rs": {
+    "mtime": 1785994224.3298035,
+    "ast_hash": "8a4450f0d0212ced00c1ef2ce5a6cdf1",
+    "semantic_hash": "8a4450f0d0212ced00c1ef2ce5a6cdf1"
+  },
+  "Protocol_Core/qanto-node/src/diagnostics.rs": {
+    "mtime": 1785994224.3299084,
+    "ast_hash": "1197e1bc3404afb70e0f7dbea8cc2465",
+    "semantic_hash": "1197e1bc3404afb70e0f7dbea8cc2465"
+  },
+  "Protocol_Core/qanto-node/src/economic_attack_tests.rs": {
+    "mtime": 1786364235.2689078,
+    "ast_hash": "8594f06aad9de69bfacaecf0488dfb80",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/elite_mempool.rs": {
+    "mtime": 1785994224.33023,
+    "ast_hash": "9b2fb2f19094d8e35c976a532ef1aabd",
+    "semantic_hash": "9b2fb2f19094d8e35c976a532ef1aabd"
+  },
+  "Protocol_Core/qanto-node/src/emission.rs": {
+    "mtime": 1786364235.2690184,
+    "ast_hash": "2b5b89e1c28651b14069149bf8d7ef1d",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/entropy_shield.rs": {
+    "mtime": 1785994224.3304381,
+    "ast_hash": "500e24ccea322ee230587ae6d2ed5638",
+    "semantic_hash": "500e24ccea322ee230587ae6d2ed5638"
+  },
+  "Protocol_Core/qanto-node/src/eternal_existence.rs": {
+    "mtime": 1785994224.3305373,
+    "ast_hash": "4da77198b6bc3fa404cddea6ce7eb079",
+    "semantic_hash": "4da77198b6bc3fa404cddea6ce7eb079"
+  },
+  "Protocol_Core/qanto-node/src/final_transcendence.rs": {
+    "mtime": 1786364235.2693224,
+    "ast_hash": "fb32e722e8ba370970b100aba80357b9",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/formal_verifier.rs": {
+    "mtime": 1785994224.3307357,
+    "ast_hash": "05660d2414d4b1e28cdf3bc871eaacd8",
+    "semantic_hash": "05660d2414d4b1e28cdf3bc871eaacd8"
+  },
+  "Protocol_Core/qanto-node/src/futarchy_market.rs": {
+    "mtime": 1785994224.3308802,
+    "ast_hash": "db7dbf173bf0e992f3b443a6afe01e41",
+    "semantic_hash": "db7dbf173bf0e992f3b443a6afe01e41"
+  },
+  "Protocol_Core/qanto-node/src/gas_fee_model.rs": {
+    "mtime": 1786364235.2694304,
+    "ast_hash": "8b5655b15971848cc973069818ac93ea",
+    "semantic_hash": "8b5655b15971848cc973069818ac93ea"
+  },
+  "Protocol_Core/qanto-node/src/generate_wallet.rs": {
+    "mtime": 1785994224.3312304,
+    "ast_hash": "5f6f14d7e8006e1aabe9e264c63ed98a",
+    "semantic_hash": "5f6f14d7e8006e1aabe9e264c63ed98a"
+  },
+  "Protocol_Core/qanto-node/src/get_address.rs": {
+    "mtime": 1785994224.3313363,
+    "ast_hash": "df064ec0a8d70426f95953a96dd6683b",
+    "semantic_hash": "df064ec0a8d70426f95953a96dd6683b"
+  },
+  "Protocol_Core/qanto-node/src/global_synthesis.rs": {
+    "mtime": 1785994224.331538,
+    "ast_hash": "756791fff3dbe15cc1e8b24590d8de2f",
+    "semantic_hash": "756791fff3dbe15cc1e8b24590d8de2f"
+  },
+  "Protocol_Core/qanto-node/src/graphql_api.rs": {
+    "mtime": 1786364235.269528,
+    "ast_hash": "4eb48f866293cec9c99acf00d5391767",
+    "semantic_hash": "4eb48f866293cec9c99acf00d5391767"
+  },
+  "Protocol_Core/qanto-node/src/graphql_server.rs": {
+    "mtime": 1785994224.3318686,
+    "ast_hash": "9469aae2192d308aca119b263cc35bd6",
+    "semantic_hash": "9469aae2192d308aca119b263cc35bd6"
+  },
+  "Protocol_Core/qanto-node/src/hame.rs": {
+    "mtime": 1785994224.3320134,
+    "ast_hash": "ab1d11c9b68e78c70f9660ff6872c1e8",
+    "semantic_hash": "ab1d11c9b68e78c70f9660ff6872c1e8"
+  },
+  "Protocol_Core/qanto-node/src/heritage_archive.rs": {
+    "mtime": 1785994224.332163,
+    "ast_hash": "24c57b031ac54b37ce1e944f062aed31",
+    "semantic_hash": "24c57b031ac54b37ce1e944f062aed31"
+  },
+  "Protocol_Core/qanto-node/src/holo_mesh.rs": {
+    "mtime": 1785994224.3323212,
+    "ast_hash": "7ecdba2e038b95d5c001d1f88080e456",
+    "semantic_hash": "7ecdba2e038b95d5c001d1f88080e456"
+  },
+  "Protocol_Core/qanto-node/src/import_wallet.rs": {
+    "mtime": 1785994224.33246,
+    "ast_hash": "601d3c12eaf33df779d24578810ffc0a",
+    "semantic_hash": "601d3c12eaf33df779d24578810ffc0a"
+  },
+  "Protocol_Core/qanto-node/src/inference_mesh.rs": {
+    "mtime": 1785994224.3325624,
+    "ast_hash": "4e730bfa68ef8955c22d2056024ff629",
+    "semantic_hash": "4e730bfa68ef8955c22d2056024ff629"
+  },
+  "Protocol_Core/qanto-node/src/infinite_omnipresence.rs": {
+    "mtime": 1785994224.3326612,
+    "ast_hash": "63adb40d6eced1701acf950907318f8d",
+    "semantic_hash": "63adb40d6eced1701acf950907318f8d"
+  },
+  "Protocol_Core/qanto-node/src/infinite_strata_node.rs": {
+    "mtime": 1785994224.332839,
+    "ast_hash": "5580867843517f86a6db101740365b46",
+    "semantic_hash": "5580867843517f86a6db101740365b46"
+  },
+  "Protocol_Core/qanto-node/src/interoperability.rs": {
+    "mtime": 1786364235.2698388,
+    "ast_hash": "81d1320568ff24aded5519cc2a51ff4e",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/interplanetary.rs": {
+    "mtime": 1785994224.3333037,
+    "ast_hash": "d60fc4bdcb00362e2505d718b7c0cbf3",
+    "semantic_hash": "d60fc4bdcb00362e2505d718b7c0cbf3"
+  },
+  "Protocol_Core/qanto-node/src/ipc_handler.rs": {
+    "mtime": 1786364235.269899,
+    "ast_hash": "b859bb140bae13362bc4cd53c7ae206d",
+    "semantic_hash": "b859bb140bae13362bc4cd53c7ae206d"
+  },
+  "Protocol_Core/qanto-node/src/ipc_server.rs": {
+    "mtime": 1785994224.3334787,
+    "ast_hash": "35531172301704e16c89936897438358",
+    "semantic_hash": "35531172301704e16c89936897438358"
+  },
+  "Protocol_Core/qanto-node/src/kernel_boot.rs": {
+    "mtime": 1785994224.3335986,
+    "ast_hash": "7f790b3da9c58d0a673d9d890311d1d3",
+    "semantic_hash": "7f790b3da9c58d0a673d9d890311d1d3"
+  },
+  "Protocol_Core/qanto-node/src/keygen.rs": {
+    "mtime": 1785994224.3337007,
+    "ast_hash": "50d6a99e1dacd2ec00253b86d05c1b41",
+    "semantic_hash": "50d6a99e1dacd2ec00253b86d05c1b41"
+  },
+  "Protocol_Core/qanto-node/src/lib.rs": {
+    "mtime": 1786597010.053284,
+    "ast_hash": "5a829f8efad37f5d7ccd9bb67fd8e844",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/loop_runtime.rs": {
+    "mtime": 1786364235.2700717,
+    "ast_hash": "c1f2a4cb8df7659eabdf254b8f9b855c",
+    "semantic_hash": "c1f2a4cb8df7659eabdf254b8f9b855c"
+  },
+  "Protocol_Core/qanto-node/src/math.rs": {
+    "mtime": 1785994224.333947,
+    "ast_hash": "03837c19b8b85b299398d3d592f22c0e",
+    "semantic_hash": "03837c19b8b85b299398d3d592f22c0e"
+  },
+  "Protocol_Core/qanto-node/src/memory_optimization.rs": {
+    "mtime": 1785994224.3341691,
+    "ast_hash": "3e09ab9dc0759319cf3bcae2aef5b9a4",
+    "semantic_hash": "3e09ab9dc0759319cf3bcae2aef5b9a4"
+  },
+  "Protocol_Core/qanto-node/src/mempool.rs": {
+    "mtime": 1786364235.2703424,
+    "ast_hash": "584fb75b40a7aca5fa3d96e78ec2b4e9",
+    "semantic_hash": "584fb75b40a7aca5fa3d96e78ec2b4e9"
+  },
+  "Protocol_Core/qanto-node/src/mesh_finality.rs": {
+    "mtime": 1785994224.3345978,
+    "ast_hash": "e3ac2ed545481f68fe58e27c6b19629f",
+    "semantic_hash": "e3ac2ed545481f68fe58e27c6b19629f"
+  },
+  "Protocol_Core/qanto-node/src/mesh_optimizer.rs": {
+    "mtime": 1785994224.334726,
+    "ast_hash": "da35c3703148f9e0557ce6d091a1adff",
+    "semantic_hash": "da35c3703148f9e0557ce6d091a1adff"
+  },
+  "Protocol_Core/qanto-node/src/mesh_recovery.rs": {
+    "mtime": 1785994224.334835,
+    "ast_hash": "850f91cdc97a5cf1ce48a1d564ac6d27",
+    "semantic_hash": "850f91cdc97a5cf1ce48a1d564ac6d27"
+  },
+  "Protocol_Core/qanto-node/src/metrics.rs": {
+    "mtime": 1786364235.2706132,
+    "ast_hash": "48efa31cd7bc4d9d9a9549fe50672066",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/metrics_server.rs": {
+    "mtime": 1786364235.270712,
+    "ast_hash": "b022a8b944f678dbe92adfa2a802d0a1",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/miner.rs": {
+    "mtime": 1786364235.2710378,
+    "ast_hash": "60dc3b258c69ee202ffc68d9e47e0537",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/mining_celebration.rs": {
+    "mtime": 1785994224.3355503,
+    "ast_hash": "9c4ea11ced7cec0c14a575cf24fb4f4b",
+    "semantic_hash": "9c4ea11ced7cec0c14a575cf24fb4f4b"
+  },
+  "Protocol_Core/qanto-node/src/mining_metrics.rs": {
+    "mtime": 1785994224.3356972,
+    "ast_hash": "fa0615e1e440e5c7ee508bd4deae2587",
+    "semantic_hash": "fa0615e1e440e5c7ee508bd4deae2587"
+  },
+  "Protocol_Core/qanto-node/src/mock_traits.rs": {
+    "mtime": 1785994224.3358238,
+    "ast_hash": "5a93a0ebc3b13bcfc0adceb2a014479e",
+    "semantic_hash": "5a93a0ebc3b13bcfc0adceb2a014479e"
+  },
+  "Protocol_Core/qanto-node/src/monitor.rs": {
+    "mtime": 1785994224.3359923,
+    "ast_hash": "86fb51f0a7a72dd52fed60c3f8cf5fe1",
+    "semantic_hash": "86fb51f0a7a72dd52fed60c3f8cf5fe1"
+  },
+  "Protocol_Core/qanto-node/src/neural_arbitrage.rs": {
+    "mtime": 1785994224.3361132,
+    "ast_hash": "70d5133b12eaec7d489b14c3add6cd92",
+    "semantic_hash": "70d5133b12eaec7d489b14c3add6cd92"
+  },
+  "Protocol_Core/qanto-node/src/neural_consensus.rs": {
+    "mtime": 1785994224.3362172,
+    "ast_hash": "1afd5bc2fa4bde1dd0cd9209bf506a95",
+    "semantic_hash": "1afd5bc2fa4bde1dd0cd9209bf506a95"
+  },
+  "Protocol_Core/qanto-node/src/neural_link.rs": {
+    "mtime": 1785994224.3363633,
+    "ast_hash": "ae29f774f54a008cb9a5f7a343fccdf9",
+    "semantic_hash": "ae29f774f54a008cb9a5f7a343fccdf9"
+  },
+  "Protocol_Core/qanto-node/src/neural_mirror.rs": {
+    "mtime": 1785994224.3364727,
+    "ast_hash": "dd077c491bf29d63e4488100ad6a2ec0",
+    "semantic_hash": "dd077c491bf29d63e4488100ad6a2ec0"
+  },
+  "Protocol_Core/qanto-node/src/node.rs": {
+    "mtime": 1786364235.2716527,
+    "ast_hash": "f07c45791c65dfe50556bc3ccc0d2fc3",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/omega.rs": {
+    "mtime": 1785994224.3368926,
+    "ast_hash": "cb8d110d81e2a4f655b3cfe54775072a",
+    "semantic_hash": "cb8d110d81e2a4f655b3cfe54775072a"
+  },
+  "Protocol_Core/qanto-node/src/omega_enhanced.rs": {
+    "mtime": 1786364235.2719212,
+    "ast_hash": "3123756b5ec385c4cd65724c7d840abb",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/optimized_decoupled_producer.rs": {
+    "mtime": 1786364235.272172,
+    "ast_hash": "aefe4c26fc7d75144e0afec5eeb65db8",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/optimized_qdag.rs": {
+    "mtime": 1785994224.337491,
+    "ast_hash": "83f5c0714418f75b84b3ea32c2919698",
+    "semantic_hash": "83f5c0714418f75b84b3ea32c2919698"
+  },
+  "Protocol_Core/qanto-node/src/p2p.rs": {
+    "mtime": 1786364235.2725344,
+    "ast_hash": "81626b33a0a888a17d1e11357c047957",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/p2p_mesh.rs": {
+    "mtime": 1786364235.2726226,
+    "ast_hash": "1882ff54a6cc780935cd36af44491420",
+    "semantic_hash": "1882ff54a6cc780935cd36af44491420"
+  },
+  "Protocol_Core/qanto-node/src/p2p_runnable.rs": {
+    "mtime": 1786364235.2727587,
+    "ast_hash": "ffeaec0d4403a4a8ecfa863f361e1464",
+    "semantic_hash": "ffeaec0d4403a4a8ecfa863f361e1464"
+  },
+  "Protocol_Core/qanto-node/src/partition_tests.rs": {
+    "mtime": 1786364235.272939,
+    "ast_hash": "9a567cc7c63ab7c260b1886d75b8dc22",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/password_utils.rs": {
+    "mtime": 1785994224.3381102,
+    "ast_hash": "a1a894ad79be4af82b5f1dd22c336d48",
+    "semantic_hash": "a1a894ad79be4af82b5f1dd22c336d48"
+  },
+  "Protocol_Core/qanto-node/src/performance_benchmark.rs": {
+    "mtime": 1786364235.2731898,
+    "ast_hash": "5763bdb7b25039b7b5279108a5ce711d",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/performance_monitoring.rs": {
+    "mtime": 1785994224.3384283,
+    "ast_hash": "2db03232efdf180e4e4733472e3dd3a7",
+    "semantic_hash": "2db03232efdf180e4e4733472e3dd3a7"
+  },
+  "Protocol_Core/qanto-node/src/performance_optimizations.rs": {
+    "mtime": 1785994224.3385653,
+    "ast_hash": "47a494f2ef52ae9d5e06f6aa6de26819",
+    "semantic_hash": "47a494f2ef52ae9d5e06f6aa6de26819"
+  },
+  "Protocol_Core/qanto-node/src/performance_validation.rs": {
+    "mtime": 1786364235.273411,
+    "ast_hash": "4a5dfa6b83f8cab2fed3d37a308ad4ee",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/persistence.rs": {
+    "mtime": 1786364235.2736013,
+    "ast_hash": "c9d9fca63f56ecdd55f1f47f8d58208b",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/post_quantum_crypto.rs": {
+    "mtime": 1785994224.3388286,
+    "ast_hash": "296f14a055ab7fc5364d5fbfb3db75be",
+    "semantic_hash": "296f14a055ab7fc5364d5fbfb3db75be"
+  },
+  "Protocol_Core/qanto-node/src/pq_crypto.rs": {
+    "mtime": 1786364235.2738194,
+    "ast_hash": "de73e7ad7bcc312023a1dbe485f20d78",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/pq_suite.rs": {
+    "mtime": 1785994224.3390315,
+    "ast_hash": "44898a505176938fa5694f2bd889428f",
+    "semantic_hash": "44898a505176938fa5694f2bd889428f"
+  },
+  "Protocol_Core/qanto-node/src/privacy.rs": {
+    "mtime": 1785994224.3392074,
+    "ast_hash": "7b22cc9fe339b9d171c21cfefe6edc84",
+    "semantic_hash": "7b22cc9fe339b9d171c21cfefe6edc84"
+  },
+  "Protocol_Core/qanto-node/src/protocol/compact_block.rs": {
+    "mtime": 1786364235.273908,
+    "ast_hash": "1965811977d8204e3f821b60b0c6ca5d",
+    "semantic_hash": "1965811977d8204e3f821b60b0c6ca5d"
+  },
+  "Protocol_Core/qanto-node/src/protocol/header_sync.rs": {
+    "mtime": 1786364235.2739644,
+    "ast_hash": "c907c1ce6f1cbf4c451aef73909038a3",
+    "semantic_hash": "c907c1ce6f1cbf4c451aef73909038a3"
+  },
+  "Protocol_Core/qanto-node/src/protocol/mod.rs": {
+    "mtime": 1786364235.2740066,
+    "ast_hash": "158b503781e3d41d9f8cf4e0e1e220d3",
+    "semantic_hash": "158b503781e3d41d9f8cf4e0e1e220d3"
+  },
+  "Protocol_Core/qanto-node/src/protocol/peer_scoring.rs": {
+    "mtime": 1786364235.2740617,
+    "ast_hash": "db5622df2298ec14f3ae9c06bd471a3a",
+    "semantic_hash": "db5622df2298ec14f3ae9c06bd471a3a"
+  },
+  "Protocol_Core/qanto-node/src/qanto.rs": {
+    "mtime": 1785994224.3393552,
+    "ast_hash": "477f8ac9d5896c65b395755593815eaa",
+    "semantic_hash": "477f8ac9d5896c65b395755593815eaa"
+  },
+  "Protocol_Core/qanto-node/src/qanto_ai_metrics.rs": {
+    "mtime": 1785994224.3395965,
+    "ast_hash": "9dd2696bcceffeacd05aa05b51fd63f7",
+    "semantic_hash": "9dd2696bcceffeacd05aa05b51fd63f7"
+  },
+  "Protocol_Core/qanto-node/src/qantodag.rs": {
+    "mtime": 1786599746.6301506,
+    "ast_hash": "0bc592090cc6f88f44988c1a7df78ace",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/qantodag_testnet.rs": {
+    "mtime": 1785994224.3400989,
+    "ast_hash": "66479f8c5ca0b2ff607556f27a39f9c8",
+    "semantic_hash": "66479f8c5ca0b2ff607556f27a39f9c8"
+  },
+  "Protocol_Core/qanto-node/src/qantowallet.rs": {
+    "mtime": 1785994224.3403971,
+    "ast_hash": "01154e65b8a7ed5265c8e4e16e6ba211",
+    "semantic_hash": "01154e65b8a7ed5265c8e4e16e6ba211"
+  },
+  "Protocol_Core/qanto-node/src/qds.rs": {
+    "mtime": 1786364235.2757308,
+    "ast_hash": "8d18c1f963a9af8f73b98c6928a5d716",
+    "semantic_hash": "8d18c1f963a9af8f73b98c6928a5d716"
+  },
+  "Protocol_Core/qanto-node/src/quantum_bridge.rs": {
+    "mtime": 1785994224.3405924,
+    "ast_hash": "da31204d57c28bc931b8cc566f72130d",
+    "semantic_hash": "da31204d57c28bc931b8cc566f72130d"
+  },
+  "Protocol_Core/qanto-node/src/recursive_evolution.rs": {
+    "mtime": 1785994224.3417811,
+    "ast_hash": "e03a9c0dc0df77a32b08967b57faf5bd",
+    "semantic_hash": "e03a9c0dc0df77a32b08967b57faf5bd"
+  },
+  "Protocol_Core/qanto-node/src/resource_cleanup.rs": {
+    "mtime": 1785994224.3419392,
+    "ast_hash": "9e52670336bc48205e6912ff21d2452c",
+    "semantic_hash": "9e52670336bc48205e6912ff21d2452c"
+  },
+  "Protocol_Core/qanto-node/src/rpc_backend.rs": {
+    "mtime": 1786364235.276071,
+    "ast_hash": "bd0640b861d80ed1d99e385ec16c84f8",
+    "semantic_hash": "bd0640b861d80ed1d99e385ec16c84f8"
+  },
+  "Protocol_Core/qanto-node/src/runtime_context.rs": {
+    "mtime": 1786364235.2763221,
+    "ast_hash": "5f760911c195f5337641f2b91cd1883a",
+    "semantic_hash": "5f760911c195f5337641f2b91cd1883a"
+  },
+  "Protocol_Core/qanto-node/src/runtime_manager.rs": {
+    "mtime": 1786364235.2764554,
+    "ast_hash": "a8c14cc71f082d78d2e811b07e1efe2f",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/runtime_service.rs": {
+    "mtime": 1786364235.2765365,
+    "ast_hash": "547bce00627a24098395b5ef9fd32669",
+    "semantic_hash": "547bce00627a24098395b5ef9fd32669"
+  },
+  "Protocol_Core/qanto-node/src/safe_interval.rs": {
+    "mtime": 1785994224.3422952,
+    "ast_hash": "15be3453658d65201c29f7b71fb40f74",
+    "semantic_hash": "15be3453658d65201c29f7b71fb40f74"
+  },
+  "Protocol_Core/qanto-node/src/saga.rs": {
+    "mtime": 1786447216.5120897,
+    "ast_hash": "b7d27a85063167f371ff18174bf08af8",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/saga_ai.rs": {
+    "mtime": 1785994224.343015,
+    "ast_hash": "4efba0a5c596dd1f0d1ca47929f97d26",
+    "semantic_hash": "4efba0a5c596dd1f0d1ca47929f97d26"
+  },
+  "Protocol_Core/qanto-node/src/security_tests.rs": {
+    "mtime": 1786551370.5558705,
+    "ast_hash": "9fe87c9bd1d1ace9c25ff46a2ad20713",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/self_sovereign_code.rs": {
+    "mtime": 1785994224.3462949,
+    "ast_hash": "427d2bd5582c74064551ec29a5ed4319",
+    "semantic_hash": "427d2bd5582c74064551ec29a5ed4319"
+  },
+  "Protocol_Core/qanto-node/src/service_registry.rs": {
+    "mtime": 1786364235.2768576,
+    "ast_hash": "4bbfe1b0518b924e7965ba9540ca6a2f",
+    "semantic_hash": "4bbfe1b0518b924e7965ba9540ca6a2f"
+  },
+  "Protocol_Core/qanto-node/src/services/diagnostics.rs": {
+    "mtime": 1786364235.2769425,
+    "ast_hash": "db6090dcf1b47025c3e3a8f0c6fe1f2a",
+    "semantic_hash": "db6090dcf1b47025c3e3a8f0c6fe1f2a"
+  },
+  "Protocol_Core/qanto-node/src/services/failing.rs": {
+    "mtime": 1786364235.276991,
+    "ast_hash": "a4f558dc56a21c9d9b65421e7da62ea5",
+    "semantic_hash": "a4f558dc56a21c9d9b65421e7da62ea5"
+  },
+  "Protocol_Core/qanto-node/src/services/metrics.rs": {
+    "mtime": 1786364235.277129,
+    "ast_hash": "0c80207b8af17f987a7d141c026a2f3f",
+    "semantic_hash": "0c80207b8af17f987a7d141c026a2f3f"
+  },
+  "Protocol_Core/qanto-node/src/services/mod.rs": {
+    "mtime": 1786364235.2771692,
+    "ast_hash": "8172e0a0081d88fe6915439c24a47d5b",
+    "semantic_hash": "8172e0a0081d88fe6915439c24a47d5b"
+  },
+  "Protocol_Core/qanto-node/src/services/production_api.rs": {
+    "mtime": 1786364235.2773054,
+    "ast_hash": "b1909f44866e07f67e2caa59f097908d",
+    "semantic_hash": "b1909f44866e07f67e2caa59f097908d"
+  },
+  "Protocol_Core/qanto-node/src/services/production_diagnostics.rs": {
+    "mtime": 1786364235.2773564,
+    "ast_hash": "f0436f25d9bdf9823dae74cca39b9c3c",
+    "semantic_hash": "f0436f25d9bdf9823dae74cca39b9c3c"
+  },
+  "Protocol_Core/qanto-node/src/services/production_ipc.rs": {
+    "mtime": 1786364235.2774148,
+    "ast_hash": "a1560bb16db63b065d8ea053fb80e942",
+    "semantic_hash": "a1560bb16db63b065d8ea053fb80e942"
+  },
+  "Protocol_Core/qanto-node/src/services/production_metrics.rs": {
+    "mtime": 1786364235.2774827,
+    "ast_hash": "8427c289e29f126d903a8f6a89b43719",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/services/production_p2p.rs": {
+    "mtime": 1786364235.2775319,
+    "ast_hash": "2445035853aa519556417c048bac997f",
+    "semantic_hash": "2445035853aa519556417c048bac997f"
+  },
+  "Protocol_Core/qanto-node/src/services/production_rpc.rs": {
+    "mtime": 1786364235.2775865,
+    "ast_hash": "f373a619c24dde8eef7d197a246d9ab5",
+    "semantic_hash": "f373a619c24dde8eef7d197a246d9ab5"
+  },
+  "Protocol_Core/qanto-node/src/services/production_snapshot.rs": {
+    "mtime": 1786364235.2776327,
+    "ast_hash": "6ee29f0645c7428fc75f6301d5821e2b",
+    "semantic_hash": "6ee29f0645c7428fc75f6301d5821e2b"
+  },
+  "Protocol_Core/qanto-node/src/services/production_state_pruning.rs": {
+    "mtime": 1786364235.2776847,
+    "ast_hash": "2e5fa63766c344f2f0ed214a8db4e1af",
+    "semantic_hash": "2e5fa63766c344f2f0ed214a8db4e1af"
+  },
+  "Protocol_Core/qanto-node/src/services/production_telemetry.rs": {
+    "mtime": 1786364235.2777348,
+    "ast_hash": "0d0214d6ec8b4f591f315cd3a4bd2153",
+    "semantic_hash": "0d0214d6ec8b4f591f315cd3a4bd2153"
+  },
+  "Protocol_Core/qanto-node/src/services/snapshot.rs": {
+    "mtime": 1786364235.2777748,
+    "ast_hash": "240460cc637db6c81b2cea415215bf90",
+    "semantic_hash": "240460cc637db6c81b2cea415215bf90"
+  },
+  "Protocol_Core/qanto-node/src/services/telemetry.rs": {
+    "mtime": 1786364235.2778175,
+    "ast_hash": "e3c4884db8024f1f96dec5d2d4cbd2ce",
+    "semantic_hash": "e3c4884db8024f1f96dec5d2d4cbd2ce"
+  },
+  "Protocol_Core/qanto-node/src/sharding.rs": {
+    "mtime": 1785994224.3468144,
+    "ast_hash": "43357d73ad2a7c76c0abba5303e99b42",
+    "semantic_hash": "43357d73ad2a7c76c0abba5303e99b42"
+  },
+  "Protocol_Core/qanto-node/src/shutdown.rs": {
+    "mtime": 1785994224.3471437,
+    "ast_hash": "cf5ce8aaafce6f83b3a9be99f2de4056",
+    "semantic_hash": "cf5ce8aaafce6f83b3a9be99f2de4056"
+  },
+  "Protocol_Core/qanto-node/src/start_node.rs": {
+    "mtime": 1786364235.2779014,
+    "ast_hash": "99b075707193d54d685493514d2bba6e",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/state_sync.rs": {
+    "mtime": 1785994224.3475995,
+    "ast_hash": "1370b9fff00d30f692cf2b58f46fd714",
+    "semantic_hash": "1370b9fff00d30f692cf2b58f46fd714"
+  },
+  "Protocol_Core/qanto-node/src/storage_mesh.rs": {
+    "mtime": 1785994224.347697,
+    "ast_hash": "eb192966f78a77ac51c8ee671b85b644",
+    "semantic_hash": "eb192966f78a77ac51c8ee671b85b644"
+  },
+  "Protocol_Core/qanto-node/src/swarm_orchestrator.rs": {
+    "mtime": 1785994224.3478107,
+    "ast_hash": "acf860fdfa151e7d9b93c90514f06c1c",
+    "semantic_hash": "acf860fdfa151e7d9b93c90514f06c1c"
+  },
+  "Protocol_Core/qanto-node/src/telemetry.rs": {
+    "mtime": 1785994224.3479307,
+    "ast_hash": "a4726c73b70c706eec22c9d59bfaea46",
+    "semantic_hash": "a4726c73b70c706eec22c9d59bfaea46"
+  },
+  "Protocol_Core/qanto-node/src/timing.rs": {
+    "mtime": 1785994224.348073,
+    "ast_hash": "4a48e73f2f8d66917dfe4db58a5c85db",
+    "semantic_hash": "4a48e73f2f8d66917dfe4db58a5c85db"
+  },
+  "Protocol_Core/qanto-node/src/transaction.rs": {
+    "mtime": 1786364235.2782884,
+    "ast_hash": "ef3777419eca78170c6f865cb866eafd",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/truth_engine.rs": {
+    "mtime": 1785994224.3484986,
+    "ast_hash": "4e229c7597e0a03b8ed1deb87b07a242",
+    "semantic_hash": "4e229c7597e0a03b8ed1deb87b07a242"
+  },
+  "Protocol_Core/qanto-node/src/types.rs": {
+    "mtime": 1785994224.3486865,
+    "ast_hash": "30e8150266decc4ff22b5ec1db2abe04",
+    "semantic_hash": "30e8150266decc4ff22b5ec1db2abe04"
+  },
+  "Protocol_Core/qanto-node/src/ubi_credits.rs": {
+    "mtime": 1785994224.348862,
+    "ast_hash": "cef15f1371d1fe676555f31e5eb5bdd1",
+    "semantic_hash": "cef15f1371d1fe676555f31e5eb5bdd1"
+  },
+  "Protocol_Core/qanto-node/src/wallet.rs": {
+    "mtime": 1786364235.2785368,
+    "ast_hash": "e4c3bfe3f9929beb2ce05f3b7f9f8c8c",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/websocket_server.rs": {
+    "mtime": 1785994224.349329,
+    "ast_hash": "88036d1123d7215cd7d374388416e934",
+    "semantic_hash": "88036d1123d7215cd7d374388416e934"
+  },
+  "Protocol_Core/qanto-node/src/x_phyrus.rs": {
+    "mtime": 1786364235.2789268,
+    "ast_hash": "ce18063c2c061f26014552ab639e44dc",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/zk.rs": {
+    "mtime": 1785994224.3500075,
+    "ast_hash": "1dab6ccad893f3515fc56b6a485b2edb",
+    "semantic_hash": "1dab6ccad893f3515fc56b6a485b2edb"
+  },
+  "Protocol_Core/qanto-node/src/zk_sequencer.rs": {
+    "mtime": 1785994224.3501244,
+    "ast_hash": "f234be5e0ece332fefa439f33c81c09f",
+    "semantic_hash": "f234be5e0ece332fefa439f33c81c09f"
+  },
+  "Protocol_Core/qanto-node/src/zkp.rs": {
+    "mtime": 1785994224.3506157,
+    "ast_hash": "2497ff95ee4b9bd608b31c61d2da7d4e",
+    "semantic_hash": "2497ff95ee4b9bd608b31c61d2da7d4e"
+  },
+  "Protocol_Core/qanto-node/src/zkp_stub.rs": {
+    "mtime": 1785994224.3508046,
+    "ast_hash": "2340baa4a241f5b575152c1d91f81eb2",
+    "semantic_hash": "2340baa4a241f5b575152c1d91f81eb2"
+  },
+  "Protocol_Core/qanto-node/tests/e2e_pqc_migration.rs": {
+    "mtime": 1786364235.2791104,
+    "ast_hash": "e747c6547129ef01677c5154c6b8708a",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/tests/fast_sync_tests.rs": {
+    "mtime": 1785994224.351016,
+    "ast_hash": "e26bb4e39cb0b486dca0dba4f40ad19b",
+    "semantic_hash": "e26bb4e39cb0b486dca0dba4f40ad19b"
+  },
+  "Protocol_Core/qanto-node/tests/fuzz_pqc_math.rs": {
+    "mtime": 1785994224.351101,
+    "ast_hash": "97a63f42a2c15e7ccc55378a4a196480",
+    "semantic_hash": "97a63f42a2c15e7ccc55378a4a196480"
+  },
+  "Protocol_Core/qanto-node/tests/interoperability_zk_tests.rs": {
+    "mtime": 1785994224.3511884,
+    "ast_hash": "a9fd2399b0c7d098b455210ab949b525",
+    "semantic_hash": "a9fd2399b0c7d098b455210ab949b525"
+  },
+  "Protocol_Core/qanto-node/tests/pqc_mempool_tests.rs": {
+    "mtime": 1785994224.3513417,
+    "ast_hash": "e8c2d98a46c98b244d62408d2a515ef4",
+    "semantic_hash": "e8c2d98a46c98b244d62408d2a515ef4"
+  },
+  "Protocol_Core/qanto-rpc/build.rs": {
+    "mtime": 1784434847.8508174,
+    "ast_hash": "fbf9478b5cbf91ca56c84e9dc4791edf",
+    "semantic_hash": "fbf9478b5cbf91ca56c84e9dc4791edf"
+  },
+  "Protocol_Core/qanto-rpc/src/generated/qanto.rs": {
+    "mtime": 1785994224.351828,
+    "ast_hash": "8f912ee14c15cdc224688fa29761e2c6",
+    "semantic_hash": "8f912ee14c15cdc224688fa29761e2c6"
+  },
+  "Protocol_Core/qanto-rpc/src/lib.rs": {
+    "mtime": 1785994224.3519042,
+    "ast_hash": "01238ff61948b567abd4fb311c563fca",
+    "semantic_hash": "01238ff61948b567abd4fb311c563fca"
+  },
+  "Protocol_Core/qanto-rpc/src/server.rs": {
+    "mtime": 1786364235.2810206,
+    "ast_hash": "56d3951e95efa8aea703ead812a9a8ad",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-zk-sdk/src/lib.rs": {
+    "mtime": 1786364235.281525,
+    "ast_hash": "f6c9b6336065369d8881a9bf822fe21e",
+    "semantic_hash": ""
+  },
+  "Scripts/tools/telemetry-server/index.js": {
+    "mtime": 1781833406.9084048,
+    "ast_hash": "201206146d1608fb6530f94051afdc04",
+    "semantic_hash": "201206146d1608fb6530f94051afdc04"
+  },
+  "Scripts/tools/telemetry-server/package.json": {
+    "mtime": 1783147550.7387753,
+    "ast_hash": "f2a28052875805b85b34bd0f6e8749b0",
+    "semantic_hash": "f2a28052875805b85b34bd0f6e8749b0"
+  },
+  "Scripts/tools/telemetry-server/validators.json": {
+    "mtime": 1782877554.913001,
+    "ast_hash": "aafd75b7cfb4ab6322854661aebda47c",
+    "semantic_hash": "aafd75b7cfb4ab6322854661aebda47c"
+  },
+  "Scripts/tools/validator-diagnostics.sh": {
+    "mtime": 1780733626.172269,
+    "ast_hash": "e96306b6b9324ceee53d54d33f58eb17",
+    "semantic_hash": "e96306b6b9324ceee53d54d33f58eb17"
+  },
+  "Scripts/tools/validator-health-check.sh": {
+    "mtime": 1782873958.5106628,
+    "ast_hash": "4c7b36e829cad3d9638d57478b97723f",
+    "semantic_hash": "4c7b36e829cad3d9638d57478b97723f"
+  },
+  "Scripts/tools/validator-snapshot.sh": {
+    "mtime": 1782873958.5127952,
+    "ast_hash": "b1da642963b4e6b640fb29b1672699a2",
+    "semantic_hash": "b1da642963b4e6b640fb29b1672699a2"
+  },
+  "Scripts/tools/validator-upgrade.sh": {
+    "mtime": 1780733576.7446504,
+    "ast_hash": "2516bb8fdab4dd8ab763f345b6a8c1aa",
+    "semantic_hash": "2516bb8fdab4dd8ab763f345b6a8c1aa"
+  },
+  "patches/ark-relations/.cargo_vcs_info.json": {
+    "mtime": 1760535848.640917,
+    "ast_hash": "b7c5f596ff35e76ac1404f1aa88f237c",
+    "semantic_hash": "b7c5f596ff35e76ac1404f1aa88f237c"
+  },
+  "patches/ark-relations/src/lib.rs": {
+    "mtime": 1765565331.03443,
+    "ast_hash": "ef5fa46c6b7061c054be167a2f7e82a9",
+    "semantic_hash": "ef5fa46c6b7061c054be167a2f7e82a9"
+  },
+  "patches/ark-relations/src/r1cs/constraint_system.rs": {
+    "mtime": 1782877439.944049,
+    "ast_hash": "9298867ed6f4cd8a41a898207da18704",
+    "semantic_hash": "9298867ed6f4cd8a41a898207da18704"
+  },
+  "patches/ark-relations/src/r1cs/error.rs": {
+    "mtime": 1765565331.0313163,
+    "ast_hash": "0e936f025b3b857c3944e2a60f4132d2",
+    "semantic_hash": "0e936f025b3b857c3944e2a60f4132d2"
+  },
+  "patches/ark-relations/src/r1cs/impl_lc.rs": {
+    "mtime": 1765565331.0337834,
+    "ast_hash": "fe4014c452d4b674219ea8e171f683db",
+    "semantic_hash": "fe4014c452d4b674219ea8e171f683db"
+  },
+  "patches/ark-relations/src/r1cs/mod.rs": {
+    "mtime": 1765565331.032645,
+    "ast_hash": "bfe880dc0517047446f28f098bc9e0c9",
+    "semantic_hash": "bfe880dc0517047446f28f098bc9e0c9"
+  },
+  "patches/ark-relations/src/r1cs/trace.rs": {
+    "mtime": 1765565331.0322258,
+    "ast_hash": "c47376f7ed4de9da21741f4d14fa02bf",
+    "semantic_hash": "c47376f7ed4de9da21741f4d14fa02bf"
+  },
+  "patches/block/src/lib.rs": {
+    "mtime": 1784859506.7813373,
+    "ast_hash": "b922d939b99c24ffbddaf157b9c9d5db",
+    "semantic_hash": "b922d939b99c24ffbddaf157b9c9d5db"
+  },
+  "patches/block/src/test_utils.rs": {
+    "mtime": 1784859459.5070965,
+    "ast_hash": "aa4b15b76082db07ef96d9871bf7fd65",
+    "semantic_hash": "aa4b15b76082db07ef96d9871bf7fd65"
+  },
+  "patches/getrandom/lib.rs": {
+    "mtime": 1765565331.034911,
+    "ast_hash": "2ec5bbc6a85dd93f68290443f23ccc8b",
+    "semantic_hash": "2ec5bbc6a85dd93f68290443f23ccc8b"
+  },
+  "patches/libp2p-dns/src/lib.rs": {
+    "mtime": 1783068422.7865937,
+    "ast_hash": "74d16b91c356ff7a7a3b308c6abc1ad4",
+    "semantic_hash": "74d16b91c356ff7a7a3b308c6abc1ad4"
+  },
+  "patches/libp2p-mdns/.cargo_vcs_info.json": {
+    "mtime": 1783069413.9413505,
+    "ast_hash": "2bc81eee6c31d1f18d031cb07d41657f",
+    "semantic_hash": "2bc81eee6c31d1f18d031cb07d41657f"
+  },
+  "patches/libp2p-mdns/src/behaviour.rs": {
+    "mtime": 1783069413.9436612,
+    "ast_hash": "27db53567dea4e158d3e12f3b4eb6c09",
+    "semantic_hash": "27db53567dea4e158d3e12f3b4eb6c09"
+  },
+  "patches/libp2p-mdns/src/behaviour/iface.rs": {
+    "mtime": 1783069413.942836,
+    "ast_hash": "93d105f3af1367ca95f5c102c9cfae22",
+    "semantic_hash": "93d105f3af1367ca95f5c102c9cfae22"
+  },
+  "patches/libp2p-mdns/src/behaviour/iface/dns.rs": {
+    "mtime": 1783069413.9431186,
+    "ast_hash": "4bc4cc346096d8a757120ed591042034",
+    "semantic_hash": "4bc4cc346096d8a757120ed591042034"
+  },
+  "patches/libp2p-mdns/src/behaviour/iface/query.rs": {
+    "mtime": 1783069413.9432926,
+    "ast_hash": "d213cc97d66826505d32b39c61401df6",
+    "semantic_hash": "d213cc97d66826505d32b39c61401df6"
+  },
+  "patches/libp2p-mdns/src/behaviour/socket.rs": {
+    "mtime": 1783069413.9434812,
+    "ast_hash": "be38cda0f4315f6ec2699441f3fffb68",
+    "semantic_hash": "be38cda0f4315f6ec2699441f3fffb68"
+  },
+  "patches/libp2p-mdns/src/behaviour/timer.rs": {
+    "mtime": 1783069413.9425964,
+    "ast_hash": "5993a4f8c909ac4e73a2b6d4ef0bc531",
+    "semantic_hash": "5993a4f8c909ac4e73a2b6d4ef0bc531"
+  },
+  "patches/libp2p-mdns/src/lib.rs": {
+    "mtime": 1783069413.9421937,
+    "ast_hash": "645346c6d2dfc66a71afeb8e1f5c1396",
+    "semantic_hash": "645346c6d2dfc66a71afeb8e1f5c1396"
+  },
+  "patches/libp2p-mdns/tests/use-tokio.rs": {
+    "mtime": 1783069413.9405103,
+    "ast_hash": "20e11a06a7b4d0dc43ff0aa84a9ca6df",
+    "semantic_hash": "20e11a06a7b4d0dc43ff0aa84a9ca6df"
+  },
+  ".github/FUNDING.yml": {
+    "mtime": 1782869047.53127,
+    "ast_hash": "8b54145f13923a5d8e4fc6b4cb5d4685",
+    "semantic_hash": ""
+  },
+  ".github/dependabot.yml": {
+    "mtime": 1785994224.3119981,
+    "ast_hash": "07af7265a885f04a83262280521c6fcd",
+    "semantic_hash": ""
+  },
+  ".github/workflows/ci.yml": {
+    "mtime": 1785994224.312119,
+    "ast_hash": "076dc166db2def184b7ec4112d38d6da",
+    "semantic_hash": ""
+  },
+  ".github/workflows/cloudflare-pages-coming-soon.yml": {
+    "mtime": 1785994224.312237,
+    "ast_hash": "1d3f6bb0546f58edc7092f2490952e1d",
+    "semantic_hash": ""
+  },
+  ".github/workflows/codeql.yml": {
+    "mtime": 1785994224.312439,
+    "ast_hash": "5eb386d71cd64e6df0bd5f8e7d86e971",
+    "semantic_hash": ""
+  },
+  ".github/workflows/disabled/deploy-docs.yml": {
+    "mtime": 1775491137.791162,
+    "ast_hash": "317df6f18ece710ece79f3d59f551bef",
+    "semantic_hash": ""
+  },
+  ".github/workflows/disabled/fast-tests.yml": {
+    "mtime": 1783147575.7221966,
+    "ast_hash": "262dad07b1e472c7931a360377705bc8",
+    "semantic_hash": ""
+  },
+  ".github/workflows/disabled/integration-slow.yml": {
+    "mtime": 1775491137.791395,
+    "ast_hash": "58979010ab720e52cd5af3680e458e63",
+    "semantic_hash": ""
+  },
+  ".github/workflows/disabled/main.yml": {
+    "mtime": 1783147568.8624809,
+    "ast_hash": "27489835b95da828587aecf7d3d13590",
+    "semantic_hash": ""
+  },
+  ".github/workflows/disabled/rust.yml": {
+    "mtime": 1783147582.4834998,
+    "ast_hash": "e90825590983be10c19517b1d0e8ca59",
+    "semantic_hash": ""
+  },
+  ".github/workflows/main.yml": {
+    "mtime": 1785994224.312551,
+    "ast_hash": "ba226aab795804144b36325029aba59c",
+    "semantic_hash": ""
+  },
+  ".github/workflows/release-wallet.yml": {
+    "mtime": 1785994224.3126647,
+    "ast_hash": "2b786ee3f7b6dda709264fb6172b7a06",
+    "semantic_hash": ""
+  },
+  ".github/workflows/release.yml": {
+    "mtime": 1785994224.3127623,
+    "ast_hash": "79d11f7406aa64ea4f1159b543aa066d",
+    "semantic_hash": ""
+  },
+  ".github/workflows/rust_ci.yml": {
+    "mtime": 1785994224.3128395,
+    "ast_hash": "934921a480745957985461b3255fdc1c",
+    "semantic_hash": ""
+  },
+  "CODE_OF_CONDUCT.md": {
+    "mtime": 1786364235.259965,
+    "ast_hash": "3b07fb6babf5e14192ce9cdb06be7907",
+    "semantic_hash": ""
+  },
+  "CONTRIBUTING.md": {
+    "mtime": 1786364235.2600594,
+    "ast_hash": "b465cb7b87592a45800ae60669908aed",
+    "semantic_hash": ""
+  },
+  "OVERVIEW.md": {
+    "mtime": 1786364235.2623923,
+    "ast_hash": "7b08cf1d3949524deeb3b70b3270e093",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1786364235.2817407,
+    "ast_hash": "b682025c014875994cecfb01c523dd45",
+    "semantic_hash": ""
+  },
+  "SECURITY.md": {
+    "mtime": 1786364235.2818274,
+    "ast_hash": "b385405e13a299279114204de84eeaa6",
+    "semantic_hash": ""
+  },
+  "patches/block/README.md": {
+    "mtime": 1784859459.458702,
+    "ast_hash": "a1d616031efa912abba7e9ba7e2574ed",
+    "semantic_hash": ""
+  },
+  "patches/libp2p-dns/CHANGELOG.md": {
+    "mtime": 1783067702.13449,
+    "ast_hash": "dcf186720a93c3be99f902ee16e20279",
+    "semantic_hash": ""
+  },
+  "patches/libp2p-mdns/CHANGELOG.md": {
+    "mtime": 1783069413.940037,
+    "ast_hash": "10365f41665b01bf9602db9fe82ccb8f",
+    "semantic_hash": ""
+  },
+  "Scripts/tools/testnet-faucet.sh": {
+    "mtime": 1784970637.8493958,
+    "ast_hash": "ba15d0dc5ba325545467e8933b0dca8e",
+    "semantic_hash": "ba15d0dc5ba325545467e8933b0dca8e"
+  },
+  ".claude/settings.json": {
+    "mtime": 1784862600.0337875,
+    "ast_hash": "0bf8dc74af107e827b32e46f6179c460",
+    "semantic_hash": "0bf8dc74af107e827b32e46f6179c460"
+  },
+  ".zcode/config.json": {
+    "mtime": 1785211927.3782485,
+    "ast_hash": "9fb91710abbeae9b23d16ca6e8a7cce6",
+    "semantic_hash": "9fb91710abbeae9b23d16ca6e8a7cce6"
+  },
+  "DevOps/docker/join-testnet.sh": {
+    "mtime": 1785994224.3146179,
+    "ast_hash": "c4ba0a2031bc127c0993438100b5de76",
+    "semantic_hash": "c4ba0a2031bc127c0993438100b5de76"
+  },
+  "DevOps/docker/monitoring/grafana/dashboards/qanto-node-overview.json": {
+    "mtime": 1785994224.314823,
+    "ast_hash": "de5749ef1c99fe1cb37cc1f881f18a79",
+    "semantic_hash": "de5749ef1c99fe1cb37cc1f881f18a79"
+  },
+  "DevOps/docker/monitoring/grafana/dashboards/system-overview.json": {
+    "mtime": 1785994224.3148828,
+    "ast_hash": "b9325e99aa24a49574c293528271e40d",
+    "semantic_hash": "b9325e99aa24a49574c293528271e40d"
+  },
+  "DevOps/docker/testnet-cloud-ops-check.sh": {
+    "mtime": 1785994224.3154366,
+    "ast_hash": "f15bff416983871758b89e60aa65a482",
+    "semantic_hash": "f15bff416983871758b89e60aa65a482"
+  },
+  "DevOps/docker/ubuntu-testnet-ignite.sh": {
+    "mtime": 1786364235.2612607,
+    "ast_hash": "d2bdde00f9f9c6171169124152cb2192",
+    "semantic_hash": ""
+  },
+  "DevOps/infrastructure/agents/autonomy_agent_v1.js": {
+    "mtime": 1775570419.543773,
+    "ast_hash": "95b04251f25340a4c38d277efa3cb826",
+    "semantic_hash": "95b04251f25340a4c38d277efa3cb826"
+  },
+  "DevOps/infrastructure/agents/consciousness_agent_v1.js": {
+    "mtime": 1775571064.122562,
+    "ast_hash": "a21ec038b4eb37e26bcba70965e2b5fc",
+    "semantic_hash": "a21ec038b4eb37e26bcba70965e2b5fc"
+  },
+  "DevOps/infrastructure/agents/finality_agent_v1.js": {
+    "mtime": 1775570140.9558408,
+    "ast_hash": "fcc7874920117e77125fc4eaa83109a9",
+    "semantic_hash": "fcc7874920117e77125fc4eaa83109a9"
+  },
+  "DevOps/infrastructure/agents/genesis_agent_v1.js": {
+    "mtime": 1775571480.135452,
+    "ast_hash": "a978495fd4a0bb58b272bd1a3234de10",
+    "semantic_hash": "a978495fd4a0bb58b272bd1a3234de10"
+  },
+  "DevOps/infrastructure/agents/governor_agent_v1.js": {
+    "mtime": 1775568462.526958,
+    "ast_hash": "53ae31c058c482bb7dec2871a279c912",
+    "semantic_hash": "53ae31c058c482bb7dec2871a279c912"
+  },
+  "DevOps/infrastructure/agents/harmony_agent_v1.js": {
+    "mtime": 1775571236.9962182,
+    "ast_hash": "58dafb1c9df6e0adc9c2a990b93e43f5",
+    "semantic_hash": "58dafb1c9df6e0adc9c2a990b93e43f5"
+  },
+  "DevOps/infrastructure/agents/neural_attestor_v1.js": {
+    "mtime": 1775568219.232563,
+    "ast_hash": "c4c1b24424250cd3fc0e8e46aa389e65",
+    "semantic_hash": "c4c1b24424250cd3fc0e8e46aa389e65"
+  },
+  "DevOps/infrastructure/agents/rebalancer_agent_v1.js": {
+    "mtime": 1775568339.2784965,
+    "ast_hash": "b27a1bd70be71e1676843b70de1a8844",
+    "semantic_hash": "b27a1bd70be71e1676843b70de1a8844"
+  },
+  "DevOps/infrastructure/agents/recovery_agent_v1.js": {
+    "mtime": 1775568756.3605573,
+    "ast_hash": "2177286407f6f6270262774c2f01ecdb",
+    "semantic_hash": "2177286407f6f6270262774c2f01ecdb"
+  },
+  "DevOps/infrastructure/agents/saga_sentinel_v1.js": {
+    "mtime": 1782877554.9508576,
+    "ast_hash": "d061a2b58510ac326be251ab8b00c1d3",
+    "semantic_hash": "d061a2b58510ac326be251ab8b00c1d3"
+  },
+  "DevOps/infrastructure/agents/sovereign_ghost_v1.js": {
+    "mtime": 1775568104.2782605,
+    "ast_hash": "023e716ae89a486cbfa4d04c71b78d42",
+    "semantic_hash": "023e716ae89a486cbfa4d04c71b78d42"
+  },
+  "DevOps/infrastructure/agents/sovereignty_agent_v1.js": {
+    "mtime": 1775570694.0347548,
+    "ast_hash": "14f73b5438efe7782304635e562ae536",
+    "semantic_hash": "14f73b5438efe7782304635e562ae536"
+  },
+  "DevOps/infrastructure/agents/synthesis_agent_v1.js": {
+    "mtime": 1775570551.9279952,
+    "ast_hash": "db5b0b958008fcbf0ab3b7c7cc286ee4",
+    "semantic_hash": "db5b0b958008fcbf0ab3b7c7cc286ee4"
+  },
+  "DevOps/infrastructure/agents/ubiquity_agent_v1.js": {
+    "mtime": 1775570273.4833946,
+    "ast_hash": "51ab3ef488890adb835dfc1ee7670e9f",
+    "semantic_hash": "51ab3ef488890adb835dfc1ee7670e9f"
+  },
+  "DevOps/infrastructure/agents/unity_agent_v1.js": {
+    "mtime": 1775570894.9630342,
+    "ast_hash": "a70465878c68dadb97945d8d62df242f",
+    "semantic_hash": "a70465878c68dadb97945d8d62df242f"
+  },
+  "DevOps/infrastructure/agents/veracity_auditor_v1.js": {
+    "mtime": 1775568617.8045127,
+    "ast_hash": "ffcf7bfaa22173b9aa5605d4aa37447a",
+    "semantic_hash": "ffcf7bfaa22173b9aa5605d4aa37447a"
+  },
+  "DevOps/infrastructure/aws-lightweight/main.tf": {
+    "mtime": 1784970014.155565,
+    "ast_hash": "99e48c76ca79ba36cd9b74033defb004",
+    "semantic_hash": "99e48c76ca79ba36cd9b74033defb004"
+  },
+  "DevOps/infrastructure/bot/index.js": {
+    "mtime": 1782873958.5253859,
+    "ast_hash": "c19fea70d0a64dd3d0144d186af374f8",
+    "semantic_hash": "c19fea70d0a64dd3d0144d186af374f8"
+  },
+  "DevOps/infrastructure/bot/saga_agent.rs": {
+    "mtime": 1785994224.3157709,
+    "ast_hash": "4473e693806be8218545df46acf30849",
+    "semantic_hash": "4473e693806be8218545df46acf30849"
+  },
+  "DevOps/infrastructure/bot/wealth_allocator_v1.js": {
+    "mtime": 1775570009.0988576,
+    "ast_hash": "5b4148439ce177fe0ac7a507d3a042b9",
+    "semantic_hash": "5b4148439ce177fe0ac7a507d3a042b9"
+  },
+  "DevOps/infrastructure/hardware/node_v1_specs.rs": {
+    "mtime": 1785994224.315918,
+    "ast_hash": "da3d00de82d15b3712df90180c516dc7",
+    "semantic_hash": "da3d00de82d15b3712df90180c516dc7"
+  },
+  "DevOps/infrastructure/hardware/swarm_logic.rs": {
+    "mtime": 1785994224.3159966,
+    "ast_hash": "de855b8ba93c13860d6c519c59058cf6",
+    "semantic_hash": "de855b8ba93c13860d6c519c59058cf6"
+  },
+  "DevOps/infrastructure/media/zk_attestation.rs": {
+    "mtime": 1785994224.3160832,
+    "ast_hash": "97922bf3aa15d0f711be27e3fa00f292",
+    "semantic_hash": "97922bf3aa15d0f711be27e3fa00f292"
+  },
+  "DevOps/infrastructure/sdk/qanto-zk-sdk.js": {
+    "mtime": 1775565756.3075035,
+    "ast_hash": "fd159fca31f96461eeb69828cbce5977",
+    "semantic_hash": "fd159fca31f96461eeb69828cbce5977"
+  },
+  "DevOps/infrastructure/sentinel/attestation.rs": {
+    "mtime": 1785994224.3163037,
+    "ast_hash": "777e73b1e8b0b5622be04e44ac0742f0",
+    "semantic_hash": "777e73b1e8b0b5622be04e44ac0742f0"
+  },
+  "DevOps/infrastructure/sentinel/mobile_node.rs": {
+    "mtime": 1785994224.316485,
+    "ast_hash": "afc389711d13c2c8576891de1e4ffb40",
+    "semantic_hash": "afc389711d13c2c8576891de1e4ffb40"
+  },
+  "DevOps/infrastructure/sentinel/setup.sh": {
+    "mtime": 1782877554.9560423,
+    "ast_hash": "613e0f2535bf29f5163e87dd43a8357e",
+    "semantic_hash": "613e0f2535bf29f5163e87dd43a8357e"
+  },
+  "DevOps/infrastructure/sentinel/shard_registry.rs": {
+    "mtime": 1785994224.3165722,
+    "ast_hash": "2c22a9173f4004f759bb67acc5d121a0",
+    "semantic_hash": "2c22a9173f4004f759bb67acc5d121a0"
+  },
+  "DevOps/infrastructure/shipping/fulfillment_engine.rs": {
+    "mtime": 1785994224.316742,
+    "ast_hash": "a11a7623f41dce425b4e14900e2e5371",
+    "semantic_hash": "a11a7623f41dce425b4e14900e2e5371"
+  },
+  "Docs/scoring benchmark/2026-07-28-certik-style-scoring.json": {
+    "mtime": 1785511527.8227038,
+    "ast_hash": "a05133d4be3aef39a39e56a8ae2978b5",
+    "semantic_hash": "a05133d4be3aef39a39e56a8ae2978b5"
+  },
+  "Docs/scoring benchmark/scoring_matrix.json": {
+    "mtime": 1785993546.0078342,
+    "ast_hash": "c8eee9f363615f858db634eaa1a7c71b",
+    "semantic_hash": "c8eee9f363615f858db634eaa1a7c71b"
+  },
+  "Frontend/package.json": {
+    "mtime": 1785993546.0130758,
+    "ast_hash": "0433fe29d5278333eee0c185ade578ef",
+    "semantic_hash": "0433fe29d5278333eee0c185ade578ef"
+  },
+  "Frontend/qanto-dapp/eslint.config.js": {
+    "mtime": 1785993546.0147278,
+    "ast_hash": "0355276bc79439afe3c53e3a2470ca1e",
+    "semantic_hash": "0355276bc79439afe3c53e3a2470ca1e"
+  },
+  "Frontend/qanto-dapp/package.json": {
+    "mtime": 1785993546.0157316,
+    "ast_hash": "b3ed991ab33c99c027c8c5595001ccd1",
+    "semantic_hash": "b3ed991ab33c99c027c8c5595001ccd1"
+  },
+  "Frontend/qanto-dapp/postcss.config.js": {
+    "mtime": 1785993546.0159104,
+    "ast_hash": "ef3ba2a81ba19f8ea5ddf625521e96f0",
+    "semantic_hash": "ef3ba2a81ba19f8ea5ddf625521e96f0"
+  },
+  "Frontend/qanto-dapp/src/App.tsx": {
+    "mtime": 1785993546.0165758,
+    "ast_hash": "c6ecaf2ac0d907b4ffdbd36b20539f95",
+    "semantic_hash": "c6ecaf2ac0d907b4ffdbd36b20539f95"
+  },
+  "Frontend/qanto-dapp/src/Web3Provider.tsx": {
+    "mtime": 1785993546.0167742,
+    "ast_hash": "1175ca7c5b4bf78ca512ad003cb32db7",
+    "semantic_hash": "1175ca7c5b4bf78ca512ad003cb32db7"
+  },
+  "Frontend/qanto-dapp/src/components/AddressDisplay.tsx": {
+    "mtime": 1785993546.0174022,
+    "ast_hash": "ee24fb546d8442153a1d46cd897a4abc",
+    "semantic_hash": "ee24fb546d8442153a1d46cd897a4abc"
+  },
+  "Frontend/qanto-dapp/src/components/AirdropClaim.tsx": {
+    "mtime": 1785993546.0175967,
+    "ast_hash": "23a5ced482426161855133e6f08b85ec",
+    "semantic_hash": "23a5ced482426161855133e6f08b85ec"
+  },
+  "Frontend/qanto-dapp/src/components/CreateProposal.tsx": {
+    "mtime": 1785993546.017796,
+    "ast_hash": "3dd10edfb0a0e93aa8b8fd73e53e6384",
+    "semantic_hash": "3dd10edfb0a0e93aa8b8fd73e53e6384"
+  },
+  "Frontend/qanto-dapp/src/components/Explorer.tsx": {
+    "mtime": 1785993546.018005,
+    "ast_hash": "b48e9013fe3df697dc9dec1e5604a419",
+    "semantic_hash": "b48e9013fe3df697dc9dec1e5604a419"
+  },
+  "Frontend/qanto-dapp/src/components/Governance.tsx": {
+    "mtime": 1785993546.0182185,
+    "ast_hash": "773b6450fd11c49b7ac7ce2b837ee0c4",
+    "semantic_hash": "773b6450fd11c49b7ac7ce2b837ee0c4"
+  },
+  "Frontend/qanto-dapp/src/components/Hero.tsx": {
+    "mtime": 1785993546.0183787,
+    "ast_hash": "88cfd7f80439e5f5cb65b9bb890bb70a",
+    "semantic_hash": "88cfd7f80439e5f5cb65b9bb890bb70a"
+  },
+  "Frontend/qanto-dapp/src/components/HoloExplorer.tsx": {
+    "mtime": 1785993546.018455,
+    "ast_hash": "5ddd8c870f7c21b3bfaf7c64a00375a7",
+    "semantic_hash": "5ddd8c870f7c21b3bfaf7c64a00375a7"
+  },
+  "Frontend/qanto-dapp/src/components/Layout.tsx": {
+    "mtime": 1785993546.0186367,
+    "ast_hash": "67eebb3013708a61ce59c7afa20caca3",
+    "semantic_hash": "67eebb3013708a61ce59c7afa20caca3"
+  },
+  "Frontend/qanto-dapp/src/components/QuantumCanvas.tsx": {
+    "mtime": 1785993546.018711,
+    "ast_hash": "66069deef72c2823e6475a82f2548892",
+    "semantic_hash": "66069deef72c2823e6475a82f2548892"
+  },
+  "Frontend/qanto-dapp/src/components/TechStack.tsx": {
+    "mtime": 1785993546.0189002,
+    "ast_hash": "c1822d14dea23c402f1f5ab3376fdc06",
+    "semantic_hash": "c1822d14dea23c402f1f5ab3376fdc06"
+  },
+  "Frontend/qanto-dapp/src/components/TelemetryDashboard.tsx": {
+    "mtime": 1785993546.019102,
+    "ast_hash": "4b16af6ec518c1dcbe2d8d271d24405d",
+    "semantic_hash": "4b16af6ec518c1dcbe2d8d271d24405d"
+  },
+  "Frontend/qanto-dapp/src/components/TokenSale.tsx": {
+    "mtime": 1785993546.019277,
+    "ast_hash": "e871afdf3098b60895ac13ab4a91bf43",
+    "semantic_hash": "e871afdf3098b60895ac13ab4a91bf43"
+  },
+  "Frontend/qanto-dapp/src/hooks/useQantoBalance.ts": {
+    "mtime": 1785993546.0194478,
+    "ast_hash": "5b6067c8c65d62c32a57455c0a997cb1",
+    "semantic_hash": "5b6067c8c65d62c32a57455c0a997cb1"
+  },
+  "Frontend/qanto-dapp/src/lib/qanto-wallet.tsx": {
+    "mtime": 1786364235.2621362,
+    "ast_hash": "43ba127e19f513e9ea8485a13089456c",
+    "semantic_hash": ""
+  },
+  "Frontend/qanto-dapp/src/main.tsx": {
+    "mtime": 1785993546.0198889,
+    "ast_hash": "e7e68c6438e16c524aab46e5f56f341b",
+    "semantic_hash": "e7e68c6438e16c524aab46e5f56f341b"
+  },
+  "Frontend/qanto-dapp/src/pages/Bridge.tsx": {
+    "mtime": 1785993546.0200756,
+    "ast_hash": "bc75875ab30187c294a66d3f5e7ee00a",
+    "semantic_hash": "bc75875ab30187c294a66d3f5e7ee00a"
+  },
+  "Frontend/qanto-dapp/src/pages/Codex.tsx": {
+    "mtime": 1785993546.020182,
+    "ast_hash": "e9d5c2ef15e8ac512b9defec0a5136e4",
+    "semantic_hash": "e9d5c2ef15e8ac512b9defec0a5136e4"
+  },
+  "Frontend/qanto-dapp/src/pages/DEX.tsx": {
+    "mtime": 1785993546.0203562,
+    "ast_hash": "2792b5f5e21c23f5a619c9ac00df0937",
+    "semantic_hash": "2792b5f5e21c23f5a619c9ac00df0937"
+  },
+  "Frontend/qanto-dapp/src/pages/Staking.tsx": {
+    "mtime": 1785993546.0207708,
+    "ast_hash": "f83b56c0378c81e8739d07cc293be31a",
+    "semantic_hash": "f83b56c0378c81e8739d07cc293be31a"
+  },
+  "Frontend/qanto-dapp/src/vendor-shims.d.ts": {
+    "mtime": 1785993546.02094,
+    "ast_hash": "4889829b2fd593d0761de2ceaa2ddf67",
+    "semantic_hash": "4889829b2fd593d0761de2ceaa2ddf67"
+  },
+  "Frontend/qanto-dapp/tailwind.config.js": {
+    "mtime": 1785993546.0210123,
+    "ast_hash": "1c23c428e1049d2470776626d3715622",
+    "semantic_hash": "1c23c428e1049d2470776626d3715622"
+  },
+  "Frontend/qanto-dapp/tsconfig.app.json": {
+    "mtime": 1785993546.02116,
+    "ast_hash": "136630b5accce1ca50663df229534a26",
+    "semantic_hash": "136630b5accce1ca50663df229534a26"
+  },
+  "Frontend/qanto-dapp/tsconfig.json": {
+    "mtime": 1785993546.0213275,
+    "ast_hash": "a3d39fa780ebff65444de257f291ce6c",
+    "semantic_hash": "a3d39fa780ebff65444de257f291ce6c"
+  },
+  "Frontend/qanto-dapp/tsconfig.node.json": {
+    "mtime": 1785993546.021387,
+    "ast_hash": "70bdd0a673bcfc0e828080b306e7c680",
+    "semantic_hash": "70bdd0a673bcfc0e828080b306e7c680"
+  },
+  "Frontend/qanto-dapp/vercel.json": {
+    "mtime": 1785993546.0215473,
+    "ast_hash": "61bd31a2b0ac08f10f13c932b32d6ca1",
+    "semantic_hash": "61bd31a2b0ac08f10f13c932b32d6ca1"
+  },
+  "Frontend/qanto-dapp/vite.config.ts": {
+    "mtime": 1785993546.0216238,
+    "ast_hash": "88439104b3c207f17d33ef3160e3b080",
+    "semantic_hash": "88439104b3c207f17d33ef3160e3b080"
+  },
+  "Frontend/qantoscan/.docker/entrypoint.sh": {
+    "mtime": 1785993546.022127,
+    "ast_hash": "d4b9bddb5b1bb8c4f9239c75e23634bc",
+    "semantic_hash": "d4b9bddb5b1bb8c4f9239c75e23634bc"
+  },
+  "Frontend/qantoscan/.oxlintrc.json": {
+    "mtime": 1785993546.0225706,
+    "ast_hash": "029f4905006c1fffd96bc863e2d98d3e",
+    "semantic_hash": "029f4905006c1fffd96bc863e2d98d3e"
+  },
+  "Frontend/qantoscan/package.json": {
+    "mtime": 1785993546.0236459,
+    "ast_hash": "d9396028e1a2c63a89df54b98ac8f08d",
+    "semantic_hash": "d9396028e1a2c63a89df54b98ac8f08d"
+  },
+  "Frontend/qantoscan/src/App.tsx": {
+    "mtime": 1785993546.0244722,
+    "ast_hash": "8ad5049a8c7a9cc1f4890522a281fb43",
+    "semantic_hash": "8ad5049a8c7a9cc1f4890522a281fb43"
+  },
+  "Frontend/qantoscan/src/api.ts": {
+    "mtime": 1785993546.0246284,
+    "ast_hash": "2d0c0320f729363db84dc6aa5f32ee2f",
+    "semantic_hash": "2d0c0320f729363db84dc6aa5f32ee2f"
+  },
+  "Frontend/qantoscan/src/hooks/useLiveData.ts": {
+    "mtime": 1785993546.0248613,
+    "ast_hash": "21f061672576e0569d216a81e0e704d9",
+    "semantic_hash": "21f061672576e0569d216a81e0e704d9"
+  },
+  "Frontend/qantoscan/src/main.tsx": {
+    "mtime": 1785993546.025259,
+    "ast_hash": "6bd317317c318df247e03935993511eb",
+    "semantic_hash": "6bd317317c318df247e03935993511eb"
+  },
+  "Frontend/qantoscan/src/vite-env.d.ts": {
+    "mtime": 1785993546.0254264,
+    "ast_hash": "c319fecfa598f9ed40c9d17eff14be7f",
+    "semantic_hash": "c319fecfa598f9ed40c9d17eff14be7f"
+  },
+  "Frontend/qantoscan/tsconfig.app.json": {
+    "mtime": 1785993546.0255892,
+    "ast_hash": "32c9c3eeac3a9b83c72cbfec9c045175",
+    "semantic_hash": "32c9c3eeac3a9b83c72cbfec9c045175"
+  },
+  "Frontend/qantoscan/tsconfig.json": {
+    "mtime": 1785993546.0256534,
+    "ast_hash": "a3d39fa780ebff65444de257f291ce6c",
+    "semantic_hash": "a3d39fa780ebff65444de257f291ce6c"
+  },
+  "Frontend/qantoscan/tsconfig.node.json": {
+    "mtime": 1785993546.0258155,
+    "ast_hash": "f9cb81ddcea69ffdab672fc8c48dca66",
+    "semantic_hash": "f9cb81ddcea69ffdab672fc8c48dca66"
+  },
+  "Frontend/qantoscan/vite.config.ts": {
+    "mtime": 1785993546.0259979,
+    "ast_hash": "d65db07339134027c891e4da059f6f85",
+    "semantic_hash": "d65db07339134027c891e4da059f6f85"
+  },
+  "Frontend/website/assets/js/animations.js": {
+    "mtime": 1785993546.0293822,
+    "ast_hash": "131eb8e7638247c36bf4f6427f762626",
+    "semantic_hash": "131eb8e7638247c36bf4f6427f762626"
+  },
+  "Frontend/website/assets/js/coming-soon.js": {
+    "mtime": 1785993546.0296435,
+    "ast_hash": "3ced658a8b11d6039aeebbb61f80a578",
+    "semantic_hash": "3ced658a8b11d6039aeebbb61f80a578"
+  },
+  "Frontend/website/assets/js/faucet-controller.js": {
+    "mtime": 1785993546.0298352,
+    "ast_hash": "4274554bba00f6d6c26e5de6a3bcaa50",
+    "semantic_hash": "4274554bba00f6d6c26e5de6a3bcaa50"
+  },
+  "Frontend/website/assets/js/faucet.js": {
+    "mtime": 1785993546.0301163,
+    "ast_hash": "b6d58a70bb8e6591023a14e2472efd5e",
+    "semantic_hash": "b6d58a70bb8e6591023a14e2472efd5e"
+  },
+  "Frontend/website/assets/js/keep-alive.js": {
+    "mtime": 1785993546.030208,
+    "ast_hash": "8417565cff5ce9786b07bc22f10f23b9",
+    "semantic_hash": "8417565cff5ce9786b07bc22f10f23b9"
+  },
+  "Frontend/website/assets/js/main.js": {
+    "mtime": 1785993546.03033,
+    "ast_hash": "e7b56e1f70a9b3e632c7cf722f4c6c6a",
+    "semantic_hash": "e7b56e1f70a9b3e632c7cf722f4c6c6a"
+  },
+  "Frontend/website/assets/js/os.js": {
+    "mtime": 1785993546.0305238,
+    "ast_hash": "752344e55bf93f545895d98122103b96",
+    "semantic_hash": "752344e55bf93f545895d98122103b96"
+  },
+  "Frontend/website/assets/js/qantoswap-controller.js": {
+    "mtime": 1785993546.0307086,
+    "ast_hash": "aeceeb3b2de9d0b2f8188c3aee509514",
+    "semantic_hash": "aeceeb3b2de9d0b2f8188c3aee509514"
+  },
+  "Frontend/website/assets/js/quantum-mesh.js": {
+    "mtime": 1785993546.0308824,
+    "ast_hash": "db871c091bb3cb404fc12c5d5574abb3",
+    "semantic_hash": "db871c091bb3cb404fc12c5d5574abb3"
+  },
+  "Frontend/website/assets/js/quests.js": {
+    "mtime": 1785993546.030966,
+    "ast_hash": "6f01afdf6c22d705ec7797b293d1d93f",
+    "semantic_hash": "6f01afdf6c22d705ec7797b293d1d93f"
+  },
+  "Frontend/website/assets/js/swap.js": {
+    "mtime": 1785993546.0312054,
+    "ast_hash": "fefb4bfbe41df5fa71899e614d92b83b",
+    "semantic_hash": "fefb4bfbe41df5fa71899e614d92b83b"
+  },
+  "Frontend/website/assets/js/telemetry-sync.js": {
+    "mtime": 1785993546.0312803,
+    "ast_hash": "53c3373cb6bf93e5ee7648748b352c33",
+    "semantic_hash": "53c3373cb6bf93e5ee7648748b352c33"
+  },
+  "Frontend/website/assets/js/visualizations.js": {
+    "mtime": 1785993546.0313678,
+    "ast_hash": "ca60cf06c70254c1d3bd0250ba9408e0",
+    "semantic_hash": "ca60cf06c70254c1d3bd0250ba9408e0"
+  },
+  "Frontend/website/assets/js/web3-provider.js": {
+    "mtime": 1785993546.0315428,
+    "ast_hash": "7587669537570393c4b25fae8c86ad83",
+    "semantic_hash": "7587669537570393c4b25fae8c86ad83"
+  },
+  "Frontend/website/assets/json/explorer-mock.json": {
+    "mtime": 1785993546.0316207,
+    "ast_hash": "d0c5980679a7f13d4f263c57f71f2396",
+    "semantic_hash": "d0c5980679a7f13d4f263c57f71f2396"
+  },
+  "Frontend/website/functions/_lib/waitlist.js": {
+    "mtime": 1785993546.0334773,
+    "ast_hash": "af57c10945b58afd72efc19186a28bd3",
+    "semantic_hash": "af57c10945b58afd72efc19186a28bd3"
+  },
+  "Frontend/website/functions/api/health.js": {
+    "mtime": 1785993546.0336409,
+    "ast_hash": "ee4c4056743ce96118ddb5e4da365d3f",
+    "semantic_hash": "ee4c4056743ce96118ddb5e4da365d3f"
+  },
+  "Frontend/website/functions/api/subscribe.js": {
+    "mtime": 1785993546.033816,
+    "ast_hash": "9018b044a4e06c9eb0a7dd76583a591b",
+    "semantic_hash": "9018b044a4e06c9eb0a7dd76583a591b"
+  },
+  "Frontend/website/functions/api/subscribers.js": {
+    "mtime": 1785993546.0339825,
+    "ast_hash": "37cc720bb03116f14bdf89b4660f56eb",
+    "semantic_hash": "37cc720bb03116f14bdf89b4660f56eb"
+  },
+  "Frontend/website/manifest.json": {
+    "mtime": 1785993546.034382,
+    "ast_hash": "fe6ccb83096cf237e7ecd46e0abcf79e",
+    "semantic_hash": "fe6ccb83096cf237e7ecd46e0abcf79e"
+  },
+  "Frontend/website/package.json": {
+    "mtime": 1785993546.0349913,
+    "ast_hash": "c51dc06053d0a2c0e5dd9aaa296fd50e",
+    "semantic_hash": "c51dc06053d0a2c0e5dd9aaa296fd50e"
+  },
+  "Frontend/website/postcss.config.cjs": {
+    "mtime": 1785993546.035186,
+    "ast_hash": "775b47e2a4ec7e078c6b2b41466c6a7c",
+    "semantic_hash": "775b47e2a4ec7e078c6b2b41466c6a7c"
+  },
+  "Frontend/website/public/manifest.json": {
+    "mtime": 1785993546.0390506,
+    "ast_hash": "2b4ca45643f0effe29132f74b64287b4",
+    "semantic_hash": "2b4ca45643f0effe29132f74b64287b4"
+  },
+  "Frontend/website/public/sw.js": {
+    "mtime": 1785993546.0448039,
+    "ast_hash": "4ac52453ba545fb94efda250ade8b441",
+    "semantic_hash": "4ac52453ba545fb94efda250ade8b441"
+  },
+  "Frontend/website/schema.sql": {
+    "mtime": 1785993546.0455852,
+    "ast_hash": "f432b756e8adca206252388f211e57d0",
+    "semantic_hash": "f432b756e8adca206252388f211e57d0"
+  },
+  "Frontend/website/sw.js": {
+    "mtime": 1785993546.0464525,
+    "ast_hash": "36a9968ca0858c4aa76fd65afe730054",
+    "semantic_hash": "36a9968ca0858c4aa76fd65afe730054"
+  },
+  "Frontend/website/tests/waitlist.test.mjs": {
+    "mtime": 1785993546.0466607,
+    "ast_hash": "e70f1678acf9ff2cd30568f35c23cc17",
+    "semantic_hash": "e70f1678acf9ff2cd30568f35c23cc17"
+  },
+  "Frontend/website/vercel.json": {
+    "mtime": 1785993546.0471473,
+    "ast_hash": "f56f69b2c981d3c9e31d73214b50ce1d",
+    "semantic_hash": "f56f69b2c981d3c9e31d73214b50ce1d"
+  },
+  "Frontend/website/vite.config.js": {
+    "mtime": 1785993546.0473084,
+    "ast_hash": "073383b2411c5c4d8bed855b85ca589e",
+    "semantic_hash": "073383b2411c5c4d8bed855b85ca589e"
+  },
+  "Protocol_Core/qanto-node/tests/e2e_mining_reward.rs": {
+    "mtime": 1786364235.2790246,
+    "ast_hash": "ef407abd6e9fe81b9d3a1bc2efa71c1d",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-relayer/src/adapters/evm_rpc.rs": {
+    "mtime": 1786364235.2793057,
+    "ast_hash": "5bc7962a5acda4a405322823118e1d3b",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-relayer/src/adapters/file_state_repo.rs": {
+    "mtime": 1786364235.279386,
+    "ast_hash": "bdb4d88230c74bce6dcc6ca51a30d584",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-relayer/src/adapters/mod.rs": {
+    "mtime": 1786364235.2794578,
+    "ast_hash": "b75b98240a25460231b0a593f83567b6",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-relayer/src/adapters/qanto_claim_factory.rs": {
+    "mtime": 1786364235.2795317,
+    "ast_hash": "ee869e4c505dfa0a99c29e52fb94e0e3",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-relayer/src/adapters/qanto_dispatcher.rs": {
+    "mtime": 1786364235.2796094,
+    "ast_hash": "e7d0dc22c18022a0ba28c038163b82ac",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-relayer/src/bridge_conformance_tests.rs": {
+    "mtime": 1786364235.2797775,
+    "ast_hash": "f52c20704d8072138909cc70492a5283",
+    "semantic_hash": "f52c20704d8072138909cc70492a5283"
+  },
+  "Protocol_Core/qanto-relayer/src/config.rs": {
+    "mtime": 1786364235.2798693,
+    "ast_hash": "cb122aecb08146825f5a13a3f5f074a2",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-relayer/src/coordinator/mod.rs": {
+    "mtime": 1786364235.279972,
+    "ast_hash": "91fb1ffe4334dc4bde56e74db4650f6b",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-relayer/src/coordinator/relayer_coordinator.rs": {
+    "mtime": 1786364235.2800615,
+    "ast_hash": "018aee84c2d54d70a030846db250af52",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-relayer/src/delivery_state.rs": {
+    "mtime": 1786364235.28013,
+    "ast_hash": "ddd4f38ba4e62f79f88a8e5298a382c7",
+    "semantic_hash": "ddd4f38ba4e62f79f88a8e5298a382c7"
+  },
+  "Protocol_Core/qanto-relayer/src/error.rs": {
+    "mtime": 1786364235.280206,
+    "ast_hash": "b8df73776a97baae0b564e5c66e00e27",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-relayer/src/lib.rs": {
+    "mtime": 1786364235.280278,
+    "ast_hash": "ac7b76478c612237209c45de9d1aacb4",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-relayer/src/main.rs": {
+    "mtime": 1786364235.2804873,
+    "ast_hash": "7a62fb810aa510d861a210032bdf57ad",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-relayer/src/ports/mod.rs": {
+    "mtime": 1786364235.2806041,
+    "ast_hash": "6615c938b58a44363cf08ec4d384d9de",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-relayer/src/ports/types.rs": {
+    "mtime": 1786364235.280678,
+    "ast_hash": "2dc8e5d798b87f72457d311d6956bfe7",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-relayer/src/runtime/mod.rs": {
+    "mtime": 1786364235.2807899,
+    "ast_hash": "03ee2d9cca1fe0390f3b5219e1794f1f",
+    "semantic_hash": ""
+  },
+  "Scripts/burn_admin_keys.js": {
+    "mtime": 1785994224.3525968,
+    "ast_hash": "cdd81a5fe585cdd0417b092538b79b90",
+    "semantic_hash": "cdd81a5fe585cdd0417b092538b79b90"
+  },
+  "Scripts/chaos_engine.rs": {
+    "mtime": 1785994224.3526423,
+    "ast_hash": "2576143ec9fb89c662122f82b6cca382",
+    "semantic_hash": "2576143ec9fb89c662122f82b6cca382"
+  },
+  "Scripts/check_local_testnet_health.sh": {
+    "mtime": 1785994224.3527074,
+    "ast_hash": "7253a15cdf8d28674ffa22834f8bd88e",
+    "semantic_hash": "7253a15cdf8d28674ffa22834f8bd88e"
+  },
+  "Scripts/deploy_farming.js": {
+    "mtime": 1785994224.3527563,
+    "ast_hash": "95d5f601807585d3fb3b77c18ec3d874",
+    "semantic_hash": "95d5f601807585d3fb3b77c18ec3d874"
+  },
+  "Scripts/deploy_production.sh": {
+    "mtime": 1785994224.3528156,
+    "ast_hash": "f1641a5046660f004fd68d1613e27eda",
+    "semantic_hash": "f1641a5046660f004fd68d1613e27eda"
+  },
+  "Scripts/generate_snapshot.js": {
+    "mtime": 1785994224.352865,
+    "ast_hash": "6419eb6495bc3a60b03704f89ab41eb5",
+    "semantic_hash": "6419eb6495bc3a60b03704f89ab41eb5"
+  },
+  "Scripts/initialize_economic.js": {
+    "mtime": 1785994224.3530116,
+    "ast_hash": "e1ebeb1d88badba81ff257aac9892522",
+    "semantic_hash": "e1ebeb1d88badba81ff257aac9892522"
+  },
+  "Scripts/perpetual_maintenance.rs": {
+    "mtime": 1785994224.3531601,
+    "ast_hash": "271a84950eabcfef1819a4b0351cd22f",
+    "semantic_hash": "271a84950eabcfef1819a4b0351cd22f"
+  },
+  "Scripts/run_local_testnet.sh": {
+    "mtime": 1785994224.353261,
+    "ast_hash": "aa466f02082b4af54d7e187469224a61",
+    "semantic_hash": "aa466f02082b4af54d7e187469224a61"
+  },
+  "Scripts/soak_test.sh": {
+    "mtime": 1785994224.3533778,
+    "ast_hash": "668afdb04fd4db79c958a844de745b65",
+    "semantic_hash": "668afdb04fd4db79c958a844de745b65"
+  },
+  "Scripts/tools/relayer/src/main.rs": {
+    "mtime": 1785994224.3538353,
+    "ast_hash": "c101b59c3bb61f293039d72a23af3a34",
+    "semantic_hash": "c101b59c3bb61f293039d72a23af3a34"
+  },
+  "SmartContracts/cex-listing-payload.json": {
+    "mtime": 1786364235.2821386,
+    "ast_hash": "005c1aa18c9735162bf9e73cf1df0165",
+    "semantic_hash": ""
+  },
+  "SmartContracts/deploy_wqnto.js": {
+    "mtime": 1786364235.2828443,
+    "ast_hash": "dd4ead4ff7e82ea0d251ce32c2af992f",
+    "semantic_hash": ""
+  },
+  "SmartContracts/hardhat.config.js": {
+    "mtime": 1786364235.282932,
+    "ast_hash": "c924b4d9b145881e75a67ce7ebe5b203",
+    "semantic_hash": ""
+  },
+  "SmartContracts/package.json": {
+    "mtime": 1786364235.2833333,
+    "ast_hash": "5d6ce414cc1c05d8c90cd25f892f5c91",
+    "semantic_hash": ""
+  },
+  "SmartContracts/scripts/deploy_dex.js": {
+    "mtime": 1785993546.1022716,
+    "ast_hash": "319faeff8d1a3d27b33ce397318c3df1",
+    "semantic_hash": "319faeff8d1a3d27b33ce397318c3df1"
+  },
+  "SmartContracts/scripts/deploy_phase11.js": {
+    "mtime": 1785993546.1024249,
+    "ast_hash": "0e2e70ae0612977bc684dd4b2ab09a89",
+    "semantic_hash": "0e2e70ae0612977bc684dd4b2ab09a89"
+  },
+  "SmartContracts/scripts/test_provider.js": {
+    "mtime": 1785993546.1024923,
+    "ast_hash": "83e7ae91329807404d2881a4236b9c0f",
+    "semantic_hash": "83e7ae91329807404d2881a4236b9c0f"
+  },
+  "SmartContracts/scripts/test_provider2.js": {
+    "mtime": 1785993546.1025624,
+    "ast_hash": "4144befceed38be7dca778273ea0e0a4",
+    "semantic_hash": "4144befceed38be7dca778273ea0e0a4"
+  },
+  "SmartContracts/scripts/test_provider3.js": {
+    "mtime": 1785993546.1027334,
+    "ast_hash": "8479f960dfc83eae569b9a004715e574",
+    "semantic_hash": "8479f960dfc83eae569b9a004715e574"
+  },
+  "SmartContracts/scripts/test_provider4.js": {
+    "mtime": 1785993546.1027963,
+    "ast_hash": "d662eead024777eee07f9cab169786fa",
+    "semantic_hash": "d662eead024777eee07f9cab169786fa"
+  },
+  "SmartContracts/test/contracts.test.js": {
+    "mtime": 1786126262.3303204,
+    "ast_hash": "a0b103d186fc2561c1037d3e0678c9de",
+    "semantic_hash": ""
+  },
+  "config/genesis.json": {
+    "mtime": 1783144065.928854,
+    "ast_hash": "dc42f3c0b192c3692a6c647492891ce6",
+    "semantic_hash": "dc42f3c0b192c3692a6c647492891ce6"
+  },
+  "grafana/dashboards/qanto-testnet.json": {
+    "mtime": 1784361793.398107,
+    "ast_hash": "df363597fa21fc0aadcd77cb97a1e6ed",
+    "semantic_hash": "df363597fa21fc0aadcd77cb97a1e6ed"
+  },
+  "install.sh": {
+    "mtime": 1785994224.355825,
+    "ast_hash": "217ae2ee1c2c40e3679f5754e7f02fee",
+    "semantic_hash": "217ae2ee1c2c40e3679f5754e7f02fee"
+  },
+  "patches/plist/src/data.rs": {
+    "mtime": 1783067702.1646016,
+    "ast_hash": "d06e453079c5a6c3976ca395f965fd4c",
+    "semantic_hash": "d06e453079c5a6c3976ca395f965fd4c"
+  },
+  "patches/plist/src/date.rs": {
+    "mtime": 1783067702.1637788,
+    "ast_hash": "fcd0132257f3c029ff574c7623045afe",
+    "semantic_hash": "fcd0132257f3c029ff574c7623045afe"
+  },
+  "patches/plist/src/de.rs": {
+    "mtime": 1783067702.1643677,
+    "ast_hash": "ea4f6969a2c7048eecb1c8156faf972d",
+    "semantic_hash": "ea4f6969a2c7048eecb1c8156faf972d"
+  },
+  "patches/plist/src/dictionary.rs": {
+    "mtime": 1783067702.1800544,
+    "ast_hash": "442f323210d042c8a40a092d9ff9e7da",
+    "semantic_hash": "442f323210d042c8a40a092d9ff9e7da"
+  },
+  "patches/plist/src/error.rs": {
+    "mtime": 1783067702.145237,
+    "ast_hash": "a17bd865b9d68cb767bbf934633ae8d6",
+    "semantic_hash": "a17bd865b9d68cb767bbf934633ae8d6"
+  },
+  "patches/plist/src/integer.rs": {
+    "mtime": 1783067702.1803584,
+    "ast_hash": "4f5f5550866fc2429681de4da7787360",
+    "semantic_hash": "4f5f5550866fc2429681de4da7787360"
+  },
+  "patches/plist/src/lib.rs": {
+    "mtime": 1783067702.1454985,
+    "ast_hash": "93c3e1c84285384c89b61973b89397a5",
+    "semantic_hash": "93c3e1c84285384c89b61973b89397a5"
+  },
+  "patches/plist/src/ser.rs": {
+    "mtime": 1783067702.1634896,
+    "ast_hash": "bd981d3f03e2e0b0b6f4cd75d12bf37e",
+    "semantic_hash": "bd981d3f03e2e0b0b6f4cd75d12bf37e"
+  },
+  "patches/plist/src/serde_tests.rs": {
+    "mtime": 1783067702.176425,
+    "ast_hash": "16bea8732d96e0af44b25cfcd3af4884",
+    "semantic_hash": "16bea8732d96e0af44b25cfcd3af4884"
+  },
+  "patches/plist/src/stream/ascii_reader.rs": {
+    "mtime": 1783067702.1467435,
+    "ast_hash": "78bbb5e42150700aa86891451108598a",
+    "semantic_hash": "78bbb5e42150700aa86891451108598a"
+  },
+  "patches/plist/src/stream/binary_reader.rs": {
+    "mtime": 1783067702.1470625,
+    "ast_hash": "e5ce3c487423bf6ce554d7b7c5762747",
+    "semantic_hash": "e5ce3c487423bf6ce554d7b7c5762747"
+  },
+  "patches/plist/src/stream/binary_writer.rs": {
+    "mtime": 1783067702.1473696,
+    "ast_hash": "e2ee82e342e5c8ab997bdcd576b1f2d6",
+    "semantic_hash": "e2ee82e342e5c8ab997bdcd576b1f2d6"
+  },
+  "patches/plist/src/stream/mod.rs": {
+    "mtime": 1783067702.1629581,
+    "ast_hash": "448c28cce48dbfb37eefa31f696ef2cc",
+    "semantic_hash": "448c28cce48dbfb37eefa31f696ef2cc"
+  },
+  "patches/plist/src/stream/xml_reader.rs": {
+    "mtime": 1783067702.1463716,
+    "ast_hash": "5d5e54788fa8fe6af01b36b3a897fe4d",
+    "semantic_hash": "5d5e54788fa8fe6af01b36b3a897fe4d"
+  },
+  "patches/plist/src/stream/xml_writer.rs": {
+    "mtime": 1783067702.1459522,
+    "ast_hash": "2fcd3fb8c1620201615b2c17998eeb03",
+    "semantic_hash": "2fcd3fb8c1620201615b2c17998eeb03"
+  },
+  "patches/plist/src/uid.rs": {
+    "mtime": 1783067702.1640527,
+    "ast_hash": "007ec3cc7ea27aa18b011d27d58e0c8c",
+    "semantic_hash": "007ec3cc7ea27aa18b011d27d58e0c8c"
+  },
+  "patches/plist/src/value.rs": {
+    "mtime": 1783067702.1760836,
+    "ast_hash": "9210ccb698d0372d2bef697537d27948",
+    "semantic_hash": "9210ccb698d0372d2bef697537d27948"
+  },
+  "patches/plist/tests/fuzzer.rs": {
+    "mtime": 1783067702.1807823,
+    "ast_hash": "719b53086afbe38ee62a83c94a59c478",
+    "semantic_hash": "719b53086afbe38ee62a83c94a59c478"
+  },
+  "qanto-desktop-wallet/package.json": {
+    "mtime": 1785993546.1061578,
+    "ast_hash": "e5381c20fcf5e27fcaa374d53a957241",
+    "semantic_hash": "e5381c20fcf5e27fcaa374d53a957241"
+  },
+  "qanto-desktop-wallet/src-tauri/build.rs": {
+    "mtime": 1785994224.356287,
+    "ast_hash": "1be34a5c61c2c35365de3dab14298f0b",
+    "semantic_hash": "1be34a5c61c2c35365de3dab14298f0b"
+  },
+  "qanto-desktop-wallet/src-tauri/capabilities/default.json": {
+    "mtime": 1785993546.1073053,
+    "ast_hash": "d2b1ea61ac2075eb0d44587bf81ee127",
+    "semantic_hash": "d2b1ea61ac2075eb0d44587bf81ee127"
+  },
+  "qanto-desktop-wallet/src-tauri/src/app.rs": {
+    "mtime": 1786364235.283957,
+    "ast_hash": "aa65eac91d66bae34b4383d07f8a1bd0",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/src/keystore.rs": {
+    "mtime": 1786364235.2841327,
+    "ast_hash": "143856a18dede9aac8eaaebee3040a84",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/src/lib.rs": {
+    "mtime": 1785993546.1118836,
+    "ast_hash": "1980dd00efb1f078af365fb1b468df9f",
+    "semantic_hash": "1980dd00efb1f078af365fb1b468df9f"
+  },
+  "qanto-desktop-wallet/src-tauri/src/main.rs": {
+    "mtime": 1785993546.1120493,
+    "ast_hash": "7fd137f17d7630bcc82120376a610251",
+    "semantic_hash": "7fd137f17d7630bcc82120376a610251"
+  },
+  "qanto-desktop-wallet/src-tauri/src/tx.rs": {
+    "mtime": 1786364235.2842574,
+    "ast_hash": "461cd5be77c21f36269d16a3016571ee",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/tauri.conf.json": {
+    "mtime": 1785993546.1125515,
+    "ast_hash": "19cc712110bf2b6d43c8cc55c5eceb6e",
+    "semantic_hash": "19cc712110bf2b6d43c8cc55c5eceb6e"
+  },
+  "qanto-desktop-wallet/src/App.tsx": {
+    "mtime": 1785993546.114133,
+    "ast_hash": "343ae91cdf42db0a2559ea849d52e13e",
+    "semantic_hash": "343ae91cdf42db0a2559ea849d52e13e"
+  },
+  "qanto-desktop-wallet/src/main.tsx": {
+    "mtime": 1785993546.1144927,
+    "ast_hash": "ba0edf928372d41b1aabe6a11a81b384",
+    "semantic_hash": "ba0edf928372d41b1aabe6a11a81b384"
+  },
+  "qanto-desktop-wallet/src/store.ts": {
+    "mtime": 1785993546.1146662,
+    "ast_hash": "ce7a99f847590d2740635708293052bb",
+    "semantic_hash": "ce7a99f847590d2740635708293052bb"
+  },
+  "qanto-desktop-wallet/src/vite-env.d.ts": {
+    "mtime": 1785993546.114823,
+    "ast_hash": "0352474ba2918efe13895edbc3780d94",
+    "semantic_hash": "0352474ba2918efe13895edbc3780d94"
+  },
+  "qanto-desktop-wallet/tsconfig.json": {
+    "mtime": 1785993546.1150002,
+    "ast_hash": "468c4a26d22e95a911cbe5ff0ed9ca27",
+    "semantic_hash": "468c4a26d22e95a911cbe5ff0ed9ca27"
+  },
+  "qanto-desktop-wallet/tsconfig.node.json": {
+    "mtime": 1785993546.1151829,
+    "ast_hash": "767b2e9abe6452170cdc399ca052cfbc",
+    "semantic_hash": "767b2e9abe6452170cdc399ca052cfbc"
+  },
+  "qanto-desktop-wallet/vite.config.ts": {
+    "mtime": 1785993546.115342,
+    "ast_hash": "e33d834af39f3d92b63e7deea58d6e7d",
+    "semantic_hash": "e33d834af39f3d92b63e7deea58d6e7d"
+  },
+  "qanto-desktop/src-tauri/build.rs": {
+    "mtime": 1780129280.4160156,
+    "ast_hash": "48af8f08e39b73562f866d3a50b2e88a",
+    "semantic_hash": "48af8f08e39b73562f866d3a50b2e88a"
+  },
+  "qanto-desktop/src-tauri/src/main.rs": {
+    "mtime": 1782877439.919657,
+    "ast_hash": "917cbbb077ffab56708488816b669b57",
+    "semantic_hash": "917cbbb077ffab56708488816b669b57"
+  },
+  "qanto-desktop/src-tauri/tauri.conf.json": {
+    "mtime": 1780129216.453665,
+    "ast_hash": "5d6604d5025ed103272a9d2f941ed26f",
+    "semantic_hash": "5d6604d5025ed103272a9d2f941ed26f"
+  },
+  "sdk/javascript/package.json": {
+    "mtime": 1755342148.613577,
+    "ast_hash": "7d49427b5ed93e8cf4e3102b65598fdd",
+    "semantic_hash": "7d49427b5ed93e8cf4e3102b65598fdd"
+  },
+  "sdk/javascript/src/client.ts": {
+    "mtime": 1775491137.8194714,
+    "ast_hash": "206b1d2df1c96c3905245f1255708c88",
+    "semantic_hash": "206b1d2df1c96c3905245f1255708c88"
+  },
+  "sdk/javascript/src/graphql.ts": {
+    "mtime": 1775491137.8195708,
+    "ast_hash": "b1ee8c99c99113fff46d7c8775aa2041",
+    "semantic_hash": "b1ee8c99c99113fff46d7c8775aa2041"
+  },
+  "sdk/javascript/src/index.ts": {
+    "mtime": 1783138864.8675964,
+    "ast_hash": "10fccfdd29d11fb0563a6d5c5eedc595",
+    "semantic_hash": "10fccfdd29d11fb0563a6d5c5eedc595"
+  },
+  "sdk/javascript/src/types.ts": {
+    "mtime": 1783138854.5211265,
+    "ast_hash": "cbd97f33a5a747efd16ffa73e5d3f907",
+    "semantic_hash": "cbd97f33a5a747efd16ffa73e5d3f907"
+  },
+  "sdk/javascript/src/utils.ts": {
+    "mtime": 1775491137.819884,
+    "ast_hash": "557131f148cb9e3d29751e325fe695e5",
+    "semantic_hash": "557131f148cb9e3d29751e325fe695e5"
+  },
+  "sdk/javascript/src/websocket.ts": {
+    "mtime": 1775491137.8206303,
+    "ast_hash": "ec1a04beec57948672c81385a2619cda",
+    "semantic_hash": "ec1a04beec57948672c81385a2619cda"
+  },
+  "sdk/javascript/tsconfig.json": {
+    "mtime": 1755342148.6168194,
+    "ast_hash": "dbcaad26216bf633824844ba5b84fce9",
+    "semantic_hash": "dbcaad26216bf633824844ba5b84fce9"
+  },
+  "tools/benchmark_harness.sh": {
+    "mtime": 1785556632.0304308,
+    "ast_hash": "e4b6b443eafc8ccad536c8a5098610fa",
+    "semantic_hash": "e4b6b443eafc8ccad536c8a5098610fa"
+  },
+  "tools/run_baseline.sh": {
+    "mtime": 1785916038.5286772,
+    "ast_hash": "51f93cc6a95710140792d1db1efd8340",
+    "semantic_hash": "51f93cc6a95710140792d1db1efd8340"
+  },
+  ".agents/rules/graphify.md": {
+    "mtime": 1784862621.4236255,
+    "ast_hash": "f1e53ecc9194573d3c28fc116c743a2e",
+    "semantic_hash": ""
+  },
+  ".agents/workflows/graphify.md": {
+    "mtime": 1784862621.4238892,
+    "ast_hash": "0bc020d491fca99550c1ea3de0a5f862",
+    "semantic_hash": ""
+  },
+  ".claude/CLAUDE.md": {
+    "mtime": 1784862600.0282004,
+    "ast_hash": "9b31786b637be3c13978bec4c2330752",
+    "semantic_hash": ""
+  },
+  ".claude/skills/graphify/SKILL.md": {
+    "mtime": 1784862600.0256362,
+    "ast_hash": "dfb0a6554c4af62df6effc61c6c7d245",
+    "semantic_hash": ""
+  },
+  ".claude/skills/graphify/references/add-watch.md": {
+    "mtime": 1784862553.7031624,
+    "ast_hash": "d59d027fe449f06aa03905a01184e779",
+    "semantic_hash": ""
+  },
+  ".claude/skills/graphify/references/exports.md": {
+    "mtime": 1784862553.7032385,
+    "ast_hash": "9da2a2152e60a22f07f05fed5158f287",
+    "semantic_hash": ""
+  },
+  ".claude/skills/graphify/references/extraction-spec.md": {
+    "mtime": 1784862553.703394,
+    "ast_hash": "42fef56a01698118f7fd722acdadea34",
+    "semantic_hash": ""
+  },
+  ".claude/skills/graphify/references/github-and-merge.md": {
+    "mtime": 1784862553.7035038,
+    "ast_hash": "cde13df085e4c492aeb7ba298a996d0d",
+    "semantic_hash": ""
+  },
+  ".claude/skills/graphify/references/hooks.md": {
+    "mtime": 1784862553.7036474,
+    "ast_hash": "3f545db6ce646650bb9de588f5512a27",
+    "semantic_hash": ""
+  },
+  ".claude/skills/graphify/references/query.md": {
+    "mtime": 1784862553.7037816,
+    "ast_hash": "3c46f8ad006874260614ed8657d02307",
+    "semantic_hash": ""
+  },
+  ".claude/skills/graphify/references/transcribe.md": {
+    "mtime": 1784862553.7040741,
+    "ast_hash": "67b6a5fa6c0974e18f60db9f8932fbd8",
+    "semantic_hash": ""
+  },
+  ".claude/skills/graphify/references/update.md": {
+    "mtime": 1784862553.7041576,
+    "ast_hash": "9378bd03d56baaf78bd738ab3848f142",
+    "semantic_hash": ""
+  },
+  ".github/workflows/security.yml": {
+    "mtime": 1785377554.403558,
+    "ast_hash": "a9aa42031b6b5d349b120a802c3678c0",
+    "semantic_hash": ""
+  },
+  ".github/workflows/solidity.yml": {
+    "mtime": 1785510929.3587224,
+    "ast_hash": "b432c7627d02e70bf56555c8a60f0d51",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1786123158.492592,
+    "ast_hash": "45863f19eaabaf46b84397b4b0716276",
+    "semantic_hash": ""
+  },
+  "CLAUDE.md": {
+    "mtime": 1786286361.5908337,
+    "ast_hash": "e321f7df454561a974ba70eb7af626ae",
+    "semantic_hash": ""
+  },
+  "DevOps/docker/README.md": {
+    "mtime": 1785994224.3143,
+    "ast_hash": "f466bcf665ca4591d37c0edf9ee4dc9c",
+    "semantic_hash": ""
+  },
+  "DevOps/docker/docker-compose.prod.yml": {
+    "mtime": 1785994224.3144672,
+    "ast_hash": "8d51d8540cc2313499ab0540395e0d5d",
+    "semantic_hash": ""
+  },
+  "DevOps/docker/docker-compose.yml": {
+    "mtime": 1785994224.314537,
+    "ast_hash": "6decfada24779233e1a2a02f72a199ea",
+    "semantic_hash": ""
+  },
+  "DevOps/docker/monitoring/grafana/provisioning/dashboards/dashboards.yml": {
+    "mtime": 1785994224.3149972,
+    "ast_hash": "2c8db9e1c74bb5d89b9ca3b92364f36d",
+    "semantic_hash": ""
+  },
+  "DevOps/docker/monitoring/grafana/provisioning/datasources/datasources.yml": {
+    "mtime": 1785994224.3150876,
+    "ast_hash": "9216a60b004630c8caa4c5d1f12379c0",
+    "semantic_hash": ""
+  },
+  "DevOps/docker/monitoring/loki/local-config.yaml": {
+    "mtime": 1785994224.3151734,
+    "ast_hash": "0ceda663ebf476f84915cbce8c83b7a6",
+    "semantic_hash": ""
+  },
+  "DevOps/docker/monitoring/prometheus/prometheus.yml": {
+    "mtime": 1785994224.3152714,
+    "ast_hash": "f2d5dfc4269ae85f306db178cad068e3",
+    "semantic_hash": ""
+  },
+  "DevOps/docker/monitoring/promtail/config.yml": {
+    "mtime": 1785994224.3153696,
+    "ast_hash": "cb475462955e6be5a72adcdc4c5263be",
+    "semantic_hash": ""
+  },
+  "DevOps/helm/qanto-node/Chart.yaml": {
+    "mtime": 1775491137.8063867,
+    "ast_hash": "0dbbacc5915058c018088d3d252b6a89",
+    "semantic_hash": ""
+  },
+  "DevOps/helm/qanto-node/templates/configmap.yaml": {
+    "mtime": 1786364235.2613523,
+    "ast_hash": "3f467c8d9179b663ca9838669992d4fb",
+    "semantic_hash": ""
+  },
+  "DevOps/helm/qanto-node/templates/deployment.yaml": {
+    "mtime": 1782786110.7763305,
+    "ast_hash": "f1d1b31661200017b8c8e6d45f5199c2",
+    "semantic_hash": ""
+  },
+  "DevOps/helm/qanto-node/templates/pvc.yaml": {
+    "mtime": 1758275803.826912,
+    "ast_hash": "5e6af279e8acdf9e6caeb4707146c045",
+    "semantic_hash": ""
+  },
+  "DevOps/helm/qanto-node/templates/service.yaml": {
+    "mtime": 1782786123.7506135,
+    "ast_hash": "ac0a39b6176e13de84384af5adcab7fb",
+    "semantic_hash": ""
+  },
+  "DevOps/helm/qanto-node/values.yaml": {
+    "mtime": 1783138611.7826097,
+    "ast_hash": "91e86c3b88d9c4c768a4406d44c145e3",
+    "semantic_hash": ""
+  },
+  "DevOps/infrastructure/sentinel/docker-compose.yml": {
+    "mtime": 1783138595.954611,
+    "ast_hash": "41a5ac39eb137c3a3f77321d239f2f51",
+    "semantic_hash": ""
+  },
+  "DevOps/k8s/configmap.yaml": {
+    "mtime": 1786364235.2614293,
+    "ast_hash": "3707febdbf2f76af7a470144f99987c2",
+    "semantic_hash": ""
+  },
+  "DevOps/k8s/manifests/qanto-node-configmap.yaml": {
+    "mtime": 1786364235.261611,
+    "ast_hash": "0a54c1a4efc50d2fef85328cac0f8ae3",
+    "semantic_hash": ""
+  },
+  "DevOps/k8s/manifests/qanto-node-deployment.yaml": {
+    "mtime": 1783138586.5776732,
+    "ast_hash": "d3ca500ec274e3063cbea1bf7267b77b",
+    "semantic_hash": ""
+  },
+  "DevOps/k8s/manifests/qanto-node-pvc.yaml": {
+    "mtime": 1782873958.5482643,
+    "ast_hash": "ffc63b7e8445c21c6f99e3920f6f6eec",
+    "semantic_hash": ""
+  },
+  "DevOps/k8s/manifests/qanto-node-service.yaml": {
+    "mtime": 1782873958.53588,
+    "ast_hash": "01825bb928f9d8c0f5dbf2c3a6c2beb9",
+    "semantic_hash": ""
+  },
+  "DevOps/k8s/monitoring/prometheus-values.yaml": {
+    "mtime": 1783138620.8579202,
+    "ast_hash": "646f4fe4ed5c15638da4c0a8e9263d25",
+    "semantic_hash": ""
+  },
+  "DevOps/k8s/namespace.yaml": {
+    "mtime": 1775491137.808816,
+    "ast_hash": "e0cc009e766203ad61559229183669bf",
+    "semantic_hash": ""
+  },
+  "DevOps/k8s/statefulset.yaml": {
+    "mtime": 1785994224.31692,
+    "ast_hash": "56b4dc74180c4a2e32e8af1aa2dcaabc",
+    "semantic_hash": ""
+  },
+  "Docs/EXTERNAL_AUDIT_REPORT_2026-07-31.md": {
+    "mtime": 1785510496.571309,
+    "ast_hash": "1265a48d3ca2e0b03cac5835c52116e4",
+    "semantic_hash": ""
+  },
+  "Docs/ROADMAP.md": {
+    "mtime": 1785993546.0019047,
+    "ast_hash": "b1362af277e748b296c241b7f1438d37",
+    "semantic_hash": ""
+  },
+  "Docs/SECURITY_REVIEW_REPORT.md": {
+    "mtime": 1785509993.1763363,
+    "ast_hash": "0e271c358092c7fd7a6057d9eb157ed0",
+    "semantic_hash": ""
+  },
+  "Docs/architecture/CANONICAL_RUNTIME.md": {
+    "mtime": 1785912265.9175074,
+    "ast_hash": "641a399115de0a8c72b07b78cf16e4da",
+    "semantic_hash": ""
+  },
+  "Docs/architecture/CODEBASE_MAP.md": {
+    "mtime": 1785912243.6772954,
+    "ast_hash": "63ce236cdd1642c749ffc6550a1c7cc4",
+    "semantic_hash": ""
+  },
+  "Docs/architecture/DUPLICATION_MAP.md": {
+    "mtime": 1785912255.9145281,
+    "ast_hash": "0526a00b52992b6a0e811b3b4629d0a1",
+    "semantic_hash": ""
+  },
+  "Docs/bridge-wqnto.md": {
+    "mtime": 1786364235.2618432,
+    "ast_hash": "b00b96f7b928e3e7ed605f9134279feb",
+    "semantic_hash": ""
+  },
+  "Docs/cohort-a-rehearsal.md": {
+    "mtime": 1785993546.0023472,
+    "ast_hash": "14437ed5b93180581776049cd5e61da3",
+    "semantic_hash": ""
+  },
+  "Docs/external_review_package.md": {
+    "mtime": 1785993546.0026088,
+    "ast_hash": "5b21050bb4d4d1d9a53dfa7c220cd4b6",
+    "semantic_hash": ""
+  },
+  "Docs/guide/airdrop_guide.md": {
+    "mtime": 1786364235.2619195,
+    "ast_hash": "8f0f9fedb27dcbae4a780459a8a61b7f",
+    "semantic_hash": ""
+  },
+  "Docs/guide/cloudflare-pages-coming-soon.md": {
+    "mtime": 1785993546.0031574,
+    "ast_hash": "88e1c80ec028e2c178b5732d3be9939d",
+    "semantic_hash": ""
+  },
+  "Docs/guide/join-testnet-guide.md": {
+    "mtime": 1785993546.0033615,
+    "ast_hash": "2c0f67750c373a86718ef96a998a7a8f",
+    "semantic_hash": ""
+  },
+  "Docs/guide/qantowallet-guide.md": {
+    "mtime": 1785993546.0035539,
+    "ast_hash": "dcdec472738f86f62722e1deeca24303",
+    "semantic_hash": ""
+  },
+  "Docs/guide/qds-wallet-guide.md": {
+    "mtime": 1785993546.0038242,
+    "ast_hash": "159f418dba68e52cdc47efa9c07bac57",
+    "semantic_hash": ""
+  },
+  "Docs/guide/testnet-guide.md": {
+    "mtime": 1785993546.0040095,
+    "ast_hash": "5f2d9992a4886cef30e5b39e2a19fdee",
+    "semantic_hash": ""
+  },
+  "Docs/guide/wallet-env-password-guide.md": {
+    "mtime": 1785994224.3173275,
+    "ast_hash": "b45f7f2c0bfc15db14fc36288c094e07",
+    "semantic_hash": ""
+  },
+  "Docs/node-operator-guide.md": {
+    "mtime": 1785993546.0043726,
+    "ast_hash": "346403f91cf06fea07fc743b87cd34ea",
+    "semantic_hash": ""
+  },
+  "Docs/plans/2026-06-30-codebase-audit-report.md": {
+    "mtime": 1785993546.0046039,
+    "ast_hash": "5a561116f0ba2fb4836de48ff4c65cc0",
+    "semantic_hash": ""
+  },
+  "Docs/plans/2026-06-30-remediation-and-compliance-plan.md": {
+    "mtime": 1785993546.0048952,
+    "ast_hash": "805066fd2de74dc9a7d25a72b3fa26e4",
+    "semantic_hash": ""
+  },
+  "Docs/plans/architecture-detail.md": {
+    "mtime": 1785993546.0050604,
+    "ast_hash": "dd7652499abdda2e98f2edbe77ddeaea",
+    "semantic_hash": ""
+  },
+  "Docs/plans/architecture.md": {
+    "mtime": 1785993546.0052476,
+    "ast_hash": "5154e7e1a25d7df282bb2d53c72b8199",
+    "semantic_hash": ""
+  },
+  "Docs/plans/cohort-a-operational-launch-plan.md": {
+    "mtime": 1785993546.0054908,
+    "ast_hash": "ce9f43c59b69a1db20019a84e09805e1",
+    "semantic_hash": ""
+  },
+  "Docs/plans/dependency-migration-plan.md": {
+    "mtime": 1785993546.0056865,
+    "ast_hash": "3dc2fe0b08bca49199c5cdbe3a230b4d",
+    "semantic_hash": ""
+  },
+  "Docs/plans/deployment-plan.md": {
+    "mtime": 1785993546.0058713,
+    "ast_hash": "5dd8718b4a7bab1a39c8c965c19e0297",
+    "semantic_hash": ""
+  },
+  "Docs/plans/fee-model-plan.md": {
+    "mtime": 1785993546.006033,
+    "ast_hash": "d5f1bb7ee22d063ad20116c11c511d66",
+    "semantic_hash": ""
+  },
+  "Docs/plans/optimizations-plan.md": {
+    "mtime": 1785993546.0062084,
+    "ast_hash": "1732fa6e884eb6a68ddfc9a9c1f602ba",
+    "semantic_hash": ""
+  },
+  "Docs/plans/security-audit-plan.md": {
+    "mtime": 1785993546.006288,
+    "ast_hash": "f8db2e46fa00e2516228e611122667da",
+    "semantic_hash": ""
+  },
+  "Docs/plans/testnet-plan.md": {
+    "mtime": 1785993546.0064552,
+    "ast_hash": "355f57e7e91966c244e492774d4192f1",
+    "semantic_hash": ""
+  },
+  "Docs/plans/tokenomics-plan.md": {
+    "mtime": 1785993546.0065446,
+    "ast_hash": "6bd3b3b2431edcb08578bbefab0decef",
+    "semantic_hash": ""
+  },
+  "Docs/qanto/high_throughput_storage.md": {
+    "mtime": 1785993546.0066228,
+    "ast_hash": "f23bfb6ff55973d4ed72b009bb8a0ec5",
+    "semantic_hash": ""
+  },
+  "Docs/qanto/network_compression.md": {
+    "mtime": 1785993546.006701,
+    "ast_hash": "fb895af13ef9545a75bf57e073f038c4",
+    "semantic_hash": ""
+  },
+  "Docs/qanto/qanhash_profiling.md": {
+    "mtime": 1785993546.00677,
+    "ast_hash": "10477bc758f1f9f26becdff8c5261b1c",
+    "semantic_hash": ""
+  },
+  "Docs/qanto/real_time_wallet_balance.md": {
+    "mtime": 1785993546.0068336,
+    "ast_hash": "20c0d07195f294fc389ff5e771d5e7c7",
+    "semantic_hash": ""
+  },
+  "Docs/qanto/serialization_simd.md": {
+    "mtime": 1785993546.0068984,
+    "ast_hash": "0aef5363750c47ae332bcc89d044a296",
+    "semantic_hash": ""
+  },
+  "Docs/rpc-api.md": {
+    "mtime": 1785993546.0071516,
+    "ast_hash": "784582b2d465db5cadd77e1b9a373d41",
+    "semantic_hash": ""
+  },
+  "Docs/scoring benchmark/SCORING_SUMMARY.md": {
+    "mtime": 1785993546.0072289,
+    "ast_hash": "c7cf4a61ee52d04f9b1395583f060357",
+    "semantic_hash": ""
+  },
+  "Docs/scoring benchmark/layer0_rubric.md": {
+    "mtime": 1785993546.0074902,
+    "ast_hash": "00b27d8f046098d52697c80aa7c43c2b",
+    "semantic_hash": ""
+  },
+  "Docs/security/AUDIT_BUILD_GUIDE.md": {
+    "mtime": 1785913858.8492997,
+    "ast_hash": "58d21eb08bb59d52c2603f07fa3edfce",
+    "semantic_hash": ""
+  },
+  "Docs/security/CONSENSUS_INVARIANTS.md": {
+    "mtime": 1785913871.6432216,
+    "ast_hash": "2f68ef028cd0647f4e1c6feb449c8a1d",
+    "semantic_hash": ""
+  },
+  "Docs/security/CRYPTOGRAPHY.md": {
+    "mtime": 1785913866.4324164,
+    "ast_hash": "d6cdb80862ece738763d74068929e26b",
+    "semantic_hash": ""
+  },
+  "Docs/security/INTERNAL_CERTIK_READINESS.md": {
+    "mtime": 1785913920.9992588,
+    "ast_hash": "8f89bd3c32980afc66244304bbcb901e",
+    "semantic_hash": ""
+  },
+  "Docs/security/KEY_MANAGEMENT.md": {
+    "mtime": 1785913851.6896915,
+    "ast_hash": "5987ddf3cca5f6902b1e377871b67125",
+    "semantic_hash": ""
+  },
+  "Docs/security/P2P_SECURITY.md": {
+    "mtime": 1785913846.2178478,
+    "ast_hash": "c9c09e0af01b7687a467a1457fc61401",
+    "semantic_hash": ""
+  },
+  "Docs/threat_model.md": {
+    "mtime": 1785993546.008033,
+    "ast_hash": "698253553a7cb264720533d2593967bc",
+    "semantic_hash": ""
+  },
+  "Docs/upgrade-procedure.md": {
+    "mtime": 1785993546.0082095,
+    "ast_hash": "22c05b844ac82ed1df02a4a01e22543b",
+    "semantic_hash": ""
+  },
+  "Docs/whitepaper/Qanto-Protocol-Executive-Summary.md": {
+    "mtime": 1785993546.0084195,
+    "ast_hash": "cbad94259bc2cc0ec1e2d8f65bceb7e9",
+    "semantic_hash": ""
+  },
+  "Frontend/qanto-dapp/README.md": {
+    "mtime": 1785993546.0146554,
+    "ast_hash": "f6e3faf55d738cf2affe1b44195f27cf",
+    "semantic_hash": ""
+  },
+  "Frontend/qanto-dapp/index.html": {
+    "mtime": 1785993546.0149107,
+    "ast_hash": "6110a52c640223b38f5672cbd378827d",
+    "semantic_hash": ""
+  },
+  "Frontend/qantoscan/README.md": {
+    "mtime": 1785993546.0228882,
+    "ast_hash": "10495bfcc6c568eca4dab6dd5df795d3",
+    "semantic_hash": ""
+  },
+  "Frontend/qantoscan/index.html": {
+    "mtime": 1785993546.023055,
+    "ast_hash": "21db8729e043e305f1b26081e1a18f5e",
+    "semantic_hash": ""
+  },
+  "Frontend/website/WAITLIST_BACKEND_SETUP.md": {
+    "mtime": 1785993546.0263512,
+    "ast_hash": "a9869aeb48c1c906dbb19afe0302689c",
+    "semantic_hash": ""
+  },
+  "Frontend/website/airdrop.html": {
+    "mtime": 1785993546.0266123,
+    "ast_hash": "dfb0484e2bd3d354572105176f59f813",
+    "semantic_hash": ""
+  },
+  "Frontend/website/analytics.html": {
+    "mtime": 1785993546.0269902,
+    "ast_hash": "e716cbe42a85e6ff927516ee19ade20f",
+    "semantic_hash": ""
+  },
+  "Frontend/website/bridge.html": {
+    "mtime": 1785993546.031811,
+    "ast_hash": "076883b651483a4bdd8b7986d1fe68ff",
+    "semantic_hash": ""
+  },
+  "Frontend/website/explorer.html": {
+    "mtime": 1785993546.0330381,
+    "ast_hash": "e98a1f8c8e19f736d11ee5cffef9ec92",
+    "semantic_hash": ""
+  },
+  "Frontend/website/faucet.html": {
+    "mtime": 1785993546.03324,
+    "ast_hash": "0b17a9542c4438cb7c6b9f4593173f62",
+    "semantic_hash": ""
+  },
+  "Frontend/website/genesis.html": {
+    "mtime": 1785993546.0340765,
+    "ast_hash": "fb79d3fcbee5c6405b3ed9d1f313a554",
+    "semantic_hash": ""
+  },
+  "Frontend/website/index.html": {
+    "mtime": 1785993546.03431,
+    "ast_hash": "7ad14a9aa7b108096ab4b518ea06413d",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/airdrop/index.html": {
+    "mtime": 1785993546.0356183,
+    "ast_hash": "3129eda7f5eff3310c76b5da55c26bcf",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/bridge/index.html": {
+    "mtime": 1785993546.037818,
+    "ast_hash": "6f512a6cdd7bcc6300d32a742c3d5b96",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/citizen/index.html": {
+    "mtime": 1785993546.0379536,
+    "ast_hash": "96e6a0b77ea50ebe8ccb49e121eeaf29",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/darkpool/index.html": {
+    "mtime": 1785993546.0381956,
+    "ast_hash": "bd15931ed8ed2cacc07ec5acfd023b91",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/doc/index.html": {
+    "mtime": 1785993546.038281,
+    "ast_hash": "44a713fc3c6ad0ee405befc0725ea7d1",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/ecosystem/index.html": {
+    "mtime": 1785993546.0383966,
+    "ast_hash": "bf73eb37fbee14ed6f5109c4b660b4f7",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/explorer/index.html": {
+    "mtime": 1785993546.0385082,
+    "ast_hash": "f6b26c0f94d72d07d3b8381ff8f910a4",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/farm/index.html": {
+    "mtime": 1785993546.0386224,
+    "ast_hash": "d3c11b73bbfb3d36ab89c72e315d20be",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/gov/index.html": {
+    "mtime": 1785993546.0387015,
+    "ast_hash": "dbfa0515e5b189fe6198a825e32e15b3",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/leaderboard/index.html": {
+    "mtime": 1785993546.0388947,
+    "ast_hash": "96b773e5360034d6b8c49165fe9143f8",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/apps.html": {
+    "mtime": 1785993546.0391612,
+    "ast_hash": "18683e045b09cbdd5be179d21c902bb4",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/autonomy.html": {
+    "mtime": 1785993546.0392907,
+    "ast_hash": "996bbbfd2c23561c0ee7cfe58d539e0f",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/checkout.html": {
+    "mtime": 1785993546.0393763,
+    "ast_hash": "e57ab158960a9bd49e9703f4b322b93b",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/command.html": {
+    "mtime": 1785993546.0395646,
+    "ast_hash": "eea90aa12ee892b72fb001fbf704bfb8",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/consciousness.html": {
+    "mtime": 1785993546.0396585,
+    "ast_hash": "2f6ee42e592c1574fe84458971882297",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/consensus.html": {
+    "mtime": 1785993546.0398364,
+    "ast_hash": "233b1615838826dd5658b07e2ca92ae5",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/diplomacy.html": {
+    "mtime": 1785993546.0400875,
+    "ast_hash": "01282cd05d6764f7bf91a7ab72c8a380",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/docs.html": {
+    "mtime": 1785993546.0402765,
+    "ast_hash": "e86eb4102c32f1a37ca5b73fcf8e5a49",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/eternity.html": {
+    "mtime": 1785993546.04036,
+    "ast_hash": "bd3d5b3284bd2ff9f4cc1706cd27d967",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/existence.html": {
+    "mtime": 1785993546.0404458,
+    "ast_hash": "6f4474f78f57fd3a28b859fc3e737839",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/finality.html": {
+    "mtime": 1785993546.040527,
+    "ast_hash": "5af51311e44021fd1339c0a13a891415",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/gateway.html": {
+    "mtime": 1785993546.0406218,
+    "ast_hash": "32e8f41cc6720a9866da83fe27475d83",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/genesis.html": {
+    "mtime": 1785993546.040743,
+    "ast_hash": "aa8a2aed6f262eba40e2b2ad2ae71900",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/ghost.html": {
+    "mtime": 1785993546.0408177,
+    "ast_hash": "5dd3ac08e6c5bb9eeb862f693563b78c",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/governance.html": {
+    "mtime": 1785993546.0408926,
+    "ast_hash": "413dba8c56eb232f2ca78e9a95d14f88",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/harmony.html": {
+    "mtime": 1785993546.040957,
+    "ast_hash": "696d81742e538020f60adaffb388a711",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/index.html": {
+    "mtime": 1785993546.0410552,
+    "ast_hash": "5d9104256686a84573907cd14c88011d",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/inference.html": {
+    "mtime": 1785993546.0411222,
+    "ast_hash": "e4e0c5f1107cf96142e3b0dd544e20d7",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/integration.html": {
+    "mtime": 1785993546.0411916,
+    "ast_hash": "20a0a6a8360d8f713dd7c0949291057a",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/intelligence.html": {
+    "mtime": 1785993546.0412576,
+    "ast_hash": "9873f428a17025b7bc9ce8e9d8dc9cd1",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/judge.html": {
+    "mtime": 1785993546.0413246,
+    "ast_hash": "021171eda71388069112635113a7fe6d",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/legacy.html": {
+    "mtime": 1785993546.0414307,
+    "ast_hash": "dbbb126fa4e3391d3858ea656aec26de",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/market.html": {
+    "mtime": 1785993546.041512,
+    "ast_hash": "4b840c52e839a319695f71659032ab67",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/mirror.html": {
+    "mtime": 1785993546.0415895,
+    "ast_hash": "ff7281f4d187035aa025c3ee3e7aaa75",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/mobile.html": {
+    "mtime": 1785993546.0417855,
+    "ast_hash": "fc30ad41ed33904cddef823c03276e24",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/monitor.html": {
+    "mtime": 1785993546.0418694,
+    "ast_hash": "49de993e6158a50d656ffb4fefee4c2a",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/mutation.html": {
+    "mtime": 1785993546.0419507,
+    "ast_hash": "b87b7f4ad9a6420c7427616d91f35d3c",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/omnipresence.html": {
+    "mtime": 1785993546.0420346,
+    "ast_hash": "4ab9a6eb333c99423f15c0680c1dd506",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/optimizer.html": {
+    "mtime": 1785993546.0421252,
+    "ast_hash": "9243edcc1c9788d51c76510885cefd25",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/parliament.html": {
+    "mtime": 1785993546.0423486,
+    "ast_hash": "d4d1d4ac7bb5cd174192b0041254af22",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/predict.html": {
+    "mtime": 1785993546.0424235,
+    "ast_hash": "ba321f61188f08b8b65feedbd2a57110",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/reality.html": {
+    "mtime": 1785993546.0425172,
+    "ast_hash": "82c2d5028fe8616a13cb0929c3cdad4d",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/rebalancer.html": {
+    "mtime": 1785993546.0426056,
+    "ast_hash": "b6fbf4b19f777a33f257bc24964293c4",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/recovery.html": {
+    "mtime": 1785993546.0426834,
+    "ast_hash": "4c92220dfd31f38fc3a7835f9315921e",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/registry.html": {
+    "mtime": 1785993546.0427618,
+    "ast_hash": "d091cf6f0c06a4d879531585a754d541",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/singularity.html": {
+    "mtime": 1785993546.0428317,
+    "ast_hash": "25d39d63659bc35271bd1b3c398edd49",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/sovereignty.html": {
+    "mtime": 1785993546.0429318,
+    "ast_hash": "175ba1d3df24993cc250da643f28a69c",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/synthesis.html": {
+    "mtime": 1785993546.0432665,
+    "ast_hash": "7e2e90d14c9b659d7b977ed0791531b4",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/terminal.html": {
+    "mtime": 1785993546.0433676,
+    "ast_hash": "8e93b76b50d47871f9ad21a182efe846",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/transcendence.html": {
+    "mtime": 1785993546.0434587,
+    "ast_hash": "a3f21e817c6b9dd33f4c148da3647607",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/treasury_v2.html": {
+    "mtime": 1785993546.043574,
+    "ast_hash": "9b05e1fe37a751cbba3d6866fa70c8f7",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/ubi.html": {
+    "mtime": 1785993546.0436587,
+    "ast_hash": "53a202c9ada673cd7b00cb6a68888a06",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/ubiquity.html": {
+    "mtime": 1785993546.0437412,
+    "ast_hash": "7b5502a234397de077643f44c96287be",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/unboxing.html": {
+    "mtime": 1785993546.0438356,
+    "ast_hash": "076e7ba71669d93668a70d9517cac7a4",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/unity.html": {
+    "mtime": 1785993546.04395,
+    "ast_hash": "bc15851641a4f77eb11d47ac1af0d38a",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/universe.html": {
+    "mtime": 1785993546.0440838,
+    "ast_hash": "8249298e80ef9a89a71932a89cfea78d",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/uptime.html": {
+    "mtime": 1785993546.0441754,
+    "ast_hash": "04e8d8c36f2b9f5006318667a8d23ed5",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/vault.html": {
+    "mtime": 1785993546.0443091,
+    "ast_hash": "a27a87b314f40c0f09b364a123fa3d6f",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/veracity.html": {
+    "mtime": 1785993546.044391,
+    "ast_hash": "0f235a8826b378514f2012e0d714db14",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/os/workflow.html": {
+    "mtime": 1785993546.0444791,
+    "ast_hash": "5e1816d1dbe0a2448560bc884665e452",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/quests/index.html": {
+    "mtime": 1785993546.0445938,
+    "ast_hash": "e0ed916b60c4e922122d3840aa471df5",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/referral/index.html": {
+    "mtime": 1785993546.0447211,
+    "ast_hash": "8b3ee1f4f9459e22d63ffbad41c3c8d3",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/treasury/index.html": {
+    "mtime": 1785993546.0448978,
+    "ast_hash": "0b6100db05cf17e866a40a12aeeb2fb5",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/whitepaper/index.html": {
+    "mtime": 1785993546.0450099,
+    "ast_hash": "065ef0a7d9731523e7f743da35d76af5",
+    "semantic_hash": ""
+  },
+  "Frontend/website/qantoswap.html": {
+    "mtime": 1785993546.0451462,
+    "ast_hash": "5d63c2cd480748f7a9b3970fe04e642e",
+    "semantic_hash": ""
+  },
+  "Frontend/website/saga.html": {
+    "mtime": 1785993546.0453844,
+    "ast_hash": "2ab862cbf60c910852472f649ac14bcc",
+    "semantic_hash": ""
+  },
+  "Frontend/website/staking.html": {
+    "mtime": 1785993546.0459025,
+    "ast_hash": "76d61e9be23728cd49a85ecbb4dabdc8",
+    "semantic_hash": ""
+  },
+  "Frontend/website/status.html": {
+    "mtime": 1785993546.046129,
+    "ast_hash": "2db750c9838125a584504314d4c9b742",
+    "semantic_hash": ""
+  },
+  "Frontend/website/tge.html": {
+    "mtime": 1785993546.046844,
+    "ast_hash": "9d281a8ba0727ba370d41fa1b82b1659",
+    "semantic_hash": ""
+  },
+  "Frontend/website/whitepaper.html": {
+    "mtime": 1785993546.0475063,
+    "ast_hash": "6a673e0ed610491ae0174115227b1934",
+    "semantic_hash": ""
+  },
+  "PUBLIC_TESTNET_LAUNCH.md": {
+    "mtime": 1785994224.3199918,
+    "ast_hash": "5fd1c4f9fb73f852bc53ac7344f1d8f9",
+    "semantic_hash": ""
+  },
+  "RTK.md": {
+    "mtime": 1786121638.960075,
+    "ast_hash": "d507d243a3bc89b87be7743b2e3b8bc3",
+    "semantic_hash": ""
+  },
+  "SCORING_REMEDIATION.md": {
+    "mtime": 1785384108.1381087,
+    "ast_hash": "146a765a4da869ae204551bbf95b92e4",
+    "semantic_hash": ""
+  },
+  "Scripts/tools/relayer/README.md": {
+    "mtime": 1785993546.0995958,
+    "ast_hash": "b3b91d55f23628ca94af439e9d34fd98",
+    "semantic_hash": ""
+  },
+  "TESTNET_ARCHITECTURE.md": {
+    "mtime": 1785994224.3548877,
+    "ast_hash": "9f2033ce8e6870ab0929e403b928af4c",
+    "semantic_hash": ""
+  },
+  "TESTNET_READINESS_AUDIT.md": {
+    "mtime": 1785994224.3549755,
+    "ast_hash": "1a14fb95967d6fb24517e78e2d21701b",
+    "semantic_hash": ""
+  },
+  "audit-results/final/FINAL_REPORT.md": {
+    "mtime": 1785921810.9730668,
+    "ast_hash": "a45785858e3bb55a20e1ee24972723eb",
+    "semantic_hash": ""
+  },
+  "grafana/datasources/prometheus.yml": {
+    "mtime": 1784361770.9509423,
+    "ast_hash": "bacf08cf813fca4357617655d6e94e13",
+    "semantic_hash": ""
+  },
+  "patches/plist/CHANGELOG.md": {
+    "mtime": 1783067702.1431842,
+    "ast_hash": "77194f589f41f05ebbf1b4ff1d4c5988",
+    "semantic_hash": ""
+  },
+  "patches/plist/README.md": {
+    "mtime": 1783067702.144582,
+    "ast_hash": "b42796789992c7eb6b514678594268c0",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/README.md": {
+    "mtime": 1785993546.1053693,
+    "ast_hash": "2806d68c0afde0b93c235a7db788a5b0",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/index.html": {
+    "mtime": 1785993546.1055672,
+    "ast_hash": "0d0f476d04137773fc2c3a8e82eeeb36",
+    "semantic_hash": ""
+  },
+  "sdk/javascript/README.md": {
+    "mtime": 1783138891.5087273,
+    "ast_hash": "11057fff391939b51f1e35e98840bf12",
+    "semantic_hash": ""
+  },
+  "sdk/python/README.md": {
+    "mtime": 1783138899.2901208,
+    "ast_hash": "d436fe2eded63cee07b6c9c3caea558b",
+    "semantic_hash": ""
+  },
+  "Docs/whitepaper/Qanto-whitepaper.pdf": {
+    "mtime": 1785994224.3190136,
+    "ast_hash": "412e61c9527d6548e8b3d371766e812e",
+    "semantic_hash": ""
+  },
+  "Frontend/qanto-dapp/public/favicon.svg": {
+    "mtime": 1785993546.0161986,
+    "ast_hash": "7e840862161341271697daa99a40d76b",
+    "semantic_hash": ""
+  },
+  "Frontend/qanto-dapp/public/icons.svg": {
+    "mtime": 1785993546.0163507,
+    "ast_hash": "3b4fcfcf393eca4d264dca4a4663bc37",
+    "semantic_hash": ""
+  },
+  "Frontend/qanto-dapp/src/assets/hero.png": {
+    "mtime": 1785993546.0170379,
+    "ast_hash": "aead493361b27e7510691c5d7072dfc1",
+    "semantic_hash": ""
+  },
+  "Frontend/qanto-dapp/src/assets/react.svg": {
+    "mtime": 1785993546.01712,
+    "ast_hash": "f0402b67b6ce880f65666bb49e841696",
+    "semantic_hash": ""
+  },
+  "Frontend/qanto-dapp/src/assets/vite.svg": {
+    "mtime": 1785993546.0172324,
+    "ast_hash": "9960a24288958394ac50e57ff638b036",
+    "semantic_hash": ""
+  },
+  "Frontend/qantoscan/public/favicon.svg": {
+    "mtime": 1785993546.024072,
+    "ast_hash": "7e840862161341271697daa99a40d76b",
+    "semantic_hash": ""
+  },
+  "Frontend/qantoscan/public/icons.svg": {
+    "mtime": 1785993546.0242176,
+    "ast_hash": "3b4fcfcf393eca4d264dca4a4663bc37",
+    "semantic_hash": ""
+  },
+  "Frontend/website/assets/img/quantum_landscape.jpg": {
+    "mtime": 1785993546.0291462,
+    "ast_hash": "d441d49991446c6efdb10e0aaf17552c",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/assets/images/icon-192.png": {
+    "mtime": 1785993546.0359163,
+    "ast_hash": "3521e6b6ab089d140416e8cf07353b99",
+    "semantic_hash": ""
+  },
+  "Frontend/website/public/assets/images/icon-512.png": {
+    "mtime": 1785993546.0362096,
+    "ast_hash": "7f5601584110dca49443fd22a29c082c",
+    "semantic_hash": ""
+  },
+  "Frontend/website/splash-1024.svg": {
+    "mtime": 1785993546.0456831,
+    "ast_hash": "61813d5844bb2f71d4e8c8d56bc376bc",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/public/tauri.svg": {
+    "mtime": 1785993546.1063344,
+    "ast_hash": "f49b888a6830a38f02ffeb65891186b1",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/public/vite.svg": {
+    "mtime": 1785993546.1065114,
+    "ast_hash": "8e3a10e157f75ada21ab742c022d5430",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/icons/128x128.png": {
+    "mtime": 1785993546.1075125,
+    "ast_hash": "fdd248e915476e6212afcb096c330992",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/icons/128x128@2x.png": {
+    "mtime": 1785993546.1077118,
+    "ast_hash": "fd32cf41af4c52d279b92e9c61676130",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/icons/32x32.png": {
+    "mtime": 1785993546.1078985,
+    "ast_hash": "1344a8f2569a67c695807140fb49cf10",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/icons/Square107x107Logo.png": {
+    "mtime": 1785993546.1081364,
+    "ast_hash": "24754965fb63f23a0fad45db0ef2554b",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/icons/Square142x142Logo.png": {
+    "mtime": 1785993546.1083171,
+    "ast_hash": "55d92879c6bd61fc7e79a84e1dcc51f6",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/icons/Square150x150Logo.png": {
+    "mtime": 1785993546.1084929,
+    "ast_hash": "6e41a89b0a2b484f3e7f1b3a5db65730",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/icons/Square284x284Logo.png": {
+    "mtime": 1785993546.1086788,
+    "ast_hash": "b5f57838809a4d93eed8ef656ce7c2c4",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/icons/Square30x30Logo.png": {
+    "mtime": 1785993546.1088476,
+    "ast_hash": "7a18f38b895070303fda351bd8ae757d",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/icons/Square310x310Logo.png": {
+    "mtime": 1785993546.1091435,
+    "ast_hash": "eeabbd0c2b13960e089e468c20f99e51",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/icons/Square44x44Logo.png": {
+    "mtime": 1785993546.1093137,
+    "ast_hash": "42c67a38757b409cec4b6eb0c25c714c",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/icons/Square71x71Logo.png": {
+    "mtime": 1785993546.1094842,
+    "ast_hash": "0670843e2fc39a0e53817a47b2b3399d",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/icons/Square89x89Logo.png": {
+    "mtime": 1785993546.109641,
+    "ast_hash": "2bfa099bf584686f0dd98cfafb10bda3",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/icons/StoreLogo.png": {
+    "mtime": 1785993546.1098144,
+    "ast_hash": "02859e2326344ae7c9559f1af0abba34",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src-tauri/icons/icon.png": {
+    "mtime": 1785993546.1112666,
+    "ast_hash": "3fa4420986811b429d7f1654da77ac3b",
+    "semantic_hash": ""
+  },
+  "qanto-desktop-wallet/src/assets/react.svg": {
+    "mtime": 1785993546.1142297,
+    "ast_hash": "f0402b67b6ce880f65666bb49e841696",
+    "semantic_hash": ""
+  },
+  "qanto-desktop/src-tauri/icons/128x128.png": {
+    "mtime": 1780129472.79607,
+    "ast_hash": "91e42db1c66c0b276abf6234dc50b2eb",
+    "semantic_hash": ""
+  },
+  "qanto-desktop/src-tauri/icons/128x128@2x.png": {
+    "mtime": 1780129472.7961528,
+    "ast_hash": "91e42db1c66c0b276abf6234dc50b2eb",
+    "semantic_hash": ""
+  },
+  "qanto-desktop/src-tauri/icons/32x32.png": {
+    "mtime": 1780129472.7959704,
+    "ast_hash": "91e42db1c66c0b276abf6234dc50b2eb",
+    "semantic_hash": ""
+  },
+  ".claude/settings.local.json": {
+    "mtime": 1786606668.6050637,
+    "ast_hash": "e49436488a826dddff3317f5ff192d99",
+    "semantic_hash": ""
+  },
+  "Docs/audits/2026-08-08-master-a-z/module-graph.json": {
+    "mtime": 1786124283.062337,
+    "ast_hash": "b4441f882da19577838936559c876685",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-consensus-primitives/src/hash.rs": {
+    "mtime": 1786364235.2632644,
+    "ast_hash": "1c2549a96689b4f6224a9fb3a74b1943",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-consensus-primitives/src/lib.rs": {
+    "mtime": 1786364235.2634814,
+    "ast_hash": "08af8f62030b52df177eb7bc13d0b61f",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-consensus-primitives/src/pow.rs": {
+    "mtime": 1786364235.2635353,
+    "ast_hash": "51548f932d561e71098ebfb0c0340b76",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-consensus-primitives/src/record.rs": {
+    "mtime": 1786364235.263603,
+    "ast_hash": "159836cd0d873eb892c9da08ea3385a0",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-consensus-primitives/tests/qip002_vectors.rs": {
+    "mtime": 1786364235.2638843,
+    "ast_hash": "440e9fe43f41d69cc808489329c1f447",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-core/src/protocol_identity.rs": {
+    "mtime": 1786364235.2642796,
+    "ast_hash": "6e99a5a94f0f6b1eb15b076d10a74fdc",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/bin/genesis_manifest.rs": {
+    "mtime": 1786364235.2670293,
+    "ast_hash": "97b9e4aa8283f924388e1e593f2361e4",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/emission/genesis_allocation_manifest_v2.rs": {
+    "mtime": 1786364235.2691214,
+    "ast_hash": "42485ce21c654d5ee0a2da519a1ea9ac",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/pipeline/mod.rs": {
+    "mtime": 1786364235.2736788,
+    "ast_hash": "12d3b85e1cbee9694fa367b5bd253fb2",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/pipeline/processor.rs": {
+    "mtime": 1786364235.2737489,
+    "ast_hash": "79a6385df5a6e1a9e29d5b2e9e341615",
+    "semantic_hash": ""
+  },
+  "Scripts/filter.lua": {
+    "mtime": 1786122582.0402925,
+    "ast_hash": "583b014d4e0a662a4a27bd39b3d47fc9",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/QUSD.ts": {
+    "mtime": 1786126272.1371357,
+    "ast_hash": "94d7eaae565670d10e83803ecf9c36ff",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/QantoDrop.ts": {
+    "mtime": 1786126272.1361449,
+    "ast_hash": "cb31cd780150265eeca309668d56fd55",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/QantoFaucet.ts": {
+    "mtime": 1786126272.139713,
+    "ast_hash": "3200124926a2b65d3e8917084caa8ec0",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/QantoGovernor.ts": {
+    "mtime": 1786126272.139014,
+    "ast_hash": "49428239d3c6b28855f90e1e5991662f",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/QantoSwapFactory.sol/QantoSwapFactory.ts": {
+    "mtime": 1786126272.1410294,
+    "ast_hash": "23bef1641efb0d26561888f6a467f8ba",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/QantoSwapFactory.sol/QantoSwapPair.ts": {
+    "mtime": 1786126272.1413982,
+    "ast_hash": "a728c170e105b701b5eb0afc826b7f65",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/QantoSwapFactory.sol/index.ts": {
+    "mtime": 1786126272.1454082,
+    "ast_hash": "840f7f58dc2a008a3a3900c612ace07d",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/QantoSwapRouter.sol/IQantoSwapFactory.ts": {
+    "mtime": 1786126272.14038,
+    "ast_hash": "c3e7fe03493caf64d55d1dd3d8e704d4",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/QantoSwapRouter.sol/QantoSwapRouter.ts": {
+    "mtime": 1786126272.1406558,
+    "ast_hash": "36539f711ee48417b50e1fcdeb0a46bf",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/QantoSwapRouter.sol/index.ts": {
+    "mtime": 1786126272.14536,
+    "ast_hash": "3b90a1b618489db20a362a89e1a118a7",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/QantoTGE.ts": {
+    "mtime": 1786126272.1401367,
+    "ast_hash": "7e5876ae7825cc9c0e4745ad98c300b4",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/QantoTimelock.ts": {
+    "mtime": 1786126272.1438444,
+    "ast_hash": "152b80ad189d9572217ac18577e68e0d",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/SentinelNFT.ts": {
+    "mtime": 1786126272.1420586,
+    "ast_hash": "8f12cf4f0de362da08de2260cb8ad900",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/WQNTO.ts": {
+    "mtime": 1786126272.1426642,
+    "ast_hash": "ecbbd878bae6ad2b83c7b25d712c6f8b",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/common.ts": {
+    "mtime": 1786126272.1450827,
+    "ast_hash": "bab7e2cf0c58bf3b0e0efe4ba91f36c5",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/QUSD__factory.ts": {
+    "mtime": 1786126272.137253,
+    "ast_hash": "7d22871671d793d5640b5645098dbce1",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/QantoDrop__factory.ts": {
+    "mtime": 1786126272.1363015,
+    "ast_hash": "15c4ecee6cf95341eca4d4a072f60b21",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/QantoFaucet__factory.ts": {
+    "mtime": 1786126272.139813,
+    "ast_hash": "8307dffc11df0684884a9ec24ab7b623",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/QantoGovernor__factory.ts": {
+    "mtime": 1786126272.139151,
+    "ast_hash": "1d22d66e44f62a1a393e719d957033ce",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/QantoSwapFactory.sol/QantoSwapFactory__factory.ts": {
+    "mtime": 1786126272.1410987,
+    "ast_hash": "7faf9a45e72af9c54addf6631cf37a7d",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/QantoSwapFactory.sol/QantoSwapPair__factory.ts": {
+    "mtime": 1786126272.1414554,
+    "ast_hash": "d446ed53d4ab5380a2c7ba5b3302bc06",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/QantoSwapFactory.sol/index.ts": {
+    "mtime": 1786126272.1455507,
+    "ast_hash": "dd117dfa9a22c93480369381008f70f5",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/QantoSwapRouter.sol/IQantoSwapFactory__factory.ts": {
+    "mtime": 1786126272.1453059,
+    "ast_hash": "bea631d9f38c26c11cef69408e413127",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/QantoSwapRouter.sol/QantoSwapRouter__factory.ts": {
+    "mtime": 1786126272.140748,
+    "ast_hash": "d9f5ceecd712c2221e59552692df685e",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/QantoSwapRouter.sol/index.ts": {
+    "mtime": 1786126272.1455045,
+    "ast_hash": "6f2a758361a5ce120a95ef1d6b9200d8",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/QantoTGE__factory.ts": {
+    "mtime": 1786126272.1402414,
+    "ast_hash": "1bc06c7e482cf8a5931d7243db0473cd",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/QantoTimelock__factory.ts": {
+    "mtime": 1786126272.1440263,
+    "ast_hash": "1664d006a658d6d910530322cac6d36f",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/SentinelNFT__factory.ts": {
+    "mtime": 1786126272.1421664,
+    "ast_hash": "5e07855033b9003ec80cfd4d55fe9243",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/WQNTO__factory.ts": {
+    "mtime": 1786126272.1427784,
+    "ast_hash": "e0ad2f8710a12e582df24a8251ea75ca",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/factories/index.ts": {
+    "mtime": 1786126272.1454566,
+    "ast_hash": "676df1133ace36e2a53d2124d98014dc",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/hardhat.d.ts": {
+    "mtime": 1786126272.1451669,
+    "ast_hash": "95465042fbece4ae15d1ee7aceb00630",
+    "semantic_hash": ""
+  },
+  "SmartContracts/types/ethers-contracts/index.ts": {
+    "mtime": 1786126272.1452403,
+    "ast_hash": "3efad90dd7230b05c244fe0a1b9b9b11",
+    "semantic_hash": ""
+  },
+  ".agents/rules/BusinessRules.md": {
+    "mtime": 1786123139.3451185,
+    "ast_hash": "3dfb46da7d7fdb67d627496b5473a0ce",
+    "semantic_hash": ""
+  },
+  ".agents/rules/PersonaDefinition.md": {
+    "mtime": 1786123141.382616,
+    "ast_hash": "11ab8a4367e9fdd16e4359b3b3cee4ca",
+    "semantic_hash": ""
+  },
+  ".agents/rules/StrategyRules.md": {
+    "mtime": 1786123143.4125104,
+    "ast_hash": "0f9ea83fbba2a461c6ff5b7578807abc",
+    "semantic_hash": ""
+  },
+  ".agents/rules/TokenProcessing.md": {
+    "mtime": 1786123145.4536264,
+    "ast_hash": "cc386f7f0220e241e99236d7a66a902b",
+    "semantic_hash": ""
+  },
+  ".agents/system-prompt/RAGSystemPrompt.md": {
+    "mtime": 1786123137.3157225,
+    "ast_hash": "5ad96ed0d9d0c90e2607374ae6ca19ec",
+    "semantic_hash": ""
+  },
+  ".agents/system-prompt/SystemPrompt.md": {
+    "mtime": 1786123135.2826085,
+    "ast_hash": "41bb3f156fcb2ed82777717dafb42316",
+    "semantic_hash": ""
+  },
+  ".claude/skills/debug-assistant/SKILL.md": {
+    "mtime": 1786284897.3429995,
+    "ast_hash": "c78897a391c11bd8a6661be2ccc360d0",
+    "semantic_hash": ""
+  },
+  ".claude/skills/doc-generator/SKILL.md": {
+    "mtime": 1786285460.3332503,
+    "ast_hash": "3a4872076586427ce525b95d750a5fc3",
+    "semantic_hash": ""
+  },
+  ".claude/skills/graphify-helper/SKILL.md": {
+    "mtime": 1786285080.3285627,
+    "ast_hash": "7ef9fc1f1786ac8ddf068a9d5d8f0ad7",
+    "semantic_hash": ""
+  },
+  ".claude/skills/graphify-rtk-explorer/SKILL.md": {
+    "mtime": 1786285312.700641,
+    "ast_hash": "1c8c35162f357e859ce2ceba2d1cc168",
+    "semantic_hash": ""
+  },
+  "AUDIT_LEDGER.md": {
+    "mtime": 1786556845.4239936,
+    "ast_hash": "e9c0f4224090242268cf12d321320abb",
+    "semantic_hash": ""
+  },
+  "Docs/audits/2026-08-08-master-a-z/ARCHITECTURE.md": {
+    "mtime": 1786256247.1076763,
+    "ast_hash": "da812431d4d9fcdf041aab0018c96c48",
+    "semantic_hash": ""
+  },
+  "Docs/audits/2026-08-08-master-a-z/AUDIT_LEDGER.md": {
+    "mtime": 1786256107.2258644,
+    "ast_hash": "cac5e066ec6e70a232b9e2c54a880b05",
+    "semantic_hash": ""
+  },
+  "Docs/audits/2026-08-08-master-a-z/CONSENSUS_NETWORK_TRANSACTION_SAGA.md": {
+    "mtime": 1786127044.8693295,
+    "ast_hash": "e34d1630ac634e505fc9dc46c46654f8",
+    "semantic_hash": ""
+  },
+  "Docs/audits/2026-08-08-master-a-z/CONTRACTS_PERFORMANCE_OPERATIONS.md": {
+    "mtime": 1786129122.6497316,
+    "ast_hash": "27fd3084421ae1acd58a583839da72f0",
+    "semantic_hash": ""
+  },
+  "Docs/audits/2026-08-08-master-a-z/DEPENDENCY_AUDIT_AND_TESTING.md": {
+    "mtime": 1786128654.481024,
+    "ast_hash": "7de3ec99d0b09036ab0b3a837f75e527",
+    "semantic_hash": ""
+  },
+  "Docs/audits/2026-08-08-master-a-z/MAINNET_READINESS.md": {
+    "mtime": 1786128604.0239508,
+    "ast_hash": "f5bdcbcef4f04f82e9f7881e3550654b",
+    "semantic_hash": ""
+  },
+  "Docs/audits/2026-08-08-master-a-z/MASTER_A_Z_REPORT.md": {
+    "mtime": 1786256832.3202786,
+    "ast_hash": "e363558448f8dd2e04f8f03ac55c8716",
+    "semantic_hash": ""
+  },
+  "Docs/audits/2026-08-08-master-a-z/MODULE_GRAPH.md": {
+    "mtime": 1786124283.0607524,
+    "ast_hash": "74a0c75eeff1c65862011884e628ebc3",
+    "semantic_hash": ""
+  },
+  "Docs/audits/2026-08-08-master-a-z/PQC_AND_TOKENOMICS.md": {
+    "mtime": 1786256440.043449,
+    "ast_hash": "3a296360f4bb5595a1152b21fd568822",
+    "semantic_hash": ""
+  },
+  "Docs/audits/2026-08-08-master-a-z/PROTOCOL_CHANGE_PROPOSALS.md": {
+    "mtime": 1786128214.6796193,
+    "ast_hash": "d0568dc1f688ae98e2a2375bb6bb62cd",
+    "semantic_hash": ""
+  },
+  "Docs/audits/2026-08-08-master-a-z/REMEDIATION_ROADMAP.md": {
+    "mtime": 1786128336.822944,
+    "ast_hash": "9ced945b69686e906e8c2f41a53e635f",
+    "semantic_hash": ""
+  },
+  "Docs/audits/2026-08-08-master-a-z/SPECIFICATION_DELTA.md": {
+    "mtime": 1786256106.8890054,
+    "ast_hash": "4ef3d758a6305d5686883feded071083",
+    "semantic_hash": ""
+  },
+  "Docs/audits/2026-08-08-master-a-z/THREAT_MODEL.md": {
+    "mtime": 1786256440.0801628,
+    "ast_hash": "e5b92beb081916ccf66a372cb03f615a",
+    "semantic_hash": ""
+  },
+  "KnowledgeGraph.md": {
+    "mtime": 1786123133.233017,
+    "ast_hash": "dde9cd8a4c0c24d240f2c00e41cee7c6",
+    "semantic_hash": ""
+  },
+  "THREAT_MODEL.md": {
+    "mtime": 1786557508.3787148,
+    "ast_hash": "128023a9a2d97e0bec6f442bbbd9d737",
+    "semantic_hash": ""
+  },
+  "config/GENESIS_MIGRATION.md": {
+    "mtime": 1786262124.8862288,
+    "ast_hash": "34461ff06a7b0b276ffda0e2f144f4dc",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/attack_10_blocks_map_performance.rs": {
+    "mtime": 1786551370.3848093,
+    "ast_hash": "df981b03dc071ec28fad74baa640f941",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/attack_11_saga_f64_nondeterminism.rs": {
+    "mtime": 1786551370.385222,
+    "ast_hash": "90d612dc02cc6c6884ba9fe364482e78",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/attack_12_omega_threat_manipulation.rs": {
+    "mtime": 1786551370.3854797,
+    "ast_hash": "3145e83a5ed1bfa0e7bd3713c94e792f",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/attack_1_single_parent_dag_safety_violation.rs": {
+    "mtime": 1786551370.3868096,
+    "ast_hash": "53032834b2f370edf827f33c1d9b711c",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/attack_2_liveness_failure_fixed_difficulty.rs": {
+    "mtime": 1786551370.3877475,
+    "ast_hash": "ee081593fc4000f147a806c83de9b3a8",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/attack_3_finality_absence_reorg_any_depth.rs": {
+    "mtime": 1786551370.3887422,
+    "ast_hash": "1d015839927a9966324fd6466aec3320",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/attack_4_evm_raw_tx_bypass_pq.rs": {
+    "mtime": 1786551370.389646,
+    "ast_hash": "af5bc72d0aa0687d70b171bca2d54490",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/attack_5_bridge_claim_forged_signature.rs": {
+    "mtime": 1786551370.390382,
+    "ast_hash": "b0402464687e3f9e94f1e8d99c445587",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/attack_6_rpc_ws_unauthenticated.rs": {
+    "mtime": 1786551370.391067,
+    "ast_hash": "d204c9de926c3582239859ef718c2abf",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/attack_7_p2p_eclipse_fixed_topics.rs": {
+    "mtime": 1786551370.3912961,
+    "ast_hash": "cb62839d2a51dc1f8ca75f7ff26d3094",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/attack_8_miner_reservation_griefing.rs": {
+    "mtime": 1786551370.3915057,
+    "ast_hash": "425cd17d9a770abc110df3ec2c624c03",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/attack_9_consensus_lock_bottleneck.rs": {
+    "mtime": 1786551370.3921983,
+    "ast_hash": "acab29fcfbf36ef4b2c85fdb86f8e1a4",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/attack_tests.rs": {
+    "mtime": 1786551370.3924317,
+    "ast_hash": "87fd19b4fd483b11b39a9689d71c7e0b",
+    "semantic_hash": ""
+  },
+  "Protocol_Core/qanto-node/src/difficulty_retarget.rs": {
+    "mtime": 1786595465.447945,
+    "ast_hash": "51a9beaed9fff65e6b383412c54f7ea4",
+    "semantic_hash": ""
+  },
+  "Docs/superpowers/specs/2026-08-13-qanto-testnet-readiness-design.md": {
+    "mtime": 1786608664.2197716,
+    "ast_hash": "15239e9f5957d2c5579e49614bb189bb",
+    "semantic_hash": ""
+  }
+}

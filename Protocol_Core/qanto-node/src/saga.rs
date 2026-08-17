@@ -3744,7 +3744,7 @@ impl PalletSaga {
         {
             if let Some(service) = &self.isnm_service {
                 if let Ok((multiplier, _redistributed_reward)) = service.get_rewards().await {
-                    return multiplier;
+                    return multiplier as f64 / crate::QANTO_SCALE as f64;
                 }
             }
         }

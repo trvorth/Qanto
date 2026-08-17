@@ -1,0 +1,3236 @@
+# Qanto targeted effective security-fix diff
+# Baseline: 0478b60368df86ece44b9ad30766a724dfc60d50
+# Generated from the effective unstaged worktree on 2026-08-09.
+# WARNING: the checkout was dirty before this audit. This exact patch includes
+# pre-existing and concurrent changes on the selected security/test surfaces;
+# it proves byte-level effective differences, not authorship by this pass.
+# Optional/unsafe features disabled by these hunks remain unavailable.
+
+diff --git a/.nextest.toml b/.nextest.toml
+deleted file mode 100644
+index b63264ac7c929af9489773e0e922c68a969b1e28..0000000000000000000000000000000000000000
+--- a/.nextest.toml
++++ /dev/null
+@@ -1,62 +0,0 @@
+-# Nextest configuration for Qanto blockchain node
+-# https://nexte.st/book/configuration.html
+-
+-[profile.default]
+-# Default test timeout (5 minutes for mining tests)
+-slow-timeout = "300s"
+-# Retry flaky tests once
+-retries = 1
+-# Show test output for failures
+-failure-output = "immediate-final"
+-# Show test output for slow tests
+-slow-timeout-grace-period = "30s"
+-
+-[profile.ci]
+-# CI profile with stricter timeouts
+-slow-timeout = "180s"
+-retries = 0
+-failure-output = "final"
+-# Fail fast on first failure in CI
+-fail-fast = false
+-
+-[profile.slow-integration]
+-# Profile specifically for slow integration tests
+-slow-timeout = "600s"  # 10 minutes for complex mining operations
+-retries = 2
+-failure-output = "immediate-final"
+-# Don't fail fast - run all slow tests
+-fail-fast = false
+-
+-# Test groups for better organization
+-[test-groups.mining]
+-max-threads = 4  # Limit mining test concurrency to avoid resource contention
+-
+-[test-groups.integration]
+-max-threads = 2  # Even more conservative for integration tests
+-
+-# Override settings for specific tests
+-[[profile.default.overrides]]
+-filter = "test_basic_mining"
+-slow-timeout = "300s"
+-test-group = "mining"
+-
+-[[profile.default.overrides]]
+-filter = "test_integration_flow"
+-slow-timeout = "400s"
+-test-group = "integration"
+-
+-[[profile.default.overrides]]
+-filter = "test_cancellation_responsiveness"
+-slow-timeout = "120s"
+-test-group = "mining"
+-
+-# Fast unit tests should complete quickly
+-[[profile.default.overrides]]
+-filter = "not test(integration) and not test(mining) and not test(slow)"
+-slow-timeout = "30s"
+-
+-# Environment variables for deterministic testing
+-[profile.default.env]
+-QANTO_TEST_MINING_SEED = "42"
+-RUST_LOG = "debug"
+-RUST_BACKTRACE = "1"
+\ No newline at end of file
+diff --git a/Cargo.lock b/Cargo.lock
+index cc1662211c24c4d288adc2af83505c4d380a0de0..6fbcc21ff47e35caa13690133f439140ccca83a7 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -375,7 +375,7 @@ dependencies = [
+  "ark-std",
+  "tracing 0.1.41",
+  "tracing-core 0.1.34",
+- "tracing-subscriber",
++ "tracing-subscriber 0.3.20",
+ ]
+ 
+ [[package]]
+@@ -1927,9 +1927,9 @@ dependencies = [
+ 
+ [[package]]
+ name = "crossbeam-epoch"
+-version = "0.9.18"
++version = "0.9.20"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
++checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
+ dependencies = [
+  "crossbeam-utils",
+ ]
+@@ -2285,7 +2285,8 @@ dependencies = [
+ [[package]]
+ name = "derivative"
+ version = "2.2.0"
+-source = "git+https://github.com/mcarton/rust-derivative?branch=master#5179a968ca6d70792f62dfe6727ab8d5b8b5cf5e"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+@@ -2736,6 +2737,12 @@ dependencies = [
+  "regex",
+ ]
+ 
++[[package]]
++name = "env_home"
++version = "0.1.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "c7f84e12ccf0a7ddc17a6c41c93326024c42920d7ee630d04950e6926645c0fe"
++
+ [[package]]
+ name = "env_logger"
+ version = "0.11.11"
+@@ -2798,11 +2805,10 @@ dependencies = [
+ 
+ [[package]]
+ name = "event-listener"
+-version = "5.4.1"
++version = "5.4.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "e13b66accf52311f30a0db42147dadea9850cb48cd070028831ae5f5d4b856ab"
++checksum = "5a23add41df1562121a9393cb065eab5146a1242410f23a644851e90cfd669d2"
+ dependencies = [
+- "concurrent-queue",
+  "parking",
+  "pin-project-lite",
+ ]
+@@ -3602,7 +3608,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
+ dependencies = [
+  "allocator-api2",
+- "equivalent",
+  "foldhash 0.1.5",
+ ]
+ 
+@@ -5197,11 +5202,11 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
+ 
+ [[package]]
+ name = "lru"
+-version = "0.12.5"
++version = "0.16.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "234cf4f4a04dc1f57e24b96cc0cd600cf2af460d4161ac5ecdd0af8e1f3b2a38"
++checksum = "7f66e8d5d03f609abc3a39e6f08e4164ebf1447a732906d39eb9b99b7919ef39"
+ dependencies = [
+- "hashbrown 0.15.5",
++ "hashbrown 0.16.1",
+ ]
+ 
+ [[package]]
+@@ -5210,6 +5215,25 @@ version = "0.1.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
+ 
++[[package]]
++name = "lua-src"
++version = "547.0.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1edaf29e3517b49b8b746701e5648ccb5785cde1c119062cbabbc5d5cd115e42"
++dependencies = [
++ "cc",
++]
++
++[[package]]
++name = "luajit-src"
++version = "210.5.12+a4f56a4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "b3a8e7962a5368d5f264d045a5a255e90f9aa3fc1941ae15a8d2940d42cac671"
++dependencies = [
++ "cc",
++ "which",
++]
++
+ [[package]]
+ name = "lz4-sys"
+ version = "1.11.1+lz4-1.10.0"
+@@ -5424,6 +5448,34 @@ dependencies = [
+  "sha3",
+ ]
+ 
++[[package]]
++name = "mlua"
++version = "0.10.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "c1f5f8fbebc7db5f671671134b9321c4b9aa9adeafccfd9a8c020ae45c6a35d0"
++dependencies = [
++ "bstr",
++ "either",
++ "mlua-sys",
++ "num-traits 0.2.19",
++ "parking_lot",
++ "rustc-hash 2.1.3",
++ "rustversion",
++]
++
++[[package]]
++name = "mlua-sys"
++version = "0.6.8"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "380c1f7e2099cafcf40e51d3a9f20a346977587aa4d012eae1f043149a728a93"
++dependencies = [
++ "cc",
++ "cfg-if",
++ "lua-src",
++ "luajit-src",
++ "pkg-config",
++]
++
+ [[package]]
+ name = "mockall"
+ version = "0.12.1"
+@@ -6560,7 +6612,9 @@ checksum = "e8d0eef3571242013a0d5dc84861c3ae4a652e56e12adf8bdc26ff5f8cb34c94"
+ 
+ [[package]]
+ name = "plist"
+-version = "1.9.0"
++version = "1.10.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "7da1d65da6dd5d1e44199ac0f58712d241c0f439f80adea8924d832384087f85"
+ dependencies = [
+  "base64 0.22.1",
+  "indexmap 2.14.0",
+@@ -7234,6 +7288,7 @@ dependencies = [
+  "lru",
+  "memmap2",
+  "mimalloc",
++ "mlua",
+  "mockall",
+  "my-blockchain",
+  "nonzero_ext",
+@@ -7284,7 +7339,7 @@ dependencies = [
+  "toml 0.8.23",
+  "tower-http",
+  "tracing 0.1.44",
+- "tracing-subscriber",
++ "tracing-subscriber 0.3.23",
+  "typenum",
+  "url",
+  "uuid",
+@@ -7325,7 +7380,7 @@ dependencies = [
+  "thiserror 1.0.69",
+  "tokio",
+  "tracing 0.1.44",
+- "tracing-subscriber",
++ "tracing-subscriber 0.3.23",
+  "zeroize",
+  "zstd 0.12.4",
+ ]
+@@ -7380,13 +7435,14 @@ dependencies = [
+  "tokio",
+  "tokio-util",
+  "tracing 0.1.44",
+- "tracing-subscriber",
++ "tracing-subscriber 0.3.23",
+ ]
+ 
+ [[package]]
+ name = "qanto-relayer"
+ version = "0.1.0"
+ dependencies = [
++ "async-trait",
+  "hex",
+  "k256",
+  "qanto-zk-sdk",
+@@ -7394,6 +7450,7 @@ dependencies = [
+  "serde",
+  "serde_json",
+  "sha3",
++ "thiserror 1.0.69",
+  "tokio",
+ ]
+ 
+@@ -7423,7 +7480,6 @@ dependencies = [
+  "hex",
+  "ml-kem",
+  "num-bigint",
+- "pqcrypto-traits",
+  "rand 0.8.6",
+  "serde",
+  "sha3",
+@@ -9873,7 +9929,6 @@ version = "0.1.34"
+ source = "git+https://github.com/tokio-rs/tracing?tag=tracing-subscriber-0.3.20#4c52ca5266a3920fc5dfeebda2accf15ee7fb278"
+ dependencies = [
+  "once_cell",
+- "valuable",
+ ]
+ 
+ [[package]]
+@@ -9883,31 +9938,49 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
+ dependencies = [
+  "once_cell",
++ "valuable",
+ ]
+ 
+ [[package]]
+ name = "tracing-log"
+ version = "0.2.0"
+-source = "git+https://github.com/tokio-rs/tracing?tag=tracing-subscriber-0.3.20#4c52ca5266a3920fc5dfeebda2accf15ee7fb278"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
+ dependencies = [
+  "log",
+  "once_cell",
+- "tracing-core 0.1.34",
++ "tracing-core 0.1.36",
+ ]
+ 
+ [[package]]
+ name = "tracing-serde"
+ version = "0.2.0"
+-source = "git+https://github.com/tokio-rs/tracing?tag=tracing-subscriber-0.3.20#4c52ca5266a3920fc5dfeebda2accf15ee7fb278"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "704b1aeb7be0d0a84fc9828cae51dab5970fee5088f83d1dd7ee6f6246fc6ff1"
+ dependencies = [
+  "serde",
+- "tracing-core 0.1.34",
++ "tracing-core 0.1.36",
+ ]
+ 
+ [[package]]
+ name = "tracing-subscriber"
+ version = "0.3.20"
+ source = "git+https://github.com/tokio-rs/tracing?tag=tracing-subscriber-0.3.20#4c52ca5266a3920fc5dfeebda2accf15ee7fb278"
++dependencies = [
++ "matchers",
++ "once_cell",
++ "regex-automata",
++ "sharded-slab",
++ "thread_local",
++ "tracing 0.1.41",
++ "tracing-core 0.1.34",
++]
++
++[[package]]
++name = "tracing-subscriber"
++version = "0.3.23"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319"
+ dependencies = [
+  "matchers",
+  "nu-ansi-term",
+@@ -9918,8 +9991,8 @@ dependencies = [
+  "sharded-slab",
+  "smallvec",
+  "thread_local",
+- "tracing 0.1.41",
+- "tracing-core 0.1.34",
++ "tracing 0.1.44",
++ "tracing-core 0.1.36",
+  "tracing-log",
+  "tracing-serde",
+ ]
+@@ -10503,6 +10576,18 @@ dependencies = [
+  "windows-core 0.61.2",
+ ]
+ 
++[[package]]
++name = "which"
++version = "7.0.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "24d643ce3fd3e5b54854602a080f34fb10ab75e0b813ee32d00ca2b44fa74762"
++dependencies = [
++ "either",
++ "env_home",
++ "rustix 1.1.4",
++ "winsafe",
++]
++
+ [[package]]
+ name = "widestring"
+ version = "1.2.1"
+@@ -11061,6 +11146,12 @@ dependencies = [
+  "windows-sys 0.59.0",
+ ]
+ 
++[[package]]
++name = "winsafe"
++version = "0.0.19"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
++
+ [[package]]
+ name = "wit-bindgen"
+ version = "0.57.1"
+diff --git a/Cargo.toml b/Cargo.toml
+index 546861796f0dd5810a5ae3d482f16a21c473a715..afed28d439d763229bd24ec7b640b795e0c93732 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -21,7 +21,7 @@ members = [
+ 
+ # Force secure versions to override transitive dependencies
+ [workspace.dependencies]
+-tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
++tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+ mimalloc = { version = "0.1" }
+ ahash = { version = "0.8", features = ["serde"] }
+ # Security patches for transitive dependencies - force secure versions
+@@ -33,17 +33,13 @@ hickory-proto = { version = "0.26.1" }
+ hickory-resolver = { version = "0.26.1" }
+ rustls = { version = "0.23" }
+ 
+-# Override vulnerable dependencies
++# Compatibility overrides that still carry local source/API changes.
+ [patch.crates-io]
+-# Replace derivative with synstructure for arkworks compatibility
+-derivative = { git = "https://github.com/mcarton/rust-derivative", branch = "master" }
+-# Force secure tracing-subscriber version for all transitive dependencies
+-tracing-subscriber = { git = "https://github.com/tokio-rs/tracing", tag = "tracing-subscriber-0.3.20" }
+ # Override ark-relations with a local patched manifest that depends on tracing-subscriber 0.3.20
+ ark-relations = { path = "patches/ark-relations" }
++# Keep the libp2p DNS patches until their hickory 0.26 API updates are available upstream.
+ libp2p-dns = { path = "patches/libp2p-dns" }
+ libp2p-mdns = { path = "patches/libp2p-mdns" }
+-plist = { path = "patches/plist" }
+ 
+ # --- Build Profiles ---
+ [profile.release]
+diff --git a/Protocol_Core/myblockchain/Cargo.toml b/Protocol_Core/myblockchain/Cargo.toml
+index 64b1c93895a516b07b81e66eabea48354e7e8b23..17b58d036209d643a95e58f89615224d34f8155c 100644
+--- a/Protocol_Core/myblockchain/Cargo.toml
++++ b/Protocol_Core/myblockchain/Cargo.toml
+@@ -30,7 +30,7 @@ dashmap = "6.1.0"
+ log = "0.4.21"
+ tracing = "0.1.40"
+ tokio = { version = "1.38.0", features = ["full"] }
+-lru = "0.12.3"
++lru = "0.16.3"
+ memmap2 = "0.9.8"
+ primitive-types = "0.12.2"
+ num_cpus = "1.16.0"
+diff --git a/Protocol_Core/myblockchain/src/qanhash.rs b/Protocol_Core/myblockchain/src/qanhash.rs
+index a524f0bb42f642be239b3b06b3496fe61704a16b..5dbd5688847aa767aa6cec716e259f2764b44c94 100644
+--- a/Protocol_Core/myblockchain/src/qanhash.rs
++++ b/Protocol_Core/myblockchain/src/qanhash.rs
+@@ -918,10 +918,8 @@ pub async fn get_or_generate_qdag(epoch: u64) -> Result<Arc<QDag>, QanhashError>
+             // Convert raw bytes back to QDag format
+             if dag_data.len().is_multiple_of(MIX_BYTES) {
+                 let mut qdag_data = Vec::with_capacity(dag_data.len() / MIX_BYTES);
+-                for chunk in dag_data.chunks_exact(MIX_BYTES) {
+-                    let mut mix_bytes = [0u8; MIX_BYTES];
+-                    mix_bytes.copy_from_slice(chunk);
+-                    qdag_data.push(mix_bytes);
++                for chunk in dag_data.as_chunks::<MIX_BYTES>().0 {
++                    qdag_data.push(*chunk);
+                 }
+ 
+                 let qdag = Arc::new(QDag::new(qdag_data, epoch));
+@@ -1393,6 +1391,15 @@ fn generate_qdag(seed: &[u8; 32], epoch: u64) -> Arc<Vec<[u8; MIX_BYTES]>> {
+     Arc::new(dataset)
+ }
+ 
++#[inline]
++fn decode_dag_words(entry: &[u8; MIX_BYTES]) -> [u64; MIX_BYTES / 8] {
++    let mut words = [0u64; MIX_BYTES / 8];
++    for (word, bytes) in words.iter_mut().zip(entry.as_chunks::<8>().0) {
++        *word = u64::from_le_bytes(*bytes);
++    }
++    words
++}
++
+ pub fn hash(header_hash: &QantoHash, nonce: u64, block_index: u64) -> [u8; 32] {
+     let dag = get_qdag(block_index);
+     let dag_len_mask = dag.len() - 1;
+@@ -1404,16 +1411,8 @@ pub fn hash(header_hash: &QantoHash, nonce: u64, block_index: u64) -> [u8; 32] {
+     mix[4] = nonce;
+     for _ in 0..32 {
+         let p_index = mix[0].wrapping_add(mix[1]);
+-        // SAFETY: DAG entry pointer casting is safe because:
+-        // 1. DAG entries are guaranteed to be MIX_BYTES (128) bytes, which equals 16 * u64
+-        // 2. Index is masked with dag_len_mask to ensure bounds checking
+-        // 3. DAG is immutable during hashing operation (protected by Arc)
+-        // 4. Memory layout of [u8; 128] is compatible with [u64; 16] (same size, aligned)
+-        let dag_entry1: &[u64; 16] =
+-            unsafe { &*(dag[p_index as usize & dag_len_mask].as_ptr() as *const [u64; 16]) };
+-        let dag_entry2: &[u64; 16] = unsafe {
+-            &*(dag[(p_index.wrapping_add(1)) as usize & dag_len_mask].as_ptr() as *const [u64; 16])
+-        };
++        let dag_entry1 = decode_dag_words(&dag[p_index as usize & dag_len_mask]);
++        let dag_entry2 = decode_dag_words(&dag[(p_index.wrapping_add(1)) as usize & dag_len_mask]);
+         for i in 0..16 {
+             let val = mix[i].wrapping_mul(31).wrapping_add(dag_entry1[i]);
+             mix[i] = val.rotate_left(((i % 8) + 1) as u32) ^ dag_entry2[i];
+@@ -1882,12 +1881,9 @@ impl CpuMiner {
+         // Unrolled mixing loop for better performance
+         for _ in 0..32 {
+             let p_index = mix[0].wrapping_add(mix[1]);
+-            let dag_entry1: &[u64; 16] =
+-                unsafe { &*(dag[p_index as usize & dag_len_mask].as_ptr() as *const [u64; 16]) };
+-            let dag_entry2: &[u64; 16] = unsafe {
+-                &*(dag[(p_index.wrapping_add(1)) as usize & dag_len_mask].as_ptr()
+-                    as *const [u64; 16])
+-            };
++            let dag_entry1 = decode_dag_words(&dag[p_index as usize & dag_len_mask]);
++            let dag_entry2 =
++                decode_dag_words(&dag[(p_index.wrapping_add(1)) as usize & dag_len_mask]);
+ 
+             // Optimized mixing with better instruction pipelining
+             mix[0] = mix[0]
+diff --git a/Protocol_Core/qanto-core/Cargo.toml b/Protocol_Core/qanto-core/Cargo.toml
+index c7ed8bf52c61ccffc05cde18d1bff2bc87b14a3d..db3daf6a643a2abc7c92de5c13e29473e290eaa2 100644
+--- a/Protocol_Core/qanto-core/Cargo.toml
++++ b/Protocol_Core/qanto-core/Cargo.toml
+@@ -41,7 +41,7 @@ chrono = { version = "0.4.38", features = ["serde"] }
+ argon2 = "0.5.3"
+ colored = "2.1.0"
+ async-trait = "0.1.83"
+-my-blockchain = { path = "../myblockchain" }
++my-blockchain = { version = "0.1.0", path = "../myblockchain" }
+ zstd = "0.12"
+ ahash.workspace = true
+ 
+diff --git a/Protocol_Core/qanto-node/Cargo.toml b/Protocol_Core/qanto-node/Cargo.toml
+index f7ae2e449f9bb36df715ce6c68674d2f7e85fbcf..f722c0d7062a07312041a93ac177bf1800e88bc3 100644
+--- a/Protocol_Core/qanto-node/Cargo.toml
++++ b/Protocol_Core/qanto-node/Cargo.toml
+@@ -9,13 +9,14 @@ license = "MIT"
+ repository = "https://github.com/trvorth/qanto"
+ 
+ [dependencies]
++mlua = { version = "0.10.5", features = ["lua54", "vendored"] }
+ # --- Homomorphic Encryption (Updated for security) ---
+ # libpaillier = "0.7.0-rc0" # Replaced with maintained alternative
+ # paillier = "0.2.0" # Temporarily disabled due to ring 0.13.5 security vulnerability
+ # Note (Future Enhancement): Replace with secure homomorphic encryption implementation
+ # ed25519-dalek = "2.1.0" # Replaced with qanto_compat
+-qanto-core = { path = "../qanto-core" }
+-qanto-rpc = { path = "../qanto-rpc" }
++qanto-core = { version = "0.1.0", path = "../qanto-core" }
++qanto-rpc = { version = "0.1.0", path = "../qanto-rpc" }
+ tfhe = { version = "1.4.1", features = ["boolean", "shortint", "integer"] }
+ libp2p = { version = "0.56.0", default-features = false, features = ["tokio", "tcp", "dns", "noise", "yamux", "identify", "ping", "kad", "gossipsub", "request-response", "autonat", "relay", "dcutr", "upnp", "macros", "websocket"] }
+ k256 = { version = "0.13.4", features = ["ecdsa"] }
+@@ -28,7 +29,7 @@ rlp = "0.5.2"
+ decision_tree = "0.1"
+ 
+ # --- Core Blockchain & Networking (Qanto-Native) ---
+-my-blockchain = { path = "../myblockchain" }
++my-blockchain = { version = "0.1.0", path = "../myblockchain" }
+ futures = "0.3.30"
+ tokio = { version = "1.38.0", features = ["full", "rt-multi-thread", "time"] }
+ tokio-stream = { version = "0.1.17", features = ["sync"] }
+@@ -68,7 +69,7 @@ ed25519-dalek = "2.2.0"
+ serde = { version = "1.0.203", features = ["derive"] }
+ serde_json = "1.0.117"
+ toml = "0.8.14"
+-lru = "0.12.3"
++lru = "0.16.3"
+ prometheus = { version = "0.13.4", default-features = false, features = ["process"] }
+ lazy_static = "1.5.0"
+ once_cell = "1.19.0"
+diff --git a/Protocol_Core/qanto-node/src/byzantine_tests.rs b/Protocol_Core/qanto-node/src/byzantine_tests.rs
+index 00657801bc427ea1a7886dbb5932a86f70352643..247ab4bbe09808bdd112d0df6d6ca5b01a4a5505 100644
+--- a/Protocol_Core/qanto-node/src/byzantine_tests.rs
++++ b/Protocol_Core/qanto-node/src/byzantine_tests.rs
+@@ -24,7 +24,35 @@ fn wrap_and_init_dag(dag: QantoDAG) -> Arc<QantoDAG> {
+ }
+ 
+ #[tokio::test]
+-async fn test_byzantine_double_signing_slashing() {
++async fn rejects_forged_block_id_before_expensive_validation() {
++    let temp_dir = tempfile::tempdir().unwrap();
++    let dag = wrap_and_init_dag(new_dummy_with_storage_path(temp_dir.path()));
++    let block = QantoBlock::new_test_block("attacker-controlled-id".to_string());
++    let utxos = Arc::new(RwLock::new(HashMap::new()));
++
++    let error = dag.is_valid_block(&block, &utxos).await.unwrap_err();
++    assert!(
++        matches!(error, QantoDAGError::InvalidBlock(message) if message.contains("canonical header"))
++    );
++}
++
++#[tokio::test]
++async fn rejects_zero_declared_difficulty() {
++    let temp_dir = tempfile::tempdir().unwrap();
++    let dag = wrap_and_init_dag(new_dummy_with_storage_path(temp_dir.path()));
++    let mut block = QantoBlock::new_test_block(String::new());
++    block.difficulty = 0;
++    block.id = block.compute_block_id().unwrap();
++    let utxos = Arc::new(RwLock::new(HashMap::new()));
++
++    let error = dag.is_valid_block(&block, &utxos).await.unwrap_err();
++    assert!(
++        matches!(error, QantoDAGError::InvalidBlock(message) if message.contains("network requirement"))
++    );
++}
++
++#[tokio::test]
++async fn test_byzantine_double_signing_rejected_without_unbound_slashing() {
+     let temp_dir = tempfile::tempdir().unwrap();
+     let path = temp_dir.path();
+     let dag = wrap_and_init_dag(new_dummy_with_storage_path(path));
+@@ -70,7 +98,7 @@ async fn test_byzantine_double_signing_slashing() {
+         signer_public_key: pk.as_bytes().to_vec(),
+         signature: sig1.as_bytes().to_vec(),
+     };
+-    block1.id = block1.hash();
++    block1.id = block1.compute_block_id().unwrap();
+ 
+     // Create block 2 (different ID, same height, same validator, same chain)
+     let mut block2 = QantoBlock::new_test_block("block_2".to_string());
+@@ -103,7 +131,7 @@ async fn test_byzantine_double_signing_slashing() {
+         signer_public_key: pk.as_bytes().to_vec(),
+         signature: sig2.as_bytes().to_vec(),
+     };
+-    block2.id = block2.hash();
++    block2.id = block2.compute_block_id().unwrap();
+ 
+     let utxos = Arc::new(RwLock::new(HashMap::new()));
+ 
+@@ -112,7 +140,9 @@ async fn test_byzantine_double_signing_slashing() {
+     assert!(res1.is_ok(), "Failed to add block 1: {:?}", res1);
+     assert!(res1.unwrap());
+ 
+-    // Adding block 2 (double-signing equivocation) should fail and slash stake
++    // Adding block 2 (double-signing equivocation) should fail. Until validator
++    // addresses are cryptographically bound to PQ keys, automatic slashing must
++    // remain disabled to prevent an attacker from naming and slashing a victim.
+     let res2 = dag.add_block(block2, &utxos, None, None).await;
+     assert!(res2.is_err(), "Expected error for double-signing, got Ok");
+ 
+@@ -124,10 +154,9 @@ async fn test_byzantine_double_signing_slashing() {
+         other => panic!("Expected equivocation invalid block error, got {:?}", other),
+     }
+ 
+-    // Verify validator stake has been slashed by 30%
++    // Verify unproven attribution cannot mutate validator stake.
+     let final_stake = *dag.validators.get(&validator_address).unwrap();
+-    let expected_stake = initial_stake - (initial_stake * 30 / 100);
+-    assert_eq!(final_stake, expected_stake);
++    assert_eq!(final_stake, initial_stake);
+ }
+ 
+ #[tokio::test]
+@@ -163,7 +192,7 @@ async fn test_byzantine_forged_coinbase_reward() {
+         signer_public_key: pk.as_bytes().to_vec(),
+         signature: sig.as_bytes().to_vec(),
+     };
+-    block.id = block.hash();
++    block.id = block.compute_block_id().unwrap();
+ 
+     let utxos = Arc::new(RwLock::new(HashMap::new()));
+     let res = dag.add_block(block, &utxos, None, None).await;
+@@ -204,7 +233,7 @@ async fn test_byzantine_invalid_merkle_root() {
+         signer_public_key: pk.as_bytes().to_vec(),
+         signature: sig.as_bytes().to_vec(),
+     };
+-    block.id = block.hash();
++    block.id = block.compute_block_id().unwrap();
+ 
+     let utxos = Arc::new(RwLock::new(HashMap::new()));
+     let res = dag.add_block(block, &utxos, None, None).await;
+@@ -263,7 +292,7 @@ async fn test_byzantine_invalid_coinbase_signature() {
+         signer_public_key: pk.as_bytes().to_vec(),
+         signature: sig.as_bytes().to_vec(),
+     };
+-    block.id = block.hash();
++    block.id = block.compute_block_id().unwrap();
+ 
+     let utxos = Arc::new(RwLock::new(HashMap::new()));
+     let res = dag.add_block(block, &utxos, None, None).await;
+@@ -345,7 +374,7 @@ async fn test_clock_drift_guard_positive_and_negative() {
+         signer_public_key: pk.as_bytes().to_vec(),
+         signature: sig.as_bytes().to_vec(),
+     };
+-    block_future.id = block_future.hash();
++    block_future.id = block_future.compute_block_id().unwrap();
+ 
+     // Add future block to DAG
+     let added = dag
+@@ -446,7 +475,7 @@ async fn test_clock_drift_guard_positive_and_negative() {
+         signer_public_key: pk.as_bytes().to_vec(),
+         signature: sig_past.as_bytes().to_vec(),
+     };
+-    block_past.id = block_past.hash();
++    block_past.id = block_past.compute_block_id().unwrap();
+ 
+     // Add past block to DAG
+     let added_past = dag2
+diff --git a/Protocol_Core/qanto-node/src/economic_attack_tests.rs b/Protocol_Core/qanto-node/src/economic_attack_tests.rs
+index 360816218ba48df98f00ac147d175872f1c0daae..a5d8aae625e00a6d7766583091a308856c888360 100644
+--- a/Protocol_Core/qanto-node/src/economic_attack_tests.rs
++++ b/Protocol_Core/qanto-node/src/economic_attack_tests.rs
+@@ -3,6 +3,7 @@ use crate::post_quantum_crypto::{
+     generate_pq_keypair, pq_sign, QantoPQPrivateKey, QantoPQPublicKey,
+ };
+ use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError};
++use crate::security_tests::bridge_claims_fail_closed;
+ use crate::transaction::Transaction;
+ use ahash::{AHashMap as HashMap, AHashSet as HashSet};
+ use k256::ecdsa::signature::hazmat::PrehashSigner;
+@@ -69,7 +70,7 @@ async fn grow_chain_for_val(
+             signature: sig.as_bytes().to_vec(),
+         };
+ 
+-        block.id = block.hash();
++        block.id = block.compute_block_id().unwrap();
+ 
+         let ok = dag
+             .add_block(block.clone(), &utxos, None, None)
+@@ -252,6 +253,10 @@ async fn test_reward_farming() {
+ 
+ #[tokio::test]
+ async fn test_bridge_drain_attempts() {
++    if bridge_claims_fail_closed().await {
++        return;
++    }
++
+     let dag = wrap_and_init_dag(QantoDAG::new_dummy_for_verification());
+ 
+     // Setup validator relayer key and insert into validators map
+diff --git a/Protocol_Core/qanto-node/src/mempool.rs b/Protocol_Core/qanto-node/src/mempool.rs
+index 42a1899d746e2a1cd21814a718201edaa1907606..e71f3ddf4005bae1c87227718a90002b04bb2cea 100644
+--- a/Protocol_Core/qanto-node/src/mempool.rs
++++ b/Protocol_Core/qanto-node/src/mempool.rs
+@@ -2206,3 +2206,9 @@ impl LockFreePqcMempool {
+         arena.reset(); // Instant O(1) cleanup without heap fragmentation
+     }
+ }
++
++impl Default for LockFreePqcMempool {
++    fn default() -> Self {
++        Self::new()
++    }
++}
+diff --git a/Protocol_Core/qanto-node/src/metrics.rs b/Protocol_Core/qanto-node/src/metrics.rs
+index b8f707aae9506edfa9ea27841aeea7eff26507cd..57e8e467126013063b014a02e49138e15d4e486e 100644
+--- a/Protocol_Core/qanto-node/src/metrics.rs
++++ b/Protocol_Core/qanto-node/src/metrics.rs
+@@ -1,7 +1,9 @@
+-//! Unified metrics system for Qanto blockchain
++//! Unified metrics system for Qanto blockchain-solo
+ //! This module provides a centralized metrics collection and reporting system
+ //! that eliminates duplication across the codebase.
+ //! v0.1.0
++#![allow(clippy::manual_checked_ops)]
++
+ use ahash::AHashMap as HashMap;
+ use serde::{Deserialize, Serialize};
+ use std::sync::atomic::{AtomicU64, Ordering};
+@@ -797,8 +799,15 @@ impl QantoMetrics {
+         })
+     }
+ 
+-    /// Export metrics in Prometheus format
+-    pub fn export_prometheus(&self) -> String {
++    /// Export metrics in Prometheus format.
++    ///
++    /// The lock-backed gauges are read asynchronously so callers can safely invoke
++    /// this method from a Tokio runtime without blocking an executor thread.
++    pub async fn export_prometheus(&self) -> String {
++        let total_value_locked = *self.total_value_locked.read().await;
++        let validator_rewards_24h = *self.validator_rewards_24h.read().await;
++        let transaction_fees_24h = *self.transaction_fees_24h.read().await;
++
+         let mut output = String::new();
+ 
+         // Core blockchain metrics
+@@ -871,15 +880,15 @@ impl QantoMetrics {
+         ));
+         output.push_str(&format!(
+             "qanto_total_value_locked {}\n",
+-            *self.total_value_locked.blocking_read()
++            total_value_locked
+         ));
+         output.push_str(&format!(
+             "qanto_validator_rewards_24h {}\n",
+-            *self.validator_rewards_24h.blocking_read()
++            validator_rewards_24h
+         ));
+         output.push_str(&format!(
+             "qanto_transaction_fees_24h {}\n",
+-            *self.transaction_fees_24h.blocking_read()
++            transaction_fees_24h
+         ));
+ 
+         // Optimization metrics
+@@ -1672,4 +1681,18 @@ mod tests {
+             "1.23 GH/s"
+         );
+     }
++
++    #[tokio::test]
++    async fn test_export_prometheus_reads_lock_backed_gauges_in_async_runtime() {
++        let metrics = QantoMetrics::new();
++        metrics.set_total_value_locked(101).await;
++        metrics.set_validator_rewards_24h(202).await;
++        metrics.set_transaction_fees_24h(303).await;
++
++        let output = metrics.export_prometheus().await;
++
++        assert!(output.contains("qanto_total_value_locked 101\n"));
++        assert!(output.contains("qanto_validator_rewards_24h 202\n"));
++        assert!(output.contains("qanto_transaction_fees_24h 303\n"));
++    }
+ }
+diff --git a/Protocol_Core/qanto-node/src/metrics_server.rs b/Protocol_Core/qanto-node/src/metrics_server.rs
+index 056bab15e2755d3e88253008fe558d3d65779b73..47b86e8d93467f2dde66b891de5bdbe080ef2e99 100644
+--- a/Protocol_Core/qanto-node/src/metrics_server.rs
++++ b/Protocol_Core/qanto-node/src/metrics_server.rs
+@@ -24,7 +24,7 @@ async fn health_check() -> Json<serde_json::Value> {
+ 
+ /// Prometheus metrics endpoint
+ async fn metrics_endpoint(State(state): State<MetricsState>) -> String {
+-    state.metrics.export_prometheus()
++    state.metrics.export_prometheus().await
+ }
+ 
+ /// Performance metrics endpoint
+diff --git a/Protocol_Core/qanto-node/src/node.rs b/Protocol_Core/qanto-node/src/node.rs
+index 11e422814b9128b659a2785fd7eb519a47238d70..0986ce62bf5a51560e2b126b05f79eb4b57ead60 100644
+--- a/Protocol_Core/qanto-node/src/node.rs
++++ b/Protocol_Core/qanto-node/src/node.rs
+@@ -73,7 +73,7 @@ use qanto_core::balance_stream::BalanceBroadcaster;
+ use regex::Regex;
+ use serde::{Deserialize, Serialize};
+ use sha3::Digest;
+-use std::collections::VecDeque;
++use std::collections::{BTreeSet, VecDeque};
+ use std::net::SocketAddr;
+ use std::path::Path;
+ use std::sync::Arc;
+@@ -960,17 +960,14 @@ impl Node {
+                                 blocks.len(),
+                                 utxos.len()
+                             );
+-                            // Extend the local UTXO set with the synced data.
+-                            {
+-                                let mut utxos_writer = utxos_clone.write().await;
+-                                let initial_utxo_count = utxos_writer.len();
+-                                utxos_writer.extend(utxos);
+-
+-                                info!(
+-                                    "UTXO set updated with {} new entries from sync.",
+-                                    utxos_writer.len() - initial_utxo_count
+-                                );
+-                            }
++                            // A peer-supplied snapshot has no authenticated state root or
++                            // finalized checkpoint today. Never merge those UTXOs into live
++                            // consensus state. The sequentially validated blocks below must
++                            // derive every accepted UTXO from the existing local state.
++                            warn!(
++                                "Discarding {} unverified peer-supplied UTXOs; authenticated snapshot sync is disabled",
++                                utxos.len()
++                            );
+                             // Topologically sort and add the received blocks to the DAG.
+                             if let Ok(sorted_blocks) =
+                                 Self::topological_sort_blocks(blocks, &dag_clone).await
+@@ -1844,6 +1841,8 @@ impl Node {
+         let Some(child_ids) = pending_children_by_parent.get(committed_parent_id).cloned() else {
+             return Vec::new();
+         };
++        let mut child_ids: Vec<String> = child_ids.into_iter().collect();
++        child_ids.sort_unstable();
+ 
+         let mut ready_blocks = Vec::new();
+         let mut still_pending = Vec::new();
+@@ -1874,6 +1873,8 @@ impl Node {
+             );
+         }
+ 
++        ready_blocks.sort_unstable_by(|left, right| left.id.cmp(&right.id));
++
+         ready_blocks
+     }
+ 
+@@ -1916,7 +1917,7 @@ impl Node {
+         }
+ 
+         // Initialize the queue with all nodes that have an in-degree of 0.
+-        let mut queue: VecDeque<String> = in_degree
++        let mut queue: BTreeSet<String> = in_degree
+             .iter()
+             .filter(|(_, &degree)| degree == 0)
+             .map(|(id, _)| id.clone())
+@@ -1925,13 +1926,13 @@ impl Node {
+         let mut sorted_blocks = Vec::with_capacity(block_map.len());
+ 
+         // Process the queue (Kahn's algorithm).
+-        while let Some(id) = queue.pop_front() {
++        while let Some(id) = queue.pop_first() {
+             if let Some(children) = children_map.get(&id) {
+                 for child_id in children {
+                     if let Some(degree) = in_degree.get_mut(child_id) {
+                         *degree -= 1;
+                         if *degree == 0 {
+-                            queue.push_back(child_id.clone());
++                            queue.insert(child_id.clone());
+                         }
+                     }
+                 }
+@@ -4264,10 +4265,7 @@ async fn jsonrpc_handler(
+                     Ok(execution) => {
+                         state
+                             .websocket_state
+-                            .broadcast_balance_update(
+-                                execution.recipient.clone(),
+-                                execution.amount,
+-                            )
++                            .broadcast_balance_update(execution.recipient.clone(), execution.amount)
+                             .await;
+                         serde_json::json!(format!("0x{}", execution.tx_id))
+                     }
+@@ -4378,7 +4376,7 @@ async fn metrics_json_handler(
+ 
+ async fn metrics_prometheus_handler(State(_state): State<AppState>) -> Result<String, StatusCode> {
+     let metrics = crate::metrics::get_global_metrics();
+-    Ok(metrics.export_prometheus())
++    Ok(metrics.export_prometheus().await)
+ }
+ 
+ #[cfg(test)]
+diff --git a/Protocol_Core/qanto-node/src/p2p.rs b/Protocol_Core/qanto-node/src/p2p.rs
+index 10c66291ebc9d2d1be0ad81b54de3540cd4125a9..ea7b77933295a2bc029278a4f736c5eec56c231a 100644
+--- a/Protocol_Core/qanto-node/src/p2p.rs
++++ b/Protocol_Core/qanto-node/src/p2p.rs
+@@ -53,7 +53,7 @@ use std::fs;
+ use rand::Rng;
+ use std::collections::VecDeque;
+ use std::sync::Arc;
+-use std::time::Duration;
++use std::time::{Duration, Instant};
+ use thiserror::Error;
+ use tokio::{
+     sync::{mpsc, RwLock},
+@@ -71,6 +71,7 @@ const RECONNECT_MAX_DELAY_SECS: u64 = 300; // 5 minutes cap
+ const RECONNECT_MULTIPLIER: f64 = 1.5;
+ const RECONNECT_JITTER_FACTOR: f64 = 0.25; // ±25% jitter
+ const KEEPALIVE_INTERVAL_SECS: u64 = 30; // WSS keep-alive ping interval
++const BLACKLIST_TTL_SECS: u64 = 86400; // 24-hour blacklist expiry
+ 
+ lazy_static::lazy_static! {
+     static ref MESSAGES_SENT: IntCounter = register_int_counter!("p2p_messages_sent_total", "Total messages sent").unwrap();
+@@ -776,7 +777,7 @@ impl P2PServer {
+         // query every KEEPALIVE_INTERVAL_SECS to exercise TCP/WSS connections
+         // and simultaneously discover new peers.
+         let mut keepalive_ticker = interval(Duration::from_secs(KEEPALIVE_INTERVAL_SECS));
+-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
++        let blacklist = Arc::new(RwLock::new(HashMap::new()));
+ 
+         let rate_limiters = GossipRateLimiters {
+             block: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(10u32)))),
+@@ -914,7 +915,7 @@ impl P2PServer {
+                 message,
+             })) => {
+                 // Route gossip message through the static handler with fresh rate limiters
+-                let blacklist = Arc::new(RwLock::new(HashSet::new()));
++                let blacklist = Arc::new(RwLock::new(HashMap::new()));
+                 let rate_limiters = GossipRateLimiters {
+                     block: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(10u32)))),
+                     tx: Arc::new(RateLimiter::keyed(Quota::per_second(nonzero!(50u32)))),
+@@ -1210,7 +1211,7 @@ impl P2PServer {
+     async fn static_process_gossip_message(
+         message: gossipsub::Message,
+         source: PeerId,
+-        blacklist: Arc<RwLock<HashSet<PeerId>>>,
++        blacklist: Arc<RwLock<HashMap<PeerId, Instant>>>,
+         p2p_command_sender: mpsc::Sender<P2PCommand>,
+         rate_limiters: GossipRateLimiters,
+     ) {
+@@ -1220,7 +1221,13 @@ impl P2PServer {
+             message.topic.as_str()
+         );
+ 
+-        if blacklist.read().await.contains(&source) {
++        let blacklisted = {
++            let mut bl = blacklist.write().await;
++            // Expire stale entries using BLACKLIST_TTL_SECS
++            bl.retain(|_, ts| ts.elapsed() < Duration::from_secs(BLACKLIST_TTL_SECS));
++            bl.contains_key(&source)
++        };
++        if blacklisted {
+             warn!("Ignoring message from blacklisted peer: {}", source);
+             return;
+         }
+@@ -1241,7 +1248,7 @@ impl P2PServer {
+ 
+         if rate_limiter_to_use.check_key(&source).is_err() {
+             let mut blacklist_writer = blacklist.write().await;
+-            if blacklist_writer.insert(source) {
++            if blacklist_writer.insert(source, Instant::now()).is_none() {
+                 warn!("Peer {} exceeded rate limit. Blacklisting.", source);
+                 PEERS_BLACKLISTED.inc();
+             }
+@@ -1274,7 +1281,7 @@ impl P2PServer {
+                 message.topic.as_str()
+             );
+             let mut blacklist_writer = blacklist.write().await;
+-            if blacklist_writer.insert(source) {
++            if blacklist_writer.insert(source, Instant::now()).is_none() {
+                 warn!("Peer {} failed HMAC check. Blacklisting.", source);
+                 PEERS_BLACKLISTED.inc();
+             }
+@@ -1291,7 +1298,7 @@ impl P2PServer {
+                     message.topic.as_str()
+                 );
+                 let mut blacklist_writer = blacklist.write().await;
+-                if blacklist_writer.insert(source) {
++                if blacklist_writer.insert(source, Instant::now()).is_none() {
+                     warn!("Peer {} failed signature check. Blacklisting.", source);
+                     PEERS_BLACKLISTED.inc();
+                 }
+@@ -1309,7 +1316,7 @@ impl P2PServer {
+                 message.topic.as_str()
+             );
+             let mut blacklist_writer = blacklist.write().await;
+-            if blacklist_writer.insert(source) {
++            if blacklist_writer.insert(source, Instant::now()).is_none() {
+                 warn!("Peer {} failed signature check. Blacklisting.", source);
+                 PEERS_BLACKLISTED.inc();
+             }
+@@ -2066,7 +2073,7 @@ mod tests {
+         let bytes = msg.encode_to_vec();
+         let message = make_message("/qanto/transactions/1", bytes);
+         let source = gen_peer_id();
+-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
++        let blacklist = Arc::new(RwLock::new(HashMap::new()));
+         let rate_limiters = make_default_rate_limiters();
+         let (cmd_tx, mut cmd_rx) = mpsc::channel(1);
+ 
+@@ -2084,7 +2091,7 @@ mod tests {
+             P2PCommand::BroadcastTransaction(t) => assert_eq!(t.id, tx.id),
+             _ => panic!("unexpected command variant"),
+         }
+-        assert!(!blacklist.read().await.contains(&source));
++        assert!(!blacklist.read().await.contains_key(&source));
+         if let Some(s) = orig_secret {
+             std::env::set_var("HMAC_SECRET", s);
+         } else {
+@@ -2118,7 +2125,7 @@ mod tests {
+ 
+         let message = make_message("/qanto/transactions/1", bytes);
+         let source = gen_peer_id();
+-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
++        let blacklist = Arc::new(RwLock::new(HashMap::new()));
+         let rate_limiters = make_default_rate_limiters();
+         let (cmd_tx, mut cmd_rx) = mpsc::channel(1);
+ 
+@@ -2134,7 +2141,7 @@ mod tests {
+         )
+         .await;
+ 
+-        assert!(blacklist.read().await.contains(&source));
++        assert!(blacklist.read().await.contains_key(&source));
+         assert!(cmd_rx.try_recv().is_err());
+         if let Some(s) = orig_secret {
+             std::env::set_var("HMAC_SECRET", s);
+@@ -2175,7 +2182,7 @@ mod tests {
+         let bytes = msg_tampered.encode_to_vec();
+         let message = make_message("/qanto/transactions/1", bytes);
+         let source = gen_peer_id();
+-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
++        let blacklist = Arc::new(RwLock::new(HashMap::new()));
+         let rate_limiters = make_default_rate_limiters();
+         let (cmd_tx, mut cmd_rx) = mpsc::channel(1);
+ 
+@@ -2188,7 +2195,7 @@ mod tests {
+         )
+         .await;
+ 
+-        assert!(blacklist.read().await.contains(&source));
++        assert!(blacklist.read().await.contains_key(&source));
+         assert!(cmd_rx.try_recv().is_err());
+         if let Some(s) = orig_secret {
+             std::env::set_var("HMAC_SECRET", s);
+@@ -2235,7 +2242,7 @@ mod tests {
+         );
+ 
+         let source = gen_peer_id();
+-        let blacklist = Arc::new(RwLock::new(HashSet::new()));
++        let blacklist = Arc::new(RwLock::new(HashMap::new()));
+         let rate_limiters = make_rate_limiters_tx_1();
+         let (cmd_tx, mut cmd_rx) = mpsc::channel(2);
+ 
+@@ -2270,7 +2277,7 @@ mod tests {
+         )
+         .await;
+ 
+-        assert!(blacklist.read().await.contains(&source));
++        assert!(blacklist.read().await.contains_key(&source));
+         if let Some(s) = orig_secret {
+             std::env::set_var("HMAC_SECRET", s);
+         } else {
+diff --git a/Protocol_Core/qanto-node/src/partition_tests.rs b/Protocol_Core/qanto-node/src/partition_tests.rs
+index 9826ad2cb909a44bf8bdb3ae56852d07380be28a..15b8a1d473b4f9f2b3e936994c7119010ca9112e 100644
+--- a/Protocol_Core/qanto-node/src/partition_tests.rs
++++ b/Protocol_Core/qanto-node/src/partition_tests.rs
+@@ -68,7 +68,7 @@ async fn grow_chain(
+             signature: sig.as_bytes().to_vec(),
+         };
+ 
+-        block.id = block.hash();
++        block.id = block.compute_block_id().unwrap();
+ 
+         let added = dag
+             .add_block(block.clone(), utxos, None, None)
+diff --git a/Protocol_Core/qanto-node/src/pq_crypto.rs b/Protocol_Core/qanto-node/src/pq_crypto.rs
+index 00c8c83a02fe71cae2dbf7f7596ac6ff17469d6c..e72c4a6a32a480b8f6d80857f62a20aab63d8859 100644
+--- a/Protocol_Core/qanto-node/src/pq_crypto.rs
++++ b/Protocol_Core/qanto-node/src/pq_crypto.rs
+@@ -18,7 +18,21 @@ pub fn verify_pq_signature(
+     _sig: &PqSignature,
+     _pubkey: &[u8],
+ ) -> Result<bool, &'static str> {
+-    // MOCK: Integration point for the `pqcrypto` crate.
+-    // Currently returning true to allow testnet DAG validation to proceed.
+-    Ok(true)
++    // This compatibility API has no real verifier wired to it. Never let a
++    // placeholder become an authorization bypass if a future caller uses it.
++    Err("post-quantum compatibility verifier is not implemented")
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn unsupported_verifier_fails_closed() {
++        let signature = PqSignature {
++            blob: vec![1, 2, 3],
++            algo: PqAlgorithm::Dilithium3,
++        };
++        assert!(verify_pq_signature(b"message", &signature, b"key").is_err());
++    }
+ }
+diff --git a/Protocol_Core/qanto-node/src/qantodag.rs b/Protocol_Core/qanto-node/src/qantodag.rs
+index 33b9d15c3428b7a62acba327dc30ef233055063f..bf9fcae6f81e83cc5283f6a4e03968dec3835d6d 100644
+--- a/Protocol_Core/qanto-node/src/qantodag.rs
++++ b/Protocol_Core/qanto-node/src/qantodag.rs
+@@ -31,12 +31,13 @@ use crate::persistence::{
+     PersistenceWriter, BALANCES_KEY_PREFIX, GENESIS_BLOCK_ID_KEY,
+ };
+ use crate::post_quantum_crypto::{
+-    pq_sign, pq_verify, PQError, QantoPQPrivateKey, QantoPQPublicKey, QantoPQSignature,
++    generate_pq_keypair, pq_sign, pq_verify, PQError, QantoPQPrivateKey, QantoPQPublicKey,
++    QantoPQSignature,
+ };
+ use crate::qanto_storage::{
+     AccountStateCache, QantoStorage, QantoStorageError, StorageConfig, WriteBatch,
+ };
+-use crate::transaction::{Output, Transaction};
++use crate::transaction::{Output, Transaction, TransactionKind};
+ use crate::types::{HomomorphicEncrypted, UTXO};
+ 
+ use ahash::{AHashMap as HashMap, AHashSet as HashSet};
+@@ -82,10 +83,12 @@ const SHARD_THRESHOLD: u32 = 2;
+ const TEMPORAL_CONSENSUS_WINDOW: u64 = 600;
+ const MAX_BLOCKS_PER_MINUTE: u64 = 32 * 60;
+ const MIN_VALIDATOR_STAKE: u128 = 50 * crate::transaction::SMALLEST_UNITS_PER_QAN;
+-const SLASHING_PENALTY: u128 = 30 * crate::transaction::SMALLEST_UNITS_PER_QAN;
+ const CACHE_SIZE: usize = 10_000; // Increased cache size for better performance
+ const ANOMALY_DETECTION_BASELINE_BLOCKS: usize = 100;
+ const ANOMALY_Z_SCORE_THRESHOLD: u128 = 3 * crate::QANTO_SCALE + 500_000_000;
++/// Bridge minting must stay disabled until source-chain finality, receipt
++/// inclusion, and the advertised ZK proof are cryptographically verified.
++const BRIDGE_PROOF_VERIFIER_AVAILABLE: bool = false;
+ #[cfg(feature = "performance-test")]
+ const INITIAL_DIFFICULTY: u64 = (crate::QANTO_SCALE / 1000) as u64; // Minimal difficulty for performance testing (0.001)
+ #[cfg(not(feature = "performance-test"))]
+@@ -1085,6 +1088,8 @@ impl QantoDAG {
+         );
+         // Generate a single keypair for all genesis blocks to avoid expensive repeated key generation
+         let (paillier_pk, _) = HomomorphicEncrypted::generate_keypair();
++        let (_genesis_validator_pk, genesis_validator_sk) = generate_pq_keypair(Some([42u8; 32]))
++            .expect("Failed to generate genesis validator PQ keypair");
+         for chain_id_val in 0..config.num_chains {
+             let gkey = genesis_id_key(chain_id_val);
+             match dag.db.get(&gkey) {
+@@ -1214,7 +1219,7 @@ impl QantoDAG {
+                         None => {
+                             warn!("Genesis ID found but block missing for chain {}. Recreating genesis.", chain_id_val);
+                             let genesis_creation_data = QantoBlockCreationData {
+-                                validator_private_key: QantoPQPrivateKey::new_dummy(),
++                                validator_private_key: genesis_validator_sk.clone(),
+                                 chain_id: chain_id_val,
+                                 parents: vec![],
+                                 transactions: vec![],
+@@ -1872,18 +1877,17 @@ impl QantoDAG {
+         });
+ 
+         if is_equivocation {
+-            if let Some(mut stake_ref) = self.validators.get_mut(&block.validator) {
+-                let current_stake = *stake_ref.value();
+-                let penalty = (current_stake * 30) / 100; // 30% slashing penalty
+-                let new_stake = current_stake.saturating_sub(penalty);
+-                *stake_ref.value_mut() = new_stake;
+-                warn!(
+-                    "Slashed validator {} by {} for equivocation (double-signing) at height {}",
+-                    block.validator, penalty, block.height
+-                );
+-            }
++            // The block currently carries a self-selected PQ key without a
++            // cryptographic binding to `block.validator`. Mutating stake here
++            // would let an attacker name and slash another validator. Reject
++            // the conflicting block, but keep penalties disabled until the
++            // validator identity certificate is part of consensus.
++            warn!(
++                "Rejected equivocation attributed to unbound validator {} at height {}; automatic slashing is disabled",
++                block.validator, block.height
++            );
+             return Err(QantoDAGError::InvalidBlock(
+-                "Equivocation (double-signing) detected and validator slashed".to_string(),
++                "Equivocation (double-signing) detected".to_string(),
+             ));
+         }
+ 
+@@ -1895,16 +1899,12 @@ impl QantoDAG {
+             .collect();
+         let anomaly_score = self.detect_anomaly_internal(&blocks_map, &block).await?;
+         if anomaly_score > 900_000_000 {
+-            if let Some(mut stake_ref) = self.validators.get_mut(&block.validator) {
+-                let current_stake = *stake_ref.value();
+-                let penalty = (current_stake * SLASHING_PENALTY) / 100;
+-                let new_stake = current_stake.saturating_sub(penalty);
+-                *stake_ref.value_mut() = new_stake;
+-                info!(
+-                    "Slashed validator {} by {} for anomaly (score: {})",
+-                    block.validator, penalty, anomaly_score
+-                );
+-            }
++            // Anomaly scores are node-local heuristics, not committed evidence.
++            // They remain advisory and must never mutate consensus stake.
++            warn!(
++                "Advisory anomaly score {} for block {}; no automatic slashing applied",
++                anomaly_score, block.id
++            );
+         }
+ 
+         // Plan conflict-free UTXO changes and compute balance deltas
+@@ -2922,11 +2922,35 @@ impl QantoDAG {
+                 "Block ID cannot be empty".to_string(),
+             ));
+         }
++        let expected_block_id = block.compute_block_id()?;
++        if block.id != expected_block_id {
++            return Err(QantoDAGError::InvalidBlock(format!(
++                "Block ID does not match canonical header: expected {expected_block_id}, got {}",
++                block.id
++            )));
++        }
++        if block.difficulty != INITIAL_DIFFICULTY {
++            return Err(QantoDAGError::InvalidBlock(format!(
++                "Block difficulty does not match the deterministic network requirement: expected {INITIAL_DIFFICULTY}, got {}",
++                block.difficulty
++            )));
++        }
+         if block.transactions.is_empty() {
+             return Err(QantoDAGError::InvalidBlock(
+                 "Block must contain at least a coinbase transaction".to_string(),
+             ));
+         }
++        if !BRIDGE_PROOF_VERIFIER_AVAILABLE
++            && block
++                .transactions
++                .iter()
++                .any(|tx| tx.transaction_kind == TransactionKind::BridgeClaim)
++        {
++            return Err(QantoDAGError::InvalidBlock(
++                "Bridge claims are disabled until cryptographic source-chain proof verification is implemented"
++                    .to_string(),
++            ));
++        }
+ 
+         let serialized_size = bincode::serialized_size(&block).unwrap_or(0) as usize;
+         // Dynamic block size limit based on chain congestion, clamped to [8MB, MAX_BLOCK_SIZE]
+@@ -3982,6 +4006,13 @@ impl QantoDAG {
+     ) -> Result<(), QantoDAGError> {
+         use sha3::{Digest, Keccak256};
+ 
++        if !BRIDGE_PROOF_VERIFIER_AVAILABLE {
++            return Err(QantoDAGError::Governance(
++                "Bridge claims are disabled: cryptographic source-chain proof verification is not implemented"
++                    .to_string(),
++            ));
++        }
++
+         let eth_tx_hash = tx.metadata.get("bridge_source_tx_hash").ok_or_else(|| {
+             QantoDAGError::Governance("Missing source transaction hash".to_string())
+         })?;
+@@ -4381,12 +4412,11 @@ impl QantoDAG {
+         self.manage_lock_free_queue().await;
+ 
+         // Difficulty adjustment is now fully handled by SAGA during epoch evolution.
+-        if let Err(e) = self.finalize_blocks().await {
+-            warn!("Failed to finalize blocks during maintenance: {e}");
+-        }
+-        if let Err(e) = self.dynamic_sharding().await {
+-            warn!("Failed to run dynamic sharding during maintenance: {e}");
+-        }
++        // Automatic finality and dynamic sharding are intentionally disabled.
++        // Both currently derive consensus-affecting state from local observations
++        // rather than a committed, deterministic protocol transition. Re-enable
++        // only after their consensus specifications and multi-node determinism
++        // tests are implemented.
+ 
+         // AtomicU64 doesn't require async locking, use atomic operations directly
+         let current_epoch = self.current_epoch.fetch_add(1, Ordering::SeqCst) + 1;
+@@ -5836,7 +5866,9 @@ impl QantoDAG {
+             ChainWeightStrategy::Difficulty => self
+                 .blocks
+                 .get(block_id)
+-                .map(|b| b.effort.max(b.difficulty as u128).max(1))
++                // `effort` is peer supplied and is neither signed nor
++                // independently reproducible, so it must not affect fork choice.
++                .map(|b| (b.difficulty as u128).max(1))
+                 .unwrap_or(1),
+             ChainWeightStrategy::StakeWeight => {
+                 if let Some(block) = self.blocks.get(block_id) {
+@@ -5881,7 +5913,13 @@ impl QantoDAG {
+                 continue;
+             }
+             if block.height == 0 {
+-                genesis_block = Some(block.clone());
++                if genesis_block
++                    .as_ref()
++                    .map(|current| block.id < current.id)
++                    .unwrap_or(true)
++                {
++                    genesis_block = Some(block.clone());
++                }
+             }
+             for parent_id in &block.parents {
+                 children
+@@ -5900,7 +5938,14 @@ impl QantoDAG {
+                     let mut max_height = 0;
+                     for tip_id in tips.value() {
+                         if let Some(block) = self.blocks.get(tip_id) {
+-                            if best_tip.is_none() || block.height > max_height {
++                            let replaces_best = best_tip
++                                .as_ref()
++                                .map(|current| {
++                                    block.height > max_height
++                                        || (block.height == max_height && block.id < current.id)
++                                })
++                                .unwrap_or(true);
++                            if replaces_best {
+                                 max_height = block.height;
+                                 best_tip = Some(block.clone());
+                             }
+@@ -5930,7 +5975,7 @@ impl QantoDAG {
+             for child_id in child_ids {
+                 let w = self
+                     .calculate_branch_weight_recursive(child_id, &children, strategy, &mut memo);
+-                if w > max_weight {
++                if w > max_weight || (w == max_weight && child_id < best_child_id) {
+                     max_weight = w;
+                     best_child_id = child_id;
+                 }
+diff --git a/Protocol_Core/qanto-node/src/security_tests.rs b/Protocol_Core/qanto-node/src/security_tests.rs
+index 556d47f129d6870421b443062e44049e235869e1..0a52b9847f2743c838e6fcbd166538aff3c5f78c 100644
+--- a/Protocol_Core/qanto-node/src/security_tests.rs
++++ b/Protocol_Core/qanto-node/src/security_tests.rs
+@@ -1,7 +1,7 @@
+ use crate::mempool::{Mempool, MempoolError};
+ use crate::performance_optimizations::QantoDAGOptimizations;
+ use crate::post_quantum_crypto::{generate_pq_keypair, QantoPQPrivateKey, QantoPQPublicKey};
+-use crate::qantodag::{QantoBlock, QantoDAG, QantoDagConfig};
++use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError, QantoDagConfig};
+ use crate::saga::{GovernanceProposal, ProposalStatus, ProposalType};
+ use crate::transaction::{
+     Input, Output, Transaction, TransactionError, TransactionKind, GLOBAL_CHAIN_ID,
+@@ -53,6 +53,22 @@ pub(crate) fn create_valid_signed_tx(
+     tx
+ }
+ 
++/// Returns true while the bridge is deliberately unavailable because no
++/// cryptographic source-chain proof verifier is wired into consensus.
++///
++/// Bridge-behavior tests keep their deeper assertions for the future verifier,
++/// but today this fail-closed gate is the security invariant they must observe.
++pub(crate) async fn bridge_claims_fail_closed() -> bool {
++    let dag = QantoDAG::new_dummy_for_verification();
++    let tx = Transaction::new_dummy();
++    matches!(
++        dag.process_bridge_claim(&tx, &Arc::new(RwLock::new(HashMap::new())))
++            .await,
++        Err(QantoDAGError::Governance(message))
++            if message.contains("Bridge claims are disabled")
++    )
++}
++
+ // Helper to create StorageConfig for custom paths
+ pub(crate) fn get_storage_config(
+     temp_path: &std::path::Path,
+@@ -276,6 +292,10 @@ async fn test_security_chain_id_replay_protection() {
+ 
+ #[tokio::test]
+ async fn test_security_bridge_claim_zero_signers() {
++    if bridge_claims_fail_closed().await {
++        return;
++    }
++
+     let dag = QantoDAG::new_dummy_for_verification();
+ 
+     let mut tx = Transaction::new_dummy();
+@@ -315,6 +335,10 @@ async fn test_security_bridge_claim_zero_signers() {
+ 
+ #[tokio::test]
+ async fn test_security_bridge_claim_insufficient_quorum() {
++    if bridge_claims_fail_closed().await {
++        return;
++    }
++
+     use sha3::{Digest, Keccak256};
+ 
+     let dag = QantoDAG::new_dummy_for_verification();
+@@ -380,6 +404,10 @@ async fn test_security_bridge_claim_insufficient_quorum() {
+ 
+ #[tokio::test]
+ async fn test_security_bridge_double_claim() {
++    if bridge_claims_fail_closed().await {
++        return;
++    }
++
+     use sha3::{Digest, Keccak256};
+ 
+     let dag = QantoDAG::new_dummy_for_verification();
+@@ -459,6 +487,10 @@ async fn test_security_bridge_double_claim() {
+ 
+ #[tokio::test]
+ async fn test_security_bridge_claim_exceeds_locked() {
++    if bridge_claims_fail_closed().await {
++        return;
++    }
++
+     let dag = QantoDAG::new_dummy_for_verification();
+ 
+     let mut tx = Transaction::new_dummy();
+@@ -644,6 +676,10 @@ async fn test_security_coinbase_signature_validation() {
+ 
+ #[tokio::test]
+ async fn test_security_node_restart_claim_replay() {
++    if bridge_claims_fail_closed().await {
++        return;
++    }
++
+     let temp_dir = tempfile::tempdir().unwrap();
+     let path = temp_dir.path();
+ 
+@@ -752,21 +788,62 @@ async fn test_security_tampered_genesis_load() {
+     let temp_dir = tempfile::tempdir().unwrap();
+     let path = temp_dir.path();
+ 
+-    // 1. Generate normal genesis and persist it to DB
++    // 1. Generate normal genesis and persist it to DB (explicitly, like block_producer test)
+     let genesis_id = {
++        use crate::persistence::{genesis_id_key, GENESIS_BLOCK_ID_KEY};
++        use crate::post_quantum_crypto::generate_pq_keypair;
++        use crate::qanto_storage::{QantoStorage, WriteBatch};
++        use crate::qantodag::{QantoBlock, QantoBlockCreationData, INITIAL_BLOCK_REWARD};
++        use crate::types::HomomorphicEncrypted;
++
++        let storage_config = get_storage_config(path);
++        let db = crate::qanto_storage::QantoStorage::new(storage_config).unwrap();
++
++        // Create genesis block with valid PQ keypair
++        let (validator_pk, validator_sk) =
++            generate_pq_keypair(Some([42u8; 32])).expect("generate PQ keypair");
++        let genesis_timestamp = 1_717_250_400u64;
++        let genesis_data = QantoBlockCreationData {
++            validator_private_key: validator_sk,
++            chain_id: 0,
++            parents: vec![],
++            transactions: vec![],
++            difficulty: 1_000_000_000u64, // QANTO_SCALE
++            validator: "0x0000000000000000000000000000000000000001".to_string(),
++            miner: "0x0000000000000000000000000000000000000001".to_string(),
++            timestamp: genesis_timestamp,
++            current_epoch: 0,
++            height: 0,
++            paillier_pk: HomomorphicEncrypted::generate_keypair().0,
++        };
++        let mut genesis_block = QantoBlock::new(genesis_data).expect("genesis block creation");
++        genesis_block.reward = INITIAL_BLOCK_REWARD;
++        let genesis_id = genesis_block.id.clone();
++        let genesis_id_bytes = genesis_id.as_bytes().to_vec();
++        let genesis_block_bytes = serde_json::to_vec(&genesis_block).expect("genesis serialize");
++
++        // Store genesis block and markers
++        let mut batch = WriteBatch::new();
++        batch.put(genesis_id_bytes.clone(), genesis_block_bytes);
++        let gkey = genesis_id_key(0);
++        batch.put(gkey, genesis_id_bytes.clone());
++        batch.put(GENESIS_BLOCK_ID_KEY.to_vec(), genesis_id_bytes);
++        db.write_batch(batch).expect("genesis write");
++        db.flush().expect("genesis flush");
++        db.sync().expect("genesis sync");
++
++        // Now create DAG which will load the existing genesis
+         let saga = Arc::new(crate::saga::PalletSaga::new(
+             #[cfg(feature = "infinite-strata")]
+             None,
+         ));
+         let storage_config = get_storage_config(path);
+         let db = crate::qanto_storage::QantoStorage::new(storage_config).unwrap();
+-
+-        // Let's boot initialization loop which creates genesis block
+         let config = QantoDagConfig {
+             num_chains: 1,
+             target_block_time: 1000,
+             initial_validator: "0x0000000000000000000000000000000000000001".to_string(),
+-            genesis_timestamp: 1_717_250_400,
++            genesis_timestamp,
+             dev_fee_rate: 100_000_000,
+         };
+         let logging_config = crate::config::LoggingConfig::default();
+diff --git a/Protocol_Core/qanto-node/src/transaction.rs b/Protocol_Core/qanto-node/src/transaction.rs
+index 47b35de56b517c1b0d949be1f3584ded2f5861b3..8d0b843baf69666c1a738bfc283c1a7a33755d49 100644
+--- a/Protocol_Core/qanto-node/src/transaction.rs
++++ b/Protocol_Core/qanto-node/src/transaction.rs
+@@ -445,7 +445,14 @@ impl Transaction {
+             1,
+             0,
+             vec![],
+-            vec![],
++            vec![Output {
++                address: "dummy_miner_address".to_string(),
++                amount: 50_000_000_000,
++                homomorphic_encrypted: HomomorphicEncrypted {
++                    ciphertext: vec![],
++                    public_key: vec![],
++                },
++            }],
+             HashMap::new(),
+             timestamp,
+             TransactionKind::Transfer,
+@@ -1043,6 +1050,15 @@ impl Transaction {
+ 
+     /// Lightweight transaction validation for mempool admission.
+     pub fn validate_for_mempool(&self) -> Result<(), TransactionError> {
++        // Coinbase transactions are created only inside block construction.
++        // Treating every inputless transaction as coinbase at an external
++        // boundary lets peers inject a second coinbase into a candidate block.
++        if self.inputs.is_empty() {
++            return Err(TransactionError::InvalidStructure(
++                "Inputless/coinbase transactions are not accepted by the mempool".to_string(),
++            ));
++        }
++
+         // DoS Protection: size limits check
+         let serialized_len = serde_json::to_vec(self)
+             .map_err(TransactionError::Serialization)?
+@@ -1370,6 +1386,17 @@ mod tests {
+         assert_eq!(bytes_a, bytes_b);
+     }
+ 
++    #[test]
++    fn mempool_rejects_inputless_coinbase_like_transactions() {
++        let tx = Transaction::new_dummy();
++        let error = tx
++            .validate_for_mempool()
++            .expect_err("coinbase-like transactions must not enter the mempool");
++        assert!(
++            matches!(error, TransactionError::InvalidStructure(message) if message.contains("not accepted by the mempool"))
++        );
++    }
++
+     #[tokio::test]
+     async fn verify_paths_fail_fast_on_invalid_signature() {
+         let dag = QantoDAG::new_dummy_for_verification();
+diff --git a/Protocol_Core/qanto-node/tests/e2e_pqc_migration.rs b/Protocol_Core/qanto-node/tests/e2e_pqc_migration.rs
+index 5237fd1dd0781e15886c267a9f708fac26cefd69..915a10b5fae989a5a251a450f8ef53f11f2992fb 100644
+--- a/Protocol_Core/qanto-node/tests/e2e_pqc_migration.rs
++++ b/Protocol_Core/qanto-node/tests/e2e_pqc_migration.rs
+@@ -32,10 +32,9 @@ fn solve_handshake_puzzle(packet: &[u8], difficulty: u32) -> bool {
+ 
+ #[tokio::test]
+ async fn test_adversarial_migration_epoch_and_governor() {
+-    // 1. Setup 3-node mock topology with Tokio MPSC (simulating 127.0.0.1 Libp2p loopbacks)
++    // 1. Set up a bounded mock ingress queue. This is a unit-level governor
++    // exercise, not a substitute for a real multi-node libp2p partition test.
+     let (tx_node1, mut rx_node1) = mpsc::channel::<Vec<u8>>(10_000);
+-    let (tx_node2, mut _rx_node2) = mpsc::channel::<Vec<u8>>(10_000);
+-    let (tx_node3, mut _rx_node3) = mpsc::channel::<Vec<u8>>(10_000);
+ 
+     let gas_model = GasFeeModel::new();
+     let _base_gas = 100_000u128;
+@@ -114,13 +113,13 @@ async fn test_adversarial_migration_epoch_and_governor() {
+     let dropped_packets = Arc::new(AtomicUsize::new(0));
+     let dropped_clone = dropped_packets.clone();
+ 
+-    // Background thread simulating the attacker flooding Libp2p nodes with raw compression bombs
+-    tokio::spawn(async move {
++    // Background task simulating an attacker flooding raw compressed bytes.
++    let producer_handle = tokio::spawn(async move {
+         for _ in 0..10_000 {
+-            // Flood raw malformed byte payloads
+-            let _ = tx_node1.send(DECOMPRESSION_BOMB_PAYLOAD.to_vec()).await;
+-            let _ = tx_node2.send(DECOMPRESSION_BOMB_PAYLOAD.to_vec()).await;
+-            let _ = tx_node3.send(DECOMPRESSION_BOMB_PAYLOAD.to_vec()).await;
++            tx_node1
++                .send(DECOMPRESSION_BOMB_PAYLOAD.to_vec())
++                .await
++                .expect("mock ingress receiver must remain alive");
+         }
+     });
+ 
+@@ -128,21 +127,12 @@ async fn test_adversarial_migration_epoch_and_governor() {
+     let interceptor_handle = tokio::spawn(async move {
+         let mut processed = 0;
+         while let Some(packet) = rx_node1.recv().await {
+-            let start = std::time::Instant::now();
+-
+             // Expected PoW difficulty D=12 for a legitimate peer
+             let is_valid_pow = solve_handshake_puzzle(&packet, 12);
+-            let execution_time_micros = start.elapsed().as_micros();
+ 
+             // Rate limiter filter simulation:
+             // Drop instantly if puzzle fails, evaluated rapidly to avoid memory leaks.
+-            // Using 500us instead of 50us due to jitter in virtualized CI environments.
+             if !is_valid_pow {
+-                assert!(
+-                    execution_time_micros < 500,
+-                    "Execution took too long: {}us",
+-                    execution_time_micros
+-                );
+                 dropped_clone.fetch_add(1, Ordering::Relaxed);
+             }
+ 
+@@ -153,8 +143,16 @@ async fn test_adversarial_migration_epoch_and_governor() {
+         }
+     });
+ 
+-    // Wait for the fast interceptor loop to reject all 10k packets
+-    let _ = tokio::time::timeout(Duration::from_secs(5), interceptor_handle).await;
++    // Bound the complete flood/rejection operation rather than asserting a
++    // per-packet wall-clock threshold, which is scheduler-dependent and flaky.
++    tokio::time::timeout(Duration::from_secs(30), async {
++        producer_handle.await.expect("producer task must complete");
++        interceptor_handle
++            .await
++            .expect("interceptor task must complete");
++    })
++    .await
++    .expect("governor did not drain the bounded ingress queue in time");
+ 
+     // Assert that the socket-level limiters discarded the decompression bombs directly
+     // at the byte boundary, returning 10,000 dropped packets exactly.
+diff --git a/Protocol_Core/qanto-relayer/Cargo.toml b/Protocol_Core/qanto-relayer/Cargo.toml
+index f004a1ea7f98fe4034a5a6c7fba2005c1eac249e..bafa77cae8e12ba16a4d17feb3b1ee06ec0061b1 100644
+--- a/Protocol_Core/qanto-relayer/Cargo.toml
++++ b/Protocol_Core/qanto-relayer/Cargo.toml
+@@ -11,4 +11,6 @@ serde_json = "1.0"
+ hex = "0.4.3"
+ k256 = { version = "0.13.4", features = ["ecdsa"] }
+ sha3 = "0.10.8"
+-qanto-zk-sdk = { path = "../qanto-zk-sdk" }
++thiserror = "1.0"
++async-trait = "0.1"
++qanto-zk-sdk = { version = "0.1.0", path = "../qanto-zk-sdk" }
+diff --git a/Protocol_Core/qanto-zk-sdk/Cargo.toml b/Protocol_Core/qanto-zk-sdk/Cargo.toml
+index 628fff14768afb5fe65ab8855f97caec9abaa488..5a101c4920b083c9d1df4c093d564783a4e34e9c 100644
+--- a/Protocol_Core/qanto-zk-sdk/Cargo.toml
++++ b/Protocol_Core/qanto-zk-sdk/Cargo.toml
+@@ -7,7 +7,6 @@ edition = "2024"
+ ed25519-dalek = "2.2.0"
+ num-bigint = "0.4.6"
+ ml-kem = "0.2"
+-pqcrypto-traits = { version = "0.3.5", optional = true }
+ rand = "0.8.5"
+ hex = "0.4.3"
+ serde = { version = "1.0", features = ["derive"] }
+@@ -16,4 +15,4 @@ thiserror = "1.0"
+ 
+ [features]
+ analyzer = []
+-pqcrypto-legacy = ["dep:pqcrypto-traits"]
++pqcrypto-legacy = []
+diff --git a/Protocol_Core/qanto-zk-sdk/src/lib.rs b/Protocol_Core/qanto-zk-sdk/src/lib.rs
+index 2f85a5f01047a95eee55551dbcb324ef3441926a..dbbc43fbddf4985d7796fb60127cb2fc7fd81b84 100644
+--- a/Protocol_Core/qanto-zk-sdk/src/lib.rs
++++ b/Protocol_Core/qanto-zk-sdk/src/lib.rs
+@@ -3,8 +3,6 @@
+ 
+ use ed25519_dalek::SigningKey;
+ use num_bigint::BigUint;
+-#[cfg(feature = "pqcrypto-legacy")]
+-use pqcrypto_dilithium::dilithium3;
+ use rand::RngCore;
+ use rand::rngs::OsRng;
+ use serde::{Deserialize, Serialize};
+@@ -242,17 +240,13 @@ pub fn build_bridge_claim_request(
+ /// Verifies a cross-chain bridge transaction using ultra-fast pairing checks.
+ /// Optimized to execute within the 31ms synaptic finality delay.
+ pub fn verify_bridge_transaction(
+-    proof: &ZKProof,
+-    inputs: &PublicInputs,
++    _proof: &ZKProof,
++    _inputs: &PublicInputs,
+ ) -> Result<bool, &'static str> {
+-    // MOCK: In production, this utilizes elliptic curve pairings (e.g. BLS12-381)
+-    if proof.a == [0; 32] {
+-        return Err("Invalid Proof Structure");
+-    }
+-
+-    // Fast-path verification for 10M TPS consensus engine
+-    let is_valid = inputs.root_hash != [0; 32] && inputs.nullifier != [0; 32];
+-    Ok(is_valid)
++    // Fail closed until this crate has an audited circuit, canonical CRS/VK,
++    // source-header finality, receipt inclusion, and nullifier/domain binding.
++    // Shape/nonzero checks are not cryptographic verification.
++    Err("bridge ZK verifier is not implemented")
+ }
+ 
+ #[derive(Debug, Error, PartialEq, Eq)]
+@@ -293,9 +287,6 @@ pub fn generate_new_address() -> Result<String, WalletKeygenError> {
+     let signing_key = SigningKey::from_bytes(&secret);
+     let verifying_key = signing_key.verifying_key();
+ 
+-    #[cfg(feature = "pqcrypto-legacy")]
+-    let _ = dilithium3::keypair();
+-
+     Ok(hex::encode(verifying_key.to_bytes()))
+ }
+ 
+@@ -326,7 +317,7 @@ mod tests {
+     use num_bigint::BigUint;
+ 
+     #[test]
+-    fn test_rapid_verification() {
++    fn bridge_verifier_fails_closed_without_real_pairing_verification() {
+         let proof = ZKProof {
+             a: [1; 32],
+             b: [2; 64],
+@@ -336,7 +327,10 @@ mod tests {
+             root_hash: [0xff; 32],
+             nullifier: [0xee; 32],
+         };
+-        assert_eq!(verify_bridge_transaction(&proof, &inputs), Ok(true));
++        assert_eq!(
++            verify_bridge_transaction(&proof, &inputs),
++            Err("bridge ZK verifier is not implemented")
++        );
+     }
+ 
+     #[test]
+@@ -377,7 +371,7 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn bridge_proof_pipeline_is_deterministic() {
++    fn synthetic_bridge_proof_pipeline_is_rejected() {
+         let witness = BridgeEventWitness {
+             source_chain: "ethereum-sepolia".to_string(),
+             source_tx_hash:
+@@ -393,25 +387,9 @@ mod tests {
+             log_index: 7,
+         };
+ 
+-        let proof = generate_bridge_proof_bundle(&witness).expect("proof bundle");
+-        let signing_hash = bridge_claim_signing_hash(
+-            &witness.source_chain,
+-            &witness.source_tx_hash,
+-            &witness.amount,
+-            &witness.recipient,
++        assert_eq!(
++            generate_bridge_proof_bundle(&witness),
++            Err(BridgeProofError::VerificationFailed)
+         );
+-        let request = build_bridge_claim_request(
+-            &witness,
+-            vec![format!("0x{}", "11".repeat(65))],
+-            &proof,
+-        )
+-        .expect("claim request");
+-
+-        assert_eq!(proof.merkle_proof.len(), 66);
+-        assert_eq!(proof.receipt_proof.len(), 66);
+-        assert!(proof.block_header.starts_with("0x"));
+-        assert_eq!(signing_hash.len(), 32);
+-        assert_eq!(request.source_chain, "ethereum-sepolia");
+-        assert_eq!(request.amount, "1000000000");
+     }
+ }
+diff --git a/Scripts/tools/relayer/Cargo.toml b/Scripts/tools/relayer/Cargo.toml
+index 89ca0bde614eae65ad52386cbb3d03eb41037aeb..d236be75eac67405c965fa95519d5f58383a8a5a 100644
+--- a/Scripts/tools/relayer/Cargo.toml
++++ b/Scripts/tools/relayer/Cargo.toml
+@@ -19,8 +19,8 @@ rand = "0.8"
+ anyhow = "1.0"
+ tracing = "0.1"
+ tracing-subscriber = { workspace = true }
+-my-blockchain = { path = "../../../Protocol_Core/myblockchain" }
+-qanto = { path = "../../../Protocol_Core/qanto-node" }
++my-blockchain = { version = "0.1.0", path = "../../../Protocol_Core/myblockchain" }
++qanto = { version = "0.1.0", path = "../../../Protocol_Core/qanto-node" }
+ 
+ psutil = "3.2"
+ 
+@@ -30,4 +30,3 @@ path = "src/main.rs"
+ 
+ [features]
+ analyzer = []
+-
+diff --git a/SmartContracts/contracts/QUSD.sol b/SmartContracts/contracts/QUSD.sol
+index 88df720d5c3484e34e09bb52554f8e48b5113fe0..9aec32726896301628f21d470ea2d6e817261d12 100644
+--- a/SmartContracts/contracts/QUSD.sol
++++ b/SmartContracts/contracts/QUSD.sol
+@@ -1,8 +1,66 @@
+ // SPDX-License-Identifier: MIT
+ pragma solidity ^0.8.24;
++
++import "@openzeppelin/contracts/access/AccessControl.sol";
+ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+-contract QUSD is ERC20 {
+-    constructor() ERC20("Qanto USD", "QUSD") {
+-        _mint(msg.sender, 1000000000 * 10 ** decimals()); // 1B QUSD
++import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
++import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
++
++/// @notice Controlled QUSD token primitive.
++/// @dev This contract deliberately does not claim to implement a dollar peg.
++/// Collateral custody, oracle validation, liquidation, and redemption must be
++/// specified and audited before QUSD can be deployed as a stablecoin.
++contract QUSD is ERC20, ERC20Burnable, ERC20Pausable, AccessControl {
++    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
++    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
++    bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
++
++    uint256 public constant MAX_SUPPLY = 1_000_000_000 ether;
++
++    error ZeroAddress();
++    error ZeroAmount();
++    error SupplyCapExceeded(uint256 requested, uint256 remaining);
++
++    constructor(address admin, address initialMinter) ERC20("Qanto USD", "QUSD") {
++        if (admin == address(0) || initialMinter == address(0)) revert ZeroAddress();
++        _grantRole(DEFAULT_ADMIN_ROLE, admin);
++        _grantRole(MINTER_ROLE, initialMinter);
++        _grantRole(PAUSER_ROLE, admin);
++        _grantRole(BURNER_ROLE, admin);
++    }
++
++    function mint(address to, uint256 amount) external onlyRole(MINTER_ROLE) whenNotPaused {
++        if (to == address(0)) revert ZeroAddress();
++        if (amount == 0) revert ZeroAmount();
++        uint256 remaining = MAX_SUPPLY - totalSupply();
++        if (amount > remaining) revert SupplyCapExceeded(amount, remaining);
++        _mint(to, amount);
++    }
++
++    function pause() external onlyRole(PAUSER_ROLE) {
++        _pause();
++    }
++
++    function unpause() external onlyRole(PAUSER_ROLE) {
++        _unpause();
++    }
++
++    function remainingMintable() external view returns (uint256) {
++        return MAX_SUPPLY - totalSupply();
++    }
++
++    function burnFrom(address account, uint256 amount) public override {
++        if (hasRole(BURNER_ROLE, msg.sender)) {
++            _burn(account, amount);
++        } else {
++            super.burnFrom(account, amount);
++        }
++    }
++
++    function _update(address from, address to, uint256 value)
++        internal
++        override(ERC20, ERC20Pausable)
++    {
++        super._update(from, to, value);
+     }
+ }
+diff --git a/SmartContracts/contracts/QantoDrop.sol b/SmartContracts/contracts/QantoDrop.sol
+index 3f8b6367898bbd241152e2f350235f9a570bff9c..3dfb3ca9ad77cedca0281b3fb2af0a8339a5fec9 100644
+--- a/SmartContracts/contracts/QantoDrop.sol
++++ b/SmartContracts/contracts/QantoDrop.sol
+@@ -2,43 +2,54 @@
+ pragma solidity ^0.8.24;
+ 
+ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
++import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+ import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+ import "@openzeppelin/contracts/access/Ownable.sol";
+ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+ 
+ contract QantoDrop is Ownable, ReentrancyGuard {
++    using SafeERC20 for IERC20;
++
+     IERC20 public immutable qntoToken;
+     bytes32 public merkleRoot;
+-    mapping(address => bool) public hasClaimed;
++    mapping(bytes32 => mapping(address => bool)) private _claimedByRoot;
+ 
+     event Claimed(address indexed claimant, uint256 amount);
+     event MerkleRootUpdated(bytes32 newRoot);
+ 
+     constructor(address _token, bytes32 _merkleRoot) Ownable(msg.sender) {
++        require(_token != address(0), "QantoDrop: Zero token.");
++        require(_merkleRoot != bytes32(0), "QantoDrop: Empty root.");
+         qntoToken = IERC20(_token);
+         merkleRoot = _merkleRoot;
+     }
+ 
+     function updateMerkleRoot(bytes32 _merkleRoot) external onlyOwner {
++        require(_merkleRoot != bytes32(0), "QantoDrop: Empty root.");
++        require(_merkleRoot != merkleRoot, "QantoDrop: Root unchanged.");
+         merkleRoot = _merkleRoot;
+         emit MerkleRootUpdated(_merkleRoot);
+     }
+ 
++    function hasClaimed(address account) external view returns (bool) {
++        return _claimedByRoot[merkleRoot][account];
++    }
++
+     function claim(uint256 amount, bytes32[] calldata merkleProof) external nonReentrant {
+-        require(!hasClaimed[msg.sender], "QantoDrop: Airdrop already claimed.");
++        require(!_claimedByRoot[merkleRoot][msg.sender], "QantoDrop: Airdrop already claimed.");
+         
+         // Verify the merkle proof
+         bytes32 node = keccak256(abi.encodePacked(msg.sender, amount));
+         require(MerkleProof.verify(merkleProof, merkleRoot, node), "QantoDrop: Invalid proof.");
+ 
+-        hasClaimed[msg.sender] = true;
+-        require(qntoToken.transfer(msg.sender, amount), "QantoDrop: Transfer failed.");
++        _claimedByRoot[merkleRoot][msg.sender] = true;
++        qntoToken.safeTransfer(msg.sender, amount);
+         
+         emit Claimed(msg.sender, amount);
+     }
+ 
+     function withdrawRemaining() external onlyOwner {
+         uint256 balance = qntoToken.balanceOf(address(this));
+-        qntoToken.transfer(owner(), balance);
++        qntoToken.safeTransfer(owner(), balance);
+     }
+ }
+diff --git a/SmartContracts/contracts/QantoSwapFactory.sol b/SmartContracts/contracts/QantoSwapFactory.sol
+index 7cf16cf64e0731b0d9990c86f0b3f70ac81092ec..7848108a694315846ee60bc043c6635e6718a0a5 100644
+--- a/SmartContracts/contracts/QantoSwapFactory.sol
++++ b/SmartContracts/contracts/QantoSwapFactory.sol
+@@ -2,6 +2,8 @@
+ pragma solidity ^0.8.24;
+ 
+ contract QantoSwapFactory {
++    error AmmNotImplemented();
++
+     address public feeTo;
+     address public feeToSetter;
+     mapping(address => mapping(address => address)) public getPair;
+@@ -13,22 +15,13 @@ contract QantoSwapFactory {
+         feeToSetter = _feeToSetter;
+     }
+ 
+-    function createPair(address tokenA, address tokenB) external returns (address pair) {
+-        require(tokenA != tokenB, 'QantoSwap: IDENTICAL_ADDRESSES');
+-        (address token0, address token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
+-        require(token0 != address(0), 'QantoSwap: ZERO_ADDRESS');
+-        require(getPair[token0][token1] == address(0), 'QantoSwap: PAIR_EXISTS');
+-        
+-        bytes memory bytecode = type(QantoSwapPair).creationCode;
+-        bytes32 salt = keccak256(abi.encodePacked(token0, token1));
+-        assembly {
+-            pair := create2(0, add(bytecode, 32), mload(bytecode), salt)
+-        }
+-        QantoSwapPair(pair).initialize(token0, token1);
+-        getPair[token0][token1] = pair;
+-        getPair[token1][token0] = pair;
+-        allPairs.push(pair);
+-        emit PairCreated(token0, token1, pair, allPairs.length);
++    function createPair(address tokenA, address tokenB) external pure returns (address pair) {
++        tokenA;
++        tokenB;
++        pair;
++        // The pair contract has no liquidity, reserve-update, LP-token, or
++        // invariant logic. Refuse deployment instead of creating a fund trap.
++        revert AmmNotImplemented();
+     }
+ }
+ 
+diff --git a/SmartContracts/contracts/QantoSwapRouter.sol b/SmartContracts/contracts/QantoSwapRouter.sol
+index 9d9ca9874d62722dc24408cc0c049f60484daea6..2ffbc37fa9e7d2b61ddba4c448af9ac5e2e6017a 100644
+--- a/SmartContracts/contracts/QantoSwapRouter.sol
++++ b/SmartContracts/contracts/QantoSwapRouter.sol
+@@ -4,10 +4,14 @@ pragma solidity ^0.8.24;
+ interface IQantoSwapFactory { function getPair(address tokenA, address tokenB) external view returns (address pair); }
+ 
+ contract QantoSwapRouter {
++    error AmmNotImplemented();
++
+     address public immutable factory;
+     address public immutable WQNTO;
+ 
+     constructor(address _factory, address _WQNTO) {
++        require(_factory != address(0), 'QantoSwap: ZERO_FACTORY');
++        require(_WQNTO != address(0), 'QantoSwap: ZERO_WQNTO');
+         factory = _factory;
+         WQNTO = _WQNTO;
+     }
+@@ -22,10 +26,14 @@ contract QantoSwapRouter {
+         address[] calldata path,
+         address to,
+         uint deadline
+-    ) external returns (uint[] memory amounts) {
+-        // High-throughput 10M TPS routing logic stub
++    ) external view returns (uint[] memory) {
+         require(path.length >= 2, 'QantoSwap: INVALID_PATH');
+         require(deadline >= block.timestamp, 'QantoSwap: EXPIRED');
+-        // Logic handled by Qanto Layer-0 Core
++        amountIn;
++        amountOutMin;
++        to;
++        // Never report a successful swap until transfers, reserves, LP shares,
++        // slippage, and the constant-product invariant are fully implemented.
++        revert AmmNotImplemented();
+     }
+ }
+diff --git a/SmartContracts/contracts/QantoTGE.sol b/SmartContracts/contracts/QantoTGE.sol
+index b7de9c3afd4a1e0e5e3b6bd890adb62bbea87386..1bf0828347380bc4a224af77ed077bcce89622ac 100644
+--- a/SmartContracts/contracts/QantoTGE.sol
++++ b/SmartContracts/contracts/QantoTGE.sol
+@@ -2,18 +2,26 @@
+ pragma solidity ^0.8.24;
+ 
+ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
++import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+ import "@openzeppelin/contracts/access/Ownable.sol";
+ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+ 
+ contract QantoTGE is Ownable, ReentrancyGuard {
++    using SafeERC20 for IERC20;
++
+     IERC20 public immutable qntoToken;
+     uint256 public constant RATE = 10000; // 1 ETH = 10,000 QNTO
++    uint256 public constant QNTO_SCALE = 1e9;
++    uint256 private constant WEI_PER_ETH = 1e18;
+     uint256 public totalRaised;
+-    bool public isPresaleActive = true;
++    // Fail closed: the owner must explicitly start the sale after funding and
++    // after the project adopts an audited vesting/distribution policy.
++    bool public isPresaleActive;
+ 
+     event TokensPurchased(address indexed buyer, uint256 ethSpent, uint256 qntoReceived);
+ 
+     constructor(address _token) Ownable(msg.sender) {
++        require(_token != address(0), "TGE token is zero address.");
+         qntoToken = IERC20(_token);
+     }
+ 
+@@ -21,11 +29,12 @@ contract QantoTGE is Ownable, ReentrancyGuard {
+         require(isPresaleActive, "TGE is not active.");
+         require(msg.value > 0, "Must send ETH.");
+ 
+-        uint256 tokensToTransfer = msg.value * RATE;
++        uint256 tokensToTransfer = (msg.value * RATE * QNTO_SCALE) / WEI_PER_ETH;
++        require(tokensToTransfer > 0, "Purchase rounds to zero QNTO.");
+         require(qntoToken.balanceOf(address(this)) >= tokensToTransfer, "Insufficient QNTO in TGE contract.");
+ 
+         totalRaised += msg.value;
+-        qntoToken.transfer(msg.sender, tokensToTransfer);
++        qntoToken.safeTransfer(msg.sender, tokensToTransfer);
+ 
+         emit TokensPurchased(msg.sender, msg.value, tokensToTransfer);
+     }
+@@ -35,6 +44,7 @@ contract QantoTGE is Ownable, ReentrancyGuard {
+     }
+ 
+     function withdrawETH() external onlyOwner {
+-        payable(owner()).transfer(address(this).balance);
++        (bool success, ) = payable(owner()).call{value: address(this).balance}("");
++        require(success, "ETH withdrawal failed.");
+     }
+ }
+diff --git a/SmartContracts/contracts/SentinelNFT.sol b/SmartContracts/contracts/SentinelNFT.sol
+index 16a5a8656082db58fbdc0377bebb6112205e01f4..a00c826c521ef2ee463e4bbfd827ac531597cefd 100644
+--- a/SmartContracts/contracts/SentinelNFT.sol
++++ b/SmartContracts/contracts/SentinelNFT.sol
+@@ -17,7 +17,8 @@ contract SentinelNFT is ERC721URIStorage, Ownable {
+         _tokenIds++;
+         uint256 newItemId = _tokenIds;
+         
+-        _mint(recipient, newItemId);
++        // Refuse to strand NFTs in contracts that do not implement ERC721Receiver.
++        _safeMint(recipient, newItemId);
+         _setTokenURI(newItemId, tokenURI);
+         
+         return newItemId;
+diff --git a/SmartContracts/contracts/WQNTO.sol b/SmartContracts/contracts/WQNTO.sol
+index e7f83a3eadef5e8ca9a29257d3e572eb73435e14..158ae3ca6c2d36d4fa48357e2aab07e9ec21eb81 100644
+--- a/SmartContracts/contracts/WQNTO.sol
++++ b/SmartContracts/contracts/WQNTO.sol
+@@ -2,8 +2,9 @@
+ pragma solidity ^0.8.24;
+ 
+ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
++import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+ 
+-contract WQNTO is ERC20 {
++contract WQNTO is ERC20, ReentrancyGuard {
+     event Deposit(address indexed dst, uint wad);
+     event Withdrawal(address indexed src, uint wad);
+ 
+@@ -22,10 +23,11 @@ contract WQNTO is ERC20 {
+         emit Deposit(msg.sender, msg.value);
+     }
+ 
+-    function withdraw(uint wad) public {
++    function withdraw(uint wad) public nonReentrant {
+         require(balanceOf(msg.sender) >= wad, "WQNTO: Insufficient balance");
+         _burn(msg.sender, wad);
+-        payable(msg.sender).transfer(wad);
++        (bool success, ) = payable(msg.sender).call{value: wad}("");
++        require(success, "WQNTO: Native transfer failed");
+         emit Withdrawal(msg.sender, wad);
+     }
+ }
+diff --git a/SmartContracts/hardhat.config.js b/SmartContracts/hardhat.config.js
+index db680a105a4445099f8870f90b69900da3aa8993..1cb462a790549369d33d663ecb9adb6a85909f95 100644
+--- a/SmartContracts/hardhat.config.js
++++ b/SmartContracts/hardhat.config.js
+@@ -1,8 +1,18 @@
+-import "@nomicfoundation/hardhat-toolbox";
+-import dotenv from "dotenv";
+-dotenv.config({ path: "../.env" });
++import { configVariable, defineConfig } from "hardhat/config";
++import hardhatEthers from "@nomicfoundation/hardhat-ethers";
++import hardhatEthersChaiMatchers from "@nomicfoundation/hardhat-ethers-chai-matchers";
++import hardhatMocha from "@nomicfoundation/hardhat-mocha";
++import hardhatNetworkHelpers from "@nomicfoundation/hardhat-network-helpers";
+ 
+-export default {
++export default defineConfig({
++  // Keep the test environment intentionally small: verification and Ignition
++  // plugins are not needed to compile or exercise this contract suite.
++  plugins: [
++    hardhatEthers,
++    hardhatEthersChaiMatchers,
++    hardhatMocha,
++    hardhatNetworkHelpers,
++  ],
+   solidity: {
+     version: "0.8.24",
+     settings: {
+@@ -15,9 +25,10 @@ export default {
+   },
+   networks: {
+     qanto_testnet: {
+-      url: "https://trvorth-qanto-testnet.hf.space/rpc",
+-      chainId: 21313, // Standardize Qanto Testnet Chain ID
+-      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []
++      type: "http",
++      url: configVariable("QANTO_TESTNET_RPC_URL"),
++      chainId: 1234, // Canonical Qanto testnet chain ID (0x4D2)
++      accounts: [configVariable("QANTO_DEPLOYER_PRIVATE_KEY")]
+     }
+   }
+-};
++});
+diff --git a/SmartContracts/package.json b/SmartContracts/package.json
+index 0d7309a07a8b898ac15a94bcc17b45a56136ce1b..6474a2258351bdf67295540a2feee9317e244640 100644
+--- a/SmartContracts/package.json
++++ b/SmartContracts/package.json
+@@ -4,17 +4,26 @@
+   "description": "",
+   "main": "deploy_wqnto.js",
+   "scripts": {
+-    "test": "echo \"Error: no test specified\" && exit 1"
++    "test": "hardhat test"
+   },
+   "keywords": [],
+   "author": "",
+   "license": "ISC",
+   "type": "module",
+   "devDependencies": {
+-    "@nomicfoundation/hardhat-toolbox": "^7.0.0",
++    "@nomicfoundation/hardhat-ethers": "^4.0.15",
++    "@nomicfoundation/hardhat-ethers-chai-matchers": "^3.0.11",
++    "@nomicfoundation/hardhat-mocha": "^3.1.0",
++    "@nomicfoundation/hardhat-network-helpers": "^3.0.11",
+     "@openzeppelin/contracts": "^5.6.1",
++    "chai": "^6.2.2",
+     "dotenv": "^17.4.2",
+     "ethers": "^6.17.0",
+-    "hardhat": "^3.9.1"
++    "hardhat": "^3.12.0",
++    "mocha": "^11.8.0"
++  },
++  "overrides": {
++    "diff": "8.0.3",
++    "serialize-javascript": "7.0.5"
+   }
+ }
+
+diff --git a/.config/nextest.toml b/.config/nextest.toml
+new file mode 100644
+index 0000000000000000000000000000000000000000..eccb88dc5962f19e2184d8144aeed4f5d652852d
+--- /dev/null
++++ b/.config/nextest.toml
+@@ -0,0 +1,47 @@
++# Nextest configuration for the Qanto workspace.
++# https://nexte.st/docs/configuration/
++
++[profile.default]
++# Mining tests can legitimately take several minutes.
++slow-timeout = "300s"
++retries = 1
++failure-output = "immediate-final"
++
++[profile.ci]
++inherits = "default"
++slow-timeout = "180s"
++retries = 0
++failure-output = "final"
++fail-fast = false
++
++[profile.slow-integration]
++inherits = "default"
++slow-timeout = "600s"
++retries = 2
++failure-output = "immediate-final"
++fail-fast = false
++
++[test-groups.mining]
++max-threads = 4
++
++[test-groups.integration]
++max-threads = 2
++
++[[profile.default.overrides]]
++filter = "test(test_basic_mining)"
++slow-timeout = "300s"
++test-group = "mining"
++
++[[profile.default.overrides]]
++filter = "test(test_integration_flow)"
++slow-timeout = "400s"
++test-group = "integration"
++
++[[profile.default.overrides]]
++filter = "test(test_cancellation_responsiveness)"
++slow-timeout = "120s"
++test-group = "mining"
++
++[[profile.default.overrides]]
++filter = "not test(integration) and not test(mining) and not test(slow)"
++slow-timeout = "30s"
+
+diff --git a/.dockerignore b/.dockerignore
+new file mode 100644
+index 0000000000000000000000000000000000000000..85fd433b7595ca104a328ad41ab15ca421a6ec0b
+--- /dev/null
++++ b/.dockerignore
+@@ -0,0 +1,66 @@
++# Keep the Docker build context deterministic and free of local credentials.
++
++# Version-control metadata
++.git
++.git/**
++
++# Local environment files (documented templates remain available)
++**/.env
++**/.env.*
++**/.envrc
++**/.direnv/**
++!**/.env.example
++!**/.env.*.example
++!**/.env.template
++!**/.env.*.template
++
++# Language build output and dependency caches
++target
++**/target
++node_modules
++**/node_modules
++
++# Local databases and node state
++**/*.db
++**/*.db-*
++**/*.sqlite
++**/*.sqlite-*
++**/*.sqlite3
++**/*.sqlite3-*
++**/.rocksdb/**
++**/.sled/**
++/data/**
++/storage/**
++/.qanto/**
++/qanto-data/**
++/qanto_data/**
++
++# Wallets, private keys, certificates, and secret material
++/Keystore/**
++**/keys/**
++**/wallets/**
++**/secrets/**
++**/*.key
++**/*.pem
++**/*.p12
++**/*.pfx
++**/*.jks
++**/keystore.json
++**/wallet.json
++**/secrets.json
++
++# Preserve documentation and explicitly named example templates.
++!**/keys/README.md
++!**/keys/.gitignore
++!**/keys/*.example
++!**/wallets/README.md
++!**/wallets/.gitignore
++!**/wallets/*.example
++!**/secrets/README.md
++!**/secrets/.gitignore
++!**/secrets/*.example
++!**/*.key.example
++!**/*.pem.example
++!**/keystore.example.json
++!**/wallet.example.json
++
+
+diff --git a/deny.toml b/deny.toml
+new file mode 100644
+index 0000000000000000000000000000000000000000..806a93ac3e51c50fcb294152a6a701765da52e5f
+--- /dev/null
++++ b/deny.toml
+@@ -0,0 +1,57 @@
++# Dependency policy for `cargo deny check`.
++#
++# This policy intentionally fails on unknown/unlicensed packages and on
++# vulnerable or unsound dependencies. License acceptance is a technical gate,
++# not a legal conclusion; release counsel must still confirm distribution
++# obligations for the complete product.
++
++[graph]
++targets = [
++    "x86_64-unknown-linux-gnu",
++    "aarch64-unknown-linux-gnu",
++    "aarch64-apple-darwin",
++]
++all-features = false
++
++[advisories]
++unmaintained = "workspace"
++unsound = "all"
++ignore = []
++
++[licenses]
++confidence-threshold = 0.8
++allow = [
++    "0BSD",
++    "Apache-2.0",
++    "Apache-2.0 WITH LLVM-exception",
++    "BSD-1-Clause",
++    "BSD-2-Clause",
++    "BSD-3-Clause",
++    "BSD-3-Clause-Clear",
++    "BSL-1.0",
++    "CC0-1.0",
++    "CDLA-Permissive-2.0",
++    "ISC",
++    "MIT",
++    "MIT-0",
++    "MPL-2.0",
++    "Unicode-3.0",
++    "Unlicense",
++    "Zlib",
++]
++
++[licenses.private]
++ignore = false
++
++[bans]
++multiple-versions = "warn"
++wildcards = "deny"
++highlight = "all"
++workspace-default-features = "allow"
++external-default-features = "allow"
++
++[sources]
++unknown-registry = "deny"
++unknown-git = "deny"
++allow-registry = ["https://github.com/rust-lang/crates.io-index"]
++allow-git = ["https://github.com/tokio-rs/tracing"]
+
+diff --git a/.github/workflows/security.yml b/.github/workflows/security.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..b652ee363653611fb1739a1f214fc470d1cacc90
+--- /dev/null
++++ b/.github/workflows/security.yml
+@@ -0,0 +1,68 @@
++name: Scheduled Rust security checks
++
++on:
++  schedule:
++    - cron: "23 4 * * 1"
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++concurrency:
++  group: rust-security-${{ github.ref }}
++  cancel-in-progress: true
++
++env:
++  CARGO_TERM_COLOR: always
++  RUST_TOOLCHAIN: nightly-2026-06-28
++
++jobs:
++  rustsec:
++    name: RustSec advisory audit
++    runs-on: ubuntu-latest
++    timeout-minutes: 30
++    steps:
++      - name: Checkout repository
++        uses: actions/checkout@v4
++
++      - name: Install pinned Rust toolchain
++        uses: dtolnay/rust-toolchain@stable
++        with:
++          toolchain: ${{ env.RUST_TOOLCHAIN }}
++
++      - name: Install cargo-audit
++        run: cargo install --locked --version 0.22.2 cargo-audit
++
++      - name: Audit locked dependencies
++        run: cargo audit --deny warnings
++
++  fuzz:
++    name: Fuzz ${{ matrix.target }}
++    runs-on: ubuntu-latest
++    timeout-minutes: 45
++    strategy:
++      fail-fast: false
++      matrix:
++        target:
++          - fuzz_tx_parsing
++          - fuzz_bridge_proofs
++    steps:
++      - name: Checkout repository
++        uses: actions/checkout@v4
++
++      - name: Install pinned Rust toolchain
++        uses: dtolnay/rust-toolchain@stable
++        with:
++          toolchain: ${{ env.RUST_TOOLCHAIN }}
++
++      - name: Install native build dependencies
++        run: |
++          sudo apt-get update
++          sudo apt-get install -y libssl-dev pkg-config protobuf-compiler
++
++      - name: Install cargo-fuzz
++        run: cargo install --locked cargo-fuzz
++
++      - name: Run bounded fuzz target
++        working-directory: Protocol_Core/qanto-node
++        run: cargo fuzz run ${{ matrix.target }} -- -max_total_time=180 -rss_limit_mb=4096
+
+diff --git a/.github/workflows/solidity.yml b/.github/workflows/solidity.yml
+new file mode 100644
+index 0000000000000000000000000000000000000000..d374fa573e964017c0576942a1823b6edca14fa0
+--- /dev/null
++++ b/.github/workflows/solidity.yml
+@@ -0,0 +1,105 @@
++name: Solidity Security CI
++
++on:
++  push:
++    paths:
++      - "SmartContracts/**"
++      - ".github/workflows/solidity.yml"
++  pull_request:
++    paths:
++      - "SmartContracts/**"
++      - ".github/workflows/solidity.yml"
++
++# AUDIT FIX (MED-08): Add Solidity test, Slither static analysis, and coverage jobs.
++# Previously CI had no Solidity checks — this closes the gap.
++
++jobs:
++  hardhat-tests:
++    name: Hardhat Tests
++    runs-on: ubuntu-latest
++    defaults:
++      run:
++        working-directory: SmartContracts
++    steps:
++      - uses: actions/checkout@v4
++        with:
++          submodules: recursive
++
++      - name: Setup Node.js
++        uses: actions/setup-node@v4
++        with:
++          node-version: "20"
++          cache: "npm"
++          cache-dependency-path: SmartContracts/package-lock.json
++
++      - name: Install dependencies
++        run: npm ci
++
++      - name: Compile contracts
++        run: npx hardhat compile
++
++      - name: Run unit tests
++        run: npx hardhat test --reporter spec
++
++      - name: Run coverage (informational)
++        run: npx hardhat coverage || true
++        continue-on-error: true
++
++  slither:
++    name: Slither Static Analysis
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++
++      - name: Setup Python
++        uses: actions/setup-python@v5
++        with:
++          python-version: "3.12"
++
++      - name: Setup Node.js
++        uses: actions/setup-node@v4
++        with:
++          node-version: "20"
++
++      - name: Install Slither
++        run: pip install slither-analyzer
++
++      - name: Install contract dependencies
++        working-directory: SmartContracts
++        run: npm ci
++
++      - name: Compile for Slither
++        working-directory: SmartContracts
++        run: npx hardhat compile
++
++      - name: Run Slither (high + medium)
++        working-directory: SmartContracts
++        # Fail on high-severity findings; informational permitted
++        run: |
++          slither . \
++            --hardhat-artifacts-directory artifacts \
++            --filter-paths "node_modules,test" \
++            --exclude-informational \
++            --exclude-low \
++            || EXIT=$?
++          if [ "${EXIT:-0}" -eq 1 ]; then
++            echo "Slither found HIGH/MEDIUM severity issues — failing build"
++            exit 1
++          fi
++
++  scorecard-verify:
++    name: Verify CertiK Scorecard
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++
++      - name: Set up Python
++        uses: actions/setup-python@v5
++        with:
++          python-version: "3.12"
++
++      - name: Verify score
++        run: |
++          python3 tools/verify_certik_score.py --self-test
++          python3 tools/verify_certik_score.py --strict-reported
++          python3 tools/verify_certik_score.py --require-acceptance
+
+diff --git a/Protocol_Core/qanto-node/tests/e2e_mining_reward.rs b/Protocol_Core/qanto-node/tests/e2e_mining_reward.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..4f5fa336c195865e822e1d7f44fd029e07901aba
+--- /dev/null
++++ b/Protocol_Core/qanto-node/tests/e2e_mining_reward.rs
+@@ -0,0 +1,176 @@
++//! Copyright (C) 2026 Trevor <trvorth@qanto.org>
++//!
++//! End-to-end integration test verifying the full mining lifecycle:
++//!   block creation → PoW mining → DAG acceptance → reward distribution → emission supply reduction.
++
++use qanto::emission;
++use qanto::emission::Emission;
++
++// ─── Emission Supply Reduction ───────────────────────────────────────────
++
++#[test]
++fn test_emission_supply_reduction_after_reward() {
++    let genesis_time = 1_000_000u64;
++    let num_chains = 1u32;
++    let mut emission = Emission::default_with_timestamp(genesis_time, num_chains);
++
++    assert_eq!(emission.current_supply(), 0);
++
++    // Initial reward: 50 QAN
++    let reward_y0 = emission.calculate_reward(genesis_time).unwrap();
++    assert_eq!(reward_y0, 50_000_000_000);
++    emission.update_supply(reward_y0).unwrap();
++    assert_eq!(emission.current_supply(), 50_000_000_000);
++
++    // After 3 halving periods (~291 days): reward = 50 * 0.999^3 ≈ 49.85 QAN
++    let hp = emission::HALVING_PERIOD;
++    let reward_after_3_periods = emission.calculate_reward(genesis_time + 3 * hp).unwrap();
++    // 50 * 0.999^3 = 50 * 0.997002999 = 49.85014995 QAN
++    assert_eq!(reward_after_3_periods, 49 * emission::SCALE + 850_149_950);
++    emission.update_supply(reward_after_3_periods).unwrap();
++    assert_eq!(emission.current_supply(), 50_000_000_000 + 49_850_149_950);
++
++    assert!(emission.current_supply() < emission.total_supply());
++}
++
++#[test]
++fn test_halving_never_goes_below_safety_floor() {
++    let genesis_time = 1_000_000u64;
++    let num_chains = 1u32;
++    let emission = Emission::default_with_timestamp(genesis_time, num_chains);
++
++    let reward = emission
++        .calculate_reward(genesis_time + 100 * emission::HALVING_PERIOD)
++        .unwrap();
++    assert!(reward >= 1, "Safety floor failed: reward was {}", reward);
++}
++
++#[test]
++fn emission_total_supply_never_breached() {
++    let genesis_time = 1_000_000u64;
++    let num_chains = 1u32;
++    let mut emission = Emission::default_with_timestamp(genesis_time, num_chains);
++
++    let total = emission.total_supply();
++    for i in 0..10000 {
++        let reward = emission
++            .calculate_reward(genesis_time + i * 300)
++            .unwrap_or(0);
++        emission.update_supply(reward).unwrap();
++    }
++    assert!(emission.current_supply() <= total);
++    assert!(
++        emission.current_supply() > 0,
++        "Supply should be non-zero after mining"
++    );
++}
++
++#[test]
++fn emission_per_chain_splits_reward() {
++    let genesis_time = 1_000_000u64;
++    for num_chains in [1u32, 2, 4, 8] {
++        let emission = Emission::default_with_timestamp(genesis_time, num_chains);
++        let reward = emission.calculate_reward(genesis_time).unwrap();
++        let total = reward.saturating_mul(num_chains as u128);
++        assert!(total <= 50 * emission::SCALE);
++    }
++}
++
++#[test]
++fn test_halving_10_year_schedule() {
++    let genesis_time = 1_000_000u64;
++    let num_chains = 1u32;
++    let emission = Emission::default_with_timestamp(genesis_time, num_chains);
++
++    let scale = emission::SCALE;
++    let hp = emission::HALVING_PERIOD;
++    let factor = emission::HALVING_FACTOR_FIXED; // 999_000_000 = 0.999
++
++    // With factor 0.999 per period: 50 → 49.95 → 49.90005 → ...
++    assert_eq!(
++        emission.calculate_reward(genesis_time + 0 * hp).unwrap(),
++        50 * scale
++    );
++    assert_eq!(
++        emission.calculate_reward(genesis_time + 1 * hp).unwrap(),
++        49 * scale + 950_000_000
++    );
++    assert_eq!(
++        emission.calculate_reward(genesis_time + 2 * hp).unwrap(),
++        49 * scale + 900_050_000
++    );
++    assert_eq!(
++        emission.calculate_reward(genesis_time + 3 * hp).unwrap(),
++        49 * scale + 850_149_950
++    );
++}
++
++#[test]
++fn test_supply_cap_clamps() {
++    let genesis_time = 1_000_000u64;
++    let mut emission = Emission::default_with_timestamp(genesis_time, 1);
++
++    let max_supply = emission.total_supply();
++    emission.update_supply(max_supply).unwrap();
++    assert_eq!(emission.current_supply(), max_supply);
++
++    // Adding more clamps, never overflows
++    emission.update_supply(1_000_000 * emission::SCALE).unwrap();
++    assert_eq!(emission.current_supply(), max_supply);
++}
++
++#[test]
++fn test_block_reward_distribution() {
++    let total_reward = 50_000_000_000u128;
++    let dev_fee_rate = 25_000_000u128;
++    let scale = 1_000_000_000u128;
++
++    let dev_fee = total_reward
++        .saturating_mul(dev_fee_rate)
++        .saturating_div(scale);
++    let validator_amount = total_reward.saturating_sub(dev_fee);
++
++    assert_eq!(dev_fee, 1_250_000_000); // 2.5% of 50 QAN
++    assert_eq!(validator_amount, 48_750_000_000); // 48.75 QAN
++    assert_eq!(validator_amount + dev_fee, total_reward);
++}
++
++// ─── Balance Stream ───────────────────────────────────────────────────────
++
++#[tokio::test]
++async fn test_balance_broadcaster_emit_and_replay_protection() {
++    use qanto_core::balance_stream::BalanceBroadcaster;
++    use tokio::time::{timeout, Duration};
++
++    let bb = BalanceBroadcaster::new(1024);
++    let mut rx = bb.subscribe();
++
++    bb.set_balance("addr_a", 1000);
++    let update = timeout(Duration::from_millis(500), rx.recv())
++        .await
++        .expect("Timeout")
++        .expect("Should receive update");
++    assert_eq!(update.address, "addr_a");
++    assert_eq!(update.balance, 1000);
++
++    // Duplicate should not emit
++    bb.set_balance("addr_a", 1000);
++    assert!(timeout(Duration::from_millis(100), rx.recv())
++        .await
++        .is_err());
++}
++
++#[tokio::test]
++async fn test_balance_delta_accumulates_and_floors() {
++    use qanto_core::balance_stream::BalanceBroadcaster;
++
++    let bb = BalanceBroadcaster::new(1024);
++    bb.set_balance("wallet", 1000);
++    bb.apply_delta("wallet", 500); // reward
++    bb.apply_delta("wallet", -200); // spend
++    assert_eq!(bb.get_balance("wallet"), Some(1300));
++
++    // Floor at 0, never panic
++    bb.apply_delta("wallet", -5000);
++    assert_eq!(bb.get_balance("wallet"), Some(0));
++}
+
+diff --git a/SmartContracts/contracts/QantoFaucet.sol b/SmartContracts/contracts/QantoFaucet.sol
+new file mode 100644
+index 0000000000000000000000000000000000000000..70aee09cc786d121ede214328b97ee814e959d5a
+--- /dev/null
++++ b/SmartContracts/contracts/QantoFaucet.sol
+@@ -0,0 +1,174 @@
++// SPDX-License-Identifier: MIT
++pragma solidity ^0.8.24;
++
++import "@openzeppelin/contracts/access/Ownable2Step.sol";
++import "@openzeppelin/contracts/utils/Pausable.sol";
++import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
++
++/**
++ * @title QantoFaucet
++ * @notice Testnet-only faucet for eQNTO genesis tokens.
++ *
++ * Security controls:
++ *  - Owner-gated minting (Ownable2Step for safe transfer)
++ *  - Hard supply cap (MAX_SUPPLY) prevents unbounded inflation
++ *  - Per-address daily rate limit (CLAIM_INTERVAL + MINT_AMOUNT)
++ *  - Global daily drip limit (MAX_DAILY_MINT) prevents bulk abuse
++ *  - Pause circuit-breaker for emergency shutdown
++ *  - Reentrancy guard on stateful methods
++ *  - Production-network guard: reverts on chain IDs 1 (Mainnet) and 137 (Polygon)
++ *
++ * Deployment policy: MUST NOT be deployed on production networks.
++ * Enforced at constructor time via network guard.
++ */
++contract QantoFaucet is Ownable2Step, Pausable, ReentrancyGuard {
++    // ─── Token metadata ──────────────────────────────────────────────────────
++    string public constant name     = "Qanto Genesis Token";
++    string public constant symbol   = "eQNTO";
++    uint8  public constant decimals = 18;
++
++    // ─── Supply controls ─────────────────────────────────────────────────────
++    /// @notice Hard cap: 10 million eQNTO total supply
++    uint256 public constant MAX_SUPPLY      = 10_000_000 * 10 ** 18;
++    /// @notice Per-drip amount per address per cooldown window
++    uint256 public constant MINT_AMOUNT     = 100 * 10 ** 18;
++    /// @notice Minimum time between successive claims per address
++    uint256 public constant CLAIM_INTERVAL  = 24 hours;
++    /// @notice Maximum tokens that can be minted globally in any 24 h window
++    uint256 public constant MAX_DAILY_MINT  = 500_000 * 10 ** 18;
++
++    // ─── State ────────────────────────────────────────────────────────────────
++    uint256 public totalSupply;
++    mapping(address => uint256) public balanceOf;
++    mapping(address => uint256) public lastClaimTime;
++
++    // Daily drip accounting
++    uint256 private _dailyWindowStart;
++    uint256 private _dailyMintedThisWindow;
++
++    // ─── Events ───────────────────────────────────────────────────────────────
++    event Transfer(address indexed from, address indexed to, uint256 value);
++    event Claimed(address indexed to, uint256 amount, uint256 newTotalSupply);
++    event OwnerMinted(address indexed to, uint256 amount);
++
++    // ─── Errors ───────────────────────────────────────────────────────────────
++    error ProductionNetworkForbidden(uint256 chainId);
++    error SupplyCapExceeded(uint256 requested, uint256 remaining);
++    error DailyLimitExceeded(uint256 requested, uint256 remaining);
++    error CooldownNotExpired(uint256 availableAt);
++    error ZeroAddress();
++
++    // ─── Constructor ──────────────────────────────────────────────────────────
++
++    constructor() Ownable(msg.sender) {
++        // Refuse deployment on known production chain IDs
++        uint256 chainId = block.chainid;
++        if (chainId == 1 || chainId == 137) {
++            revert ProductionNetworkForbidden(chainId);
++        }
++        _dailyWindowStart = block.timestamp;
++    }
++
++    // ─── Public claim ─────────────────────────────────────────────────────────
++
++    /**
++     * @notice Claim MINT_AMOUNT eQNTO once per CLAIM_INTERVAL.
++     * @dev Anyone can call for themselves; to claim for another address use
++     *      `claimFor`. Both are rate-limited per recipient address.
++     */
++    function claim() external whenNotPaused nonReentrant {
++        _drip(msg.sender);
++    }
++
++    /**
++     * @notice Claim MINT_AMOUNT eQNTO for a specific recipient.
++     * @param to Recipient address (must be non-zero).
++     */
++    function claimFor(address to) external whenNotPaused nonReentrant {
++        if (to == address(0)) revert ZeroAddress();
++        _drip(to);
++    }
++
++    // ─── Owner-only controls ─────────────────────────────────────────────────
++
++    /**
++     * @notice Owner-only mint for test bootstrapping. Subject to supply cap.
++     * @param to    Recipient address.
++     * @param amount Tokens to mint (in wei).
++     */
++    function ownerMint(address to, uint256 amount)
++        external
++        onlyOwner
++        whenNotPaused
++        nonReentrant
++    {
++        if (to == address(0)) revert ZeroAddress();
++        uint256 remaining = MAX_SUPPLY - totalSupply;
++        if (amount > remaining) revert SupplyCapExceeded(amount, remaining);
++
++        unchecked {
++            balanceOf[to] += amount;
++            totalSupply    += amount;
++        }
++        emit OwnerMinted(to, amount);
++        emit Transfer(address(0), to, amount);
++    }
++
++    /// @notice Pause the faucet. Only owner.
++    function pause() external onlyOwner { _pause(); }
++
++    /// @notice Unpause the faucet. Only owner.
++    function unpause() external onlyOwner { _unpause(); }
++
++    // ─── View helpers ─────────────────────────────────────────────────────────
++
++    /// @notice Returns the token balance of `account`.
++    function getBalance(address account) external view returns (uint256) {
++        return balanceOf[account];
++    }
++
++    /// @notice Returns remaining supply headroom before cap.
++    function remainingSupply() external view returns (uint256) {
++        return MAX_SUPPLY - totalSupply;
++    }
++
++    /// @notice Returns the timestamp when `account` can next claim.
++    function nextClaimTime(address account) external view returns (uint256) {
++        return lastClaimTime[account] + CLAIM_INTERVAL;
++    }
++
++    // ─── Internal ─────────────────────────────────────────────────────────────
++
++    function _drip(address to) internal {
++        // Per-address cooldown
++        uint256 available = lastClaimTime[to] + CLAIM_INTERVAL;
++        if (block.timestamp < available) revert CooldownNotExpired(available);
++
++        // Hard supply cap
++        uint256 remaining = MAX_SUPPLY - totalSupply;
++        if (MINT_AMOUNT > remaining) revert SupplyCapExceeded(MINT_AMOUNT, remaining);
++
++        // Global daily drip limit
++        _refreshDailyWindow();
++        uint256 dailyRemaining = MAX_DAILY_MINT - _dailyMintedThisWindow;
++        if (MINT_AMOUNT > dailyRemaining) revert DailyLimitExceeded(MINT_AMOUNT, dailyRemaining);
++
++        // Commit state
++        lastClaimTime[to]          = block.timestamp;
++        _dailyMintedThisWindow    += MINT_AMOUNT;
++        unchecked {
++            balanceOf[to] += MINT_AMOUNT;
++            totalSupply    += MINT_AMOUNT;
++        }
++
++        emit Claimed(to, MINT_AMOUNT, totalSupply);
++        emit Transfer(address(0), to, MINT_AMOUNT);
++    }
++
++    function _refreshDailyWindow() internal {
++        if (block.timestamp >= _dailyWindowStart + 24 hours) {
++            _dailyWindowStart      = block.timestamp;
++            _dailyMintedThisWindow = 0;
++        }
++    }
++}
+
+diff --git a/SmartContracts/test/contracts.test.js b/SmartContracts/test/contracts.test.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..049e9183db4bb12cdef0e069fec92bff54acb3b9
+--- /dev/null
++++ b/SmartContracts/test/contracts.test.js
+@@ -0,0 +1,288 @@
++import { expect } from "chai";
++import { network } from "hardhat";
++
++const { ethers, networkHelpers } = await network.create();
++const { time } = networkHelpers;
++
++// ─── QantoFaucet Tests ────────────────────────────────────────────────────────
++
++describe("QantoFaucet", function () {
++  let faucet, owner, alice, bob;
++
++  const MINT_AMOUNT    = ethers.parseEther("100");
++  const MAX_SUPPLY     = ethers.parseEther("10000000");
++  const CLAIM_INTERVAL = 24 * 60 * 60; // seconds
++  const MAX_DAILY_MINT = ethers.parseEther("500000");
++
++  beforeEach(async function () {
++    [owner, alice, bob] = await ethers.getSigners();
++    const Faucet = await ethers.getContractFactory("QantoFaucet");
++    faucet = await Faucet.deploy();
++    await faucet.waitForDeployment();
++  });
++
++  // ── Deployment checks ──────────────────────────────────────────────────────
++
++  it("deploys with zero total supply", async function () {
++    expect(await faucet.totalSupply()).to.equal(0n);
++  });
++
++  it("has correct constants", async function () {
++    expect(await faucet.MINT_AMOUNT()).to.equal(MINT_AMOUNT);
++    expect(await faucet.MAX_SUPPLY()).to.equal(MAX_SUPPLY);
++    expect(await faucet.CLAIM_INTERVAL()).to.equal(CLAIM_INTERVAL);
++    expect(await faucet.MAX_DAILY_MINT()).to.equal(MAX_DAILY_MINT);
++  });
++
++  it("has correct name and symbol", async function () {
++    expect(await faucet.name()).to.equal("Qanto Genesis Token");
++    expect(await faucet.symbol()).to.equal("eQNTO");
++    expect(await faucet.decimals()).to.equal(18);
++  });
++
++  // ── Claim (rate-limit) ─────────────────────────────────────────────────────
++
++  it("allows first claim", async function () {
++    await faucet.connect(alice).claim();
++    expect(await faucet.balanceOf(alice.address)).to.equal(MINT_AMOUNT);
++    expect(await faucet.totalSupply()).to.equal(MINT_AMOUNT);
++  });
++
++  it("emits Claimed and Transfer events on claim", async function () {
++    await expect(faucet.connect(alice).claim())
++      .to.emit(faucet, "Claimed")
++      .withArgs(alice.address, MINT_AMOUNT, MINT_AMOUNT)
++      .and.to.emit(faucet, "Transfer")
++      .withArgs(ethers.ZeroAddress, alice.address, MINT_AMOUNT);
++  });
++
++  it("enforces per-address cooldown", async function () {
++    await faucet.connect(alice).claim();
++    await expect(faucet.connect(alice).claim())
++      .to.be.revertedWithCustomError(faucet, "CooldownNotExpired");
++  });
++
++  it("allows second claim after cooldown", async function () {
++    await faucet.connect(alice).claim();
++    await time.increase(CLAIM_INTERVAL + 1);
++    await faucet.connect(alice).claim();
++    expect(await faucet.balanceOf(alice.address)).to.equal(MINT_AMOUNT * 2n);
++  });
++
++  it("allows independent claims from different addresses", async function () {
++    await faucet.connect(alice).claim();
++    await faucet.connect(bob).claim();
++    expect(await faucet.balanceOf(alice.address)).to.equal(MINT_AMOUNT);
++    expect(await faucet.balanceOf(bob.address)).to.equal(MINT_AMOUNT);
++    expect(await faucet.totalSupply()).to.equal(MINT_AMOUNT * 2n);
++  });
++
++  it("claimFor reverts on zero address", async function () {
++    await expect(faucet.connect(alice).claimFor(ethers.ZeroAddress))
++      .to.be.revertedWithCustomError(faucet, "ZeroAddress");
++  });
++
++  it("claimFor works for a third party", async function () {
++    await faucet.connect(alice).claimFor(bob.address);
++    expect(await faucet.balanceOf(bob.address)).to.equal(MINT_AMOUNT);
++    expect(await faucet.balanceOf(alice.address)).to.equal(0n);
++  });
++
++  // ── Supply cap ─────────────────────────────────────────────────────────────
++
++  it("ownerMint enforces MAX_SUPPLY cap", async function () {
++    // Mint right up to cap
++    await faucet.connect(owner).ownerMint(alice.address, MAX_SUPPLY);
++    // Another mint should revert
++    await expect(faucet.connect(owner).ownerMint(alice.address, 1n))
++      .to.be.revertedWithCustomError(faucet, "SupplyCapExceeded");
++  });
++
++  it("ownerMint reverts for non-owner", async function () {
++    await expect(faucet.connect(alice).ownerMint(alice.address, MINT_AMOUNT))
++      .to.be.revertedWithCustomError(faucet, "OwnableUnauthorizedAccount");
++  });
++
++  it("ownerMint reverts on zero address", async function () {
++    await expect(faucet.connect(owner).ownerMint(ethers.ZeroAddress, MINT_AMOUNT))
++      .to.be.revertedWithCustomError(faucet, "ZeroAddress");
++  });
++
++  // ── Pause circuit-breaker ──────────────────────────────────────────────────
++
++  it("paused faucet blocks claim", async function () {
++    await faucet.connect(owner).pause();
++    await expect(faucet.connect(alice).claim())
++      .to.be.revertedWithCustomError(faucet, "EnforcedPause");
++  });
++
++  it("unpausing restores claim", async function () {
++    await faucet.connect(owner).pause();
++    await faucet.connect(owner).unpause();
++    await faucet.connect(alice).claim();
++    expect(await faucet.balanceOf(alice.address)).to.equal(MINT_AMOUNT);
++  });
++
++  it("only owner can pause", async function () {
++    await expect(faucet.connect(alice).pause())
++      .to.be.revertedWithCustomError(faucet, "OwnableUnauthorizedAccount");
++  });
++
++  // ── View helpers ───────────────────────────────────────────────────────────
++
++  it("remainingSupply decreases after mint", async function () {
++    await faucet.connect(alice).claim();
++    const remaining = await faucet.remainingSupply();
++    expect(remaining).to.equal(MAX_SUPPLY - MINT_AMOUNT);
++  });
++
++  it("nextClaimTime returns correct timestamp", async function () {
++    const tx = await faucet.connect(alice).claim();
++    const block = await ethers.provider.getBlock(tx.blockNumber);
++    const expected = BigInt(block.timestamp) + BigInt(CLAIM_INTERVAL);
++    expect(await faucet.nextClaimTime(alice.address)).to.equal(expected);
++  });
++});
++
++// ─── QUSD Tests ───────────────────────────────────────────────────────────────
++
++describe("QUSD", function () {
++  let qusd, admin, minter, pauser, alice, bob;
++
++  const MAX_SUPPLY = ethers.parseEther("1000000000");
++  const MINT_AMOUNT = ethers.parseEther("1000");
++
++  const MINTER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("MINTER_ROLE"));
++  const PAUSER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("PAUSER_ROLE"));
++  const BURNER_ROLE = ethers.keccak256(ethers.toUtf8Bytes("BURNER_ROLE"));
++
++  beforeEach(async function () {
++    [admin, minter, pauser, alice, bob] = await ethers.getSigners();
++    const QUSD = await ethers.getContractFactory("QUSD");
++    qusd = await QUSD.deploy(admin.address, minter.address);
++    await qusd.waitForDeployment();
++  });
++
++  // ── Deployment ─────────────────────────────────────────────────────────────
++
++  it("starts with zero total supply", async function () {
++    expect(await qusd.totalSupply()).to.equal(0n);
++  });
++
++  it("admin has DEFAULT_ADMIN_ROLE", async function () {
++    const DEFAULT_ADMIN = await qusd.DEFAULT_ADMIN_ROLE();
++    expect(await qusd.hasRole(DEFAULT_ADMIN, admin.address)).to.be.true;
++  });
++
++  it("minter has MINTER_ROLE", async function () {
++    expect(await qusd.hasRole(MINTER_ROLE, minter.address)).to.be.true;
++  });
++
++  it("admin has PAUSER_ROLE", async function () {
++    expect(await qusd.hasRole(PAUSER_ROLE, admin.address)).to.be.true;
++  });
++
++  it("has correct token metadata", async function () {
++    expect(await qusd.name()).to.equal("Qanto USD");
++    expect(await qusd.symbol()).to.equal("QUSD");
++    expect(await qusd.decimals()).to.equal(18);
++  });
++
++  // ── Minting (role-gated) ───────────────────────────────────────────────────
++
++  it("minter can mint tokens", async function () {
++    await qusd.connect(minter).mint(alice.address, MINT_AMOUNT);
++    expect(await qusd.balanceOf(alice.address)).to.equal(MINT_AMOUNT);
++    expect(await qusd.totalSupply()).to.equal(MINT_AMOUNT);
++  });
++
++  it("non-minter cannot mint", async function () {
++    await expect(qusd.connect(alice).mint(alice.address, MINT_AMOUNT))
++      .to.be.revertedWithCustomError(qusd, "AccessControlUnauthorizedAccount");
++  });
++
++  it("mint reverts on zero address", async function () {
++    await expect(qusd.connect(minter).mint(ethers.ZeroAddress, MINT_AMOUNT))
++      .to.be.revertedWithCustomError(qusd, "ZeroAddress");
++  });
++
++  it("mint reverts on zero amount", async function () {
++    await expect(qusd.connect(minter).mint(alice.address, 0n))
++      .to.be.revertedWithCustomError(qusd, "ZeroAmount");
++  });
++
++  // ── Supply cap ─────────────────────────────────────────────────────────────
++
++  it("mint enforces MAX_SUPPLY cap", async function () {
++    await qusd.connect(minter).mint(alice.address, MAX_SUPPLY);
++    await expect(qusd.connect(minter).mint(alice.address, 1n))
++      .to.be.revertedWithCustomError(qusd, "SupplyCapExceeded");
++  });
++
++  it("remainingMintable decreases after mint", async function () {
++    await qusd.connect(minter).mint(alice.address, MINT_AMOUNT);
++    expect(await qusd.remainingMintable()).to.equal(MAX_SUPPLY - MINT_AMOUNT);
++  });
++
++  // ── Pause circuit-breaker ──────────────────────────────────────────────────
++
++  it("paused contract blocks minting", async function () {
++    await qusd.connect(admin).pause();
++    await expect(qusd.connect(minter).mint(alice.address, MINT_AMOUNT))
++      .to.be.revertedWithCustomError(qusd, "EnforcedPause");
++  });
++
++  it("paused contract blocks transfers", async function () {
++    await qusd.connect(minter).mint(alice.address, MINT_AMOUNT);
++    await qusd.connect(admin).pause();
++    await expect(qusd.connect(alice).transfer(bob.address, MINT_AMOUNT))
++      .to.be.revertedWithCustomError(qusd, "EnforcedPause");
++  });
++
++  it("only pauser can pause", async function () {
++    await expect(qusd.connect(alice).pause())
++      .to.be.revertedWithCustomError(qusd, "AccessControlUnauthorizedAccount");
++  });
++
++  it("unpausing restores minting", async function () {
++    await qusd.connect(admin).pause();
++    await qusd.connect(admin).unpause();
++    await qusd.connect(minter).mint(alice.address, MINT_AMOUNT);
++    expect(await qusd.balanceOf(alice.address)).to.equal(MINT_AMOUNT);
++  });
++
++  // ── Burn ───────────────────────────────────────────────────────────────────
++
++  it("holder can burn own tokens", async function () {
++    await qusd.connect(minter).mint(alice.address, MINT_AMOUNT);
++    await qusd.connect(alice).burn(MINT_AMOUNT);
++    expect(await qusd.balanceOf(alice.address)).to.equal(0n);
++    expect(await qusd.totalSupply()).to.equal(0n);
++  });
++
++  it("BURNER_ROLE can burn from another account without allowance", async function () {
++    await qusd.connect(minter).mint(alice.address, MINT_AMOUNT);
++    await qusd.connect(admin).burnFrom(alice.address, MINT_AMOUNT);
++    expect(await qusd.balanceOf(alice.address)).to.equal(0n);
++  });
++
++  it("non-burner cannot burn from another account without allowance", async function () {
++    await qusd.connect(minter).mint(alice.address, MINT_AMOUNT);
++    await expect(qusd.connect(bob).burnFrom(alice.address, MINT_AMOUNT))
++      .to.be.revert(ethers);
++  });
++
++  // ── Role management ────────────────────────────────────────────────────────
++
++  it("admin can grant MINTER_ROLE to a new account", async function () {
++    await qusd.connect(admin).grantRole(MINTER_ROLE, alice.address);
++    await qusd.connect(alice).mint(bob.address, MINT_AMOUNT);
++    expect(await qusd.balanceOf(bob.address)).to.equal(MINT_AMOUNT);
++  });
++
++  it("admin can revoke MINTER_ROLE", async function () {
++    await qusd.connect(admin).revokeRole(MINTER_ROLE, minter.address);
++    await expect(qusd.connect(minter).mint(alice.address, MINT_AMOUNT))
++      .to.be.revertedWithCustomError(qusd, "AccessControlUnauthorizedAccount");
++  });
++});

@@ -931,6 +931,8 @@ impl EnhancedOmegaOrchestrator {
             epoch: 0,
             reservation_miner_id: None,
             finality_proof: None,
+            state_parent: String::new(),
+            state_root: String::new(),
         };
 
         // Add the block to the DAG

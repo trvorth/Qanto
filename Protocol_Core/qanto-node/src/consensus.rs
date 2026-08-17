@@ -34,10 +34,14 @@
 
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError};
 use crate::saga::{PalletSaga, SagaError};
-use crate::transaction::TransactionError;
+use crate::transaction::{Transaction, TransactionError};
 use crate::types::UTXO;
+use crate::difficulty_retarget::{DifficultyState, get_required_difficulty, record_solve_time, validate_block_difficulty};
 use ahash::AHashMap as HashMap;
 use futures::future;
+use qanto_consensus_primitives::block::BlockError;
+use qanto_consensus_primitives::pow::{verify_qanhash_v2, work_meets_difficulty_v2};
+use qanto_consensus_primitives::{is_v2_active, ConsensusParametersV2};
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::RwLock;
@@ -70,12 +74,17 @@ pub enum ConsensusError {
 #[derive(Debug)]
 pub struct Consensus {
     saga: Arc<PalletSaga>,
+    /// Adaptive difficulty retarget state
+    difficulty_state: Arc<RwLock<DifficultyState>>,
 }
 
 impl Consensus {
     /// Creates a new Consensus engine instance, linking it to the SAGA pallet.
     pub fn new(saga: Arc<PalletSaga>) -> Self {
-        Self { saga }
+        Self {
+            saga,
+            difficulty_state: Arc::new(RwLock::new(DifficultyState::default())),
+        }
     }
 
     /// **CANONICAL POW VALIDATION FUNCTION**
@@ -102,12 +111,26 @@ impl Consensus {
         dag_arc: &Arc<QantoDAG>,
         utxos: &Arc<RwLock<HashMap<String, UTXO>>>,
     ) -> Result<(), ConsensusError> {
-        if dag_arc.is_valid_block(block, utxos).await? {
-            Ok(())
+        // Check if V2 is active for this block height
+        let consensus_params = ConsensusParametersV2::for_testnet_candidate();
+        if is_v2_active(block.height as u64, &consensus_params) {
+            // V2 validation path - delegate to DAG's V2 validation
+            if dag_arc.is_valid_block_v2(block, utxos).await? {
+                Ok(())
+            } else {
+                Err(ConsensusError::InvalidBlockStructure(
+                    "V2 DAG validation rejected block".to_string(),
+                ))
+            }
         } else {
-            Err(ConsensusError::InvalidBlockStructure(
-                "canonical DAG validation rejected block".to_string(),
-            ))
+            // V1 validation path - existing logic
+            if dag_arc.is_valid_block(block, utxos).await? {
+                Ok(())
+            } else {
+                Err(ConsensusError::InvalidBlockStructure(
+                    "canonical DAG validation rejected block".to_string(),
+                ))
+            }
         }
     }
 
@@ -324,11 +347,11 @@ impl Consensus {
         Ok(())
     }
 
-    /// Validates the block's Proof-of-Work against the dynamically adjusted difficulty target from SAGA.
+    /// Validates the block's Proof-of-Work against the dynamically adjusted difficulty target.
     async fn validate_proof_of_work(&self, block: &QantoBlock) -> Result<(), ConsensusError> {
         let required_difficulty = self.get_required_difficulty(block.height).await;
 
-        if block.difficulty != required_difficulty {
+        if block.difficulty as u128 != required_difficulty {
             warn!(
                 "Block {} has difficulty mismatch. Expected: {}, Received: {}",
                 block.id, required_difficulty, block.difficulty
@@ -341,7 +364,7 @@ impl Consensus {
 
         // Use the canonical PoW validation function (using nonce-including PoW hash)
         let block_pow_hash = block.hash_for_pow();
-        if !Self::is_pow_valid(block_pow_hash.as_bytes(), required_difficulty) {
+        if !Self::is_pow_valid(block_pow_hash.as_bytes(), required_difficulty as u64) {
             return Err(ConsensusError::ProofOfWorkFailed(
                 "Block PoW hash does not meet difficulty target.".to_string(),
             ));
@@ -354,11 +377,9 @@ impl Consensus {
         Ok(())
     }
 
-    /// Retrieves the required PoW difficulty for a given height.
-    /// PHASE 2: SAGA ISOLATION - Consensus no longer depends on SAGA/Reputation for difficulty.
-    pub async fn get_required_difficulty(&self, _height: u64) -> crate::QDifficulty {
-        // For development/testnet, we use a constant difficulty or a deterministic adjustment.
-        // We retrieve the initial difficulty from the network config (via crate::QANTO_SCALE).
-        crate::QANTO_SCALE as u64 // Initial difficulty: 1.0 represented as 1e9
+    /// Retrieves the required PoW difficulty for a given height using adaptive retarget.
+    pub async fn get_required_difficulty(&self, height: u64) -> u128 {
+        let state = self.difficulty_state.read().await;
+        get_required_difficulty(&state, height)
     }
 }
