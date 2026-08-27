@@ -95,9 +95,9 @@ mod tests {
         let mut optimizer = MeshOptimizer::new();
         optimizer.update_shard_health(ShardHealth {
             shard_id: 0,
-            latency_ms: 180,                // Over Threshold
-            tps: MeshOptimizer::HIGH_TPS_THRESHOLD + 1,     // Over Threshold
-            puai_yield: 92_500_000_000u128, // 92.5 * 1e9
+            latency_ms: 180,                            // Over Threshold
+            tps: MeshOptimizer::HIGH_TPS_THRESHOLD + 1, // Over Threshold
+            puai_yield: 92_500_000_000u128,             // 92.5 * 1e9
             sentinel_count: 5,
         });
 
