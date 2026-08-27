@@ -2219,7 +2219,7 @@ mod mempool_tests {
     use crate::performance_optimizations::QantoDAGOptimizations;
     use crate::qantodag::QantoDAG;
     use crate::transaction::{Input, Output, TransactionKind};
-    use crate::types::{UTXO, HomomorphicEncrypted};
+    use crate::types::{HomomorphicEncrypted, UTXO};
     use ahash::AHashMap as HashMap;
 
     fn sample_mempool() -> Mempool {
@@ -2275,7 +2275,9 @@ mod mempool_tests {
         let mempool = sample_mempool();
         let utxos = sample_utxos();
         let tx = sample_tx(0);
-        let result = mempool.add_transaction(tx, &utxos, &QantoDAG::new_dummy_for_verification()).await;
+        let result = mempool
+            .add_transaction(tx, &utxos, &QantoDAG::new_dummy_for_verification())
+            .await;
         assert!(result.is_err(), "Zero-fee tx must be rejected");
     }
 
@@ -2284,7 +2286,9 @@ mod mempool_tests {
         let mempool = sample_mempool();
         let utxos = sample_utxos();
         let tx = sample_tx(crate::transaction::MIN_FEE_FLOOR - 1);
-        let result = mempool.add_transaction(tx, &utxos, &QantoDAG::new_dummy_for_verification()).await;
+        let result = mempool
+            .add_transaction(tx, &utxos, &QantoDAG::new_dummy_for_verification())
+            .await;
         assert!(result.is_err(), "Sub-floor fee must be rejected");
     }
 
@@ -2293,7 +2297,9 @@ mod mempool_tests {
         let mempool = sample_mempool();
         let utxos = sample_utxos();
         let tx = sample_tx(crate::transaction::MIN_FEE_FLOOR);
-        let result = mempool.add_transaction(tx, &utxos, &QantoDAG::new_dummy_for_verification()).await;
+        let result = mempool
+            .add_transaction(tx, &utxos, &QantoDAG::new_dummy_for_verification())
+            .await;
         // The tx will fail signature verification (empty sig), but it should
         // pass the fee floor check. We verify the fee floor specifically.
         match result {
@@ -2340,7 +2346,9 @@ mod mempool_tests {
         let utxos = sample_utxos();
         let mut tx = sample_tx(crate::transaction::MIN_FEE_FLOOR);
         tx.inputs.clear();
-        let result = mempool.add_transaction(tx, &utxos, &QantoDAG::new_dummy_for_verification()).await;
+        let result = mempool
+            .add_transaction(tx, &utxos, &QantoDAG::new_dummy_for_verification())
+            .await;
         assert!(result.is_err(), "Inputless tx must be rejected");
     }
 
