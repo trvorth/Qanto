@@ -33,6 +33,8 @@ ring = { version = "0.17.12" }
 hickory-proto = { version = "0.26.1" }
 hickory-resolver = { version = "0.26.1" }
 rustls = { version = "0.23" }
+# RUSTSEC-2026-0258: h2 unbounded empty DATA frames — force >=0.4.16
+h2 = { version = "0.4.16" }
 
 # Compatibility overrides that still carry local source/API changes.
 [patch.crates-io]

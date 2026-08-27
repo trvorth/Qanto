@@ -30,7 +30,8 @@ dashmap = "6.1.0"
 log = "0.4.21"
 tracing = "0.1.40"
 tokio = { version = "1.38.0", features = ["full"] }
-lru = "0.16.3"
+# RUSTSEC-2026-0253: use-after-free in LruCache::pop during panic — upgraded to 0.18.2
+lru = "0.18.2"
 memmap2 = "0.9.8"
 primitive-types = "0.12.2"
 num_cpus = "1.16.0"

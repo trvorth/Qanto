@@ -111,3 +111,4 @@ Infrastructure/node-operator/keys/README.md
 .npm/
 .rustup/
 peer_cache.json
+.worktrees/
