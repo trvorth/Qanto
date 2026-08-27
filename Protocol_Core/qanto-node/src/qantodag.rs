@@ -1858,6 +1858,14 @@ impl QantoDAG {
 
         for id in ids_to_prune {
             if let Some((_id, block)) = self.blocks.remove(&id) {
+                // PCP-006: Delete block bytes from disk, not just memory.
+                // Previously this only removed the in-memory DashMap entry and
+                // wrote a 32-byte summary, leaving the full block bytes on disk
+                // forever. Now we actually reclaim the storage.
+                if let Err(e) = self.db.delete(id.as_bytes()) {
+                    warn!("Failed to delete pruned block {} from storage: {}", id, e);
+                }
+
                 // Store minimal hash summary for verification
                 let summary_key = format!("pruned_{id}");
                 let hash_summary = qanto_hash(block.hash().as_bytes());
