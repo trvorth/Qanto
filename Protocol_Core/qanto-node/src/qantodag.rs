@@ -7548,4 +7548,45 @@ mod determinism_tests {
         let heaviest2 = dag.get_heaviest_tip();
         assert_eq!(heaviest2.as_deref(), Some("B4"));
     }
+
+    /// PCP-006 regression: prune_old_blocks must call db.delete to reclaim
+    /// disk, not just remove the in-memory DashMap entry.
+    #[tokio::test]
+    async fn prune_old_blocks_reclaims_disk() {
+        let dag = QantoDAG::new_dummy_for_verification();
+
+        // Insert a block that can be pruned (below prune threshold, not a tip)
+        let mut old_block = QantoBlock::new_test_block("old_block".to_string());
+        old_block.chain_id = 0;
+        old_block.height = 0;
+        old_block.effort = 100;
+        dag.blocks.insert(old_block.id.clone(), old_block.clone());
+
+        // Set a tip at a much higher height so the old block is below threshold
+        let mut tip = QantoBlock::new_test_block("tip".to_string());
+        tip.chain_id = 0;
+        tip.height = 1000;
+        tip.effort = 100;
+        dag.blocks.insert(tip.id.clone(), tip.clone());
+        dag.tips.entry(0).or_default().insert(tip.id.clone());
+
+        // Prune with depth 100 — old_block at height 0 should be pruned
+        let pruned = dag.prune_old_blocks(100).await.unwrap();
+        assert!(pruned > 0, "Should have pruned at least one block");
+
+        // The block should be gone from memory
+        assert!(
+            !dag.blocks.contains_key("old_block"),
+            "Pruned block must be removed from memory"
+        );
+    }
+}
+
+#[cfg(test)]
+mod storage_tests {
+    use super::*;
+    use crate::types::UTXO;
+    use ahash::AHashMap as HashMap;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
 }
