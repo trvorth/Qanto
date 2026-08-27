@@ -1698,6 +1698,96 @@ pub fn pad_ethereum_address(eth_addr_hex: &str) -> String {
 }
 
 #[cfg(test)]
+mod fee_floor_tests {
+    use super::*;
+
+    /// Helper: minimal tx for fee floor testing.
+    fn sample_tx(fee: u128, metadata: Option<HashMap<String, String>>) -> Transaction {
+        Transaction {
+            id: "a".repeat(64),
+            sender: "b".repeat(64),
+            receiver: "c".repeat(64),
+            amount: 100,
+            fee,
+            gas_limit: 50_000,
+            gas_used: 0,
+            gas_price: 1,
+            priority_fee: 0,
+            inputs: vec![Input {
+                tx_id: "d".repeat(64),
+                output_index: 0,
+            }],
+            outputs: vec![Output {
+                address: "e".repeat(64),
+                amount: 100,
+                homomorphic_encrypted: HomomorphicEncrypted::default(),
+            }],
+            timestamp: 1,
+            metadata: metadata.unwrap_or_default(),
+            signature: Default::default(),
+            transaction_kind: TransactionKind::Transfer,
+            chain_id: 1234,
+            fee_breakdown: None,
+        }
+    }
+
+    #[test]
+    fn fee_floor_rejects_zero_fee() {
+        let tx = sample_tx(0, None);
+        assert!(
+            tx.validate_for_mempool().is_err(),
+            "Zero-fee tx must be rejected by fee floor"
+        );
+    }
+
+    #[test]
+    fn fee_floor_rejects_sub_floor_fee() {
+        let tx = sample_tx(MIN_FEE_FLOOR - 1, None);
+        assert!(
+            tx.validate_for_mempool().is_err(),
+            "Sub-floor fee must be rejected"
+        );
+    }
+
+    #[test]
+    fn fee_floor_accepts_at_floor() {
+        let tx = sample_tx(MIN_FEE_FLOOR, None);
+        assert!(
+            tx.validate_for_mempool().is_ok(),
+            "Fee exactly at floor must be accepted"
+        );
+    }
+
+    #[test]
+    fn fee_floor_accepts_internal_transfer() {
+        let mut metadata = HashMap::new();
+        metadata.insert("internal_transfer".to_string(), "true".to_string());
+        let tx = sample_tx(0, Some(metadata));
+        assert!(
+            tx.validate_for_mempool().is_ok(),
+            "Internal transfer must bypass fee floor"
+        );
+    }
+
+    #[test]
+    fn coinbase_rejected_by_kind_check_not_fee_floor() {
+        // Coinbase txs are created inside block construction and don't go
+        // through validate_for_mempool. The "Non-transfer" check rejects
+        // them before the fee floor check. This pins that behavior so the
+        // fee floor's is_coinbase() bypass is never silently reachable.
+        let mut tx = sample_tx(0, None);
+        tx.transaction_kind = TransactionKind::Coinbase;
+        tx.inputs.clear();
+        let err = tx.validate_for_mempool().unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("Non-transfer") || msg.contains("Inputless") || msg.contains("coinbase"),
+            "Coinbase must be rejected before fee floor check; got: {msg}"
+        );
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::performance_optimizations::QantoDAGOptimizations;
@@ -1711,6 +1801,91 @@ mod tests {
             address: "b".repeat(64),
             amount: 42,
             homomorphic_encrypted: HomomorphicEncrypted::default(),
+        }
+    }
+
+    #[test]
+    fn fee_floor_rejects_zero_fee() {
+        let tx = sample_tx(0, None);
+        assert!(
+            tx.validate_for_mempool().is_err(),
+            "Zero-fee tx must be rejected by fee floor"
+        );
+    }
+
+    #[test]
+    fn fee_floor_rejects_sub_floor_fee() {
+        let tx = sample_tx(MIN_FEE_FLOOR - 1, None);
+        assert!(
+            tx.validate_for_mempool().is_err(),
+            "Sub-floor fee must be rejected"
+        );
+    }
+
+    #[test]
+    fn fee_floor_accepts_at_floor() {
+        let tx = sample_tx(MIN_FEE_FLOOR, None);
+        assert!(
+            tx.validate_for_mempool().is_ok(),
+            "Fee exactly at floor must be accepted"
+        );
+    }
+
+    #[test]
+    fn fee_floor_accepts_internal_transfer() {
+        let mut metadata = HashMap::new();
+        metadata.insert("internal_transfer".to_string(), "true".to_string());
+        let tx = sample_tx(0, Some(metadata));
+        assert!(
+            tx.validate_for_mempool().is_ok(),
+            "Internal transfer must bypass fee floor"
+        );
+    }
+
+    #[test]
+    fn coinbase_rejected_by_kind_check_not_fee_floor() {
+        // Coinbase txs are created inside block construction and don't go
+        // through validate_for_mempool. The "Non-transfer" check rejects
+        // them before the fee floor check. This pins that behavior so the
+        // fee floor's is_coinbase() bypass is never silently reachable.
+        let mut tx = sample_tx(0, None);
+        tx.transaction_kind = TransactionKind::Coinbase;
+        tx.inputs.clear();
+        let err = tx.validate_for_mempool().unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("Non-transfer") || msg.contains("Inputless") || msg.contains("coinbase"),
+            "Coinbase must be rejected before fee floor check; got: {msg}"
+        );
+    }
+
+    /// Helper: minimal tx for fee floor testing.
+    fn sample_tx(fee: u128, metadata: Option<HashMap<String, String>>) -> Transaction {
+        Transaction {
+            id: "a".repeat(64),
+            sender: "b".repeat(64),
+            receiver: "c".repeat(64),
+            amount: 100,
+            fee,
+            gas_limit: 50_000,
+            gas_used: 0,
+            gas_price: 1,
+            priority_fee: 0,
+            inputs: vec![Input {
+                tx_id: "d".repeat(64),
+                output_index: 0,
+            }],
+            outputs: vec![Output {
+                address: "e".repeat(64),
+                amount: 100,
+                homomorphic_encrypted: HomomorphicEncrypted::default(),
+            }],
+            timestamp: 1,
+            metadata: metadata.unwrap_or_default(),
+            signature: Default::default(),
+            transaction_kind: TransactionKind::Transfer,
+            chain_id: 1234,
+            fee_breakdown: None,
         }
     }
 
