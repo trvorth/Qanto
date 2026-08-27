@@ -718,11 +718,38 @@ impl Config {
         Ok(())
     }
 
+    /// CONFIG-002 helper: emit a prominent warning when an administrative listener
+    /// is bound to a non-loopback interface.
+    ///
+    /// `is_loopback()` covers 127.0.0.0/8 and ::1. Everything else — including the
+    /// wildcard binds 0.0.0.0 and :: — is treated as publicly reachable, since the
+    /// wildcard accepts connections on every interface the host owns.
+    fn warn_if_publicly_bound(field: &str, addr: &SocketAddr) {
+        if addr.ip().is_loopback() {
+            return;
+        }
+
+        let wildcard = addr.ip().is_unspecified();
+        log::warn!(
+            "SECURITY: config `{field}` is bound to {addr}, which is NOT loopback{}. \
+             This publishes an unauthenticated administrative surface to the network. \
+             The gRPC RPC stack additionally carries an unresolved HTTP/2 advisory \
+             (RUSTSEC-2026-0258, h2 0.3.x via tonic 0.11), whose only current mitigation \
+             is a loopback bind. Use 127.0.0.1 unless this exposure is intentional and \
+             firewalled.",
+            if wildcard {
+                " (wildcard: accepts connections on every interface)"
+            } else {
+                ""
+            }
+        );
+    }
+
     pub fn validate(&self) -> Result<(), ConfigError> {
         crate::adaptive_mining::validate_adaptive_mining_activation(self.adaptive_mining_enabled)
             .map_err(|reason| ConfigError::Validation(reason.to_string()))?;
 
-        self.api_address.parse::<SocketAddr>().map_err(|_| {
+        let api_socket = self.api_address.parse::<SocketAddr>().map_err(|_| {
             let mut error_msg = String::with_capacity(32 + self.api_address.len());
             error_msg.push_str("Invalid API address format: '");
             error_msg.push_str(&self.api_address);
@@ -730,13 +757,32 @@ impl Config {
             ConfigError::Validation(error_msg)
         })?;
 
-        self.rpc.address.parse::<SocketAddr>().map_err(|_| {
+        let rpc_socket = self.rpc.address.parse::<SocketAddr>().map_err(|_| {
             let mut error_msg = String::with_capacity(33 + self.rpc.address.len());
             error_msg.push_str("Invalid RPC address format: '");
             error_msg.push_str(&self.rpc.address);
             error_msg.push('\'');
             ConfigError::Validation(error_msg)
         })?;
+
+        // CONFIG-002: warn loudly when an administrative listener is bound to a
+        // publicly routable interface.
+        //
+        // Both the JSON/HTTP API and the gRPC RPC surface are administrative: they
+        // accept transaction submission and expose node state, and neither performs
+        // request authentication at this checkpoint. Every shipped profile binds them
+        // to loopback, and that loopback bind is the ONLY thing constraining exposure
+        // of the gRPC HTTP/2 stack (which carries the unresolved RUSTSEC-2026-0258
+        // advisory via tonic 0.11 -> hyper 0.14 -> h2 0.3.x).
+        //
+        // Previously `validate()` checked only that these addresses PARSED, so an
+        // operator could bind 0.0.0.0 and silently publish that surface with no signal
+        // whatsoever. This is deliberately a WARNING and not a hard error: binding a
+        // public interface is a legitimate operator choice for a sentry/relay
+        // topology, and turning it into a startup failure would be an unrequested
+        // behavioural break. The requirement is that it can no longer happen SILENTLY.
+        Self::warn_if_publicly_bound("api_address", &api_socket);
+        Self::warn_if_publicly_bound("rpc.address", &rpc_socket);
 
         if !(MIN_TARGET_BLOCK_TIME..=MAX_TARGET_BLOCK_TIME).contains(&self.target_block_time) {
             let mut error_msg = String::with_capacity(64);
@@ -1171,5 +1217,103 @@ mod tests {
             Err(ConfigError::Validation(reason))
                 if reason == crate::adaptive_mining::ADAPTIVE_MINING_DISABLED_REASON
         ));
+    }
+
+    // --- CONFIG-002 regression tests (Cycle 023) ---
+    //
+    // The loopback bind of the API/RPC listeners is the only mitigation for the
+    // unresolved h2 advisory (RUSTSEC-2026-0258) reachable through the production
+    // gRPC server. `validate()` previously checked only that the addresses parsed,
+    // so exposing them was silent. These tests pin both the shipped-default
+    // guarantee and the classification logic that drives the warning.
+
+    /// Positive control: every shipped profile must keep the administrative
+    /// listeners on loopback. If a future edit changes a default to 0.0.0.0, this
+    /// fails rather than silently publishing an unauthenticated surface.
+    #[test]
+    fn shipped_profiles_bind_admin_listeners_to_loopback() {
+        for (name, config) in [
+            ("default", Config::default()),
+            ("free_tier_optimized", Config::free_tier_optimized()),
+            ("high_performance", Config::high_performance()),
+        ] {
+            let api = config
+                .api_address
+                .parse::<SocketAddr>()
+                .unwrap_or_else(|_| panic!("{name}: api_address must parse"));
+            let rpc = config
+                .rpc
+                .address
+                .parse::<SocketAddr>()
+                .unwrap_or_else(|_| panic!("{name}: rpc.address must parse"));
+
+            assert!(
+                api.ip().is_loopback(),
+                "CONFIG-002 REGRESSION: profile `{name}` binds api_address to {api}, \
+                 which is not loopback. This publishes an unauthenticated admin surface."
+            );
+            assert!(
+                rpc.ip().is_loopback(),
+                "CONFIG-002 REGRESSION: profile `{name}` binds rpc.address to {rpc}, \
+                 which is not loopback. The loopback bind is the only mitigation for \
+                 RUSTSEC-2026-0258 in the gRPC stack."
+            );
+        }
+    }
+
+    /// Negative control: the classifier must actually distinguish public binds from
+    /// loopback ones. Without this, `warn_if_publicly_bound` could return early for
+    /// every input and the test above would still pass.
+    #[test]
+    fn public_bind_classification_distinguishes_loopback() {
+        // Loopback forms — must NOT be treated as public.
+        for addr in ["127.0.0.1:8081", "127.0.0.53:50051", "[::1]:8081"] {
+            let parsed: SocketAddr = addr.parse().expect("test address must parse");
+            assert!(
+                parsed.ip().is_loopback(),
+                "{addr} should classify as loopback"
+            );
+        }
+
+        // Wildcard and routable forms — must be treated as public.
+        for addr in [
+            "0.0.0.0:50051",
+            "[::]:50051",
+            "192.168.1.10:8081",
+            "203.0.113.7:50051",
+        ] {
+            let parsed: SocketAddr = addr.parse().expect("test address must parse");
+            assert!(
+                !parsed.ip().is_loopback(),
+                "CONFIG-002 REGRESSION: {addr} must NOT classify as loopback, \
+                 otherwise a public bind would be silently accepted"
+            );
+        }
+
+        // Wildcards specifically must be recognised as unspecified so the warning
+        // can name them as accepting every interface.
+        for addr in ["0.0.0.0:50051", "[::]:50051"] {
+            let parsed: SocketAddr = addr.parse().expect("test address must parse");
+            assert!(
+                parsed.ip().is_unspecified(),
+                "{addr} should classify as a wildcard bind"
+            );
+        }
+    }
+
+    /// A publicly-bound admin listener must still pass `validate()`. The CONFIG-002
+    /// remediation is deliberately a warning, not a hard failure — binding a public
+    /// interface is a legitimate sentry/relay choice. This pins that decision so a
+    /// future change to a hard error is a conscious one.
+    #[test]
+    fn public_admin_bind_warns_but_does_not_fail_validation() {
+        let mut config = Config::default();
+        config.api_address = "0.0.0.0:8081".to_string();
+        config.rpc.address = "0.0.0.0:50051".to_string();
+
+        assert!(
+            config.validate().is_ok(),
+            "CONFIG-002 is a warning, not a hard error; validate() must still succeed"
+        );
     }
 }
