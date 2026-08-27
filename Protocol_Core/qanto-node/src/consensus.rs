@@ -32,11 +32,13 @@
 //! - **Interoperability**: Develops interoperability mechanisms to connect Qanto with other
 //!   blockchains and ecosystems.
 
+use crate::difficulty_retarget::{
+    get_required_difficulty, record_solve_time, validate_block_difficulty, DifficultyState,
+};
 use crate::qantodag::{QantoBlock, QantoDAG, QantoDAGError};
 use crate::saga::{PalletSaga, SagaError};
 use crate::transaction::{Transaction, TransactionError};
 use crate::types::UTXO;
-use crate::difficulty_retarget::{DifficultyState, get_required_difficulty, record_solve_time, validate_block_difficulty};
 use ahash::AHashMap as HashMap;
 use futures::future;
 use qanto_consensus_primitives::block::BlockError;
