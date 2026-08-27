@@ -34,11 +34,10 @@ fn wrap_and_init_dag(dag: QantoDAG) -> Arc<QantoDAG> {
         dag.tips.entry(1234).or_default().insert(genesis.id);
     }
     let arc_dag = Arc::new(dag);
-    let weak_self = Arc::downgrade(&arc_dag);
-    let ptr = Arc::as_ptr(&arc_dag) as *mut QantoDAG;
-    unsafe {
-        (*ptr).self_arc = weak_self;
-    }
+    // SELF-ARC-001 (Cycle 023): sound self-reference init. Previously this
+    // cast Arc::as_ptr (a *const T) to *mut and wrote through it, which is UB
+    // by provenance even with no other live handle.
+    let _ = arc_dag.self_arc.set(Arc::downgrade(&arc_dag));
     arc_dag
 }
 
@@ -363,8 +362,14 @@ mod tests {
         // Verify adaptive difficulty returns u128 and starts at genesis difficulty
         assert_eq!(diff_at_1, crate::difficulty_retarget::GENESIS_DIFFICULTY);
         assert_eq!(diff_at_100, crate::difficulty_retarget::GENESIS_DIFFICULTY);
-        assert_eq!(diff_at_10000, crate::difficulty_retarget::GENESIS_DIFFICULTY);
-        assert_eq!(diff_at_1000000, crate::difficulty_retarget::GENESIS_DIFFICULTY);
+        assert_eq!(
+            diff_at_10000,
+            crate::difficulty_retarget::GENESIS_DIFFICULTY
+        );
+        assert_eq!(
+            diff_at_1000000,
+            crate::difficulty_retarget::GENESIS_DIFFICULTY
+        );
 
         println!(
             "CONFIRMED: get_required_difficulty returns adaptive difficulty (u128) starting at genesis: {}",

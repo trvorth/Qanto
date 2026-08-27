@@ -270,7 +270,7 @@ impl Block {
             },
         ]
     }
-    }
+}
 
 #[cfg(test)]
 mod tests {

@@ -12,7 +12,7 @@ use crate::types::{HomomorphicEncrypted, QuantumResistantSignature, UTXO};
 use ahash::AHashMap as HashMap;
 use k256::ecdsa::signature::hazmat::PrehashSigner;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 
@@ -166,7 +166,7 @@ pub(crate) fn new_dummy_with_storage_path(temp_path: &std::path::Path) -> QantoD
             #[cfg(feature = "infinite-strata")]
             None,
         )),
-        self_arc: Weak::new(),
+        self_arc: OnceLock::new(),
         current_epoch: StdArc::new(AtomicU64::new(0)),
         balance_event_sender: StdArc::new(tokio::sync::RwLock::new(None)),
         balance_broadcaster: StdArc::new(tokio::sync::RwLock::new(Some(StdArc::new(

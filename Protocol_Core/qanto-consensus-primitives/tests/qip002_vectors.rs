@@ -546,9 +546,9 @@ fn block_core_v2_canonical_bytes_match_golden_vector() {
         transactions_root: tx_root,
         timestamp: 1_700_000_000_000, // timestamp ms
         difficulty: params.min_difficulty,
-        chain_work: 0,                             // chain_work = 0 for genesis
+        chain_work: 0,                               // chain_work = 0 for genesis
         validator_id: HashV2::from_bytes([3u8; 32]), // validator_id
-        miner_id: HashV2::from_bytes([4u8; 32]), // miner_id
+        miner_id: HashV2::from_bytes([4u8; 32]),     // miner_id
         height: 0,
         state_parent: BlockIdV2::from_bytes([0u8; 32]), // state_parent (zero for genesis)
     });

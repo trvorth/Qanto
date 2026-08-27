@@ -22,11 +22,10 @@ fn wrap_and_init_dag(dag: QantoDAG) -> Arc<QantoDAG> {
         dag.tips.entry(0).or_default().insert(genesis.id);
     }
     let arc_dag = Arc::new(dag);
-    let weak_self = Arc::downgrade(&arc_dag);
-    let ptr = Arc::as_ptr(&arc_dag) as *mut QantoDAG;
-    unsafe {
-        (*ptr).self_arc = weak_self;
-    }
+    // SELF-ARC-001 (Cycle 023): sound self-reference init. Previously this
+    // cast Arc::as_ptr (a *const T) to *mut and wrote through it, which is UB
+    // by provenance even with no other live handle.
+    let _ = arc_dag.self_arc.set(Arc::downgrade(&arc_dag));
     arc_dag
 }
 

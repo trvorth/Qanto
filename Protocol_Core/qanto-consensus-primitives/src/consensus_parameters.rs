@@ -38,7 +38,9 @@ pub fn is_v2_active(height: u64, params: &ConsensusParametersV2) -> bool {
     // clippy::absurd_extreme_comparisons: Short-circuit evaluation means
     // height >= ACTIVATION_HEIGHT is only evaluated when ACTIVATION_HEIGHT != 0.
     #[allow(clippy::absurd_extreme_comparisons)]
-    let active = ACTIVATION_HEIGHT != 0 && height >= ACTIVATION_HEIGHT && params.version == ProtocolVersion::V2;
+    let active = ACTIVATION_HEIGHT != 0
+        && height >= ACTIVATION_HEIGHT
+        && params.version == ProtocolVersion::V2;
     active
 }
 
