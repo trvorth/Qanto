@@ -97,6 +97,8 @@ pub enum P2PError {
     Hmac,
     #[error("Invalid HMAC key length")]
     HmacKeyLength,
+    #[error("HMAC secret not configured: {0}")]
+    HmacSecret(String),
     #[error("Gossipsub configuration error: {0}")]
     GossipsubConfig(String),
     #[error("Gossipsub subscription error: {0}")]
@@ -191,6 +193,28 @@ impl NetworkMessage {
             warn!("SECURITY: Using default HMAC secret. This is not secure for production. Please set the HMAC_SECRET environment variable.");
         }
         secret
+    }
+
+    /// Fail-closed check: returns an error if the HMAC secret is not explicitly configured.
+    /// Call once at P2P startup. The default secret is public knowledge, so accepting it
+    /// would allow any attacker to forge authenticated P2P messages.
+    pub fn ensure_hmac_secret_configured() -> Result<(), P2PError> {
+        dotenvy::dotenv().ok();
+        let secret = env::var("HMAC_SECRET").unwrap_or_else(|_| DEFAULT_HMAC_SECRET.to_string());
+        if secret == DEFAULT_HMAC_SECRET || secret.is_empty() {
+            return Err(P2PError::HmacSecret(
+                "HMAC_SECRET environment variable is not set or is empty. \
+                 A secret MUST be configured before starting the P2P node. \
+                 The default value is public knowledge and provides no security."
+                    .to_string(),
+            ));
+        }
+        if secret.len() < 32 {
+            return Err(P2PError::HmacSecret(
+                "HMAC_SECRET must be at least 32 bytes for security.".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     fn compute_hmac(data: &[u8], secret: &str) -> Result<Vec<u8>, P2PError> {
@@ -532,6 +556,10 @@ impl P2PServer {
         config: P2PConfig<'_>,
         p2p_command_sender: mpsc::Sender<P2PCommand>,
     ) -> Result<Self, P2PError> {
+        // Fail-closed: require HMAC_SECRET to be explicitly configured.
+        // The default secret is public knowledge and provides no authentication.
+        NetworkMessage::ensure_hmac_secret_configured()?;
+
         let local_peer_id = PeerId::from_public_key(&config.local_keypair.public());
         info!("P2PServer using Local P2P Peer ID: {}", local_peer_id);
 
@@ -2289,5 +2317,177 @@ mod tests {
 
         let err = convert_proto_tx(proto_tx).expect_err("invalid amount should fail");
         assert!(err.contains("transaction.amount"));
+    }
+
+    // --- Regression tests for HMAC_SECRET fail-closed behavior ---
+
+    #[serial]
+    #[test]
+    fn hmac_secret_missing_env_var_is_rejected() {
+        // Ensure HMAC_SECRET is unset so the default is used.
+        std::env::remove_var("HMAC_SECRET");
+        // Clear any cached dotenv state so the test is deterministic.
+        dotenvy::from_filename(".env").ok();
+
+        let result = NetworkMessage::ensure_hmac_secret_configured();
+        assert!(
+            result.is_err(),
+            "Missing HMAC_SECRET must be rejected (fail-closed)"
+        );
+        let err = result.unwrap_err();
+        match err {
+            P2PError::HmacSecret(msg) => {
+                assert!(
+                    msg.contains("HMAC_SECRET"),
+                    "Error should name HMAC_SECRET, got: {msg}"
+                );
+            }
+            other => panic!("Expected HmacSecret error, got: {other:?}"),
+        }
+    }
+
+    #[serial]
+    #[test]
+    fn hmac_secret_default_value_is_rejected() {
+        // Set the public default; this must still be rejected.
+        std::env::set_var("HMAC_SECRET", DEFAULT_HMAC_SECRET);
+
+        let result = NetworkMessage::ensure_hmac_secret_configured();
+        assert!(
+            result.is_err(),
+            "Default HMAC_SECRET must be rejected (fail-closed)"
+        );
+
+        // Restore a safe value for subsequent tests.
+        std::env::set_var("HMAC_SECRET", "test_secret_at_least_32_bytes_for_security");
+    }
+
+    #[serial]
+    #[test]
+    fn hmac_secret_too_short_is_rejected() {
+        // 17 bytes — below the 32-byte minimum.
+        std::env::set_var("HMAC_SECRET", "only_16_bytes_long");
+
+        let result = NetworkMessage::ensure_hmac_secret_configured();
+        assert!(
+            result.is_err(),
+            "HMAC_SECRET shorter than 32 bytes must be rejected"
+        );
+        let err = result.unwrap_err();
+        match err {
+            P2PError::HmacSecret(msg) => {
+                assert!(
+                    msg.contains("32"),
+                    "Error should mention 32-byte minimum, got: {msg}"
+                );
+            }
+            other => panic!("Expected HmacSecret error, got: {other:?}"),
+        }
+
+        // Restore a safe value.
+        std::env::set_var("HMAC_SECRET", "test_secret_at_least_32_bytes_for_security");
+    }
+
+    #[serial]
+    #[test]
+    fn hmac_secret_valid_is_accepted() {
+        std::env::set_var("HMAC_SECRET", "a_valid_secret_exactly_32_bytes!");
+
+        let result = NetworkMessage::ensure_hmac_secret_configured();
+        assert!(
+            result.is_ok(),
+            "Valid HMAC_SECRET (>=32 bytes, non-default) must be accepted"
+        );
+
+        std::env::set_var("HMAC_SECRET", "test_secret_at_least_32_bytes_for_security");
+    }
+
+    // --- TEST-INTEGRITY-001 remediation (Cycle 023) ---
+    //
+    // The four tests above validate `ensure_hmac_secret_configured()` in isolation.
+    // A Cycle 023 mutation experiment proved they ALL still pass when the production
+    // call site is deleted, so on their own they are NOT closure evidence for NET-001.
+    //
+    // The two probes below close that gap by asserting the enforcement is actually
+    // WIRED INTO the production startup paths. They read the committed source and fail
+    // if either call site disappears. This is deliberately a source-level assertion:
+    // `Node::start()` and `P2PServer::new()` both require a full node/swarm to invoke,
+    // which is not constructible in a unit test, so a behavioural probe here would
+    // either be a no-op or would silently stop exercising the guard.
+    //
+    // IMPORTANT: these probes MUST strip comments before matching. A first attempt
+    // searched the raw source and was defeated by its own negative control — commenting
+    // the call site out left the text present inside the comment, so the probe still
+    // passed. `active_code_lines` below removes line comments so that only live code
+    // can satisfy the assertion.
+
+    /// Returns the source with `//`-comment content removed, so substring assertions
+    /// match only executable code and cannot be satisfied by a commented-out call.
+    fn active_code_lines(src: &str) -> String {
+        src.lines()
+            .map(|line| match line.find("//") {
+                Some(idx) => &line[..idx],
+                None => line,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Guards the pre-spawn gate in `Node::start()`. If this fails, a
+    /// misconfigured node reverts to fail-degraded behaviour: it keeps running and
+    /// retries P2P init forever instead of aborting startup.
+    #[test]
+    fn hmac_secret_gate_is_wired_into_node_startup() {
+        let node_src = active_code_lines(include_str!("node.rs"));
+
+        let gate = "crate::p2p::NetworkMessage::ensure_hmac_secret_configured()?;";
+        assert!(
+            node_src.contains(gate),
+            "NET-001-A REGRESSION: the fail-closed HMAC gate is missing from node.rs \
+             (or is commented out). Without it, `P2PServer::new()`'s error is swallowed \
+             by the unbounded retry loop and the node runs on with P2P permanently disabled."
+        );
+
+        // The gate must precede service spawning to actually abort startup.
+        let gate_pos = node_src.find(gate).expect("gate presence asserted above");
+        let first_spawn = node_src
+            .find("join_set.spawn(")
+            .expect("node.rs must spawn service tasks");
+        assert!(
+            gate_pos < first_spawn,
+            "NET-001-A REGRESSION: the HMAC gate must run BEFORE any service task is \
+             spawned, otherwise startup is not fail-closed."
+        );
+    }
+
+    /// Guards the defence-in-depth check inside `P2PServer::new()` so the P2P layer
+    /// cannot be constructed with an unconfigured secret even if called directly.
+    #[test]
+    fn hmac_secret_check_is_wired_into_p2p_server_new() {
+        let p2p_src = active_code_lines(include_str!("p2p.rs"));
+
+        // Must appear as live code inside `P2PServer::new`, not merely anywhere.
+        let new_fn = p2p_src
+            .find("pub async fn new(")
+            .expect("P2PServer::new must exist");
+        let body = &p2p_src[new_fn..];
+        let marker = "NetworkMessage::ensure_hmac_secret_configured()?;";
+        let marker_pos = body.find(marker);
+
+        assert!(
+            marker_pos.is_some(),
+            "NET-001 REGRESSION: `P2PServer::new()` no longer validates HMAC_SECRET \
+             (or the call is commented out). Any direct constructor call could start \
+             P2P with the public default secret."
+        );
+
+        // It must be an early guard, before the swarm is built.
+        if let (Some(m), Some(swarm)) = (marker_pos, body.find("PeerId::from_public_key")) {
+            assert!(
+                m < swarm,
+                "NET-001 REGRESSION: the HMAC check must guard the top of \
+                 `P2PServer::new()`, before any P2P resource is constructed."
+            );
+        }
     }
 }

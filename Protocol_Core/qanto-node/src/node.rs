@@ -547,6 +547,22 @@ impl Node {
     /// This function spawns tasks for the P2P server, API server, miner (if in solo mode),
     /// and the core command processing loop. It gracefully handles shutdown on Ctrl+C.
     pub async fn start(&self) -> Result<(), NodeError> {
+        // FAIL-CLOSED STARTUP GATE (NET-001-A).
+        //
+        // The HMAC secret authenticates every P2P message. Validating it here — before
+        // any service is spawned — makes a misconfiguration abort node startup with a
+        // clear error.
+        //
+        // This check is deliberately NOT left solely to `P2PServer::new()`: that call
+        // site sits inside an unbounded retry loop which converts the error into a
+        // `warn!` and retries forever, leaving the node running but silently unable to
+        // join the network. Validating at the top of `start()` turns that
+        // fail-degraded behaviour into genuine fail-closed behaviour.
+        //
+        // Do not remove this call without replacing it with an equivalent pre-spawn gate;
+        // `p2p::tests::hmac_secret_gate_is_wired_into_node_startup` asserts it is present.
+        crate::p2p::NetworkMessage::ensure_hmac_secret_configured()?;
+
         // Create a channel for passing commands between the P2P layer and the core logic.
         let (tx_from_p2p, mut rx_p2p_commands) = mpsc::channel::<P2PCommand>(100);
         let (tx_to_p2p, rx_to_p2p) = mpsc::channel::<P2PCommand>(100);
