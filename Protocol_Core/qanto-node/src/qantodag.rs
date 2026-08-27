@@ -7581,12 +7581,3 @@ mod determinism_tests {
         );
     }
 }
-
-#[cfg(test)]
-mod storage_tests {
-    use super::*;
-    use crate::types::UTXO;
-    use ahash::AHashMap as HashMap;
-    use std::sync::Arc;
-    use tokio::sync::RwLock;
-}
