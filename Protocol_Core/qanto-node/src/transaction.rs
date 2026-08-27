@@ -82,6 +82,20 @@ pub const FEE_RATE_TIER3_FIXED: u128 = 20_000_000;
 /// The fee rate for the fourth tier (3%).
 pub const FEE_RATE_TIER4_FIXED: u128 = 30_000_000;
 
+/// PCP-005: Minimum fee floor (in base units) that applies to ALL
+/// user-submitted transactions regardless of backpressure state.
+///
+/// Without this floor, the zero-fee tier (`FEE_RATE_TIER1_FIXED = 0`) combined
+/// with the backpressure-only fee check in the mempool means spam is unpriced
+/// at normal load. This constant sets a hard floor of 0.000001 QAN (1000 base
+/// units) which is economically negligible for legitimate users but makes
+/// large-scale spam expensive.
+///
+/// This floor does NOT apply to:
+/// - Coinbase transactions (protocol-created, identified by `is_coinbase()`)
+/// - Internal transfers (identified by `metadata["internal_transfer"] = "true"`)
+pub const MIN_FEE_FLOOR: u128 = 1; // 0.000000001 QAN in base units — prevents zero-fee spam
+
 /// Canonical sender used only by protocol-created coinbase transactions.
 pub const COINBASE_SENDER: &str =
     "0000000000000000000000000000000000000000000000000000000000000000";
@@ -1506,6 +1520,20 @@ impl Transaction {
                     "Output amount cannot be zero".to_string(),
                 ));
             }
+        }
+
+        // PCP-005: Fee floor check. Reject transactions below the minimum fee
+        // floor unless they are coinbase (protocol-created) or internal
+        // transfers (node wallet). This prevents zero-fee spam at normal load.
+        if !self.is_coinbase()
+            && self.metadata.get("internal_transfer") != Some(&"true".to_string())
+            && self.fee < crate::transaction::MIN_FEE_FLOOR
+        {
+            return Err(TransactionError::InvalidStructure(format!(
+                "Transaction fee {} is below the minimum fee floor {}",
+                self.fee,
+                crate::transaction::MIN_FEE_FLOOR
+            )));
         }
 
         Ok(())

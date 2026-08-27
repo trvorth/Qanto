@@ -37,6 +37,9 @@ pub(crate) async fn create_valid_signed_tx(
         });
     let amount = outputs.iter().map(|o| o.amount).sum();
 
+    // PCP-005: ensure test txs meet the minimum fee floor
+    let fee = fee.max(crate::transaction::MIN_FEE_FLOOR);
+
     let config = TransactionConfig {
         sender,
         receiver,

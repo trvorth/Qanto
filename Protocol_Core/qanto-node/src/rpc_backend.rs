@@ -767,6 +767,10 @@ pub async fn handle_request_faucet_funds(
     }
 
     // 5. Create transaction config and sign
+    // PCP-005: Faucet tx has fee=0, so mark it as internal_transfer to
+    // bypass the fee floor (which rejects zero-fee user txs to prevent spam).
+    let mut faucet_metadata = HashMap::new();
+    faucet_metadata.insert("internal_transfer".to_string(), "true".to_string());
     let cfg = crate::transaction::TransactionConfig {
         sender,
         receiver: cleaned_addr,
@@ -777,7 +781,7 @@ pub async fn handle_request_faucet_funds(
         priority_fee: 0,
         inputs,
         outputs,
-        metadata: None,
+        metadata: Some(faucet_metadata),
         tx_timestamps: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         chain_id: crate::transaction::GLOBAL_CHAIN_ID.load(std::sync::atomic::Ordering::Relaxed)
             as u32,
