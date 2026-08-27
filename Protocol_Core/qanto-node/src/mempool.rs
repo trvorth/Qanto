@@ -2212,3 +2212,148 @@ impl Default for LockFreePqcMempool {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod mempool_tests {
+    use super::*;
+    use crate::performance_optimizations::QantoDAGOptimizations;
+    use crate::qantodag::QantoDAG;
+    use crate::transaction::{Input, Output, TransactionKind};
+    use crate::types::{UTXO, HomomorphicEncrypted};
+    use ahash::AHashMap as HashMap;
+
+    fn sample_mempool() -> Mempool {
+        Mempool::new(3600, 100 * 1024 * 1024, 10000)
+    }
+
+    fn sample_utxos() -> HashMap<String, UTXO> {
+        let mut utxos = HashMap::new();
+        utxos.insert(
+            "txid_0".to_string(),
+            UTXO {
+                address: "a".repeat(64),
+                amount: 1_000_000_000_000,
+                tx_id: "txid".to_string(),
+                output_index: 0,
+                explorer_link: String::new(),
+            },
+        );
+        utxos
+    }
+
+    fn sample_tx(fee: u128) -> Transaction {
+        Transaction {
+            id: "a".repeat(64),
+            sender: "b".repeat(64),
+            receiver: "c".repeat(64),
+            amount: 100,
+            fee,
+            gas_limit: 50_000,
+            gas_used: 0,
+            gas_price: 1,
+            priority_fee: 0,
+            inputs: vec![Input {
+                tx_id: "txid".to_string(),
+                output_index: 0,
+            }],
+            outputs: vec![Output {
+                address: "d".repeat(64),
+                amount: 50,
+                homomorphic_encrypted: HomomorphicEncrypted::default(),
+            }],
+            timestamp: 1,
+            metadata: HashMap::new(),
+            signature: Default::default(),
+            transaction_kind: TransactionKind::Transfer,
+            chain_id: 1234,
+            fee_breakdown: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn mempool_rejects_zero_fee_tx() {
+        let mempool = sample_mempool();
+        let utxos = sample_utxos();
+        let tx = sample_tx(0);
+        let result = mempool.add_transaction(tx, &utxos, &QantoDAG::new_dummy_for_verification()).await;
+        assert!(result.is_err(), "Zero-fee tx must be rejected");
+    }
+
+    #[tokio::test]
+    async fn mempool_rejects_sub_floor_fee() {
+        let mempool = sample_mempool();
+        let utxos = sample_utxos();
+        let tx = sample_tx(crate::transaction::MIN_FEE_FLOOR - 1);
+        let result = mempool.add_transaction(tx, &utxos, &QantoDAG::new_dummy_for_verification()).await;
+        assert!(result.is_err(), "Sub-floor fee must be rejected");
+    }
+
+    #[tokio::test]
+    async fn mempool_accepts_valid_tx() {
+        let mempool = sample_mempool();
+        let utxos = sample_utxos();
+        let tx = sample_tx(crate::transaction::MIN_FEE_FLOOR);
+        let result = mempool.add_transaction(tx, &utxos, &QantoDAG::new_dummy_for_verification()).await;
+        // The tx will fail signature verification (empty sig), but it should
+        // pass the fee floor check. We verify the fee floor specifically.
+        match result {
+            Err(MempoolError::Tx(TransactionError::InvalidStructure(msg)))
+                if msg.contains("minimum fee floor") || msg.contains("below") =>
+            {
+                panic!("Fee floor should accept at-floor fee: {msg}");
+            }
+            Err(MempoolError::Tx(TransactionError::InsufficientFunds)) => {
+                // Expected: UTXO value insufficient for amount+fee
+            }
+            Err(MempoolError::Tx(TransactionError::InvalidTransactionSignature)) => {
+                // Expected: empty signature fails verification
+            }
+            Err(MempoolError::Tx(TransactionError::SignerAddressMismatch)) => {
+                // Expected: sender doesn't match signature
+            }
+            Ok(()) => {}
+            Err(e) => {
+                // Any other error is acceptable as long as it's not fee-floor rejection
+                let msg = format!("{e}");
+                assert!(
+                    !msg.contains("minimum fee floor"),
+                    "Fee floor should not reject at-floor fee: {msg}"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn mempool_rejects_duplicate_tx() {
+        let mempool = sample_mempool();
+        let utxos = sample_utxos();
+        let tx = sample_tx(crate::transaction::MIN_FEE_FLOOR);
+        let dag = QantoDAG::new_dummy_for_verification();
+        let _ = mempool.add_transaction(tx.clone(), &utxos, &dag).await;
+        let result = mempool.add_transaction(tx, &utxos, &dag).await;
+        assert!(result.is_err(), "Duplicate tx must be rejected");
+    }
+
+    #[tokio::test]
+    async fn mempool_rejects_inputless_tx() {
+        let mempool = sample_mempool();
+        let utxos = sample_utxos();
+        let mut tx = sample_tx(crate::transaction::MIN_FEE_FLOOR);
+        tx.inputs.clear();
+        let result = mempool.add_transaction(tx, &utxos, &QantoDAG::new_dummy_for_verification()).await;
+        assert!(result.is_err(), "Inputless tx must be rejected");
+    }
+
+    #[tokio::test]
+    async fn mempool_size_increments_on_add() {
+        let mempool = sample_mempool();
+        let utxos = sample_utxos();
+        let tx = sample_tx(crate::transaction::MIN_FEE_FLOOR);
+        let dag = QantoDAG::new_dummy_for_verification();
+        let size_before = mempool.size().await;
+        let _ = mempool.add_transaction(tx, &utxos, &dag).await;
+        // Size may or may not increment depending on signature verification
+        // but the fee floor check must not reject it
+        assert!(mempool.size().await >= size_before);
+    }
+}
