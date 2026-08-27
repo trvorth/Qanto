@@ -6,7 +6,8 @@
 
 use crate::config::LoggingConfig;
 use crate::difficulty_retarget::{
-    get_required_difficulty, record_solve_time, validate_block_difficulty, DifficultyState, GENESIS_DIFFICULTY,
+    get_required_difficulty, record_solve_time, validate_block_difficulty, DifficultyState,
+    GENESIS_DIFFICULTY,
 };
 use crate::emission::Emission;
 use crate::mempool::Mempool;
@@ -61,7 +62,7 @@ use serde_json::json;
 use std::fmt;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, OnceLock, Weak};
 use std::time::{Duration, Instant, SystemTime, SystemTimeError, UNIX_EPOCH};
 
 use crate::websocket_server::BalanceEvent;
@@ -122,6 +123,42 @@ const SIMD_BATCH_SIZE: usize = 32; // 4x increase for SIMD processing
 /// Set to 10s for Cohort A (residential hardware with sleep/wake cycles).
 /// Can be tightened to 5s for Public Testnet with datacenter validators.
 const MAX_CLOCK_DRIFT_SECS: u64 = 10;
+
+/// CONFIG-003: explicit opt-in parse for the clock-drift bypass.
+///
+/// The clock-drift guard halts local block production when this node's clock lags
+/// its parents' timestamps by more than [`MAX_CLOCK_DRIFT_SECS`], which prevents a
+/// chain split. It is bypassable for controlled test topologies via
+/// `QANTO_BYPASS_CLOCK_DRIFT`.
+///
+/// This previously used `env::var(..).is_err()`, meaning the guard was disabled by
+/// the mere PRESENCE of the variable — so `QANTO_BYPASS_CLOCK_DRIFT=0` and
+/// `=false`, the values an operator would set to KEEP the guard enabled, silently
+/// disabled it instead. Only affirmative values disable it now, and the bypass is
+/// logged once at warning level so it can never be silent.
+fn clock_drift_guard_bypassed() -> bool {
+    static WARNED: AtomicBool = AtomicBool::new(false);
+
+    let bypassed = match std::env::var("QANTO_BYPASS_CLOCK_DRIFT") {
+        Ok(value) => matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
+        Err(_) => false,
+    };
+
+    if bypassed && !WARNED.swap(true, Ordering::Relaxed) {
+        warn!(
+            "SECURITY: QANTO_BYPASS_CLOCK_DRIFT is set to an affirmative value; the \
+             clock-drift guard is DISABLED. This guard exists to prevent a chain split \
+             when the local clock lags parent block timestamps by more than {}s. Unset \
+             the variable for any non-test deployment.",
+            MAX_CLOCK_DRIFT_SECS
+        );
+    }
+
+    bypassed
+}
 
 const LOCK_FREE_QUEUE_SIZE: usize = 262144; // 4x increase for lock-free queue capacity
 
@@ -1265,7 +1302,19 @@ pub struct QantoDAG {
     pub db: Arc<QantoStorage>,
     pub persistence_writer: Arc<PersistenceWriter>,
     pub saga: Arc<PalletSaga>,
-    pub self_arc: Weak<QantoDAG>,
+    /// Weak self-reference, used to hand a strong `Arc<QantoDAG>` to SAGA during
+    /// epoch evolution without creating a reference cycle.
+    ///
+    /// SELF-ARC-001 (Cycle 023): this was previously a plain `Weak<QantoDAG>`
+    /// populated after construction by casting `Arc::as_ptr` to `*mut` and writing
+    /// through it. That is undefined behaviour irrespective of thread-exclusivity:
+    /// `Arc::as_ptr` yields `*const T`, which carries no write provenance, so the
+    /// write is UB even with no other live handles. It also aliased a field of a
+    /// value already shared via `Arc`.
+    ///
+    /// `OnceLock` provides exactly the required semantics — write-once,
+    /// after-construction, through a shared reference — with no `unsafe`.
+    pub self_arc: OnceLock<Weak<QantoDAG>>,
     pub current_epoch: Arc<AtomicU64>,
     pub balance_event_sender: Arc<RwLock<Option<broadcast::Sender<BalanceEvent>>>>,
     pub balance_broadcaster: Arc<RwLock<Option<Arc<BalanceBroadcaster>>>>,
@@ -1423,7 +1472,7 @@ impl QantoDAG {
             db: db_arc.clone(),
             persistence_writer: Arc::new(PersistenceWriter::new(db_arc.clone(), 8192)),
             saga,
-            self_arc: Weak::new(),
+            self_arc: OnceLock::new(),
             current_epoch: Arc::new(AtomicU64::new(0)),
             balance_event_sender: Arc::new(RwLock::new(None)),
             balance_broadcaster: Arc::new(RwLock::new(None)),
@@ -1738,18 +1787,21 @@ impl QantoDAG {
         );
 
         let arc_dag = Arc::new(dag);
-        let weak_self = Arc::downgrade(&arc_dag);
 
-        let ptr = Arc::as_ptr(&arc_dag) as *mut QantoDAG;
-
-        // SAFETY: This unsafe block is required to initialize the self_arc field after
-        // the QantoDAG has been wrapped in an Arc. This is safe because:
-        // 1. We have exclusive access to the newly created Arc<QantoDAG>
-        // 2. No other threads can access this instance yet
-        // 3. The pointer is valid as it comes directly from Arc::as_ptr
-        // 4. We're only writing to a single field (self_arc) that was initialized as Weak::new()
-        unsafe {
-            (*ptr).self_arc = weak_self;
+        // SELF-ARC-001 (Cycle 023): sound self-reference initialisation.
+        //
+        // Previously this cast `Arc::as_ptr(&arc_dag)` to `*mut QantoDAG` and wrote
+        // through it. That was undefined behaviour: `Arc::as_ptr` returns `*const T`,
+        // which carries no write provenance, so the write is UB even when no other
+        // handle exists — thread-exclusivity does not rescue it. It additionally
+        // mutated a field of a value already shared through `Arc`.
+        //
+        // `OnceLock::set` expresses the same write-once-after-construction intent
+        // through a shared reference, with no `unsafe` and no aliasing.
+        if arc_dag.self_arc.set(Arc::downgrade(&arc_dag)).is_err() {
+            return Err(QantoDAGError::Governance(
+                "QantoDAG self-reference was already initialised".to_string(),
+            ));
         }
 
         // Hydrate in-memory blocks and indices from storage history on startup
@@ -2988,10 +3040,17 @@ impl QantoDAG {
                     });
 
                 // NTP drift guard: halt block production if local clock is too far
-                // NTP drift guard: halt block production if local clock is too far
                 // from the network-observed parent timestamps. This is deterministic
                 // and does not depend on any external NTP endpoint.
-                if max_parent_timestamp > 0 && std::env::var("QANTO_BYPASS_CLOCK_DRIFT").is_err() {
+                //
+                // CONFIG-003: the bypass is parsed EXPLICITLY rather than with
+                // `.is_err()`. The previous form treated the mere presence of the
+                // variable as a bypass, so `QANTO_BYPASS_CLOCK_DRIFT=0` and
+                // `=false` — the values an operator would set to KEEP the guard —
+                // silently disabled it. Only an affirmative opt-in disables it now,
+                // and doing so is logged loudly because this guard exists to
+                // prevent a chain split.
+                if max_parent_timestamp > 0 && !clock_drift_guard_bypassed() {
                     let drift = max_parent_timestamp.abs_diff(current_time);
                     let local_clock_lags_parent = max_parent_timestamp > current_time;
                     // #region debug-point A:clock-drift-compare
@@ -5100,7 +5159,7 @@ impl QantoDAG {
         let current_epoch = self.current_epoch.fetch_add(1, Ordering::SeqCst) + 1;
 
         // The self_arc needs to be upgraded to a strong reference to pass to SAGA.
-        if let Some(self_arc_strong) = self.self_arc.upgrade() {
+        if let Some(self_arc_strong) = self.self_arc.get().and_then(Weak::upgrade) {
             self.saga
                 .process_epoch_evolution(current_epoch, &self_arc_strong)
                 .await;
@@ -6800,7 +6859,7 @@ impl QantoDAGOptimizations for QantoDAG {
                 #[cfg(feature = "infinite-strata")]
                 None,
             )),
-            self_arc: Weak::new(),
+            self_arc: OnceLock::new(),
             current_epoch: Arc::new(AtomicU64::new(0)),
             balance_event_sender: Arc::new(RwLock::new(None)),
             balance_broadcaster: Arc::new(RwLock::new(Some(Arc::new(BalanceBroadcaster::new(
@@ -6854,6 +6913,54 @@ fn to_core_logging(cfg: &LoggingConfig) -> CoreLoggingConfig {
         enable_block_celebrations: cfg.enable_block_celebrations,
         celebration_log_level: cfg.celebration_log_level.clone(),
         celebration_throttle_per_min: cfg.celebration_throttle_per_min,
+    }
+}
+
+#[cfg(test)]
+mod clock_drift_guard_tests {
+    use super::clock_drift_guard_bypassed;
+    use serial_test::serial;
+
+    /// CONFIG-003 regression: only affirmative values may disable the clock-drift
+    /// guard. Before this fix the code used `env::var(..).is_err()`, so the mere
+    /// PRESENCE of the variable disabled the guard — meaning `=0` and `=false`,
+    /// the values an operator would set to KEEP the guard, silently removed a
+    /// chain-split protection.
+    ///
+    /// The negative-value cases below are the actual regression assertions: they
+    /// fail against the old `.is_err()` implementation.
+    #[serial]
+    #[test]
+    fn clock_drift_bypass_requires_affirmative_opt_in() {
+        // Unset: guard must be active.
+        std::env::remove_var("QANTO_BYPASS_CLOCK_DRIFT");
+        assert!(
+            !clock_drift_guard_bypassed(),
+            "guard must be ACTIVE when QANTO_BYPASS_CLOCK_DRIFT is unset"
+        );
+
+        // Negative / falsy values: guard must REMAIN active.
+        // These are the cases the previous `.is_err()` form got wrong.
+        for value in ["0", "false", "no", "off", "", "  "] {
+            std::env::set_var("QANTO_BYPASS_CLOCK_DRIFT", value);
+            assert!(
+                !clock_drift_guard_bypassed(),
+                "CONFIG-003 REGRESSION: QANTO_BYPASS_CLOCK_DRIFT={value:?} must NOT \
+                 disable the clock-drift guard. Treating any value as a bypass silently \
+                 removes chain-split protection from operators who set it to a falsy value."
+            );
+        }
+
+        // Affirmative values: guard must be bypassed (case/whitespace tolerant).
+        for value in ["1", "true", "TRUE", "yes", "on", " true "] {
+            std::env::set_var("QANTO_BYPASS_CLOCK_DRIFT", value);
+            assert!(
+                clock_drift_guard_bypassed(),
+                "QANTO_BYPASS_CLOCK_DRIFT={value:?} should disable the guard"
+            );
+        }
+
+        std::env::remove_var("QANTO_BYPASS_CLOCK_DRIFT");
     }
 }
 
