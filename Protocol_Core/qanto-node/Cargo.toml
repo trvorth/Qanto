@@ -172,6 +172,9 @@ proptest = "1.4"
 criterion = "0.8.2"
 primitive-types = "0.12"
 
+[[bench]]
+name = "mining_bench"
+path = "benches/mining_bench.rs"
 
 [features]
 analyzer = [] # Dummy feature for rust-analyzer compatibility

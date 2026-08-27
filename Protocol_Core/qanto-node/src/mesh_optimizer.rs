@@ -45,15 +45,18 @@ impl MeshOptimizer {
         self.shard_health.insert(health.shard_id, health);
     }
 
+    /// TPS above which a shard split is proposed.
+    pub const HIGH_TPS_THRESHOLD: u64 = 10_000;
+
     /**
      * @dev Calculates if a shard split/merge is required.
-     * Threshold: TPS > 10,000 or Latency > 150ms.
+     * Threshold: TPS > HIGH_TPS_THRESHOLD or Latency > 150ms.
      */
     pub fn calculate_optimization_needs(&mut self) -> Vec<OptimizationEvent> {
         let mut events = Vec::new();
 
         for health in self.shard_health.values() {
-            if health.tps > 10000 || health.latency_ms > 150 {
+            if health.tps > Self::HIGH_TPS_THRESHOLD || health.latency_ms > 150 {
                 println!(
                     "🔥 TMO: Thermal Spike detected on Shard {}. Proposing Split.",
                     health.shard_id
@@ -93,7 +96,7 @@ mod tests {
         optimizer.update_shard_health(ShardHealth {
             shard_id: 0,
             latency_ms: 180,                // Over Threshold
-            tps: 52000,                     // Over Threshold
+            tps: MeshOptimizer::HIGH_TPS_THRESHOLD + 1,     // Over Threshold
             puai_yield: 92_500_000_000u128, // 92.5 * 1e9
             sentinel_count: 5,
         });
